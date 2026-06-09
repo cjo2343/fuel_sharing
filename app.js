@@ -662,8 +662,8 @@ function renderSettlements(ledger) {
 }
 
 function closeCurrentPeriod(options = {}) {
-  if (!canManageSettings()) {
-    alert("Only an admin can close periods.");
+  if (!canManageSettings() && !options.allowMemberClose) {
+    alert("Only an admin can close periods manually.");
     return;
   }
   if (state.trips.length === 0 && state.fuel.length === 0) {
@@ -762,7 +762,7 @@ function updatePaymentStatus(button) {
       "All current settlements have been requested. Close and archive this period now so new trips start fresh?"
     )
   ) {
-    closeCurrentPeriod({ skipConfirm: true });
+    closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true });
     return;
   }
 

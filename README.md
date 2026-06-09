@@ -102,3 +102,7 @@ When a logged-in email is not already assigned to a member, the app now adds it 
 - Otherwise a new member is added using a name inferred from the email address.
 
 Admins can later rename the member or adjust the email/role in Group settings.
+
+## Settlement closing
+
+Admins can still close a period manually. Normal members cannot close periods manually, but when the final open settlement is marked as requested, the app asks that user whether the current period should be closed and archived. If they confirm, the period closes and a fresh period begins.
