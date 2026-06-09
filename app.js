@@ -2065,7 +2065,7 @@ function buildSystemHealthChecks(ledger) {
     const km = Number(trip.endKm || 0) - Number(trip.startKm || 0);
     return km <= 0 || km > 1500;
   });
-  const openFuelWarnings = getFuelSanityWarnings(ledger);
+  const openFuelWarnings = getFuelValidationWarnings(ledger);
   const currentPeriodHasData = state.trips.length > 0 || state.fuel.length > 0;
   const pushSubscriptionHint = pushEnabled
     ? "Push notifications are enabled on this device."
