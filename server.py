@@ -95,50 +95,73 @@ def fetch_fuel_price(path):
     parsed = urllib.parse.urlparse(path)
     query = urllib.parse.parse_qs(parsed.query)
     wanted = (query.get("fuelType", ["95"])[0] or "95").lower()
-    if wanted in ("diesel", "dieselolie"): 
+    if wanted in ("diesel", "dieselolie"):
         match_terms = ("diesel",)
         label = "Diesel"
+        fallback_price = 14.50
     else:
         match_terms = ("95", "miles 95", "benzin 95", "petrol 95")
         label = "Petrol 95"
+        fallback_price = 15.50
 
-    request = urllib.request.Request(
-        "https://api.circlek.com/eu/prices/v1/fuel/countries/DK",
-        headers={"X-App-Name": "PRICES", "Accept": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=12) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    try:
+        request = urllib.request.Request(
+            "https://api.circlek.com/eu/prices/v1/fuel/countries/DK",
+            headers={"X-App-Name": "PRICES", "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=12) as response:
+            data = json.loads(response.read().decode("utf-8"))
 
-    prices = []
-    last_updated = ""
-    for site in data.get("sites", []):
-        for price in site.get("fuelPrices", []) or []:
-            name = str(price.get("displayName", "")).lower()
-            if any(term in name for term in match_terms):
-                try:
-                    value = float(price.get("price"))
-                except (TypeError, ValueError):
-                    continue
-                if value > 0:
-                    prices.append(value)
-                    last_updated = max(last_updated, str(price.get("lastUpdated") or ""))
+        prices = []
+        last_updated = ""
+        for site in data.get("sites", []):
+            for price in site.get("fuelPrices", []) or []:
+                name = str(price.get("displayName", "")).lower()
+                if any(term in name for term in match_terms):
+                    try:
+                        value = float(price.get("price"))
+                    except (TypeError, ValueError):
+                        continue
+                    if value > 0:
+                        prices.append(value)
+                        last_updated = max(last_updated, str(price.get("lastUpdated") or ""))
 
-    if not prices:
-        return {"ok": False, "fuelType": wanted, "message": "No matching Danish fuel price found"}
+        if prices:
+            # Use the median so one unusually cheap/expensive station does not skew the sanity check.
+            prices.sort()
+            median = prices[len(prices) // 2]
+            return {
+                "ok": True,
+                "fuelType": wanted,
+                "label": label,
+                "price": round(median, 2),
+                "currency": "DKK",
+                "volumeUnit": "LITER",
+                "stationCount": len(prices),
+                "lastUpdated": last_updated,
+                "source": "Circle K/INGO public DK fuel price API",
+            }
+    except Exception as error:
+        return {
+            "ok": False,
+            "fuelType": wanted,
+            "label": label,
+            "price": fallback_price,
+            "currency": "DKK",
+            "volumeUnit": "LITER",
+            "message": f"Live fuel price unavailable; using fallback price ({type(error).__name__}).",
+            "source": "Configured fallback",
+        }
 
-    # Use the median so one unusually cheap/expensive station does not skew the sanity check.
-    prices.sort()
-    median = prices[len(prices) // 2]
     return {
-        "ok": True,
+        "ok": False,
         "fuelType": wanted,
         "label": label,
-        "price": round(median, 2),
+        "price": fallback_price,
         "currency": "DKK",
         "volumeUnit": "LITER",
-        "stationCount": len(prices),
-        "lastUpdated": last_updated,
-        "source": "Circle K/INGO public DK fuel price API",
+        "message": "No matching Danish fuel price found; using fallback price.",
+        "source": "Configured fallback",
     }
 
 def read_request_body(handler):

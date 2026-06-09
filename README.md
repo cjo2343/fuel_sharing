@@ -255,3 +255,9 @@ This build keeps the JSON ledger as the source of truth, but after every success
 Before deploying this build, run `phase2b-dual-write-policies.sql` once in Supabase SQL Editor. Those policies allow the browser app to write to the normalized tables during this bridge phase. They are intentionally broad and should be tightened in the later normalized-source-of-truth phase.
 
 After deployment, add or edit one test trip/fuel log, then open System health. The "Normalized database tables" check should mention that dual-write sync is active and that normalized counts match JSON.
+
+### Phase 2B console cleanup
+
+If the browser console shows normalized dual-write access errors or ON CONFLICT errors, run `phase2b-dual-write-repair.sql` in Supabase SQL Editor.
+
+This build also makes `/api/fuel-price` return a fallback JSON response instead of a 502 when the external fuel price API is temporarily unavailable.
