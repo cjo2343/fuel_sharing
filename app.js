@@ -43,6 +43,8 @@ let currentUser = localStorage.getItem(userKey) || "";
 let remoteSaveTimer;
 let currentSession = null;
 let loginCooldownTimer;
+let editingTripId = null;
+let editingFuelId = null;
 let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
 let deferredInstallPrompt = null;
@@ -97,7 +99,11 @@ const els = {
   fuelWarningThreshold: document.querySelector("#fuelWarningThreshold"),
   members: document.querySelector("#members"),
   tripForm: document.querySelector("#tripForm"),
+  tripSubmit: document.querySelector("#tripSubmit"),
+  cancelTripEdit: document.querySelector("#cancelTripEdit"),
   fuelForm: document.querySelector("#fuelForm"),
+  fuelSubmit: document.querySelector("#fuelSubmit"),
+  cancelFuelEdit: document.querySelector("#cancelFuelEdit"),
   tripEstimatorForm: document.querySelector("#tripEstimatorForm"),
   tripEstimateDistance: document.querySelector("#tripEstimateDistance"),
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
@@ -201,20 +207,30 @@ els.tripForm.addEventListener("submit", (event) => {
     return;
   }
 
-  state.trips.push({
-    id: crypto.randomUUID(),
+  const tripPayload = {
+    id: editingTripId || crypto.randomUUID(),
     driver: els.tripDriver.value,
     participants,
     date: els.tripDate.value,
     startKm: round(start),
     endKm: round(end),
     note: els.tripNote.value.trim()
-  });
+  };
+
+  if (editingTripId) {
+    const index = state.trips.findIndex((trip) => trip.id === editingTripId);
+    if (index >= 0) state.trips[index] = tripPayload;
+    else state.trips.push(tripPayload);
+    editingTripId = null;
+  } else {
+    state.trips.push(tripPayload);
+  }
   state.lastOdometer = getLatestOdometer();
 
   saveState();
   els.tripForm.reset();
   setDefaultDates();
+  updateEditUi();
   render();
 });
 
@@ -263,8 +279,8 @@ els.fuelForm.addEventListener("submit", (event) => {
   }
 
   const normalizedLiters = liters > 0 ? round(liters) : "";
-  state.fuel.push({
-    id: crypto.randomUUID(),
+  const fuelPayload = {
+    id: editingFuelId || crypto.randomUUID(),
     payer: els.fuelPayer.value,
     date: els.fuelDate.value,
     amount: roundMoney(amount),
@@ -277,12 +293,22 @@ els.fuelForm.addEventListener("submit", (event) => {
       ? { name: station, brand: stationBrand, latitude: stationLatitude, longitude: stationLongitude }
       : null,
     fullTank
-  });
+  };
+
+  if (editingFuelId) {
+    const index = state.fuel.findIndex((fuel) => fuel.id === editingFuelId);
+    if (index >= 0) state.fuel[index] = fuelPayload;
+    else state.fuel.push(fuelPayload);
+    editingFuelId = null;
+  } else {
+    state.fuel.push(fuelPayload);
+  }
 
   saveState();
   els.fuelForm.reset();
   clearFuelLocation();
   setDefaultDates();
+  updateEditUi();
   render();
 });
 
@@ -549,6 +575,28 @@ els.removeTestUsers?.addEventListener("click", () => {
   removeUnusedTestUsers();
 });
 
+
+if (els.cancelTripEdit) {
+  els.cancelTripEdit.addEventListener("click", () => {
+    editingTripId = null;
+    els.tripForm.reset();
+    setDefaultDates();
+    updateEditUi();
+    render();
+  });
+}
+
+if (els.cancelFuelEdit) {
+  els.cancelFuelEdit.addEventListener("click", () => {
+    editingFuelId = null;
+    els.fuelForm.reset();
+    clearFuelLocation();
+    setDefaultDates();
+    updateEditUi();
+    render();
+  });
+}
+
 els.closePeriod.addEventListener("click", () => {
   closeCurrentPeriod();
 });
@@ -566,6 +614,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const editButton = event.target.closest("[data-edit]");
+  if (editButton) {
+    editEntry(editButton.dataset.edit);
+    return;
+  }
+
   const button = event.target.closest("[data-delete]");
   if (!button) return;
 
@@ -577,7 +631,10 @@ document.addEventListener("click", (event) => {
   const [type, id] = button.dataset.delete.split(":");
   state[type] = state[type].filter((entry) => entry.id !== id);
   if (type === "trips") state.lastOdometer = getLatestOdometer();
+  if (editingTripId === id) editingTripId = null;
+  if (editingFuelId === id) editingFuelId = null;
   saveState();
+  updateEditUi();
   render();
 });
 
@@ -599,6 +656,7 @@ function render() {
   els.resetData.disabled = !canManageSettings();
   els.resetData.classList.toggle("hidden", !canManageSettings());
   if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
+  updateEditUi();
 }
 
 
@@ -1823,6 +1881,78 @@ function setDataToolsMessage(message) {
   els.dataToolsMessage.textContent = message;
 }
 
+
+function editEntry(value) {
+  if (!canManageSettings()) {
+    alert("Only an admin can edit entries.");
+    return;
+  }
+
+  const [type, id] = String(value || "").split(":");
+  if (type === "trips") {
+    startTripEdit(id);
+    return;
+  }
+  if (type === "fuel") {
+    startFuelEdit(id);
+  }
+}
+
+function startTripEdit(id) {
+  const trip = state.trips.find((entry) => entry.id === id);
+  if (!trip) return;
+
+  editingFuelId = null;
+  editingTripId = id;
+  renderPeopleSelectors();
+  els.tripDriver.value = trip.driver;
+  els.tripDate.value = trip.date;
+  els.startKm.value = trip.startKm;
+  els.endKm.value = trip.endKm;
+  els.tripNote.value = trip.note || "";
+  renderParticipantOptions();
+  const participants = new Set(getTripParticipants(trip));
+  for (const input of els.tripParticipants.querySelectorAll("input")) {
+    input.checked = participants.has(input.value);
+  }
+  updateEditUi();
+  els.tripForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  els.startKm.focus();
+}
+
+function startFuelEdit(id) {
+  const fuel = state.fuel.find((entry) => entry.id === id);
+  if (!fuel) return;
+
+  editingTripId = null;
+  editingFuelId = id;
+  renderPeopleSelectors();
+  els.fuelPayer.value = fuel.payer;
+  els.fuelDate.value = fuel.date;
+  els.fuelAmount.value = fuel.amount;
+  if (els.fuelLiters) els.fuelLiters.value = fuel.liters || "";
+  if (els.fuelOdometer) els.fuelOdometer.value = fuel.odometer || "";
+  if (els.fuelStation) els.fuelStation.value = fuel.station || fuel.stationInfo?.name || "";
+  if (els.fuelLatitude) els.fuelLatitude.value = fuel.location?.latitude || "";
+  if (els.fuelLongitude) els.fuelLongitude.value = fuel.location?.longitude || "";
+  if (els.fuelStationLatitude) els.fuelStationLatitude.value = fuel.stationInfo?.latitude || "";
+  if (els.fuelStationLongitude) els.fuelStationLongitude.value = fuel.stationInfo?.longitude || "";
+  if (els.fuelStationBrand) els.fuelStationBrand.value = fuel.stationInfo?.brand || "";
+  if (els.fuelFullTank) els.fuelFullTank.checked = Boolean(fuel.fullTank);
+  const details = document.querySelector("#fuelDetails");
+  if (details) details.open = true;
+  updateEditUi();
+  els.fuelForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  els.fuelAmount.focus();
+}
+
+function updateEditUi() {
+  if (els.tripSubmit) els.tripSubmit.textContent = editingTripId ? "Save trip changes" : "Add trip";
+  if (els.cancelTripEdit) els.cancelTripEdit.classList.toggle("hidden", !editingTripId);
+  if (els.fuelSubmit) els.fuelSubmit.textContent = editingFuelId ? "Save fuel changes" : "Add fuel";
+  if (els.cancelFuelEdit) els.cancelFuelEdit.classList.toggle("hidden", !editingFuelId);
+}
+
 function renderHistory() {
   if (state.trips.length === 0) {
     els.tripList.replaceChildren(emptyNode());
@@ -1836,7 +1966,7 @@ function renderHistory() {
           <article class="entry-card">
             <header>
               <strong>${escapeHtml(trip.driver)}</strong>
-              ${canManageSettings() ? `<button class="text-button" type="button" data-delete="trips:${trip.id}">Delete</button>` : ""}
+              ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
             </header>
             <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km</p>
             <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
@@ -1858,7 +1988,7 @@ function renderHistory() {
           <article class="entry-card">
             <header>
               <strong>${escapeHtml(fuel.payer)}</strong>
-              ${canManageSettings() ? `<button class="text-button" type="button" data-delete="fuel:${fuel.id}">Delete</button>` : ""}
+              ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
             </header>
             <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
             <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>

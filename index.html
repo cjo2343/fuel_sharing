@@ -106,7 +106,8 @@
               <legend>Split between</legend>
               <div id="tripParticipants" class="participant-grid"></div>
             </fieldset>
-            <button class="action-button wide" type="submit">Add trip</button>
+            <button id="tripSubmit" class="action-button wide" type="submit">Add trip</button>
+            <button id="cancelTripEdit" class="subtle-button wide hidden" type="button">Cancel editing trip</button>
           </form>
         </section>
 
@@ -165,7 +166,8 @@
               </div>
               <p class="section-note">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time. Nearby stations use your phone location only when you tap the button.</p>
             </details>
-            <button class="action-button wide" type="submit">Add fuel</button>
+            <button id="fuelSubmit" class="action-button wide" type="submit">Add fuel</button>
+            <button id="cancelFuelEdit" class="subtle-button wide hidden" type="button">Cancel editing fuel payment</button>
           </form>
         </section>
 

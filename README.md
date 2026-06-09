@@ -205,3 +205,10 @@ This does not block legitimate edge cases, but it makes users confirm that all f
 ## Fuel sanity validation
 
 The app warns before settlement requests if logged fuel looks too low or too high for the trip distance, if large payments are missing liters, if DKK/L looks unrealistic, or if receipt-based consumption is outside a plausible range. These warnings do not block valid edge cases, but they require confirmation before requesting or closing settlements.
+
+
+## Editing current-period entries
+
+Admins can edit current-period trips and fuel payments from the History section.
+Use **Edit** to load the entry back into the form, correct the values, and save.
+Closed periods stay archived; edit the current period before closing it.

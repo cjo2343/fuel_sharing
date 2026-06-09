@@ -1474,3 +1474,31 @@ body.auth-locked #authPanel .text-button {
     grid-template-columns: 1fr;
   }
 }
+
+.entry-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.entry-actions .compact-button {
+  min-height: 34px;
+}
+
+@media (max-width: 560px) {
+  .entry-card header {
+    align-items: flex-start;
+  }
+
+  .entry-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .entry-actions .compact-button,
+  .entry-actions .text-button {
+    flex: 1 1 110px;
+  }
+}
