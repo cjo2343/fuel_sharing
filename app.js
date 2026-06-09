@@ -98,6 +98,10 @@ const els = {
   members: document.querySelector("#members"),
   tripForm: document.querySelector("#tripForm"),
   fuelForm: document.querySelector("#fuelForm"),
+  tripEstimatorForm: document.querySelector("#tripEstimatorForm"),
+  tripEstimateDistance: document.querySelector("#tripEstimateDistance"),
+  tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
+  tripEstimateResult: document.querySelector("#tripEstimateResult"),
   settingsForm: document.querySelector("#settingsForm"),
   settingsPanel: document.querySelector(".settings-panel"),
   settlementWarning: document.querySelector("#settlementWarning"),
@@ -226,6 +230,14 @@ if (els.stationResults) {
     const station = stations[Number(button.dataset.stationIndex)];
     if (station) selectFuelStation(station);
   });
+}
+
+if (els.tripEstimateDistance) {
+  els.tripEstimateDistance.addEventListener("input", renderTripEstimate);
+}
+
+if (els.tripEstimatorParticipants) {
+  els.tripEstimatorParticipants.addEventListener("change", renderTripEstimate);
 }
 
 els.fuelForm.addEventListener("submit", (event) => {
@@ -573,6 +585,7 @@ function render() {
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
   renderSettings();
   renderPeopleSelectors();
+  renderTripEstimatorParticipants();
   syncStartOdometerDefault();
   const ledger = calculateLedger();
   renderSummary(ledger);
@@ -580,6 +593,7 @@ function render() {
   renderSettlements(ledger);
   renderHistory();
   renderClosedPeriods();
+  renderTripEstimate();
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
@@ -858,6 +872,104 @@ function renderParticipantOptions() {
       `
     )
     .join("");
+}
+
+function renderTripEstimatorParticipants() {
+  if (!els.tripEstimatorParticipants) return;
+
+  const existing = new Set(
+    Array.from(els.tripEstimatorParticipants.querySelectorAll("input:checked")).map((input) => input.value)
+  );
+  const profile = getCurrentMemberProfile();
+  const defaultSelection = existing.size ? existing : new Set(profile?.name ? [profile.name] : getMemberNames());
+
+  els.tripEstimatorParticipants.innerHTML = getMemberNames()
+    .map((member) => `
+      <label class="participant-option">
+        <input type="checkbox" value="${escapeHtml(member)}" ${defaultSelection.has(member) ? "checked" : ""} />
+        <span>${escapeHtml(member)}</span>
+      </label>
+    `)
+    .join("");
+}
+
+function getTripEstimatorParticipants() {
+  if (!els.tripEstimatorParticipants) return [];
+  return Array.from(els.tripEstimatorParticipants.querySelectorAll("input:checked")).map((input) => input.value);
+}
+
+function renderTripEstimate() {
+  if (!els.tripEstimateResult || !els.tripEstimateDistance) return;
+
+  if (supabaseClient && !currentSession) {
+    els.tripEstimateResult.className = "trip-estimate-result empty-state";
+    els.tripEstimateResult.textContent = "Sign in to estimate trip costs.";
+    return;
+  }
+
+  const distance = Number(els.tripEstimateDistance.value || 0);
+  const participants = getTripEstimatorParticipants();
+
+  if (distance <= 0) {
+    els.tripEstimateResult.className = "trip-estimate-result empty-state";
+    els.tripEstimateResult.textContent = "Enter a distance to estimate the fuel cost.";
+    return;
+  }
+
+  if (participants.length === 0) {
+    els.tripEstimateResult.className = "trip-estimate-result empty-state";
+    els.tripEstimateResult.textContent = "Choose at least one person joining the trip.";
+    return;
+  }
+
+  const estimate = calculateTripCostEstimate(distance, participants.length);
+  els.tripEstimateResult.className = "trip-estimate-result";
+  els.tripEstimateResult.innerHTML = `
+    <div class="trip-estimate-cards">
+      <article>
+        <span>Estimated fuel cost</span>
+        <strong>${formatMoney(estimate.totalCost)}</strong>
+      </article>
+      <article>
+        <span>Per person</span>
+        <strong>${formatMoney(estimate.perPerson)}</strong>
+      </article>
+      <article>
+        <span>People</span>
+        <strong>${participants.length}</strong>
+      </article>
+    </div>
+    <p>${escapeHtml(estimate.explanation)}</p>
+    <small>${escapeHtml(participants.join(", "))}</small>
+  `;
+}
+
+function calculateTripCostEstimate(distanceKm, participantCount) {
+  const historical = calculateHistoricalFuelStats({ currentTrips: state.trips, currentFuel: state.fuel });
+  const fallbackConsumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
+  const livePrice = latestFuelPrice && latestFuelPrice.price > 0 ? Number(latestFuelPrice.price) : 0;
+  const pricePerLiter = historical.pricePerLiter > 0 ? historical.pricePerLiter : livePrice || fallbackPrice;
+
+  let totalCost = 0;
+  let explanation = "";
+
+  if (historical.costPerKm > 0 && historical.totalTripKm >= 50) {
+    totalCost = distanceKm * historical.costPerKm;
+    explanation = `${formatNumber(distanceKm)} km × historical ${formatMoneyFor(historical.costPerKm, state.currency)}/km, based on ${formatNumber(historical.totalTripKm)} logged km.`;
+  } else {
+    const consumption = historical.litersPer100Km > 0 ? historical.litersPer100Km : fallbackConsumption;
+    totalCost = (distanceKm * consumption / 100) * pricePerLiter;
+    const priceSource = historical.pricePerLiter > 0 ? "historical receipt average" : livePrice ? "live diesel reference price" : "fallback fuel price";
+    const consumptionSource = historical.litersPer100Km > 0 ? "historical consumption" : "car setting";
+    explanation = `${formatNumber(distanceKm)} km × ${formatNumber(consumption)} L/100 km (${consumptionSource}) × ${formatMoneyFor(pricePerLiter, state.currency)}/L (${priceSource}).`;
+  }
+
+  return {
+    totalCost: roundMoney(totalCost),
+    perPerson: roundMoney(totalCost / participantCount),
+    explanation
+  };
 }
 
 function calculateLedger() {

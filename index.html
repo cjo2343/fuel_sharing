@@ -209,6 +209,29 @@
           </form>
         </section>
 
+
+
+        <section class="panel wide-panel trip-estimator-panel" aria-labelledby="tripEstimatorHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Plan</p>
+              <h2 id="tripEstimatorHeading">Estimate trip cost</h2>
+            </div>
+          </div>
+          <p class="section-note">Estimate a future trip using your historical fuel data when available, otherwise the car's diesel settings and current/fallback fuel price.</p>
+          <form id="tripEstimatorForm" class="form-grid">
+            <label>
+              Planned distance, km
+              <input id="tripEstimateDistance" type="number" min="0" step="1" placeholder="e.g. 350" />
+            </label>
+            <fieldset class="wide participant-field">
+              <legend>People joining</legend>
+              <div id="tripEstimatorParticipants" class="participant-grid"></div>
+            </fieldset>
+          </form>
+          <div id="tripEstimateResult" class="trip-estimate-result empty-state">Enter a distance to estimate the fuel cost.</div>
+        </section>
+
         <section class="summary-band" aria-label="Summary">
           <article>
             <span>Fuel rate</span>

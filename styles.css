@@ -1416,3 +1416,61 @@ body.auth-locked #authPanel .text-button {
     align-items: flex-start;
   }
 }
+
+
+.trip-estimator-panel .participant-grid {
+  margin-top: 4px;
+}
+
+.trip-estimate-result {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7faf8;
+  padding: 14px;
+}
+
+.trip-estimate-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.trip-estimate-cards article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.trip-estimate-cards span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.trip-estimate-cards strong {
+  font-size: 1.2rem;
+}
+
+.trip-estimate-result p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.trip-estimate-result small {
+  color: var(--green-dark);
+  font-weight: 800;
+}
+
+@media (max-width: 680px) {
+  .trip-estimate-cards {
+    grid-template-columns: 1fr;
+  }
+}
