@@ -81,3 +81,7 @@ Start command: python3 server.py
 ```
 
 No Resend API key is needed in Render when Resend is connected through Supabase SMTP.
+
+## Returning users
+
+Supabase stores a login session in the browser after the first successful code login. Returning users on the same device should be taken straight into the app without entering a new code. A new code is only needed after signing out, clearing browser data, using a new device/browser, or when the Supabase session expires.

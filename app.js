@@ -2,6 +2,7 @@ const storageKey = "car-share-ledger-v1";
 const userKey = "car-share-current-user";
 const loginCooldownKey = "car-share-login-cooldown-until";
 const pendingLoginEmailKey = "car-share-pending-login-email";
+const rememberedLoginEmailKey = "car-share-remembered-login-email";
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
@@ -278,10 +279,18 @@ async function initializeSupabase() {
   setSyncStatus("Login");
   const { data } = await supabaseClient.auth.getSession();
   currentSession = data.session;
+  if (currentSession?.user?.email) {
+    localStorage.setItem(rememberedLoginEmailKey, currentSession.user.email);
+    localStorage.removeItem(pendingLoginEmailKey);
+  }
   updateAuthUi();
 
   supabaseClient.auth.onAuthStateChange(async (_event, session) => {
     currentSession = session;
+    if (session?.user?.email) {
+      localStorage.setItem(rememberedLoginEmailKey, session.user.email);
+      localStorage.removeItem(pendingLoginEmailKey);
+    }
     updateAuthUi();
     if (session) {
       subscribeToSupabaseState();
@@ -304,6 +313,7 @@ function updateAuthUi() {
   }
 
   const pendingEmail = localStorage.getItem(pendingLoginEmailKey);
+  const rememberedEmail = localStorage.getItem(rememberedLoginEmailKey);
   const showOtpForm = Boolean(pendingEmail || loginRequestedFromUrl);
 
   els.authPanel.classList.remove("hidden");
@@ -311,18 +321,21 @@ function updateAuthUi() {
   els.otpForm.classList.toggle("hidden", Boolean(currentSession) || !showOtpForm);
   els.signOut.classList.toggle("hidden", !currentSession);
   if (pendingEmail && !els.loginEmail.value) els.loginEmail.value = pendingEmail;
+  if (!pendingEmail && rememberedEmail && !els.loginEmail.value) els.loginEmail.value = rememberedEmail;
 
   const profile = getCurrentMemberProfile();
   const email = getLoggedInEmail();
   els.authMessage.textContent = currentSession
     ? profile
-      ? `Signed in as ${email}. Acting as ${profile.name}.`
+      ? `Signed in as ${email}. You will stay signed in on this device, so you should not need a code next time.`
       : `Signed in as ${email}, but this email is not assigned to a member yet. Ask an admin to add it.`
     : pendingEmail
       ? `Enter the login code sent to ${pendingEmail}.`
       : loginRequestedFromUrl
         ? "Enter your email and the login code from the email."
-        : "Use an email login code to sync from any phone.";
+        : rememberedEmail
+          ? `Welcome back. If you are not already signed in, send a new code to ${rememberedEmail}.`
+          : "Use an email login code to sync from any phone. After the first login, this device will stay signed in.";
   setSyncStatus(currentSession ? "Cloud" : "Login");
   updateLoginCooldown();
 }
@@ -386,6 +399,7 @@ async function verifyLoginCode() {
   }
 
   currentSession = data.session;
+  localStorage.setItem(rememberedLoginEmailKey, email);
   localStorage.removeItem(pendingLoginEmailKey);
   els.loginCode.value = "";
   els.authMessage.textContent = "Signed in.";
