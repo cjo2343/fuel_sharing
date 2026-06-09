@@ -145,21 +145,25 @@
                 </label>
                 <label class="wide">
                   Station / place
-                  <input id="fuelStation" type="text" maxlength="80" placeholder="Optional" />
+                  <input id="fuelStation" type="text" maxlength="80" placeholder="Type manually or pick nearby" />
                 </label>
                 <div class="wide fuel-location-actions">
-                  <button id="useFuelLocation" class="subtle-button compact-button" type="button">Use current location</button>
-                  <a id="nearbyFuelStations" class="text-link hidden" href="#" target="_blank" rel="noopener">Find nearby fuel stations</a>
+                  <button id="useFuelLocation" class="subtle-button compact-button" type="button">Find nearby stations</button>
+                  <a id="nearbyFuelStations" class="text-link hidden" href="#" target="_blank" rel="noopener">Open map search</a>
                   <span id="fuelLocationStatus" class="entry-meta"></span>
                 </div>
+                <div id="stationResults" class="station-results wide hidden" aria-live="polite"></div>
                 <input id="fuelLatitude" type="hidden" />
                 <input id="fuelLongitude" type="hidden" />
+                <input id="fuelStationLatitude" type="hidden" />
+                <input id="fuelStationLongitude" type="hidden" />
+                <input id="fuelStationBrand" type="hidden" />
                 <label class="checkbox-row wide">
                   <input id="fuelFullTank" type="checkbox" />
                   <span>Filled to full tank</span>
                 </label>
               </div>
-              <p class="section-note">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time.</p>
+              <p class="section-note">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time. Nearby stations use your phone location only when you tap the button.</p>
             </details>
             <button class="action-button wide" type="submit">Add fuel</button>
           </form>

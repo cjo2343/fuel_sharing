@@ -181,3 +181,10 @@ For best future estimates, enter every refuel receipt with amount, liters, and o
 ## Step 1 reliability update
 
 This version makes cloud saving more explicit. The top bar now shows both the sync state and a short detail such as "Saving changes...", "Saved to cloud 14:05", or "Not saved to cloud". New auto-added members are saved to Supabase immediately after login; if saving fails, the UI shows a warning instead of silently falling back to local-only data.
+
+
+## Nearby fuel station picker
+
+In **Log fuel payment -> More fuel details**, users can tap **Find nearby stations**. The app asks for the phone's location, looks up nearby `amenity=fuel` stations from OpenStreetMap via Overpass, and lets the user pick the correct station. The manual Station/place field remains available because map data can be incomplete or inaccurate.
+
+The fuel log stores the selected station name, brand/operator when available, station coordinates, and the user's GPS location for that fuel log.

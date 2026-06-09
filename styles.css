@@ -1344,3 +1344,75 @@ body.auth-locked #authPanel .text-button {
     text-align: center;
   }
 }
+
+
+.station-results {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  overflow: hidden;
+}
+
+.station-results-header {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--line);
+}
+
+.station-option {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.station-option:last-child {
+  border-bottom: 0;
+}
+
+.station-option:hover,
+.station-option.is-selected {
+  background: #eef3ef;
+}
+
+.station-option span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.station-option strong,
+.station-option small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.station-option small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.station-option b {
+  flex: 0 0 auto;
+  color: var(--green-dark);
+  font-size: 0.86rem;
+}
+
+@media (max-width: 560px) {
+  .station-option {
+    align-items: flex-start;
+  }
+}

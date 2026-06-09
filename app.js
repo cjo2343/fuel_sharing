@@ -1,4 +1,5 @@
 const storageKey = "car-share-ledger-v1";
+const stationSearchRadiusMeters = 2500;
 const userKey = "car-share-current-user";
 const loginCooldownKey = "car-share-login-cooldown-until";
 const pendingLoginEmailKey = "car-share-pending-login-email";
@@ -81,9 +82,13 @@ const els = {
   fuelStation: document.querySelector("#fuelStation"),
   useFuelLocation: document.querySelector("#useFuelLocation"),
   nearbyFuelStations: document.querySelector("#nearbyFuelStations"),
+  stationResults: document.querySelector("#stationResults"),
   fuelLocationStatus: document.querySelector("#fuelLocationStatus"),
   fuelLatitude: document.querySelector("#fuelLatitude"),
   fuelLongitude: document.querySelector("#fuelLongitude"),
+  fuelStationLatitude: document.querySelector("#fuelStationLatitude"),
+  fuelStationLongitude: document.querySelector("#fuelStationLongitude"),
+  fuelStationBrand: document.querySelector("#fuelStationBrand"),
   fuelFullTank: document.querySelector("#fuelFullTank"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
@@ -213,6 +218,16 @@ if (els.useFuelLocation) {
   els.useFuelLocation.addEventListener("click", captureFuelLocation);
 }
 
+if (els.stationResults) {
+  els.stationResults.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-station-index]");
+    if (!button) return;
+    const stations = JSON.parse(els.stationResults.dataset.stations || "[]");
+    const station = stations[Number(button.dataset.stationIndex)];
+    if (station) selectFuelStation(station);
+  });
+}
+
 els.fuelForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!canUseAppAsMember()) {
@@ -225,6 +240,9 @@ els.fuelForm.addEventListener("submit", (event) => {
   const station = els.fuelStation?.value.trim() || "";
   const latitude = Number(els.fuelLatitude?.value || 0);
   const longitude = Number(els.fuelLongitude?.value || 0);
+  const stationLatitude = Number(els.fuelStationLatitude?.value || 0);
+  const stationLongitude = Number(els.fuelStationLongitude?.value || 0);
+  const stationBrand = els.fuelStationBrand?.value.trim() || "";
   const fullTank = Boolean(els.fuelFullTank?.checked);
 
   if (amount <= 0) {
@@ -243,6 +261,9 @@ els.fuelForm.addEventListener("submit", (event) => {
     odometer: odometer > 0 ? round(odometer) : "",
     station,
     location: latitude && longitude ? { latitude, longitude } : null,
+    stationInfo: stationLatitude && stationLongitude
+      ? { name: station, brand: stationBrand, latitude: stationLatitude, longitude: stationLongitude }
+      : null,
     fullTank
   });
 
@@ -261,19 +282,36 @@ function captureFuelLocation() {
 
   if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Getting location...";
   if (els.useFuelLocation) els.useFuelLocation.disabled = true;
+  if (els.stationResults) {
+    els.stationResults.classList.add("hidden");
+    els.stationResults.replaceChildren();
+  }
 
   navigator.geolocation.getCurrentPosition(
-    (position) => {
+    async (position) => {
       const latitude = Number(position.coords.latitude.toFixed(6));
       const longitude = Number(position.coords.longitude.toFixed(6));
       if (els.fuelLatitude) els.fuelLatitude.value = String(latitude);
       if (els.fuelLongitude) els.fuelLongitude.value = String(longitude);
-      if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Location saved for this fuel log.";
       if (els.nearbyFuelStations) {
         els.nearbyFuelStations.href = `https://www.google.com/maps/search/tankstationer/@${latitude},${longitude},14z`;
         els.nearbyFuelStations.classList.remove("hidden");
       }
-      if (els.useFuelLocation) els.useFuelLocation.disabled = false;
+
+      try {
+        if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Looking for nearby stations...";
+        const stations = await fetchNearbyFuelStations(latitude, longitude);
+        renderFuelStationResults(stations, latitude, longitude);
+        if (els.fuelLocationStatus) {
+          els.fuelLocationStatus.textContent = stations.length
+            ? "Pick the correct station below, or type it manually."
+            : "No nearby stations found. You can still type the station manually.";
+        }
+      } catch {
+        if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Could not load nearby stations. You can still type the station manually.";
+      } finally {
+        if (els.useFuelLocation) els.useFuelLocation.disabled = false;
+      }
     },
     () => {
       if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Could not get location. You can still type the station manually.";
@@ -283,15 +321,122 @@ function captureFuelLocation() {
   );
 }
 
+async function fetchNearbyFuelStations(latitude, longitude) {
+  const query = `
+    [out:json][timeout:8];
+    (
+      node["amenity"="fuel"](around:${stationSearchRadiusMeters},${latitude},${longitude});
+      way["amenity"="fuel"](around:${stationSearchRadiusMeters},${latitude},${longitude});
+      relation["amenity"="fuel"](around:${stationSearchRadiusMeters},${latitude},${longitude});
+    );
+    out center tags 20;
+  `;
+  const response = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: new URLSearchParams({ data: query })
+  });
+
+  if (!response.ok) throw new Error("Station lookup failed");
+  const data = await response.json();
+  return (data.elements || [])
+    .map((item) => {
+      const lat = item.lat ?? item.center?.lat;
+      const lon = item.lon ?? item.center?.lon;
+      if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) return null;
+      const tags = item.tags || {};
+      const brand = tags.brand || tags.operator || "";
+      const name = tags.name || brand || "Fuel station";
+      return {
+        id: `${item.type}-${item.id}`,
+        name,
+        brand,
+        latitude: Number(lat),
+        longitude: Number(lon),
+        distanceMeters: distanceInMeters(latitude, longitude, Number(lat), Number(lon))
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 8);
+}
+
+function renderFuelStationResults(stations) {
+  if (!els.stationResults) return;
+
+  if (!stations.length) {
+    els.stationResults.classList.add("hidden");
+    els.stationResults.replaceChildren();
+    els.stationResults.dataset.stations = "[]";
+    return;
+  }
+
+  els.stationResults.dataset.stations = JSON.stringify(stations);
+  els.stationResults.classList.remove("hidden");
+  els.stationResults.innerHTML = `
+    <div class="station-results-header">Nearby fuel stations</div>
+    ${stations
+      .map((station, index) => `
+        <button class="station-option" type="button" data-station-index="${index}">
+          <span>
+            <strong>${escapeHtml(station.name)}</strong>
+            ${station.brand && station.brand !== station.name ? `<small>${escapeHtml(station.brand)}</small>` : ""}
+          </span>
+          <b>${formatStationDistance(station.distanceMeters)}</b>
+        </button>
+      `)
+      .join("")}
+  `;
+}
+
+function selectFuelStation(station) {
+  if (els.fuelStation) els.fuelStation.value = station.name;
+  if (els.fuelStationLatitude) els.fuelStationLatitude.value = String(Number(station.latitude).toFixed(6));
+  if (els.fuelStationLongitude) els.fuelStationLongitude.value = String(Number(station.longitude).toFixed(6));
+  if (els.fuelStationBrand) els.fuelStationBrand.value = station.brand || "";
+  if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = `${station.name} selected.`;
+
+  if (els.stationResults) {
+    for (const option of els.stationResults.querySelectorAll(".station-option")) {
+      option.classList.toggle("is-selected", option.dataset.stationIndex === String(JSON.parse(els.stationResults.dataset.stations || "[]").findIndex((item) => item.id === station.id)));
+    }
+  }
+}
+
 function clearFuelLocation() {
   if (els.fuelLatitude) els.fuelLatitude.value = "";
   if (els.fuelLongitude) els.fuelLongitude.value = "";
+  if (els.fuelStationLatitude) els.fuelStationLatitude.value = "";
+  if (els.fuelStationLongitude) els.fuelStationLongitude.value = "";
+  if (els.fuelStationBrand) els.fuelStationBrand.value = "";
   if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "";
+  if (els.stationResults) {
+    els.stationResults.dataset.stations = "[]";
+    els.stationResults.classList.add("hidden");
+    els.stationResults.replaceChildren();
+  }
   if (els.nearbyFuelStations) {
     els.nearbyFuelStations.href = "#";
     els.nearbyFuelStations.classList.add("hidden");
   }
   if (els.useFuelLocation) els.useFuelLocation.disabled = false;
+}
+
+function distanceInMeters(lat1, lon1, lat2, lon2) {
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatStationDistance(meters) {
+  if (!Number.isFinite(meters)) return "";
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${new Intl.NumberFormat("en-DK", { maximumFractionDigits: 1 }).format(meters / 1000)} km`;
 }
 
 els.settingsForm.addEventListener("submit", (event) => {
@@ -1382,7 +1527,7 @@ function downloadLedgerCsv() {
   downloadTextFile(
     `fuel-ledger-fuel-${date}.csv`,
     toCsv([
-      ["period_status", "period", "date", "payer", "amount", "currency", "liters", "price_per_liter", "odometer", "station", "latitude", "longitude", "full_tank"],
+      ["period_status", "period", "date", "payer", "amount", "currency", "liters", "price_per_liter", "odometer", "station", "station_brand", "station_latitude", "station_longitude", "user_latitude", "user_longitude", "full_tank"],
       ...fuel
     ]),
     "text/csv;charset=utf-8"
@@ -1420,6 +1565,9 @@ function csvFuelRow(fuel, periodStatus, periodLabel) {
     liters > 0 ? roundMoney(amount / liters) : "",
     fuel.odometer || "",
     fuel.station || "",
+    fuel.stationInfo?.brand || "",
+    fuel.stationInfo?.latitude || "",
+    fuel.stationInfo?.longitude || "",
     fuel.location?.latitude || "",
     fuel.location?.longitude || "",
     fuel.fullTank ? "yes" : "no"
@@ -1894,6 +2042,13 @@ function normalizeFuelEntries(fuelEntries) {
       odometer: Number(fuel.odometer || 0) > 0 ? round(Number(fuel.odometer || 0)) : "",
       station: fuel.station ? String(fuel.station).trim() : "",
       location: normalizeFuelLocation(fuel.location),
+      stationInfo: normalizeFuelLocation(fuel.stationInfo)
+        ? {
+            ...normalizeFuelLocation(fuel.stationInfo),
+            name: fuel.stationInfo?.name ? String(fuel.stationInfo.name).trim() : (fuel.station ? String(fuel.station).trim() : ""),
+            brand: fuel.stationInfo?.brand ? String(fuel.stationInfo.brand).trim() : ""
+          }
+        : null,
       fullTank: Boolean(fuel.fullTank)
     };
   });
