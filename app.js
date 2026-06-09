@@ -3130,6 +3130,7 @@ async function saveSupabaseState() {
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
     applyIncomingState(data.state, "Cloud");
+    await syncNormalizedTablesFromJson();
     checkNormalizedTablesAgainstCurrentState().catch((error) => {
       normalizedTableStatus = {
         checked: true,
