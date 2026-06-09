@@ -1294,10 +1294,23 @@ function isIosDevice() {
 }
 
 async function enablePushNotifications() {
-  if (!currentSession) {
-    alert("Sign in before enabling notifications.");
+  if (!supabaseClient) {
+    alert("Cloud login is not configured yet.");
     return;
   }
+
+  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+  const session = sessionData?.session;
+  const accessToken = session?.access_token;
+
+  if (sessionError || !session || !accessToken) {
+    currentSession = null;
+    updateAuthUi();
+    alert("Please sign in again before enabling notifications.");
+    return;
+  }
+
+  currentSession = session;
 
   if (!pushSupported) {
     alert("This browser does not support web push notifications.");
@@ -1333,7 +1346,7 @@ async function enablePushNotifications() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${currentSession.access_token}`
+        Authorization: `Bearer ${accessToken}`
       },
       body: JSON.stringify({ subscription })
     });
@@ -1343,7 +1356,7 @@ async function enablePushNotifications() {
     updatePwaUi();
   } catch (error) {
     console.error(error);
-    alert("Could not enable notifications yet. Check the Render environment variables and Supabase push_subscriptions table.");
+    alert("Could not enable notifications yet. Please sign in again and try once more. If it still fails, check the Render logs.");
     await refreshPushState();
     updatePwaUi();
   }
@@ -1359,7 +1372,11 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function sendSettlementPush(settlement) {
-  if (!currentSession || !settlement) return;
+  if (!supabaseClient || !settlement) return;
+
+  const { data: sessionData } = await supabaseClient.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) return;
 
   const targetEmail = getMemberProfile(settlement.from).email;
   if (!targetEmail) return;
@@ -1372,7 +1389,7 @@ async function sendSettlementPush(settlement) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${currentSession.access_token}`
+        Authorization: `Bearer ${accessToken}`
       },
       body: JSON.stringify({
         targetEmail,

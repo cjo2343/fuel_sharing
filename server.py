@@ -195,15 +195,13 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         body = {
-            "email": user["email"].lower(),
-            "endpoint": endpoint,
+            "user_email": user["email"].lower(),
             "subscription": subscription,
-            "user_agent": self.headers.get("User-Agent", ""),
             "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
         }
         try:
             request_json(
-                f"{supabase_url()}/rest/v1/push_subscriptions?on_conflict=endpoint",
+                f"{supabase_url()}/rest/v1/push_subscriptions?on_conflict=user_email",
                 method="POST",
                 body=body,
                 prefer="resolution=merge-duplicates,return=minimal",
@@ -251,7 +249,7 @@ class Handler(SimpleHTTPRequestHandler):
         encoded_email = urllib.parse.quote(target_email, safe="")
         try:
             subscriptions = request_json(
-                f"{supabase_url()}/rest/v1/push_subscriptions?email=eq.{encoded_email}&select=id,endpoint,subscription"
+                f"{supabase_url()}/rest/v1/push_subscriptions?user_email=eq.{encoded_email}&select=id,user_email,subscription"
             ) or []
         except Exception as error:
             self.send_error(500, str(error))
@@ -275,11 +273,12 @@ class Handler(SimpleHTTPRequestHandler):
                 failed += 1
                 status = getattr(getattr(error, "response", None), "status_code", None)
                 if status in (404, 410):
-                    endpoint = urllib.parse.quote(row.get("endpoint", ""), safe="")
-                    try:
-                        request_json(f"{supabase_url()}/rest/v1/push_subscriptions?endpoint=eq.{endpoint}", method="DELETE")
-                    except Exception:
-                        pass
+                    row_id = urllib.parse.quote(str(row.get("id", "")), safe="")
+                    if row_id:
+                        try:
+                            request_json(f"{supabase_url()}/rest/v1/push_subscriptions?id=eq.{row_id}", method="DELETE")
+                        except Exception:
+                            pass
             except Exception:
                 failed += 1
 

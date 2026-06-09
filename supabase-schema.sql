@@ -50,46 +50,61 @@ on conflict (id) do nothing;
 alter publication supabase_realtime add table public.car_share_ledgers;
 
 -- Optional: browser push notification subscriptions for installed/PWA users.
-create table if not exists push_subscriptions (
+-- This matches the app/backend: one saved browser subscription per user email.
+create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
-  email text not null,
-  endpoint text not null unique,
+  user_email text not null unique,
   subscription jsonb not null,
-  user_agent text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create index if not exists push_subscriptions_email_idx on push_subscriptions (lower(email));
+create index if not exists push_subscriptions_user_email_idx
+on public.push_subscriptions (lower(user_email));
 
-alter table push_subscriptions enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'push_subscriptions_user_email_key'
+  ) then
+    alter table public.push_subscriptions
+    add constraint push_subscriptions_user_email_key unique (user_email);
+  end if;
+end $$;
 
-drop policy if exists "Users can read their own push subscriptions" on push_subscriptions;
-drop policy if exists "Users can insert their own push subscriptions" on push_subscriptions;
-drop policy if exists "Users can update their own push subscriptions" on push_subscriptions;
-drop policy if exists "Users can delete their own push subscriptions" on push_subscriptions;
+alter table public.push_subscriptions enable row level security;
 
-create policy "Users can read their own push subscriptions"
-on push_subscriptions
+drop policy if exists "Users can read own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can insert own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can update own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can delete own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can read their own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can insert their own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can update their own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can delete their own push subscriptions" on public.push_subscriptions;
+
+create policy "Users can read own push subscriptions"
+on public.push_subscriptions
 for select
 to authenticated
-using (lower(email) = lower(auth.jwt() ->> 'email'));
+using (lower(user_email) = lower(auth.jwt() ->> 'email'));
 
-create policy "Users can insert their own push subscriptions"
-on push_subscriptions
+create policy "Users can insert own push subscriptions"
+on public.push_subscriptions
 for insert
 to authenticated
-with check (lower(email) = lower(auth.jwt() ->> 'email'));
+with check (lower(user_email) = lower(auth.jwt() ->> 'email'));
 
-create policy "Users can update their own push subscriptions"
-on push_subscriptions
+create policy "Users can update own push subscriptions"
+on public.push_subscriptions
 for update
 to authenticated
-using (lower(email) = lower(auth.jwt() ->> 'email'))
-with check (lower(email) = lower(auth.jwt() ->> 'email'));
+using (lower(user_email) = lower(auth.jwt() ->> 'email'))
+with check (lower(user_email) = lower(auth.jwt() ->> 'email'));
 
-create policy "Users can delete their own push subscriptions"
-on push_subscriptions
+create policy "Users can delete own push subscriptions"
+on public.push_subscriptions
 for delete
 to authenticated
-using (lower(email) = lower(auth.jwt() ->> 'email'));
+using (lower(user_email) = lower(auth.jwt() ->> 'email'));
