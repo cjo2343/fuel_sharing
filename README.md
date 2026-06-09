@@ -102,3 +102,47 @@ When a logged-in email is not already assigned to a member, the app now adds it 
 - Otherwise a new member is added using a name inferred from the email address.
 
 Admins can later rename the member or adjust the email/role in Group settings.
+
+## PWA and push notifications
+
+This version can be installed on phones and can send browser push notifications when a payment request is made.
+
+### Files added
+
+- `manifest.json` makes the app installable.
+- `service-worker.js` handles offline basics and push notifications.
+- `icon-192.png` and `icon-512.png` are app icons.
+- `requirements.txt` installs `pywebpush` for server-side push delivery.
+
+### Supabase table for push subscriptions
+
+Run the latest `supabase-schema.sql` in the Supabase SQL editor. It adds a `push_subscriptions` table.
+
+### Render environment variables
+
+Add these environment variables to the Render web service:
+
+```text
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
+VAPID_PRIVATE_KEY=YOUR_PRIVATE_VAPID_KEY
+VAPID_SUBJECT=mailto:login@chrjohn.dk
+```
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` and `VAPID_PRIVATE_KEY` secret. Do not put them in frontend files.
+
+You can generate VAPID keys locally with:
+
+```sh
+npx web-push generate-vapid-keys
+```
+
+or any other VAPID key generator. Copy the public key to `VAPID_PUBLIC_KEY` and the private key to `VAPID_PRIVATE_KEY`.
+
+### Phone behavior
+
+- Android/Chrome: users can usually enable notifications from the app after signing in.
+- iPhone/Safari: users generally need to add the app to the Home Screen first, then open it from the Home Screen and enable notifications.
+
+Push notifications are sent when someone marks a settlement as `Requested`. The notification goes to the person who owes the payment, if they have enabled notifications on at least one device.

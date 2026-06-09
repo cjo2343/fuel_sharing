@@ -1,0 +1,56 @@
+const CACHE_NAME = "fuel-ledger-v1";
+const CORE_ASSETS = ["/", "/index.html", "/styles.css", "/app.js", "/supabase-config.js", "/manifest.json"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => undefined));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+  if (new URL(request.url).pathname.startsWith("/api/")) return;
+  event.respondWith(fetch(request).catch(() => caches.match(request).then((response) => response || caches.match("/"))));
+});
+
+self.addEventListener("push", (event) => {
+  let payload = { title: "Fuel Ledger", body: "You have a new payment request.", url: "/" };
+  try {
+    payload = { ...payload, ...event.data.json() };
+  } catch {
+    if (event.data) payload.body = event.data.text();
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Fuel Ledger", {
+      body: payload.body || "You have a new payment request.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: payload.tag || "fuel-ledger",
+      data: { url: payload.url || "/" }
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
+});

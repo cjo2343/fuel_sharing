@@ -938,3 +938,41 @@ body.auth-locked #authPanel .text-button {
     text-align: left;
   }
 }
+
+.pwa-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #f7faf8;
+}
+
+.pwa-panel h2 {
+  margin: 0 0 6px;
+}
+
+.pwa-panel .section-note {
+  margin: 0;
+}
+
+.pwa-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 700px) {
+  .pwa-panel {
+    display: grid;
+  }
+
+  .pwa-actions {
+    justify-content: stretch;
+  }
+
+  .pwa-actions button {
+    width: 100%;
+  }
+}

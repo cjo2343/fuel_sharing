@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Car Share Ledger</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#2f7d63" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -56,6 +59,18 @@
             <button class="action-button" type="submit">Verify code</button>
           </form>
           <p id="authMessage" class="section-note"></p>
+        </section>
+
+        <section id="pwaPanel" class="panel pwa-panel wide-panel hidden" aria-labelledby="pwaHeading">
+          <div>
+            <p class="eyebrow">Phone setup</p>
+            <h2 id="pwaHeading">Install and enable notifications</h2>
+            <p id="pwaMessage" class="section-note">Add Fuel Ledger to your home screen and enable payment request notifications.</p>
+          </div>
+          <div class="pwa-actions">
+            <button id="installApp" class="subtle-button compact-button hidden" type="button">Add to Home Screen</button>
+            <button id="enablePush" class="action-button compact-button" type="button">Enable notifications</button>
+          </div>
         </section>
 
         <section class="panel primary-panel" aria-labelledby="tripHeading">

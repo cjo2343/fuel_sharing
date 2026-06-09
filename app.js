@@ -5,6 +5,9 @@ const pendingLoginEmailKey = "car-share-pending-login-email";
 const rememberedLoginEmailKey = "car-share-remembered-login-email";
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
+const pushConfigUrl = "/api/push-config";
+const pushSubscriptionsUrl = "/api/push-subscriptions";
+const sendPushUrl = "/api/send-push";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
 const hasSupabaseConfig =
   supabaseConfig.enabled &&
@@ -35,6 +38,9 @@ let currentSession = null;
 let loginCooldownTimer;
 let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
+let deferredInstallPrompt = null;
+let pushSupported = false;
+let pushEnabled = false;
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -73,6 +79,10 @@ const els = {
   closePeriod: document.querySelector("#closePeriod"),
   periodList: document.querySelector("#periodList"),
   resetData: document.querySelector("#resetData"),
+  pwaPanel: document.querySelector("#pwaPanel"),
+  pwaMessage: document.querySelector("#pwaMessage"),
+  installApp: document.querySelector("#installApp"),
+  enablePush: document.querySelector("#enablePush"),
   emptyTemplate: document.querySelector("#emptyTemplate")
 };
 
@@ -80,6 +90,7 @@ state.lastOdometer = getLatestOdometer();
 setDefaultDates();
 render();
 initializeSync();
+initializePwa();
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -96,6 +107,22 @@ els.signOut.addEventListener("click", async () => {
   currentSession = null;
   updateAuthUi();
 });
+
+if (els.installApp) {
+  els.installApp.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    updatePwaUi();
+  });
+}
+
+if (els.enablePush) {
+  els.enablePush.addEventListener("click", async () => {
+    await enablePushNotifications();
+  });
+}
 
 els.currentUser.addEventListener("change", () => {
   currentUser = els.currentUser.value;
@@ -343,6 +370,7 @@ function updateAuthUi() {
           : "Enter your email to sign in or join the shared car. After the first login, this device will stay signed in.";
   setSyncStatus(currentSession ? "Cloud" : "Login");
   updateLoginCooldown();
+  updatePwaUi();
 }
 
 async function sendLoginLink() {
@@ -750,7 +778,7 @@ function renderPaymentOverview(ledger) {
   `;
 }
 
-function updatePaymentStatus(button) {
+async function updatePaymentStatus(button) {
   const ledger = calculateLedger();
   const settlement = ledger.settlements.find((item) => settlementKey(item) === button.dataset.paymentKey);
 
@@ -762,6 +790,10 @@ function updatePaymentStatus(button) {
 
   state.paymentStatuses[button.dataset.paymentKey] = button.dataset.paymentStatus;
   saveState();
+
+  if (button.dataset.paymentStatus === "requested") {
+    await sendSettlementPush(settlement);
+  }
 
   const refreshedLedger = calculateLedger();
   const allRequested =
@@ -1179,6 +1211,180 @@ function normalizeState(saved) {
       : [],
     lastOdometer: saved.lastOdometer ?? ""
   };
+}
+
+
+async function initializePwa() {
+  pushSupported = Boolean("serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updatePwaUi();
+  });
+
+  if ("serviceWorker" in navigator) {
+    try {
+      await navigator.serviceWorker.register("/service-worker.js");
+    } catch (error) {
+      console.warn("Service worker registration failed", error);
+    }
+  }
+
+  await refreshPushState();
+  updatePwaUi();
+}
+
+async function refreshPushState() {
+  if (!pushSupported) {
+    pushEnabled = false;
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    pushEnabled = Boolean(subscription && Notification.permission === "granted");
+  } catch {
+    pushEnabled = false;
+  }
+}
+
+function updatePwaUi() {
+  if (!els.pwaPanel) return;
+
+  if (!currentSession) {
+    els.pwaPanel.classList.add("hidden");
+    return;
+  }
+
+  els.pwaPanel.classList.remove("hidden");
+  els.installApp?.classList.toggle("hidden", !deferredInstallPrompt);
+
+  if (!pushSupported) {
+    els.enablePush.disabled = true;
+    els.enablePush.textContent = "Notifications unavailable";
+    els.pwaMessage.textContent = "This browser does not support web push notifications. You can still use the app normally.";
+    return;
+  }
+
+  if (pushEnabled) {
+    els.enablePush.disabled = true;
+    els.enablePush.textContent = "Notifications enabled";
+    els.pwaMessage.textContent = "Payment request notifications are enabled on this device.";
+    return;
+  }
+
+  if (Notification.permission === "denied") {
+    els.enablePush.disabled = true;
+    els.enablePush.textContent = "Notifications blocked";
+    els.pwaMessage.textContent = "Notifications are blocked in this browser. Enable them in browser settings to receive payment alerts.";
+    return;
+  }
+
+  els.enablePush.disabled = false;
+  els.enablePush.textContent = "Enable notifications";
+  els.pwaMessage.textContent = isIosDevice()
+    ? "On iPhone, add Fuel Ledger to your Home Screen first, then open it from there and enable notifications."
+    : "Enable notifications to get a phone alert when someone requests a payment from you.";
+}
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+}
+
+async function enablePushNotifications() {
+  if (!currentSession) {
+    alert("Sign in before enabling notifications.");
+    return;
+  }
+
+  if (!pushSupported) {
+    alert("This browser does not support web push notifications.");
+    updatePwaUi();
+    return;
+  }
+
+  try {
+    const configResponse = await fetch(pushConfigUrl);
+    const config = await configResponse.json();
+    if (!config.enabled || !config.publicKey) {
+      alert("Push notifications are not configured on the server yet.");
+      updatePwaUi();
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      updatePwaUi();
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(config.publicKey)
+      });
+    }
+
+    const response = await fetch(pushSubscriptionsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ subscription })
+    });
+
+    if (!response.ok) throw new Error(await response.text());
+    pushEnabled = true;
+    updatePwaUi();
+  } catch (error) {
+    console.error(error);
+    alert("Could not enable notifications yet. Check the Render environment variables and Supabase push_subscriptions table.");
+    await refreshPushState();
+    updatePwaUi();
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function sendSettlementPush(settlement) {
+  if (!currentSession || !settlement) return;
+
+  const targetEmail = getMemberProfile(settlement.from).email;
+  if (!targetEmail) return;
+
+  const title = "Fuel Ledger payment request";
+  const body = `${settlement.to} requested ${formatMoney(settlement.amount)} from you for shared car fuel.`;
+
+  try {
+    await fetch(sendPushUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({
+        targetEmail,
+        title,
+        body,
+        url: `${window.location.origin}/`,
+        tag: settlementKey(settlement)
+      })
+    });
+  } catch (error) {
+    console.warn("Push notification failed", error);
+  }
 }
 
 async function loadRemoteState() {
