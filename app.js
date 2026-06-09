@@ -2900,16 +2900,20 @@ async function syncNormalizedTablesFromJson() {
         .eq("trip_id", normalizedTripId);
       if (deleteParticipants.error) throw deleteParticipants.error;
 
-      const participantPayloads = getTripParticipants(trip)
-        .map((name) => memberIdsByName[name])
-        .filter(Boolean)
+      const uniqueParticipantIds = [...new Set(
+        getTripParticipants(trip)
+          .map((name) => memberIdsByName[name])
+          .filter(Boolean)
+      )];
+
+      const participantPayloads = uniqueParticipantIds
         .map((memberId) => ({ trip_id: normalizedTripId, member_id: memberId }));
 
       if (participantPayloads.length) {
-        const insertParticipants = await supabaseClient
+        const upsertParticipants = await supabaseClient
           .from("trip_participants")
-          .insert(participantPayloads);
-        if (insertParticipants.error) throw insertParticipants.error;
+          .upsert(participantPayloads, { onConflict: "trip_id,member_id" });
+        if (upsertParticipants.error) throw upsertParticipants.error;
       }
     }
 
