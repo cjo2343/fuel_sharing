@@ -255,6 +255,7 @@ document.addEventListener("click", (event) => {
 });
 
 function render() {
+  document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
   renderSettings();
   renderPeopleSelectors();
   syncStartOdometerDefault();
@@ -308,8 +309,11 @@ async function initializeSupabase() {
 }
 
 function updateAuthUi() {
+  document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
+
   if (!supabaseClient) {
     els.authPanel.classList.add("hidden");
+    document.body.classList.remove("auth-locked");
     return;
   }
 
@@ -322,7 +326,7 @@ function updateAuthUi() {
   els.otpForm.classList.toggle("hidden", Boolean(currentSession) || !showOtpForm);
   els.signOut.classList.toggle("hidden", !currentSession);
   if (pendingEmail && !els.loginEmail.value) els.loginEmail.value = pendingEmail;
-  if (!pendingEmail && rememberedEmail && !els.loginEmail.value) els.loginEmail.value = rememberedEmail;
+  if (!pendingEmail && !currentSession) els.loginEmail.value = "";
 
   const profile = getCurrentMemberProfile();
   const email = getLoggedInEmail();
@@ -335,8 +339,8 @@ function updateAuthUi() {
       : loginRequestedFromUrl
         ? "Enter your email and the login code from the email."
         : rememberedEmail
-          ? `Welcome back. If you are not already signed in, send a new code to ${rememberedEmail}.`
-          : "Use an email login code to sync from any phone. After the first login, this device will stay signed in.";
+          ? "Welcome back. Enter your email to sign in on this device if your saved session has expired."
+          : "Enter your email to sign in or join the shared car. After the first login, this device will stay signed in.";
   setSyncStatus(currentSession ? "Cloud" : "Login");
   updateLoginCooldown();
 }

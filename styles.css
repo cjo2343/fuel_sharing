@@ -735,3 +735,55 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Signed-out gate */
+body.auth-locked {
+  overflow: hidden;
+}
+
+body.auth-locked .topbar,
+body.auth-locked .layout > section:not(#authPanel) {
+  filter: blur(6px);
+  opacity: 0.22;
+  pointer-events: none;
+  user-select: none;
+}
+
+body.auth-locked #authPanel {
+  position: fixed;
+  z-index: 1000;
+  top: 50%;
+  left: 50%;
+  width: min(520px, calc(100vw - 28px));
+  transform: translate(-50%, -50%);
+  grid-column: auto;
+  box-shadow: 0 28px 90px rgba(22, 32, 31, 0.24);
+}
+
+body.auth-locked::before {
+  content: "";
+  position: fixed;
+  z-index: 999;
+  inset: 0;
+  background: rgba(251, 250, 247, 0.78);
+  backdrop-filter: blur(2px);
+}
+
+body.auth-locked #authPanel .panel-header {
+  margin-bottom: 14px;
+}
+
+body.auth-locked #authPanel .panel-header::after {
+  content: "Sign in or join with your email before using the shared ledger.";
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+body.auth-locked #authPanel .text-button {
+  display: none;
+}
