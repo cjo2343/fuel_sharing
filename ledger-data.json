@@ -10,23 +10,5 @@
   "fuel": [],
   "paymentStatuses": {},
   "closedPeriods": [],
-  "lastOdometer": "",
-  "memberProfiles": {
-    "Christian": {
-      "email": "",
-      "role": "admin"
-    },
-    "Emilie": {
-      "email": "",
-      "role": "member"
-    },
-    "Jonas": {
-      "email": "",
-      "role": "member"
-    },
-    "Marie": {
-      "email": "",
-      "role": "member"
-    }
-  }
+  "lastOdometer": ""
 }

@@ -31,11 +31,6 @@ values (
   '{
     "currency": "DKK",
     "members": ["Christian", "Alex", "Sam"],
-    "memberProfiles": {
-      "Christian": { "email": "", "role": "admin" },
-      "Alex": { "email": "", "role": "member" },
-      "Sam": { "email": "", "role": "member" }
-    },
     "trips": [],
     "fuel": [],
     "paymentStatuses": {},
@@ -44,7 +39,3 @@ values (
   }'::jsonb
 )
 on conflict (id) do nothing;
-
--- Required for browser live updates through Supabase Realtime.
--- If this errors because the table is already in the publication, you can ignore it.
-alter publication supabase_realtime add table public.car_share_ledgers;
