@@ -79,6 +79,11 @@ const els = {
   fuelLiters: document.querySelector("#fuelLiters"),
   fuelOdometer: document.querySelector("#fuelOdometer"),
   fuelStation: document.querySelector("#fuelStation"),
+  useFuelLocation: document.querySelector("#useFuelLocation"),
+  nearbyFuelStations: document.querySelector("#nearbyFuelStations"),
+  fuelLocationStatus: document.querySelector("#fuelLocationStatus"),
+  fuelLatitude: document.querySelector("#fuelLatitude"),
+  fuelLongitude: document.querySelector("#fuelLongitude"),
   fuelFullTank: document.querySelector("#fuelFullTank"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
@@ -204,6 +209,10 @@ els.tripForm.addEventListener("submit", (event) => {
   render();
 });
 
+if (els.useFuelLocation) {
+  els.useFuelLocation.addEventListener("click", captureFuelLocation);
+}
+
 els.fuelForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!canUseAppAsMember()) {
@@ -214,6 +223,8 @@ els.fuelForm.addEventListener("submit", (event) => {
   const liters = Number(els.fuelLiters?.value || 0);
   const odometer = Number(els.fuelOdometer?.value || 0);
   const station = els.fuelStation?.value.trim() || "";
+  const latitude = Number(els.fuelLatitude?.value || 0);
+  const longitude = Number(els.fuelLongitude?.value || 0);
   const fullTank = Boolean(els.fuelFullTank?.checked);
 
   if (amount <= 0) {
@@ -231,14 +242,57 @@ els.fuelForm.addEventListener("submit", (event) => {
     pricePerLiter: normalizedLiters ? roundMoney(amount / normalizedLiters) : "",
     odometer: odometer > 0 ? round(odometer) : "",
     station,
+    location: latitude && longitude ? { latitude, longitude } : null,
     fullTank
   });
 
   saveState();
   els.fuelForm.reset();
+  clearFuelLocation();
   setDefaultDates();
   render();
 });
+
+function captureFuelLocation() {
+  if (!navigator.geolocation) {
+    if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "GPS is not available in this browser.";
+    return;
+  }
+
+  if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Getting location...";
+  if (els.useFuelLocation) els.useFuelLocation.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const latitude = Number(position.coords.latitude.toFixed(6));
+      const longitude = Number(position.coords.longitude.toFixed(6));
+      if (els.fuelLatitude) els.fuelLatitude.value = String(latitude);
+      if (els.fuelLongitude) els.fuelLongitude.value = String(longitude);
+      if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Location saved for this fuel log.";
+      if (els.nearbyFuelStations) {
+        els.nearbyFuelStations.href = `https://www.google.com/maps/search/tankstationer/@${latitude},${longitude},14z`;
+        els.nearbyFuelStations.classList.remove("hidden");
+      }
+      if (els.useFuelLocation) els.useFuelLocation.disabled = false;
+    },
+    () => {
+      if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Could not get location. You can still type the station manually.";
+      if (els.useFuelLocation) els.useFuelLocation.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 }
+  );
+}
+
+function clearFuelLocation() {
+  if (els.fuelLatitude) els.fuelLatitude.value = "";
+  if (els.fuelLongitude) els.fuelLongitude.value = "";
+  if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "";
+  if (els.nearbyFuelStations) {
+    els.nearbyFuelStations.href = "#";
+    els.nearbyFuelStations.classList.add("hidden");
+  }
+  if (els.useFuelLocation) els.useFuelLocation.disabled = false;
+}
 
 els.settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1328,7 +1382,7 @@ function downloadLedgerCsv() {
   downloadTextFile(
     `fuel-ledger-fuel-${date}.csv`,
     toCsv([
-      ["period_status", "period", "date", "payer", "amount", "currency", "liters", "price_per_liter", "odometer", "station", "full_tank"],
+      ["period_status", "period", "date", "payer", "amount", "currency", "liters", "price_per_liter", "odometer", "station", "latitude", "longitude", "full_tank"],
       ...fuel
     ]),
     "text/csv;charset=utf-8"
@@ -1366,6 +1420,8 @@ function csvFuelRow(fuel, periodStatus, periodLabel) {
     liters > 0 ? roundMoney(amount / liters) : "",
     fuel.odometer || "",
     fuel.station || "",
+    fuel.location?.latitude || "",
+    fuel.location?.longitude || "",
     fuel.fullTank ? "yes" : "no"
   ];
 }
@@ -1476,7 +1532,7 @@ function renderHistory() {
               ${canManageSettings() ? `<button class="text-button" type="button" data-delete="fuel:${fuel.id}">Delete</button>` : ""}
             </header>
             <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
-            <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+            <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
           </article>
         `
       )
@@ -1816,6 +1872,14 @@ function normalizeState(saved) {
   };
 }
 
+function normalizeFuelLocation(location) {
+  if (!location || typeof location !== "object") return null;
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  return { latitude, longitude };
+}
+
 function normalizeFuelEntries(fuelEntries) {
   if (!Array.isArray(fuelEntries)) return [];
 
@@ -1829,6 +1893,7 @@ function normalizeFuelEntries(fuelEntries) {
       pricePerLiter: liters ? roundMoney(amount / liters) : (Number(fuel.pricePerLiter || 0) > 0 ? roundMoney(Number(fuel.pricePerLiter)) : ""),
       odometer: Number(fuel.odometer || 0) > 0 ? round(Number(fuel.odometer || 0)) : "",
       station: fuel.station ? String(fuel.station).trim() : "",
+      location: normalizeFuelLocation(fuel.location),
       fullTank: Boolean(fuel.fullTank)
     };
   });

@@ -132,23 +132,35 @@
               Amount paid
               <input id="fuelAmount" type="number" min="0" step="0.01" required />
             </label>
-            <label>
-              Liters added
-              <input id="fuelLiters" type="number" min="0" step="0.01" placeholder="Optional" />
-            </label>
-            <label>
-              Odometer at refuel
-              <input id="fuelOdometer" type="number" min="0" step="0.1" placeholder="Optional" />
-            </label>
-            <label>
-              Station / place
-              <input id="fuelStation" type="text" maxlength="80" placeholder="Optional" />
-            </label>
-            <label class="checkbox-row wide">
-              <input id="fuelFullTank" type="checkbox" />
-              <span>Filled to full tank</span>
-            </label>
-            <p class="section-note wide">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time.</p>
+            <details id="fuelDetails" class="form-details wide">
+              <summary>More fuel details <span>optional, useful for stats</span></summary>
+              <div class="form-grid nested-grid">
+                <label>
+                  Liters added
+                  <input id="fuelLiters" type="number" min="0" step="0.01" placeholder="Optional" />
+                </label>
+                <label>
+                  Odometer at refuel
+                  <input id="fuelOdometer" type="number" min="0" step="0.1" placeholder="Optional" />
+                </label>
+                <label class="wide">
+                  Station / place
+                  <input id="fuelStation" type="text" maxlength="80" placeholder="Optional" />
+                </label>
+                <div class="wide fuel-location-actions">
+                  <button id="useFuelLocation" class="subtle-button compact-button" type="button">Use current location</button>
+                  <a id="nearbyFuelStations" class="text-link hidden" href="#" target="_blank" rel="noopener">Find nearby fuel stations</a>
+                  <span id="fuelLocationStatus" class="entry-meta"></span>
+                </div>
+                <input id="fuelLatitude" type="hidden" />
+                <input id="fuelLongitude" type="hidden" />
+                <label class="checkbox-row wide">
+                  <input id="fuelFullTank" type="checkbox" />
+                  <span>Filled to full tank</span>
+                </label>
+              </div>
+              <p class="section-note">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time.</p>
+            </details>
             <button class="action-button wide" type="submit">Add fuel</button>
           </form>
         </section>

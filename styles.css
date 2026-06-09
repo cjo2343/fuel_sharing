@@ -1269,3 +1269,78 @@ body.auth-locked #authPanel .text-button {
     min-height: 0;
   }
 }
+
+.form-details {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfcfb;
+  padding: 0;
+  overflow: hidden;
+}
+
+.form-details summary {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  color: var(--green-dark);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.form-details summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.form-details[open] {
+  padding-bottom: 12px;
+}
+
+.form-details[open] summary {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.nested-grid {
+  padding: 0 12px;
+}
+
+.form-details .section-note {
+  margin: 8px 12px 0;
+}
+
+.fuel-location-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.text-link {
+  color: var(--green-dark);
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .form-details summary {
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    padding: 8px 12px;
+  }
+
+  .fuel-location-actions .subtle-button,
+  .fuel-location-actions .text-link {
+    width: 100%;
+    text-align: center;
+  }
+}
