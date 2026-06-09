@@ -682,6 +682,10 @@ function calculateLedger() {
   }
 
   const fuelEstimate = calculateFuelEstimate({ totalTripKm: round(totalTripKm), totalPaid: roundMoney(totalPaid) });
+  const historicalFuelStats = calculateHistoricalFuelStats({
+    currentTrips: state.trips,
+    currentFuel: state.fuel
+  });
 
   return {
     people,
@@ -694,6 +698,7 @@ function calculateLedger() {
     receiptPricePerLiter,
     receiptConsumption,
     receiptKmPerLiter,
+    historicalFuelStats,
     fuelPayments: [...state.fuel].sort(byNewest),
     fuelEstimate,
     fuelRate,
@@ -701,6 +706,69 @@ function calculateLedger() {
     totalPaid: roundMoney(totalPaid),
     period: getLedgerPeriod(),
     settlements: buildSettlements(people)
+  };
+}
+
+function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = {}) {
+  const periods = [
+    { trips: currentTrips, fuel: currentFuel },
+    ...state.closedPeriods.map((period) => ({
+      trips: Array.isArray(period.trips) ? period.trips : [],
+      fuel: Array.isArray(period.fuel) ? period.fuel : [],
+      totalTripKm: Number(period.totalTripKm || 0),
+      totalPaid: Number(period.totalPaid || 0)
+    }))
+  ];
+
+  let totalTripKm = 0;
+  let totalPaid = 0;
+  let totalLiters = 0;
+  let totalAmountWithLiters = 0;
+  let fuelLogsWithLiters = 0;
+  let periodsWithTripKm = 0;
+  let periodsWithLiters = 0;
+
+  for (const period of periods) {
+    const trips = Array.isArray(period.trips) ? period.trips : [];
+    const fuel = Array.isArray(period.fuel) ? period.fuel : [];
+    const periodTripKm = Number(period.totalTripKm || trips.reduce((sum, trip) => {
+      return sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+    }, 0));
+    const periodPaid = Number(period.totalPaid || fuel.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+    const periodLiters = fuel.reduce((sum, item) => sum + Number(item.liters || 0), 0);
+
+    if (periodTripKm > 0) {
+      totalTripKm += periodTripKm;
+      totalPaid += periodPaid;
+      periodsWithTripKm += 1;
+    }
+
+    if (periodTripKm > 0 && periodLiters > 0) {
+      totalLiters += periodLiters;
+      periodsWithLiters += 1;
+    }
+
+    for (const item of fuel) {
+      const liters = Number(item.liters || 0);
+      const amount = Number(item.amount || 0);
+      if (liters > 0 && amount > 0) {
+        totalAmountWithLiters += amount;
+        fuelLogsWithLiters += 1;
+      }
+    }
+  }
+
+  return {
+    totalTripKm: round(totalTripKm),
+    totalPaid: roundMoney(totalPaid),
+    totalLiters: round(totalLiters),
+    costPerKm: totalTripKm > 0 ? roundMoney(totalPaid / totalTripKm) : 0,
+    pricePerLiter: totalLiters > 0 ? roundMoney(totalAmountWithLiters / totalLiters) : 0,
+    litersPer100Km: totalLiters > 0 && totalTripKm > 0 ? round(totalLiters / totalTripKm * 100) : 0,
+    kmPerLiter: totalLiters > 0 && totalTripKm > 0 ? round(totalTripKm / totalLiters) : 0,
+    fuelLogsWithLiters,
+    periodsWithTripKm,
+    periodsWithLiters
   };
 }
 
@@ -903,15 +971,16 @@ function renderPeriodBreakdown(ledger) {
       <small>Trip distance after splitting each trip among the people who joined. This is what fuel cost is divided by.</small>
     </div>
     <div class="period-breakdown-card">
-      <span>Liters logged</span>
-      <strong>${ledger.totalFuelLiters > 0 ? `${formatNumber(ledger.totalFuelLiters)} L` : "None"}</strong>
-      <small>${ledger.receiptPricePerLiter > 0 ? `Receipt average: ${formatMoneyFor(ledger.receiptPricePerLiter, state.currency)}/L` : "Add liters on fuel receipts to build price statistics."}</small>
+      <span>This period fuel cost per km</span>
+      <strong>${ledger.totalTripKm > 0 && ledger.totalPaid > 0 ? `${formatMoney(ledger.totalPaid / ledger.totalTripKm)}/km` : "Not enough data"}</strong>
+      <small>Based on receipts logged in this open period only.</small>
     </div>
     <div class="period-breakdown-card">
-      <span>Receipt-based consumption</span>
+      <span>This period fuel consumption</span>
       <strong>${ledger.receiptConsumption > 0 ? `${formatNumber(ledger.receiptConsumption)} L/100 km` : "Not enough data"}</strong>
-      <small>${ledger.receiptKmPerLiter > 0 ? `${formatNumber(ledger.receiptKmPerLiter)} km/L based on logged liters and trip km.` : "Best when every refuel in the period has liters entered."}</small>
+      <small>${ledger.receiptKmPerLiter > 0 ? `${formatNumber(ledger.receiptKmPerLiter)} km/L · ${formatNumber(ledger.totalFuelLiters)} L logged.` : "Add liters on fuel receipts to build consumption statistics."}</small>
     </div>
+    ${renderHistoricalFuelStatsCard(ledger.historicalFuelStats)}
     ${renderFuelEstimateCard(ledger)}
     <div class="period-breakdown-card wide-breakdown">
       <span>Fuel payments included</span>
@@ -920,6 +989,37 @@ function renderPeriodBreakdown(ledger) {
     <div class="period-breakdown-card wide-breakdown">
       <span>People included</span>
       <ul>${peopleWithKm || `<li><span>People</span><b>No active period data yet</b></li>`}</ul>
+    </div>
+  `;
+}
+
+function renderHistoricalFuelStatsCard(stats = {}) {
+  if (!stats.periodsWithTripKm) {
+    return `
+      <div class="period-breakdown-card wide-breakdown">
+        <span>Historical average</span>
+        <strong>Not enough data yet</strong>
+        <small>Close settlement periods and enter liters on fuel receipts to build reliable planning stats.</small>
+      </div>
+    `;
+  }
+
+  const consumptionText = stats.litersPer100Km > 0
+    ? `${formatNumber(stats.litersPer100Km)} L/100 km · ${formatNumber(stats.kmPerLiter)} km/L`
+    : "Add liters to fuel logs";
+  const priceText = stats.pricePerLiter > 0
+    ? `${formatMoneyFor(stats.pricePerLiter, state.currency)}/L`
+    : "Add liters to fuel logs";
+
+  return `
+    <div class="period-breakdown-card wide-breakdown">
+      <span>Historical average for planning</span>
+      <ul>
+        <li><span>Fuel cost per trip km</span><b>${stats.costPerKm > 0 ? `${formatMoneyFor(stats.costPerKm, state.currency)}/km` : "Not enough data"}</b></li>
+        <li><span>Average fuel price</span><b>${priceText}</b></li>
+        <li><span>Fuel consumption</span><b>${consumptionText}</b></li>
+        <li><span>Data used</span><b>${formatNumber(stats.totalTripKm)} km · ${formatMoneyFor(stats.totalPaid, state.currency)} · ${stats.fuelLogsWithLiters} fuel logs with liters</b></li>
+      </ul>
     </div>
   `;
 }
