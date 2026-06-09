@@ -74,6 +74,9 @@ const els = {
   tripNote: document.querySelector("#tripNote"),
   fuelAmount: document.querySelector("#fuelAmount"),
   fuelLiters: document.querySelector("#fuelLiters"),
+  fuelOdometer: document.querySelector("#fuelOdometer"),
+  fuelStation: document.querySelector("#fuelStation"),
+  fuelFullTank: document.querySelector("#fuelFullTank"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
@@ -199,18 +202,26 @@ els.fuelForm.addEventListener("submit", (event) => {
   }
   const amount = Number(els.fuelAmount.value);
   const liters = Number(els.fuelLiters?.value || 0);
+  const odometer = Number(els.fuelOdometer?.value || 0);
+  const station = els.fuelStation?.value.trim() || "";
+  const fullTank = Boolean(els.fuelFullTank?.checked);
 
   if (amount <= 0) {
     alert("Fuel amount must be higher than zero.");
     return;
   }
 
+  const normalizedLiters = liters > 0 ? round(liters) : "";
   state.fuel.push({
     id: crypto.randomUUID(),
     payer: els.fuelPayer.value,
     date: els.fuelDate.value,
     amount: roundMoney(amount),
-    liters: liters > 0 ? round(liters) : ""
+    liters: normalizedLiters,
+    pricePerLiter: normalizedLiters ? roundMoney(amount / normalizedLiters) : "",
+    odometer: odometer > 0 ? round(odometer) : "",
+    station,
+    fullTank
   });
 
   saveState();
@@ -1141,7 +1152,7 @@ function renderHistory() {
               ${canManageSettings() ? `<button class="text-button" type="button" data-delete="fuel:${fuel.id}">Delete</button>` : ""}
             </header>
             <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
-            <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}</p>
+            <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
           </article>
         `
       )
@@ -1484,11 +1495,19 @@ function normalizeState(saved) {
 function normalizeFuelEntries(fuelEntries) {
   if (!Array.isArray(fuelEntries)) return [];
 
-  return fuelEntries.map((fuel) => ({
-    ...fuel,
-    amount: roundMoney(Number(fuel.amount || 0)),
-    liters: Number(fuel.liters || 0) > 0 ? round(Number(fuel.liters || 0)) : ""
-  }));
+  return fuelEntries.map((fuel) => {
+    const amount = roundMoney(Number(fuel.amount || 0));
+    const liters = Number(fuel.liters || 0) > 0 ? round(Number(fuel.liters || 0)) : "";
+    return {
+      ...fuel,
+      amount,
+      liters,
+      pricePerLiter: liters ? roundMoney(amount / liters) : (Number(fuel.pricePerLiter || 0) > 0 ? roundMoney(Number(fuel.pricePerLiter)) : ""),
+      odometer: Number(fuel.odometer || 0) > 0 ? round(Number(fuel.odometer || 0)) : "",
+      station: fuel.station ? String(fuel.station).trim() : "",
+      fullTank: Boolean(fuel.fullTank)
+    };
+  });
 }
 
 function isOldDefaultFuelSetup(saved) {
@@ -1933,6 +1952,9 @@ function getLatestOdometer() {
 function syncStartOdometerDefault() {
   if (state.lastOdometer !== "" && document.activeElement !== els.startKm) {
     els.startKm.value = state.lastOdometer;
+  }
+  if (els.fuelOdometer && state.lastOdometer !== "" && document.activeElement !== els.fuelOdometer && !els.fuelOdometer.value) {
+    els.fuelOdometer.value = state.lastOdometer;
   }
 }
 

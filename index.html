@@ -136,7 +136,19 @@
               Liters added
               <input id="fuelLiters" type="number" min="0" step="0.01" placeholder="Optional" />
             </label>
-            <p class="section-note wide">Liters are optional, but adding them makes the price-per-liter and real consumption statistics much better over time.</p>
+            <label>
+              Odometer at refuel
+              <input id="fuelOdometer" type="number" min="0" step="0.1" placeholder="Optional" />
+            </label>
+            <label>
+              Station / place
+              <input id="fuelStation" type="text" maxlength="80" placeholder="Optional" />
+            </label>
+            <label class="checkbox-row wide">
+              <input id="fuelFullTank" type="checkbox" />
+              <span>Filled to full tank</span>
+            </label>
+            <p class="section-note wide">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time.</p>
             <button class="action-button wide" type="submit">Add fuel</button>
           </form>
         </section>
