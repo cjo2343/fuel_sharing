@@ -188,3 +188,15 @@ This version makes cloud saving more explicit. The top bar now shows both the sy
 In **Log fuel payment -> More fuel details**, users can tap **Find nearby stations**. The app asks for the phone's location, looks up nearby `amenity=fuel` stations from OpenStreetMap via Overpass, and lets the user pick the correct station. The manual Station/place field remains available because map data can be incomplete or inaccurate.
 
 The fuel log stores the selected station name, brand/operator when available, station coordinates, and the user's GPS location for that fuel log.
+
+## Settlement validation
+
+Before a payment request can be marked as requested, Fuel Ledger checks whether logged fuel receipts look unusually low for the distance in the current period. If fuel looks incomplete, the app shows a confirmation with:
+
+- trip kilometers in the period
+- fuel amount logged
+- estimated expected fuel cost
+- coverage percentage
+- configured warning threshold
+
+This does not block legitimate edge cases, but it makes users confirm that all fuel receipts have been added before requesting payment. Admin manual period closing uses the same validation.

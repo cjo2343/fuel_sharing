@@ -1226,6 +1226,10 @@ function closeCurrentPeriod(options = {}) {
   }
 
   const ledger = calculateLedger();
+  if (!options.skipFuelValidation && isFuelEstimateWarningActive(ledger)) {
+    if (!confirm(buildFuelValidationMessage(ledger, "close this period anyway"))) return;
+  }
+
   if (
     !options.skipConfirm &&
     !confirm(
@@ -1277,19 +1281,19 @@ function renderSettlementWarning(ledger) {
 
   if (noFuel && estimate.hasEstimate) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `No fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}.`;
+    els.settlementWarning.textContent = `Settlement check: no fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}. Add all receipts before requesting payments.`;
     return;
   }
 
   if (noFuel) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = "There are trips in this period, but no fuel payments yet. Add every refuel receipt before requesting settlements.";
+    els.settlementWarning.textContent = "Settlement check: there are trips in this period, but no fuel payments yet. Add every refuel receipt before requesting settlements.";
     return;
   }
 
   if (lowAgainstEstimate) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `Fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Add missing refuel receipts before requesting payments.`;
+    els.settlementWarning.textContent = `Settlement check: fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Add missing receipts before requesting payments.`;
     return;
   }
 
@@ -1467,6 +1471,35 @@ function isFuelEstimateWarningActive(ledger) {
   return estimate.hasEstimate && estimate.missingAmount > 0;
 }
 
+function buildFuelValidationMessage(ledger, actionLabel = "continue") {
+  const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
+  const lines = [
+    "Fuel payments may be incomplete.",
+    "",
+    `Trips in this period: ${formatNumber(ledger.totalTripKm)} km`,
+    `Fuel logged: ${formatMoney(ledger.totalPaid)}`,
+  ];
+
+  if (estimate.hasEstimate) {
+    lines.push(
+      `Expected fuel cost: about ${formatMoney(estimate.expectedCost)}`,
+      `Coverage: ${formatNumber(estimate.coveragePercent)}% of expected`,
+      `Warning threshold: ${formatNumber(estimate.threshold)}%`,
+      "",
+      `This estimate uses ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L.`
+    );
+  }
+
+  lines.push(
+    "",
+    "Check that every refuel receipt for this period has been added before requesting payments.",
+    "",
+    `Are you sure you want to ${actionLabel}?`
+  );
+
+  return lines.join("\n");
+}
+
 function renderPaymentOverview(ledger) {
   const totals = ledger.settlements.reduce(
     (acc, item) => {
@@ -1508,8 +1541,7 @@ async function updatePaymentStatus(button) {
   }
 
   if (button.dataset.paymentStatus === "requested" && isFuelEstimateWarningActive(ledger)) {
-    const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
-    if (!confirm(`Fuel payments may be incomplete. Expected about ${formatMoney(estimate.expectedCost)}, but only ${formatMoney(ledger.totalPaid)} has been logged. Request payment anyway?`)) {
+    if (!confirm(buildFuelValidationMessage(ledger, "request this payment anyway"))) {
       render();
       return;
     }
@@ -1536,7 +1568,7 @@ async function updatePaymentStatus(button) {
       "All current settlements have been requested. Close and archive this period now so new trips start fresh?"
     )
   ) {
-    closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true });
+    closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true, skipFuelValidation: true });
     return;
   }
 
