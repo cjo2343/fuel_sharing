@@ -2470,6 +2470,24 @@ function saveState() {
   queueRemoteSave();
 }
 
+function makeClientId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeTripEntries(trips) {
+  if (!Array.isArray(trips)) return [];
+
+  return trips.map((trip) => ({
+    ...trip,
+    id: trip.id || makeClientId(),
+    participants: Array.isArray(trip.participants) ? trip.participants : (trip.driver ? [trip.driver] : []),
+    startKm: round(Number(trip.startKm || 0)),
+    endKm: round(Number(trip.endKm || 0)),
+    note: trip.note ? String(trip.note) : ""
+  }));
+}
+
 function normalizeState(saved) {
   if (!saved) return structuredClone(defaults);
 
@@ -2478,7 +2496,7 @@ function normalizeState(saved) {
     ...saved,
     members: normalizeMembers(saved.members),
     memberProfiles: normalizeMemberProfiles(saved.members, saved.memberProfiles),
-    trips: Array.isArray(saved.trips) ? saved.trips : [],
+    trips: normalizeTripEntries(saved.trips),
     fuel: normalizeFuelEntries(saved.fuel),
     paymentStatuses: normalizePaymentStatuses(saved.paymentStatuses),
     closedPeriods: Array.isArray(saved.closedPeriods)
@@ -2517,6 +2535,7 @@ function normalizeFuelEntries(fuelEntries) {
     const liters = Number(fuel.liters || 0) > 0 ? round(Number(fuel.liters || 0)) : "";
     return {
       ...fuel,
+      id: fuel.id || makeClientId(),
       amount,
       liters,
       pricePerLiter: liters ? roundMoney(amount / liters) : (Number(fuel.pricePerLiter || 0) > 0 ? roundMoney(Number(fuel.pricePerLiter)) : ""),
