@@ -128,10 +128,15 @@
               Date
               <input id="fuelDate" type="date" required />
             </label>
-            <label class="wide">
-              Amount
+            <label>
+              Amount paid
               <input id="fuelAmount" type="number" min="0" step="0.01" required />
             </label>
+            <label>
+              Liters added
+              <input id="fuelLiters" type="number" min="0" step="0.01" placeholder="Optional" />
+            </label>
+            <p class="section-note wide">Liters are optional, but adding them makes the price-per-liter and real consumption statistics much better over time.</p>
             <button class="action-button wide" type="submit">Add fuel</button>
           </form>
         </section>

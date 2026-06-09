@@ -165,3 +165,7 @@ Default fuel sanity-check settings for this car:
 - Warning threshold: 70%
 
 The fuel estimate is only a sanity check. Settlements are still based on the fuel receipts logged in the app.
+
+## Fuel liters and consumption statistics
+
+Fuel payments can include optional liters added. Entering liters lets the app show receipt-based statistics such as average DKK/L, logged liters, estimated L/100 km, and km/L for the current settlement period. These statistics are informational; settlements still use the actual fuel amounts paid.

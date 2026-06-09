@@ -73,6 +73,7 @@ const els = {
   endKm: document.querySelector("#endKm"),
   tripNote: document.querySelector("#tripNote"),
   fuelAmount: document.querySelector("#fuelAmount"),
+  fuelLiters: document.querySelector("#fuelLiters"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
@@ -197,6 +198,7 @@ els.fuelForm.addEventListener("submit", (event) => {
     return;
   }
   const amount = Number(els.fuelAmount.value);
+  const liters = Number(els.fuelLiters?.value || 0);
 
   if (amount <= 0) {
     alert("Fuel amount must be higher than zero.");
@@ -207,7 +209,8 @@ els.fuelForm.addEventListener("submit", (event) => {
     id: crypto.randomUUID(),
     payer: els.fuelPayer.value,
     date: els.fuelDate.value,
-    amount: roundMoney(amount)
+    amount: roundMoney(amount),
+    liters: liters > 0 ? round(liters) : ""
   });
 
   saveState();
@@ -636,11 +639,17 @@ function calculateLedger() {
     state.trips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm) - Number(trip.startKm)), 0)
   );
   const fuelByPerson = Object.fromEntries(state.members.map((member) => [member, 0]));
+  const fuelLitersByPerson = Object.fromEntries(state.members.map((member) => [member, 0]));
   for (const fuel of state.fuel) {
     if (fuelByPerson[fuel.payer] !== undefined) {
       fuelByPerson[fuel.payer] = roundMoney(fuelByPerson[fuel.payer] + Number(fuel.amount || 0));
+      fuelLitersByPerson[fuel.payer] = round(fuelLitersByPerson[fuel.payer] + Number(fuel.liters || 0));
     }
   }
+  const totalFuelLiters = round(Object.values(fuelLitersByPerson).reduce((sum, liters) => sum + Number(liters || 0), 0));
+  const receiptPricePerLiter = totalFuelLiters > 0 ? roundMoney(state.fuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0) / totalFuelLiters) : 0;
+  const receiptConsumption = totalFuelLiters > 0 && totalTripKm > 0 ? round(totalFuelLiters / totalTripKm * 100) : 0;
+  const receiptKmPerLiter = totalFuelLiters > 0 && totalTripKm > 0 ? round(totalTripKm / totalFuelLiters) : 0;
 
   let totalKm = 0;
   let totalPaid = 0;
@@ -669,6 +678,11 @@ function calculateLedger() {
     totalShareKm: round(totalKm),
     totalKm: round(totalKm),
     fuelByPerson,
+    fuelLitersByPerson,
+    totalFuelLiters,
+    receiptPricePerLiter,
+    receiptConsumption,
+    receiptKmPerLiter,
     fuelPayments: [...state.fuel].sort(byNewest),
     fuelEstimate,
     fuelRate,
@@ -695,7 +709,7 @@ function renderBalances(ledger) {
           <header>
             <strong>${escapeHtml(member)}</strong>
           </header>
-          <div class="stat-row"><span>Share kilometers</span><b>${formatNumber(person.km)} km</b></div>
+          <div class="stat-row"><span>Distance share</span><b>${formatNumber(person.km)} km</b></div>
           <div class="stat-row"><span>Fuel share</span><b>${formatMoney(person.tripCost)}</b></div>
           <div class="stat-row"><span>Fuel paid</span><b>${formatMoney(person.fuelPaid)}</b></div>
         </article>
@@ -752,7 +766,7 @@ function renderSettlements(ledger) {
               <strong>${escapeHtml(item.to)}</strong>
               <span class="status-chip ${status}">${statusLabel(status)}</span>
             </div>
-            <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} share-km at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
+            <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} km distance share at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
             <details class="settlement-details">
               <summary>Fuel payments included</summary>
               ${renderFuelPaymentList(ledger.fuelPayments)}
@@ -831,7 +845,7 @@ function renderSettlementWarning(ledger) {
 
   if (noFuel && estimate.hasEstimate) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `No fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip-km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}.`;
+    els.settlementWarning.textContent = `No fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}.`;
     return;
   }
 
@@ -843,7 +857,7 @@ function renderSettlementWarning(ledger) {
 
   if (lowAgainstEstimate) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `Fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip-km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Add missing refuel receipts before requesting payments.`;
+    els.settlementWarning.textContent = `Fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Add missing refuel receipts before requesting payments.`;
     return;
   }
 
@@ -854,12 +868,16 @@ function renderSettlementWarning(ledger) {
 function renderPeriodBreakdown(ledger) {
   const peopleWithKm = Object.entries(ledger.people)
     .filter(([, person]) => person.km > 0 || person.fuelPaid > 0)
-    .map(([name, person]) => `<li><span>${escapeHtml(name)}</span><b>${formatNumber(person.km)} share-km · ${formatMoney(person.fuelPaid)} fuel paid</b></li>`)
+    .map(([name, person]) => `<li><span>${escapeHtml(name)}</span><b>${formatNumber(person.km)} km distance share · ${formatMoney(person.fuelPaid)} fuel paid</b></li>`)
     .join("");
 
   const fuelByPerson = Object.entries(ledger.fuelByPerson || {})
     .filter(([, amount]) => amount > 0)
-    .map(([name, amount]) => `<li><span>${escapeHtml(name)}</span><b>${formatMoney(amount)}</b></li>`)
+    .map(([name, amount]) => {
+      const liters = Number(ledger.fuelLitersByPerson?.[name] || 0);
+      const detail = liters > 0 ? `${formatMoney(amount)} · ${formatNumber(liters)} L` : formatMoney(amount);
+      return `<li><span>${escapeHtml(name)}</span><b>${detail}</b></li>`;
+    })
     .join("") || `<li><span>Fuel payments</span><b>None yet</b></li>`;
 
   els.periodBreakdown.innerHTML = `
@@ -869,9 +887,19 @@ function renderPeriodBreakdown(ledger) {
       <small>Odometer distance logged in this open period.</small>
     </div>
     <div class="period-breakdown-card">
-      <span>Total share-km</span>
+      <span>Total participant km</span>
       <strong>${formatNumber(ledger.totalShareKm)} km</strong>
-      <small>Distance allocated across trip participants.</small>
+      <small>Trip distance after splitting each trip among the people who joined. This is what fuel cost is divided by.</small>
+    </div>
+    <div class="period-breakdown-card">
+      <span>Liters logged</span>
+      <strong>${ledger.totalFuelLiters > 0 ? `${formatNumber(ledger.totalFuelLiters)} L` : "None"}</strong>
+      <small>${ledger.receiptPricePerLiter > 0 ? `Receipt average: ${formatMoneyFor(ledger.receiptPricePerLiter, state.currency)}/L` : "Add liters on fuel receipts to build price statistics."}</small>
+    </div>
+    <div class="period-breakdown-card">
+      <span>Receipt-based consumption</span>
+      <strong>${ledger.receiptConsumption > 0 ? `${formatNumber(ledger.receiptConsumption)} L/100 km` : "Not enough data"}</strong>
+      <small>${ledger.receiptKmPerLiter > 0 ? `${formatNumber(ledger.receiptKmPerLiter)} km/L based on logged liters and trip km.` : "Best when every refuel in the period has liters entered."}</small>
     </div>
     ${renderFuelEstimateCard(ledger)}
     <div class="period-breakdown-card wide-breakdown">
@@ -893,7 +921,11 @@ function renderFuelPaymentList(fuelPayments) {
   return `
     <ul class="included-fuel-list">
       ${fuelPayments
-        .map((fuel) => `<li><span>${escapeHtml(fuel.payer)} · ${formatDate(fuel.date)}</span><b>${formatMoney(fuel.amount)}</b></li>`)
+        .map((fuel) => {
+          const liters = Number(fuel.liters || 0);
+          const literText = liters > 0 ? ` · ${formatNumber(liters)} L · ${formatMoneyFor(Number(fuel.amount || 0) / liters, state.currency)}/L` : "";
+          return `<li><span>${escapeHtml(fuel.payer)} · ${formatDate(fuel.date)}${literText}</span><b>${formatMoney(fuel.amount)}</b></li>`;
+        })
         .join("")}
     </ul>
   `;
@@ -1108,8 +1140,8 @@ function renderHistory() {
               <strong>${escapeHtml(fuel.payer)}</strong>
               ${canManageSettings() ? `<button class="text-button" type="button" data-delete="fuel:${fuel.id}">Delete</button>` : ""}
             </header>
-            <p>${formatMoney(fuel.amount)}</p>
-            <p class="entry-meta">${formatDate(fuel.date)}</p>
+            <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
+            <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}</p>
           </article>
         `
       )
@@ -1427,7 +1459,7 @@ function normalizeState(saved) {
     members: normalizeMembers(saved.members),
     memberProfiles: normalizeMemberProfiles(saved.members, saved.memberProfiles),
     trips: Array.isArray(saved.trips) ? saved.trips : [],
-    fuel: Array.isArray(saved.fuel) ? saved.fuel : [],
+    fuel: normalizeFuelEntries(saved.fuel),
     paymentStatuses: normalizePaymentStatuses(saved.paymentStatuses),
     closedPeriods: Array.isArray(saved.closedPeriods)
       ? saved.closedPeriods.map((period) => ({
@@ -1447,6 +1479,16 @@ function normalizeState(saved) {
     fuelWarningThreshold: Number(saved.fuelWarningThreshold) || defaults.fuelWarningThreshold,
     carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion
   };
+}
+
+function normalizeFuelEntries(fuelEntries) {
+  if (!Array.isArray(fuelEntries)) return [];
+
+  return fuelEntries.map((fuel) => ({
+    ...fuel,
+    amount: roundMoney(Number(fuel.amount || 0)),
+    liters: Number(fuel.liters || 0) > 0 ? round(Number(fuel.liters || 0)) : ""
+  }));
 }
 
 function isOldDefaultFuelSetup(saved) {
