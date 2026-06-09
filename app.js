@@ -49,6 +49,8 @@ let pushSupported = false;
 let pushEnabled = false;
 let latestFuelPrice = null;
 let fuelPriceTimer = null;
+let lastCloudSaveAt = "";
+let lastSyncError = "";
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -64,6 +66,7 @@ const els = {
   signOut: document.querySelector("#signOut"),
   currentUser: document.querySelector("#currentUser"),
   syncStatus: document.querySelector("#syncStatus"),
+  syncDetail: document.querySelector("#syncDetail"),
   tripDriver: document.querySelector("#tripDriver"),
   fuelPayer: document.querySelector("#fuelPayer"),
   tripDate: document.querySelector("#tripDate"),
@@ -424,7 +427,11 @@ function updateAuthUi() {
         : rememberedEmail
           ? "Welcome back. Enter your email to sign in on this device if your saved session has expired."
           : "Enter your email to sign in or join the shared car. After the first login, this device will stay signed in.";
-  setSyncStatus(currentSession ? "Cloud" : "Login");
+  if (!currentSession) {
+    setSyncStatus("Login");
+  } else if (!["saving", "syncing", "local"].includes(els.syncStatus.dataset.status || "")) {
+    setSyncStatus("Cloud");
+  }
   updateLoginCooldown();
   updatePwaUi();
 }
@@ -1892,10 +1899,13 @@ async function loadSupabaseState() {
 
     if (error) throw error;
 
+    lastCloudSaveAt = new Date().toISOString();
+    lastSyncError = "";
     applyIncomingState(data.state, "Cloud");
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
-    els.authMessage.textContent = error.message || "Could not load cloud data.";
+    lastSyncError = error.message || "Could not load cloud data.";
+    els.authMessage.textContent = `${lastSyncError} The app could not load the shared cloud data.`;
     setSyncStatus("Local");
   }
 }
@@ -1921,10 +1931,13 @@ async function saveSupabaseState() {
 
     if (error) throw error;
 
+    lastCloudSaveAt = new Date().toISOString();
+    lastSyncError = "";
     applyIncomingState(data.state, "Cloud");
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
-    els.authMessage.textContent = error.message || "Could not save cloud data.";
+    lastSyncError = error.message || "Could not save cloud data.";
+    els.authMessage.textContent = `${lastSyncError} Changes on this device may not be saved to the cloud.`;
     setSyncStatus("Local");
   }
 }
@@ -1965,6 +1978,39 @@ function unsubscribeFromSupabaseState() {
 function setSyncStatus(label) {
   els.syncStatus.textContent = label;
   els.syncStatus.dataset.status = label.toLowerCase();
+
+  if (!els.syncDetail) return;
+
+  if (label === "Cloud") {
+    els.syncDetail.textContent = lastCloudSaveAt
+      ? `Saved to cloud ${new Date(lastCloudSaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+      : "Saved to Supabase";
+    return;
+  }
+
+  if (label === "Saving") {
+    els.syncDetail.textContent = "Saving changes...";
+    return;
+  }
+
+  if (label === "Syncing") {
+    els.syncDetail.textContent = "Loading shared data...";
+    return;
+  }
+
+  if (label === "Login") {
+    els.syncDetail.textContent = "Sign in to save changes";
+    return;
+  }
+
+  if (label === "Local") {
+    els.syncDetail.textContent = lastSyncError
+      ? `Not saved: ${lastSyncError}`
+      : "Not saved to cloud";
+    return;
+  }
+
+  els.syncDetail.textContent = "";
 }
 
 function hasLedgerData(candidate) {

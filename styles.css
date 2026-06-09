@@ -116,6 +116,29 @@ legend {
   padding: 22px 0 18px;
 }
 
+
+.sync-stack {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.sync-detail {
+  max-width: 210px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.15;
+  text-align: right;
+}
+
+.sync-status[data-status="local"] + .sync-detail {
+  color: var(--red);
+}
+
+.sync-status[data-status="cloud"] + .sync-detail {
+  color: var(--green-dark);
+}
 .topbar h1,
 .panel h2,
 .panel h3 {
