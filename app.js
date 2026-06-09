@@ -1274,26 +1274,11 @@ function closeCurrentPeriod(options = {}) {
 }
 
 function renderSettlementWarning(ledger) {
-  const hasTrips = state.trips.length > 0 || ledger.totalTripKm > 0;
-  const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
-  const noFuel = hasTrips && ledger.totalPaid <= 0;
-  const lowAgainstEstimate = estimate.hasEstimate && estimate.missingAmount > 0;
+  const warnings = getFuelValidationWarnings(ledger);
 
-  if (noFuel && estimate.hasEstimate) {
+  if (warnings.length > 0) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `Settlement check: no fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}. Add all receipts before requesting payments.`;
-    return;
-  }
-
-  if (noFuel) {
-    els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = "Settlement check: there are trips in this period, but no fuel payments yet. Add every refuel receipt before requesting settlements.";
-    return;
-  }
-
-  if (lowAgainstEstimate) {
-    els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `Settlement check: fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Add missing receipts before requesting payments.`;
+    els.settlementWarning.textContent = `Settlement check: ${warnings[0]}`;
     return;
   }
 
@@ -1413,7 +1398,7 @@ function renderFuelEstimateCard(ledger) {
 
   const source = estimate.source === "live" ? "Circle K/INGO live price" : "fallback price";
   return `
-    <div class="period-breakdown-card wide-breakdown estimate-card ${estimate.missingAmount > 0 ? "is-warning" : ""}">
+    <div class="period-breakdown-card wide-breakdown estimate-card ${estimate.warningLevel !== "ok" ? "is-warning" : ""}">
       <span>Expected fuel cost check</span>
       <strong>${formatMoney(estimate.expectedCost)}</strong>
       <small>${formatNumber(ledger.totalTripKm)} km × ${formatNumber(estimate.consumption)} L/100 km × ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L (${escapeHtml(source)}). Logged fuel: ${formatMoney(ledger.totalPaid)} · Coverage: ${formatNumber(estimate.coveragePercent)}%.</small>
@@ -1430,11 +1415,15 @@ function calculateFuelEstimate(ledger) {
   const pricePerLiter = livePrice || fallbackPrice;
   const source = livePrice ? "live" : "fallback";
   const threshold = Math.min(100, Math.max(1, Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold));
+  const highThreshold = 140;
   const liters = totalTripKm * consumption / 100;
   const expectedCost = roundMoney(liters * pricePerLiter);
   const coveragePercent = expectedCost > 0 ? round(totalPaid / expectedCost * 100) : 100;
   const minimumRequired = expectedCost * threshold / 100;
+  const maximumExpected = expectedCost * highThreshold / 100;
   const missingAmount = expectedCost > 0 && totalPaid < minimumRequired ? roundMoney(minimumRequired - totalPaid) : 0;
+  const excessAmount = expectedCost > 0 && totalPaid > maximumExpected ? roundMoney(totalPaid - maximumExpected) : 0;
+  const warningLevel = missingAmount > 0 ? "low" : excessAmount > 0 ? "high" : "ok";
   return {
     hasEstimate: totalTripKm > 0 && pricePerLiter > 0 && consumption > 0,
     consumption,
@@ -1443,8 +1432,12 @@ function calculateFuelEstimate(ledger) {
     expectedCost,
     coveragePercent,
     threshold,
+    highThreshold,
     minimumRequired: roundMoney(minimumRequired),
-    missingAmount
+    maximumExpected: roundMoney(maximumExpected),
+    missingAmount,
+    excessAmount,
+    warningLevel
   };
 }
 
@@ -1466,15 +1459,58 @@ async function refreshFuelPriceEstimate() {
   fuelPriceTimer = window.setTimeout(refreshFuelPriceEstimate, 60 * 60 * 1000);
 }
 
-function isFuelEstimateWarningActive(ledger) {
+function getFuelValidationWarnings(ledger) {
+  const warnings = [];
+  const hasTrips = state.trips.length > 0 || ledger.totalTripKm > 0;
   const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
-  return estimate.hasEstimate && estimate.missingAmount > 0;
+  const noFuel = hasTrips && ledger.totalPaid <= 0;
+
+  if (noFuel && estimate.hasEstimate) {
+    warnings.push(`No fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}.`);
+  } else if (noFuel) {
+    warnings.push("There are trips in this period, but no fuel payments yet. Add every refuel receipt before requesting settlements.");
+  } else if (estimate.hasEstimate && estimate.missingAmount > 0) {
+    warnings.push(`Fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected).`);
+  } else if (estimate.hasEstimate && estimate.excessAmount > 0) {
+    warnings.push(`Fuel payments look unusually high. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip km, but ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Check for duplicate fuel logs, wrong amounts, or missing trips.`);
+  }
+
+  const largePaymentWithoutLiters = state.fuel.find((fuel) => Number(fuel.amount || 0) >= 500 && !(Number(fuel.liters || 0) > 0));
+  if (largePaymentWithoutLiters) {
+    warnings.push(`${largePaymentWithoutLiters.payer} logged ${formatMoney(largePaymentWithoutLiters.amount)} without liters. Add liters from the receipt to verify the price per liter.`);
+  }
+
+  for (const fuel of state.fuel) {
+    const amount = Number(fuel.amount || 0);
+    const liters = Number(fuel.liters || 0);
+    if (!(amount > 0 && liters > 0)) continue;
+    const pricePerLiter = amount / liters;
+    if (pricePerLiter < 8 || pricePerLiter > 25) {
+      warnings.push(`${fuel.payer}'s fuel log on ${formatDate(fuel.date)} has an unusual price: ${formatMoneyFor(pricePerLiter, state.currency)}/L.`);
+    }
+  }
+
+  if (ledger.totalTripKm > 0 && ledger.totalFuelLiters > 0) {
+    const litersPer100Km = ledger.totalFuelLiters / ledger.totalTripKm * 100;
+    if (litersPer100Km < 3 || litersPer100Km > 9) {
+      warnings.push(`Receipt-based fuel consumption is unusual for this car: ${formatNumber(litersPer100Km)} L/100 km. Check liters, trip distance, and whether fuel belongs to this period.`);
+    }
+  }
+
+  return warnings;
+}
+
+function isFuelEstimateWarningActive(ledger) {
+  return getFuelValidationWarnings(ledger).length > 0;
 }
 
 function buildFuelValidationMessage(ledger, actionLabel = "continue") {
   const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
+  const warnings = getFuelValidationWarnings(ledger);
   const lines = [
-    "Fuel payments may be incomplete.",
+    "Fuel sanity check",
+    "",
+    ...warnings.map((warning) => `- ${warning}`),
     "",
     `Trips in this period: ${formatNumber(ledger.totalTripKm)} km`,
     `Fuel logged: ${formatMoney(ledger.totalPaid)}`,
@@ -1484,7 +1520,8 @@ function buildFuelValidationMessage(ledger, actionLabel = "continue") {
     lines.push(
       `Expected fuel cost: about ${formatMoney(estimate.expectedCost)}`,
       `Coverage: ${formatNumber(estimate.coveragePercent)}% of expected`,
-      `Warning threshold: ${formatNumber(estimate.threshold)}%`,
+      `Low warning below: ${formatNumber(estimate.threshold)}%`,
+      `High warning above: ${formatNumber(estimate.highThreshold)}%`,
       "",
       `This estimate uses ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L.`
     );
@@ -1492,7 +1529,7 @@ function buildFuelValidationMessage(ledger, actionLabel = "continue") {
 
   lines.push(
     "",
-    "Check that every refuel receipt for this period has been added before requesting payments.",
+    "Check that fuel amounts, liters, and all trips in this period are correct before requesting payments.",
     "",
     `Are you sure you want to ${actionLabel}?`
   );

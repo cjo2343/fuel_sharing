@@ -200,3 +200,8 @@ Before a payment request can be marked as requested, Fuel Ledger checks whether 
 - configured warning threshold
 
 This does not block legitimate edge cases, but it makes users confirm that all fuel receipts have been added before requesting payment. Admin manual period closing uses the same validation.
+
+
+## Fuel sanity validation
+
+The app warns before settlement requests if logged fuel looks too low or too high for the trip distance, if large payments are missing liters, if DKK/L looks unrealistic, or if receipt-based consumption is outside a plausible range. These warnings do not block valid edge cases, but they require confirmation before requesting or closing settlements.
