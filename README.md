@@ -146,3 +146,12 @@ or any other VAPID key generator. Copy the public key to `VAPID_PUBLIC_KEY` and 
 - iPhone/Safari: users generally need to add the app to the Home Screen first, then open it from the Home Screen and enable notifications.
 
 Push notifications are sent when someone marks a settlement as `Requested`. The notification goes to the person who owes the payment, if they have enabled notifications on at least one device.
+
+
+## Fuel cost sanity check
+
+The app still settles based on actual fuel payments entered by the group. It now also estimates whether fuel payments look incomplete using trip distance, configured fuel consumption, and Danish fuel prices.
+
+Admins can configure fuel type, estimated consumption, fallback DKK/L price, and the warning threshold in Group settings. When possible, the backend fetches a Danish reference price from the public Circle K/INGO fuel price API and falls back to the manual price if that API is unavailable.
+
+If logged fuel payments are below the configured threshold of expected fuel cost, the settlement panel warns users and asks for confirmation before marking a payment request as requested.

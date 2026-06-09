@@ -1160,3 +1160,13 @@ body.auth-locked #authPanel .text-button {
     text-align: left;
   }
 }
+
+
+.estimate-card.is-warning {
+  border-color: rgba(216, 154, 50, 0.55);
+  background: #fff8ea;
+}
+
+.estimate-card small {
+  line-height: 1.45;
+}

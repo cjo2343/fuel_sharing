@@ -6,6 +6,7 @@ const rememberedLoginEmailKey = "car-share-remembered-login-email";
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
 const pushConfigUrl = "/api/push-config";
+const fuelPriceUrl = "/api/fuel-price";
 const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
@@ -28,7 +29,11 @@ const defaults = {
   fuel: [],
   paymentStatuses: {},
   closedPeriods: [],
-  lastOdometer: ""
+  lastOdometer: "",
+  fuelType: "95",
+  fuelConsumption: 6.0,
+  fuelFallbackPrice: 16.5,
+  fuelWarningThreshold: 70
 };
 
 let state = loadState();
@@ -41,6 +46,8 @@ let ignoreRealtimeUntil = 0;
 let deferredInstallPrompt = null;
 let pushSupported = false;
 let pushEnabled = false;
+let latestFuelPrice = null;
+let fuelPriceTimer = null;
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -66,6 +73,10 @@ const els = {
   tripNote: document.querySelector("#tripNote"),
   fuelAmount: document.querySelector("#fuelAmount"),
   currency: document.querySelector("#currency"),
+  fuelType: document.querySelector("#fuelType"),
+  fuelConsumption: document.querySelector("#fuelConsumption"),
+  fuelFallbackPrice: document.querySelector("#fuelFallbackPrice"),
+  fuelWarningThreshold: document.querySelector("#fuelWarningThreshold"),
   members: document.querySelector("#members"),
   tripForm: document.querySelector("#tripForm"),
   fuelForm: document.querySelector("#fuelForm"),
@@ -94,6 +105,7 @@ setDefaultDates();
 render();
 initializeSync();
 initializePwa();
+refreshFuelPriceEstimate();
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -219,6 +231,10 @@ els.settingsForm.addEventListener("submit", (event) => {
   }
 
   state.currency = els.currency.value.trim() || defaults.currency;
+  state.fuelType = els.fuelType?.value || defaults.fuelType;
+  state.fuelConsumption = Math.max(0.1, Number(els.fuelConsumption?.value) || defaults.fuelConsumption);
+  state.fuelFallbackPrice = Math.max(0.1, Number(els.fuelFallbackPrice?.value) || defaults.fuelFallbackPrice);
+  state.fuelWarningThreshold = Math.min(100, Math.max(1, Number(els.fuelWarningThreshold?.value) || defaults.fuelWarningThreshold));
   state.members = [...new Set(members)];
   state.memberProfiles = Object.fromEntries(
     parsed.map((member, index) => [
@@ -507,6 +523,10 @@ function renderSettings() {
   }
 
   els.currency.value = state.currency;
+  if (els.fuelType) els.fuelType.value = state.fuelType || defaults.fuelType;
+  if (els.fuelConsumption) els.fuelConsumption.value = state.fuelConsumption || defaults.fuelConsumption;
+  if (els.fuelFallbackPrice) els.fuelFallbackPrice.value = state.fuelFallbackPrice || defaults.fuelFallbackPrice;
+  if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
   els.members.value = state.members
     .map((name) => {
       const profile = getMemberProfile(name);
@@ -517,6 +537,10 @@ function renderSettings() {
     .join("\n");
 
   els.currency.disabled = !canManage;
+  if (els.fuelType) els.fuelType.disabled = !canManage;
+  if (els.fuelConsumption) els.fuelConsumption.disabled = !canManage;
+  if (els.fuelFallbackPrice) els.fuelFallbackPrice.disabled = !canManage;
+  if (els.fuelWarningThreshold) els.fuelWarningThreshold.disabled = !canManage;
   els.members.disabled = !canManage;
   els.settingsForm.querySelector("button").disabled = !canManage;
 }
@@ -636,6 +660,8 @@ function calculateLedger() {
     totalCost += person.tripCost;
   }
 
+  const fuelEstimate = calculateFuelEstimate({ totalTripKm: round(totalTripKm), totalPaid: roundMoney(totalPaid) });
+
   return {
     people,
     totalTripKm,
@@ -643,6 +669,7 @@ function calculateLedger() {
     totalKm: round(totalKm),
     fuelByPerson,
     fuelPayments: [...state.fuel].sort(byNewest),
+    fuelEstimate,
     fuelRate,
     totalCost: roundMoney(totalCost),
     totalPaid: roundMoney(totalPaid),
@@ -797,8 +824,15 @@ function closeCurrentPeriod(options = {}) {
 
 function renderSettlementWarning(ledger) {
   const hasTrips = state.trips.length > 0 || ledger.totalTripKm > 0;
-  const lowFuelRate = hasTrips && ledger.totalPaid > 0 && ledger.fuelRate < 0.25;
+  const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
   const noFuel = hasTrips && ledger.totalPaid <= 0;
+  const lowAgainstEstimate = estimate.hasEstimate && estimate.missingAmount > 0;
+
+  if (noFuel && estimate.hasEstimate) {
+    els.settlementWarning.classList.remove("hidden");
+    els.settlementWarning.textContent = `No fuel payments have been added yet. Based on ${formatNumber(ledger.totalTripKm)} trip-km, ${formatNumber(estimate.consumption)} L/100 km and ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L, expected fuel cost is about ${formatMoney(estimate.expectedCost)}.`;
+    return;
+  }
 
   if (noFuel) {
     els.settlementWarning.classList.remove("hidden");
@@ -806,9 +840,9 @@ function renderSettlementWarning(ledger) {
     return;
   }
 
-  if (lowFuelRate) {
+  if (lowAgainstEstimate) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `Fuel entered looks low for ${formatNumber(ledger.totalTripKm)} trip-km (${formatMoney(ledger.fuelRate)}/km). Check that all refuel receipts for this period have been added.`;
+    els.settlementWarning.textContent = `Fuel payments look incomplete. Expected about ${formatMoney(estimate.expectedCost)} for ${formatNumber(ledger.totalTripKm)} trip-km, but only ${formatMoney(ledger.totalPaid)} has been logged (${formatNumber(estimate.coveragePercent)}% of expected). Add missing refuel receipts before requesting payments.`;
     return;
   }
 
@@ -838,6 +872,7 @@ function renderPeriodBreakdown(ledger) {
       <strong>${formatNumber(ledger.totalShareKm)} km</strong>
       <small>Distance allocated across trip participants.</small>
     </div>
+    ${renderFuelEstimateCard(ledger)}
     <div class="period-breakdown-card wide-breakdown">
       <span>Fuel payments included</span>
       <ul>${fuelByPerson}</ul>
@@ -861,6 +896,78 @@ function renderFuelPaymentList(fuelPayments) {
         .join("")}
     </ul>
   `;
+}
+
+function renderFuelEstimateCard(ledger) {
+  const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
+  if (!estimate.hasEstimate || ledger.totalTripKm <= 0) {
+    return `
+      <div class="period-breakdown-card wide-breakdown estimate-card">
+        <span>Fuel estimate</span>
+        <strong>Not enough data yet</strong>
+        <small>Add trip kilometers and configure fuel settings to estimate expected fuel cost.</small>
+      </div>
+    `;
+  }
+
+  const source = estimate.source === "live" ? "Circle K/INGO live price" : "fallback price";
+  return `
+    <div class="period-breakdown-card wide-breakdown estimate-card ${estimate.missingAmount > 0 ? "is-warning" : ""}">
+      <span>Expected fuel cost check</span>
+      <strong>${formatMoney(estimate.expectedCost)}</strong>
+      <small>${formatNumber(ledger.totalTripKm)} km × ${formatNumber(estimate.consumption)} L/100 km × ${formatMoneyFor(estimate.pricePerLiter, state.currency)}/L (${escapeHtml(source)}). Logged fuel: ${formatMoney(ledger.totalPaid)} · Coverage: ${formatNumber(estimate.coveragePercent)}%.</small>
+    </div>
+  `;
+}
+
+function calculateFuelEstimate(ledger) {
+  const totalTripKm = Number(ledger.totalTripKm || 0);
+  const totalPaid = Number(ledger.totalPaid || 0);
+  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
+  const livePrice = latestFuelPrice && latestFuelPrice.price > 0 ? Number(latestFuelPrice.price) : 0;
+  const pricePerLiter = livePrice || fallbackPrice;
+  const source = livePrice ? "live" : "fallback";
+  const threshold = Math.min(100, Math.max(1, Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold));
+  const liters = totalTripKm * consumption / 100;
+  const expectedCost = roundMoney(liters * pricePerLiter);
+  const coveragePercent = expectedCost > 0 ? round(totalPaid / expectedCost * 100) : 100;
+  const minimumRequired = expectedCost * threshold / 100;
+  const missingAmount = expectedCost > 0 && totalPaid < minimumRequired ? roundMoney(minimumRequired - totalPaid) : 0;
+  return {
+    hasEstimate: totalTripKm > 0 && pricePerLiter > 0 && consumption > 0,
+    consumption,
+    pricePerLiter,
+    source,
+    expectedCost,
+    coveragePercent,
+    threshold,
+    minimumRequired: roundMoney(minimumRequired),
+    missingAmount
+  };
+}
+
+async function refreshFuelPriceEstimate() {
+  window.clearTimeout(fuelPriceTimer);
+  const fuelType = state.fuelType || defaults.fuelType;
+  try {
+    const response = await fetch(`${fuelPriceUrl}?fuelType=${encodeURIComponent(fuelType)}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.price) {
+        latestFuelPrice = data;
+        render();
+      }
+    }
+  } catch {
+    // The app falls back to the configured manual price if the public price API is unavailable.
+  }
+  fuelPriceTimer = window.setTimeout(refreshFuelPriceEstimate, 60 * 60 * 1000);
+}
+
+function isFuelEstimateWarningActive(ledger) {
+  const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
+  return estimate.hasEstimate && estimate.missingAmount > 0;
 }
 
 function renderPaymentOverview(ledger) {
@@ -901,6 +1008,14 @@ async function updatePaymentStatus(button) {
     alert("Only the person who paid for fuel in this settlement can request or reopen that payment.");
     render();
     return;
+  }
+
+  if (button.dataset.paymentStatus === "requested" && isFuelEstimateWarningActive(ledger)) {
+    const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
+    if (!confirm(`Fuel payments may be incomplete. Expected about ${formatMoney(estimate.expectedCost)}, but only ${formatMoney(ledger.totalPaid)} has been logged. Request payment anyway?`)) {
+      render();
+      return;
+    }
   }
 
   state.paymentStatuses[button.dataset.paymentKey] = button.dataset.paymentStatus;
@@ -1324,7 +1439,11 @@ function normalizeState(saved) {
             : []
         }))
       : [],
-    lastOdometer: saved.lastOdometer ?? ""
+    lastOdometer: saved.lastOdometer ?? "",
+    fuelType: saved.fuelType || defaults.fuelType,
+    fuelConsumption: Number(saved.fuelConsumption) || defaults.fuelConsumption,
+    fuelFallbackPrice: Number(saved.fuelFallbackPrice) || defaults.fuelFallbackPrice,
+    fuelWarningThreshold: Number(saved.fuelWarningThreshold) || defaults.fuelWarningThreshold
   };
 }
 

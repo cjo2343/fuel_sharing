@@ -91,6 +91,56 @@ def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=
         return json.loads(raw) if raw else None
 
 
+def fetch_fuel_price(path):
+    parsed = urllib.parse.urlparse(path)
+    query = urllib.parse.parse_qs(parsed.query)
+    wanted = (query.get("fuelType", ["95"])[0] or "95").lower()
+    if wanted in ("diesel", "dieselolie"): 
+        match_terms = ("diesel",)
+        label = "Diesel"
+    else:
+        match_terms = ("95", "miles 95", "benzin 95", "petrol 95")
+        label = "Petrol 95"
+
+    request = urllib.request.Request(
+        "https://api.circlek.com/eu/prices/v1/fuel/countries/DK",
+        headers={"X-App-Name": "PRICES", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    prices = []
+    last_updated = ""
+    for site in data.get("sites", []):
+        for price in site.get("fuelPrices", []) or []:
+            name = str(price.get("displayName", "")).lower()
+            if any(term in name for term in match_terms):
+                try:
+                    value = float(price.get("price"))
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    prices.append(value)
+                    last_updated = max(last_updated, str(price.get("lastUpdated") or ""))
+
+    if not prices:
+        return {"ok": False, "fuelType": wanted, "message": "No matching Danish fuel price found"}
+
+    # Use the median so one unusually cheap/expensive station does not skew the sanity check.
+    prices.sort()
+    median = prices[len(prices) // 2]
+    return {
+        "ok": True,
+        "fuelType": wanted,
+        "label": label,
+        "price": round(median, 2),
+        "currency": "DKK",
+        "volumeUnit": "LITER",
+        "stationCount": len(prices),
+        "lastUpdated": last_updated,
+        "source": "Circle K/INGO public DK fuel price API",
+    }
+
 def read_request_body(handler):
     length = int(handler.headers.get("Content-Length", "0"))
     if length <= 0:
@@ -171,6 +221,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/state":
             self.send_json(read_state())
+            return
+        if self.path.startswith("/api/fuel-price"):
+            self.send_json(fetch_fuel_price(self.path))
             return
         if self.path == "/api/push-config":
             self.send_json({
