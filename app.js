@@ -64,6 +64,7 @@ const els = {
   tripForm: document.querySelector("#tripForm"),
   fuelForm: document.querySelector("#fuelForm"),
   settingsForm: document.querySelector("#settingsForm"),
+  settingsPanel: document.querySelector(".settings-panel"),
   paymentOverview: document.querySelector("#paymentOverview"),
   settlements: document.querySelector("#settlements"),
   peopleBalances: document.querySelector("#peopleBalances"),
@@ -442,6 +443,12 @@ function updateLoginCooldown() {
 }
 
 function renderSettings() {
+  const canManage = canManageSettings();
+
+  if (els.settingsPanel) {
+    els.settingsPanel.classList.toggle("hidden", !canManage);
+  }
+
   els.currency.value = state.currency;
   els.members.value = state.members
     .map((name) => {
@@ -452,7 +459,6 @@ function renderSettings() {
     })
     .join("\n");
 
-  const canManage = canManageSettings();
   els.currency.disabled = !canManage;
   els.members.disabled = !canManage;
   els.settingsForm.querySelector("button").disabled = !canManage;
@@ -484,24 +490,32 @@ function renderPeopleSelectors() {
     els.fuelPayer.value = currentUser;
   }
 
-  const lockToLoggedInUser = loggedIn;
+  const authRequired = Boolean(supabaseClient);
+  const canUse = !authRequired || (loggedIn && knownLoggedInMember);
+  const lockToLoggedInUser = authRequired || loggedIn;
   els.currentUser.disabled = lockToLoggedInUser;
   els.tripDriver.disabled = lockToLoggedInUser;
   els.fuelPayer.disabled = lockToLoggedInUser;
 
-  const canAdd = !loggedIn || knownLoggedInMember;
-  els.tripForm.querySelector('button[type="submit"]').disabled = !canAdd;
-  els.fuelForm.querySelector('button[type="submit"]').disabled = !canAdd;
+  setFormDisabled(els.tripForm, !canUse);
+  setFormDisabled(els.fuelForm, !canUse);
 
   renderParticipantOptions();
 }
 
+function setFormDisabled(form, disabled) {
+  for (const control of form.querySelectorAll("input, select, textarea, button")) {
+    control.disabled = disabled;
+  }
+}
+
 function renderParticipantOptions() {
+  const disabledAttr = canUseAppAsMember() ? "" : " disabled";
   els.tripParticipants.innerHTML = state.members
     .map(
       (member) => `
         <label class="participant-option">
-          <input type="checkbox" value="${escapeHtml(member)}" data-participant="${escapeHtml(member)}" checked />
+          <input type="checkbox" value="${escapeHtml(member)}" data-participant="${escapeHtml(member)}" checked${disabledAttr} />
           <span>${escapeHtml(member)}</span>
         </label>
       `
@@ -992,11 +1006,13 @@ function getCurrentMemberProfile() {
 }
 
 function canUseAppAsMember() {
-  return !supabaseClient || !currentSession || Boolean(getCurrentMemberProfile());
+  if (!supabaseClient) return true;
+  return Boolean(currentSession && getCurrentMemberProfile());
 }
 
 function canManageSettings() {
-  if (!supabaseClient || !currentSession) return true;
+  if (!supabaseClient) return true;
+  if (!currentSession) return false;
   const profile = getCurrentMemberProfile();
   return profile?.role === "admin" || noMemberEmailsConfigured();
 }
