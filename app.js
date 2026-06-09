@@ -1,5 +1,6 @@
 const storageKey = "car-share-ledger-v1";
 const userKey = "car-share-current-user";
+const loginCooldownKey = "car-share-login-cooldown-until";
 const apiStateUrl = "/api/state";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
 const hasSupabaseConfig =
@@ -27,6 +28,7 @@ let state = loadState();
 let currentUser = localStorage.getItem(userKey) || "";
 let remoteSaveTimer;
 let currentSession = null;
+let loginCooldownTimer;
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -258,6 +260,7 @@ function updateAuthUi() {
     ? `Signed in as ${currentSession.user.email}`
     : "Use an email login link to sync from any phone.";
   setSyncStatus(currentSession ? "Cloud" : "Login");
+  updateLoginCooldown();
 }
 
 async function sendLoginLink() {
@@ -266,14 +269,61 @@ async function sendLoginLink() {
   const email = els.loginEmail.value.trim();
   if (!email) return;
 
+  if (isLoginCoolingDown()) {
+    updateLoginCooldown();
+    return;
+  }
+
+  startLoginCooldown();
+
   const { error } = await supabaseClient.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: window.location.href.split("#")[0] }
   });
 
+  if (error?.status === 429 || error?.message?.toLowerCase().includes("rate limit")) {
+    els.authMessage.textContent =
+      "Supabase is rate limiting login links. Wait about 60 seconds before trying again.";
+    updateLoginCooldown();
+    return;
+  }
+
   els.authMessage.textContent = error
     ? error.message
     : "Check your email and open the login link on this device.";
+}
+
+function startLoginCooldown() {
+  const cooldownUntil = Date.now() + 60_000;
+  localStorage.setItem(loginCooldownKey, String(cooldownUntil));
+  updateLoginCooldown();
+}
+
+function isLoginCoolingDown() {
+  return Number(localStorage.getItem(loginCooldownKey) || 0) > Date.now();
+}
+
+function updateLoginCooldown() {
+  window.clearTimeout(loginCooldownTimer);
+
+  if (currentSession || !supabaseClient) {
+    els.loginForm.querySelector("button").disabled = false;
+    return;
+  }
+
+  const cooldownUntil = Number(localStorage.getItem(loginCooldownKey) || 0);
+  const secondsLeft = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+  const button = els.loginForm.querySelector("button");
+
+  if (secondsLeft <= 0) {
+    button.disabled = false;
+    button.textContent = "Send login link";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = `Wait ${secondsLeft}s`;
+  loginCooldownTimer = window.setTimeout(updateLoginCooldown, 1000);
 }
 
 function renderSettings() {
