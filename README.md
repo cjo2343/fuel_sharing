@@ -155,3 +155,13 @@ The app still settles based on actual fuel payments entered by the group. It now
 Admins can configure fuel type, estimated consumption, fallback DKK/L price, and the warning threshold in Group settings. When possible, the backend fetches a Danish reference price from the public Circle K/INGO fuel price API and falls back to the manual price if that API is unavailable.
 
 If logged fuel payments are below the configured threshold of expected fuel cost, the settlement panel warns users and asks for confirmation before marking a payment request as requested.
+
+Default fuel sanity-check settings for this car:
+
+- Fuel type: Diesel
+- Official consumption: 18.9 km/L
+- App consumption setting: 5.3 L/100 km (`100 / 18.9 = 5.29`)
+- Fallback fuel price: 14.50 DKK/L
+- Warning threshold: 70%
+
+The fuel estimate is only a sanity check. Settlements are still based on the fuel receipts logged in the app.

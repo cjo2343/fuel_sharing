@@ -30,10 +30,11 @@ const defaults = {
   paymentStatuses: {},
   closedPeriods: [],
   lastOdometer: "",
-  fuelType: "95",
-  fuelConsumption: 6.0,
-  fuelFallbackPrice: 16.5,
-  fuelWarningThreshold: 70
+  fuelType: "diesel",
+  fuelConsumption: 5.3,
+  fuelFallbackPrice: 14.5,
+  fuelWarningThreshold: 70,
+  carSettingsVersion: 2
 };
 
 let state = loadState();
@@ -1440,11 +1441,36 @@ function normalizeState(saved) {
         }))
       : [],
     lastOdometer: saved.lastOdometer ?? "",
-    fuelType: saved.fuelType || defaults.fuelType,
-    fuelConsumption: Number(saved.fuelConsumption) || defaults.fuelConsumption,
-    fuelFallbackPrice: Number(saved.fuelFallbackPrice) || defaults.fuelFallbackPrice,
-    fuelWarningThreshold: Number(saved.fuelWarningThreshold) || defaults.fuelWarningThreshold
+    fuelType: getFuelTypeForState(saved),
+    fuelConsumption: getFuelConsumptionForState(saved),
+    fuelFallbackPrice: getFuelFallbackPriceForState(saved),
+    fuelWarningThreshold: Number(saved.fuelWarningThreshold) || defaults.fuelWarningThreshold,
+    carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion
   };
+}
+
+function isOldDefaultFuelSetup(saved) {
+  return (
+    !saved.carSettingsVersion &&
+    (!saved.fuelType || saved.fuelType === "95") &&
+    (!saved.fuelConsumption || Number(saved.fuelConsumption) === 6) &&
+    (!saved.fuelFallbackPrice || Number(saved.fuelFallbackPrice) === 16.5)
+  );
+}
+
+function getFuelTypeForState(saved) {
+  if (isOldDefaultFuelSetup(saved)) return defaults.fuelType;
+  return saved.fuelType || defaults.fuelType;
+}
+
+function getFuelConsumptionForState(saved) {
+  if (isOldDefaultFuelSetup(saved)) return defaults.fuelConsumption;
+  return Number(saved.fuelConsumption) || defaults.fuelConsumption;
+}
+
+function getFuelFallbackPriceForState(saved) {
+  if (isOldDefaultFuelSetup(saved)) return defaults.fuelFallbackPrice;
+  return Number(saved.fuelFallbackPrice) || defaults.fuelFallbackPrice;
 }
 
 
