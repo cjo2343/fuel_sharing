@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Car Share Ledger</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Shared car</p>
+          <h1>Fuel Ledger</h1>
+        </div>
+        <div class="topbar-tools">
+          <label class="user-picker">
+            Using as
+            <select id="currentUser"></select>
+          </label>
+          <span id="syncStatus" class="sync-status">Local</span>
+          <div class="odometer" aria-label="Logged kilometers">
+            <span id="totalKm">0</span>
+            <small>km</small>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section id="authPanel" class="panel auth-panel wide-panel hidden" aria-labelledby="authHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Login</p>
+              <h2 id="authHeading">Join the shared car</h2>
+            </div>
+            <button id="signOut" class="text-button compact-button" type="button">Sign out</button>
+          </div>
+          <form id="loginForm" class="auth-form">
+            <label>
+              Email
+              <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+            </label>
+            <button class="action-button" type="submit">Send login link</button>
+          </form>
+          <p id="authMessage" class="section-note"></p>
+        </section>
+
+        <section class="panel primary-panel" aria-labelledby="tripHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Trip</p>
+              <h2 id="tripHeading">Log distance</h2>
+            </div>
+          </div>
+
+          <form id="tripForm" class="form-grid">
+            <label>
+              Driver
+              <select id="tripDriver" required></select>
+            </label>
+            <label>
+              Date
+              <input id="tripDate" type="date" required />
+            </label>
+            <label>
+              Start odometer
+              <input id="startKm" type="number" min="0" step="0.1" required />
+            </label>
+            <label>
+              End odometer
+              <input id="endKm" type="number" min="0" step="0.1" required />
+            </label>
+            <label class="wide">
+              Note
+              <input id="tripNote" type="text" maxlength="80" placeholder="Optional" />
+            </label>
+            <fieldset class="wide participant-field">
+              <legend>Split between</legend>
+              <div id="tripParticipants" class="participant-grid"></div>
+            </fieldset>
+            <button class="action-button wide" type="submit">Add trip</button>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="fuelHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Fuel</p>
+              <h2 id="fuelHeading">Log payment</h2>
+            </div>
+          </div>
+
+          <form id="fuelForm" class="form-grid">
+            <label>
+              Paid by
+              <select id="fuelPayer" required></select>
+            </label>
+            <label>
+              Date
+              <input id="fuelDate" type="date" required />
+            </label>
+            <label class="wide">
+              Amount
+              <input id="fuelAmount" type="number" min="0" step="0.01" required />
+            </label>
+            <button class="action-button wide" type="submit">Add fuel</button>
+          </form>
+        </section>
+
+        <section class="panel settings-panel" aria-labelledby="settingsHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Setup</p>
+              <h2 id="settingsHeading">Group settings</h2>
+            </div>
+          </div>
+
+          <form id="settingsForm" class="settings-form">
+            <label>
+              Currency
+              <input id="currency" type="text" maxlength="8" required />
+            </label>
+            <label class="wide">
+              People
+              <textarea id="members" rows="4" required></textarea>
+            </label>
+            <button class="subtle-button wide" type="submit">Save settings</button>
+          </form>
+        </section>
+
+        <section class="summary-band" aria-label="Summary">
+          <article>
+            <span>Fuel rate</span>
+            <strong id="fuelRate">0</strong>
+          </article>
+          <article>
+            <span>Trip shares</span>
+            <strong id="totalCost">0</strong>
+          </article>
+          <article>
+            <span>Fuel paid</span>
+            <strong id="totalPaid">0</strong>
+          </article>
+        </section>
+
+        <section class="panel wide-panel" aria-labelledby="settleHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Settle</p>
+              <h2 id="settleHeading">Who pays whom</h2>
+            </div>
+            <button id="closePeriod" class="subtle-button compact-button" type="button">Close period</button>
+          </div>
+          <p class="section-note">
+            Mark requests here. When everyone has been requested, close the period before logging the next fuel cycle.
+          </p>
+          <div id="paymentOverview" class="payment-overview"></div>
+          <div id="settlements" class="settlements"></div>
+        </section>
+
+        <section class="panel wide-panel" aria-labelledby="peopleHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Balances</p>
+              <h2 id="peopleHeading">By person</h2>
+            </div>
+          </div>
+          <div id="peopleBalances" class="people-grid"></div>
+        </section>
+
+        <section class="panel wide-panel" aria-labelledby="historyHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">History</p>
+              <h2 id="historyHeading">Entries</h2>
+            </div>
+            <button id="resetData" class="danger-button" type="button">Reset</button>
+          </div>
+          <div class="history-grid">
+            <div>
+              <h3>Trips</h3>
+              <div id="tripList" class="entry-list"></div>
+            </div>
+            <div>
+              <h3>Fuel</h3>
+              <div id="fuelList" class="entry-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel wide-panel" aria-labelledby="periodsHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Archive</p>
+              <h2 id="periodsHeading">Closed periods</h2>
+            </div>
+          </div>
+          <div id="periodList" class="period-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="emptyTemplate">
+      <p class="empty-state">Nothing logged yet.</p>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
