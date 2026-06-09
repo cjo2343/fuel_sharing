@@ -2,6 +2,8 @@ const storageKey = "car-share-ledger-v1";
 const userKey = "car-share-current-user";
 const loginCooldownKey = "car-share-login-cooldown-until";
 const pendingLoginEmailKey = "car-share-pending-login-email";
+const rememberedLoginEmailKey = "car-share-remembered-login-email";
+const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
 const hasSupabaseConfig =
@@ -18,6 +20,7 @@ const supabaseClient =
 const defaults = {
   currency: "DKK",
   members: ["Christian", "Alex", "Sam"],
+  memberProfiles: {},
   trips: [],
   fuel: [],
   paymentStatuses: {},
@@ -30,6 +33,8 @@ let currentUser = localStorage.getItem(userKey) || "";
 let remoteSaveTimer;
 let currentSession = null;
 let loginCooldownTimer;
+let supabaseStateChannel = null;
+let ignoreRealtimeUntil = 0;
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -106,6 +111,10 @@ els.tripDriver.addEventListener("change", () => {
 
 els.tripForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!canUseAppAsMember()) {
+    alert("Your email is not assigned to a member yet. Ask an admin to add it.");
+    return;
+  }
   const start = Number(els.startKm.value);
   const end = Number(els.endKm.value);
   const participants = getSelectedParticipants();
@@ -139,6 +148,10 @@ els.tripForm.addEventListener("submit", (event) => {
 
 els.fuelForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!canUseAppAsMember()) {
+    alert("Your email is not assigned to a member yet. Ask an admin to add it.");
+    return;
+  }
   const amount = Number(els.fuelAmount.value);
 
   if (amount <= 0) {
@@ -161,10 +174,13 @@ els.fuelForm.addEventListener("submit", (event) => {
 
 els.settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const members = els.members.value
-    .split(/\n|,/)
-    .map((member) => member.trim())
-    .filter(Boolean);
+  if (!canManageSettings()) {
+    alert("Only an admin can change group settings.");
+    return;
+  }
+
+  const parsed = parseMemberSettings(els.members.value);
+  const members = parsed.map((member) => member.name);
 
   if (members.length < 2) {
     alert("Add at least two people.");
@@ -173,6 +189,15 @@ els.settingsForm.addEventListener("submit", (event) => {
 
   state.currency = els.currency.value.trim() || defaults.currency;
   state.members = [...new Set(members)];
+  state.memberProfiles = Object.fromEntries(
+    parsed.map((member, index) => [
+      member.name,
+      {
+        email: member.email,
+        role: member.role || (index === 0 && noMemberEmailsConfigured() ? "admin" : "member")
+      }
+    ])
+  );
   state.trips = state.trips.filter((trip) => state.members.includes(trip.driver));
   state.trips = state.trips.map((trip) => ({
     ...trip,
@@ -185,6 +210,10 @@ els.settingsForm.addEventListener("submit", (event) => {
 });
 
 els.resetData.addEventListener("click", () => {
+  if (!canManageSettings()) {
+    alert("Only an admin can reset data.");
+    return;
+  }
   if (!confirm("Reset all trips, fuel payments, and settings?")) return;
   state = structuredClone(defaults);
   saveState();
@@ -212,6 +241,11 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-delete]");
   if (!button) return;
 
+  if (!canManageSettings()) {
+    alert("Only an admin can delete entries.");
+    return;
+  }
+
   const [type, id] = button.dataset.delete.split(":");
   state[type] = state[type].filter((entry) => entry.id !== id);
   if (type === "trips") state.lastOdometer = getLatestOdometer();
@@ -229,6 +263,7 @@ function render() {
   renderSettlements(ledger);
   renderHistory();
   renderClosedPeriods();
+  els.resetData.disabled = !canManageSettings();
 }
 
 async function initializeSync() {
@@ -244,15 +279,31 @@ async function initializeSupabase() {
   setSyncStatus("Login");
   const { data } = await supabaseClient.auth.getSession();
   currentSession = data.session;
+  if (currentSession?.user?.email) {
+    localStorage.setItem(rememberedLoginEmailKey, currentSession.user.email);
+    localStorage.removeItem(pendingLoginEmailKey);
+  }
   updateAuthUi();
 
   supabaseClient.auth.onAuthStateChange(async (_event, session) => {
     currentSession = session;
+    if (session?.user?.email) {
+      localStorage.setItem(rememberedLoginEmailKey, session.user.email);
+      localStorage.removeItem(pendingLoginEmailKey);
+    }
     updateAuthUi();
-    if (session) await loadSupabaseState();
+    if (session) {
+      subscribeToSupabaseState();
+      await loadSupabaseState();
+    } else {
+      unsubscribeFromSupabaseState();
+    }
   });
 
-  if (currentSession) await loadSupabaseState();
+  if (currentSession) {
+    subscribeToSupabaseState();
+    await loadSupabaseState();
+  }
 }
 
 function updateAuthUi() {
@@ -262,17 +313,29 @@ function updateAuthUi() {
   }
 
   const pendingEmail = localStorage.getItem(pendingLoginEmailKey);
+  const rememberedEmail = localStorage.getItem(rememberedLoginEmailKey);
+  const showOtpForm = Boolean(pendingEmail || loginRequestedFromUrl);
 
   els.authPanel.classList.remove("hidden");
   els.loginForm.classList.toggle("hidden", Boolean(currentSession));
-  els.otpForm.classList.toggle("hidden", Boolean(currentSession) || !pendingEmail);
+  els.otpForm.classList.toggle("hidden", Boolean(currentSession) || !showOtpForm);
   els.signOut.classList.toggle("hidden", !currentSession);
   if (pendingEmail && !els.loginEmail.value) els.loginEmail.value = pendingEmail;
+  if (!pendingEmail && rememberedEmail && !els.loginEmail.value) els.loginEmail.value = rememberedEmail;
+
+  const profile = getCurrentMemberProfile();
+  const email = getLoggedInEmail();
   els.authMessage.textContent = currentSession
-    ? `Signed in as ${currentSession.user.email}`
+    ? profile
+      ? `Signed in as ${email}. You will stay signed in on this device, so you should not need a code next time.`
+      : `Signed in as ${email}, but this email is not assigned to a member yet. Ask an admin to add it.`
     : pendingEmail
       ? `Enter the login code sent to ${pendingEmail}.`
-      : "Use an email login code to sync from any phone.";
+      : loginRequestedFromUrl
+        ? "Enter your email and the login code from the email."
+        : rememberedEmail
+          ? `Welcome back. If you are not already signed in, send a new code to ${rememberedEmail}.`
+          : "Use an email login code to sync from any phone. After the first login, this device will stay signed in.";
   setSyncStatus(currentSession ? "Cloud" : "Login");
   updateLoginCooldown();
 }
@@ -336,6 +399,7 @@ async function verifyLoginCode() {
   }
 
   currentSession = data.session;
+  localStorage.setItem(rememberedLoginEmailKey, email);
   localStorage.removeItem(pendingLoginEmailKey);
   els.loginCode.value = "";
   els.authMessage.textContent = "Signed in.";
@@ -379,24 +443,56 @@ function updateLoginCooldown() {
 
 function renderSettings() {
   els.currency.value = state.currency;
-  els.members.value = state.members.join("\n");
+  els.members.value = state.members
+    .map((name) => {
+      const profile = getMemberProfile(name);
+      return [name, profile.email, profile.role === "admin" ? "admin" : ""]
+        .filter(Boolean)
+        .join(" | ");
+    })
+    .join("\n");
+
+  const canManage = canManageSettings();
+  els.currency.disabled = !canManage;
+  els.members.disabled = !canManage;
+  els.settingsForm.querySelector("button").disabled = !canManage;
 }
 
 function renderPeopleSelectors() {
-  if (!state.members.includes(currentUser)) {
-    currentUser = state.members[0] || "";
-    localStorage.setItem(userKey, currentUser);
-  }
+  const names = getMemberNames();
+  const profile = getCurrentMemberProfile();
+  const loggedIn = Boolean(currentSession);
+  const knownLoggedInMember = Boolean(profile);
 
-  const options = state.members
+  if (loggedIn) {
+    currentUser = profile?.name || "";
+  } else if (!names.includes(currentUser)) {
+    currentUser = names[0] || "";
+  }
+  if (currentUser) localStorage.setItem(userKey, currentUser);
+
+  const options = names
     .map((member) => `<option value="${escapeHtml(member)}">${escapeHtml(member)}</option>`)
     .join("");
   els.tripDriver.innerHTML = options;
   els.fuelPayer.innerHTML = options;
   els.currentUser.innerHTML = options;
-  els.currentUser.value = currentUser;
-  els.tripDriver.value = currentUser;
-  els.fuelPayer.value = currentUser;
+
+  if (currentUser) {
+    els.currentUser.value = currentUser;
+    els.tripDriver.value = currentUser;
+    els.fuelPayer.value = currentUser;
+  }
+
+  const lockToLoggedInUser = loggedIn;
+  els.currentUser.disabled = lockToLoggedInUser;
+  els.tripDriver.disabled = lockToLoggedInUser;
+  els.fuelPayer.disabled = lockToLoggedInUser;
+
+  const canAdd = !loggedIn || knownLoggedInMember;
+  els.tripForm.querySelector('button[type="submit"]').disabled = !canAdd;
+  els.fuelForm.querySelector('button[type="submit"]').disabled = !canAdd;
+
   renderParticipantOptions();
 }
 
@@ -496,7 +592,7 @@ function renderBalances(ledger) {
 }
 
 function renderSettlements(ledger) {
-  els.closePeriod.disabled = state.trips.length === 0 && state.fuel.length === 0;
+  els.closePeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
 
   if (ledger.settlements.length === 0) {
     els.paymentOverview.replaceChildren();
@@ -505,10 +601,14 @@ function renderSettlements(ledger) {
   }
 
   const activeKeys = new Set(ledger.settlements.map(settlementKey));
+  let prunedPaymentStatuses = false;
   for (const key of Object.keys(state.paymentStatuses)) {
-    if (!activeKeys.has(key)) delete state.paymentStatuses[key];
+    if (!activeKeys.has(key)) {
+      delete state.paymentStatuses[key];
+      prunedPaymentStatuses = true;
+    }
   }
-  saveState();
+  if (prunedPaymentStatuses) saveState();
   renderPaymentOverview(ledger);
 
   els.settlements.innerHTML = ledger.settlements
@@ -544,6 +644,10 @@ function renderSettlements(ledger) {
 }
 
 function closeCurrentPeriod(options = {}) {
+  if (!canManageSettings()) {
+    alert("Only an admin can close periods.");
+    return;
+  }
   if (state.trips.length === 0 && state.fuel.length === 0) {
     alert("Add trips or fuel before closing a period.");
     return;
@@ -684,7 +788,7 @@ function renderHistory() {
           <article class="entry-card">
             <header>
               <strong>${escapeHtml(trip.driver)}</strong>
-              <button class="text-button" type="button" data-delete="trips:${trip.id}">Delete</button>
+              ${canManageSettings() ? `<button class="text-button" type="button" data-delete="trips:${trip.id}">Delete</button>` : ""}
             </header>
             <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km</p>
             <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
@@ -706,7 +810,7 @@ function renderHistory() {
           <article class="entry-card">
             <header>
               <strong>${escapeHtml(fuel.payer)}</strong>
-              <button class="text-button" type="button" data-delete="fuel:${fuel.id}">Delete</button>
+              ${canManageSettings() ? `<button class="text-button" type="button" data-delete="fuel:${fuel.id}">Delete</button>` : ""}
             </header>
             <p>${formatMoney(fuel.amount)}</p>
             <p class="entry-meta">${formatDate(fuel.date)}</p>
@@ -831,6 +935,171 @@ function getTripParticipants(trip) {
   return trip.driver ? [trip.driver] : [];
 }
 
+function getMemberNames() {
+  return Array.isArray(state.members) ? state.members : [];
+}
+
+function normalizeMembers(members) {
+  if (!Array.isArray(members) || members.length === 0) return structuredClone(defaults.members);
+  return members
+    .map((member) => (typeof member === "string" ? member : member?.name))
+    .map((member) => String(member || "").trim())
+    .filter(Boolean);
+}
+
+function normalizeMemberProfiles(members, profiles) {
+  const names = normalizeMembers(members);
+  const sourceProfiles = profiles && typeof profiles === "object" ? profiles : {};
+  return Object.fromEntries(
+    names.map((name, index) => {
+      const inline = Array.isArray(members) ? members.find((member) => member?.name === name) : null;
+      const saved = sourceProfiles[name] || inline || {};
+      return [
+        name,
+        {
+          email: normalizeEmail(saved.email || ""),
+          role: saved.role === "admin" || (index === 0 && !profiles) ? "admin" : "member"
+        }
+      ];
+    })
+  );
+}
+
+function getMemberProfile(name) {
+  const profile = state.memberProfiles?.[name] || {};
+  return { name, email: normalizeEmail(profile.email || ""), role: profile.role === "admin" ? "admin" : "member" };
+}
+
+function getLoggedInEmail() {
+  return normalizeEmail(currentSession?.user?.email || "");
+}
+
+function getCurrentMemberProfile() {
+  const email = getLoggedInEmail();
+  if (!email) return null;
+
+  const match = getMemberNames()
+    .map(getMemberProfile)
+    .find((profile) => profile.email === email);
+  if (match) return match;
+
+  if (noMemberEmailsConfigured()) {
+    const first = getMemberNames()[0];
+    return first ? { ...getMemberProfile(first), role: "admin" } : null;
+  }
+
+  return null;
+}
+
+function canUseAppAsMember() {
+  return !supabaseClient || !currentSession || Boolean(getCurrentMemberProfile());
+}
+
+function canManageSettings() {
+  if (!supabaseClient || !currentSession) return true;
+  const profile = getCurrentMemberProfile();
+  return profile?.role === "admin" || noMemberEmailsConfigured();
+}
+
+function noMemberEmailsConfigured() {
+  return getMemberNames().every((name) => !getMemberProfile(name).email);
+}
+
+
+function ensureMemberForLoggedInUser() {
+  const email = getLoggedInEmail();
+  if (!email) return false;
+
+  const existing = getMemberNames()
+    .map(getMemberProfile)
+    .find((profile) => profile.email === email);
+  if (existing) return false;
+
+  const names = getMemberNames();
+  const inferredName = inferMemberNameFromEmail(email);
+
+  let targetName = "";
+  if (noMemberEmailsConfigured() && names[0]) {
+    targetName = names[0];
+  } else {
+    targetName = findBestUnassignedMemberName(inferredName, email);
+  }
+
+  if (!targetName) {
+    targetName = makeUniqueMemberName(inferredName || email.split("@")[0] || "New member");
+    state.members.push(targetName);
+  }
+
+  const current = getMemberProfile(targetName);
+  const role = noMemberEmailsConfigured() && targetName === names[0] ? "admin" : current.role;
+  state.memberProfiles[targetName] = {
+    email,
+    role: role === "admin" ? "admin" : "member"
+  };
+  currentUser = targetName;
+  localStorage.setItem(userKey, currentUser);
+  els.authMessage.textContent = `Signed in as ${targetName}.`;
+  return true;
+}
+
+function inferMemberNameFromEmail(email) {
+  const local = email.split("@")[0] || "";
+  const clean = local
+    .replace(/[+].*$/, "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\d+/g, " ")
+    .trim();
+
+  if (!clean) return "New member";
+
+  return clean
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function findBestUnassignedMemberName(inferredName, email) {
+  const localFirst = normalizeEmail(email.split("@")[0].split(/[._-]/)[0] || "");
+  const inferredFirst = normalizeEmail((inferredName || "").split(/\s+/)[0] || "");
+
+  return getMemberNames().find((name) => {
+    const profile = getMemberProfile(name);
+    if (profile.email) return false;
+    const normalizedName = normalizeEmail(name);
+    return normalizedName === normalizeEmail(inferredName) || normalizedName === localFirst || normalizedName === inferredFirst;
+  }) || "";
+}
+
+function makeUniqueMemberName(baseName) {
+  const existing = new Set(getMemberNames().map((name) => normalizeEmail(name)));
+  let candidate = baseName.trim() || "New member";
+  let counter = 2;
+  while (existing.has(normalizeEmail(candidate))) {
+    candidate = `${baseName} ${counter}`;
+    counter += 1;
+  }
+  return candidate;
+}
+
+function parseMemberSettings(value) {
+  return value
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("|").map((part) => part.trim());
+      const name = parts[0];
+      const email = normalizeEmail(parts.find((part, index) => index > 0 && part.includes("@")) || "");
+      const role = parts.some((part) => part.toLowerCase() === "admin") ? "admin" : "member";
+      return { name, email, role };
+    })
+    .filter((member) => member.name);
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
@@ -851,7 +1120,8 @@ function normalizeState(saved) {
   return {
     ...structuredClone(defaults),
     ...saved,
-    members: Array.isArray(saved.members) && saved.members.length ? saved.members : defaults.members,
+    members: normalizeMembers(saved.members),
+    memberProfiles: normalizeMemberProfiles(saved.members, saved.memberProfiles),
     trips: Array.isArray(saved.trips) ? saved.trips : [],
     fuel: Array.isArray(saved.fuel) ? saved.fuel : [],
     paymentStatuses: normalizePaymentStatuses(saved.paymentStatuses),
@@ -937,12 +1207,8 @@ async function loadSupabaseState() {
 
     if (error) throw error;
 
-    state = normalizeState(data.state);
-    state.lastOdometer = getLatestOdometer();
-    localStorage.setItem(storageKey, JSON.stringify(state));
-    setDefaultDates();
-    render();
-    setSyncStatus("Cloud");
+    applyIncomingState(data.state, "Cloud");
+    if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
     els.authMessage.textContent = error.message || "Could not load cloud data.";
     setSyncStatus("Local");
@@ -957,6 +1223,7 @@ async function saveSupabaseState() {
 
   try {
     setSyncStatus("Saving");
+    ignoreRealtimeUntil = Date.now() + 1500;
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
       .upsert({
@@ -969,13 +1236,45 @@ async function saveSupabaseState() {
 
     if (error) throw error;
 
-    state = normalizeState(data.state);
-    localStorage.setItem(storageKey, JSON.stringify(state));
-    setSyncStatus("Cloud");
+    applyIncomingState(data.state, "Cloud");
+    if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
     els.authMessage.textContent = error.message || "Could not save cloud data.";
     setSyncStatus("Local");
   }
+}
+
+function applyIncomingState(nextState, status = "Live") {
+  state = normalizeState(nextState);
+  state.lastOdometer = getLatestOdometer();
+  localStorage.setItem(storageKey, JSON.stringify(state));
+  setDefaultDates();
+  render();
+  setSyncStatus(status);
+  updateAuthUi();
+}
+
+function subscribeToSupabaseState() {
+  if (!supabaseClient || supabaseStateChannel) return;
+
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  supabaseStateChannel = supabaseClient
+    .channel(`ledger:${ledgerId}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "car_share_ledgers", filter: `id=eq.${ledgerId}` },
+      (payload) => {
+        if (Date.now() < ignoreRealtimeUntil) return;
+        if (payload.new?.state) applyIncomingState(payload.new.state);
+      }
+    )
+    .subscribe();
+}
+
+function unsubscribeFromSupabaseState() {
+  if (!supabaseClient || !supabaseStateChannel) return;
+  supabaseClient.removeChannel(supabaseStateChannel);
+  supabaseStateChannel = null;
 }
 
 function setSyncStatus(label) {
