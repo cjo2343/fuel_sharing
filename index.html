@@ -40,7 +40,20 @@
               Email
               <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" />
             </label>
-            <button class="action-button" type="submit">Send login link</button>
+            <button class="action-button" type="submit">Send login code</button>
+          </form>
+          <form id="otpForm" class="auth-form hidden">
+            <label>
+              Login code
+              <input
+                id="loginCode"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                placeholder="123456"
+              />
+            </label>
+            <button class="action-button" type="submit">Verify code</button>
           </form>
           <p id="authMessage" class="section-note"></p>
         </section>

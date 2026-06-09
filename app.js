@@ -1,6 +1,7 @@
 const storageKey = "car-share-ledger-v1";
 const userKey = "car-share-current-user";
 const loginCooldownKey = "car-share-login-cooldown-until";
+const pendingLoginEmailKey = "car-share-pending-login-email";
 const apiStateUrl = "/api/state";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
 const hasSupabaseConfig =
@@ -37,7 +38,9 @@ const els = {
   totalPaid: document.querySelector("#totalPaid"),
   authPanel: document.querySelector("#authPanel"),
   loginForm: document.querySelector("#loginForm"),
+  otpForm: document.querySelector("#otpForm"),
   loginEmail: document.querySelector("#loginEmail"),
+  loginCode: document.querySelector("#loginCode"),
   authMessage: document.querySelector("#authMessage"),
   signOut: document.querySelector("#signOut"),
   currentUser: document.querySelector("#currentUser"),
@@ -75,6 +78,11 @@ initializeSync();
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await sendLoginLink();
+});
+
+els.otpForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await verifyLoginCode();
 });
 
 els.signOut.addEventListener("click", async () => {
@@ -253,12 +261,18 @@ function updateAuthUi() {
     return;
   }
 
+  const pendingEmail = localStorage.getItem(pendingLoginEmailKey);
+
   els.authPanel.classList.remove("hidden");
   els.loginForm.classList.toggle("hidden", Boolean(currentSession));
+  els.otpForm.classList.toggle("hidden", Boolean(currentSession) || !pendingEmail);
   els.signOut.classList.toggle("hidden", !currentSession);
+  if (pendingEmail && !els.loginEmail.value) els.loginEmail.value = pendingEmail;
   els.authMessage.textContent = currentSession
     ? `Signed in as ${currentSession.user.email}`
-    : "Use an email login link to sync from any phone.";
+    : pendingEmail
+      ? `Enter the login code sent to ${pendingEmail}.`
+      : "Use an email login code to sync from any phone.";
   setSyncStatus(currentSession ? "Cloud" : "Login");
   updateLoginCooldown();
 }
@@ -288,9 +302,46 @@ async function sendLoginLink() {
     return;
   }
 
-  els.authMessage.textContent = error
-    ? error.message
-    : "Check your email and open the login link on this device.";
+  if (error) {
+    els.authMessage.textContent = error.message;
+    return;
+  }
+
+  localStorage.setItem(pendingLoginEmailKey, email);
+  els.otpForm.classList.remove("hidden");
+  els.loginCode.focus();
+  els.authMessage.textContent = "Check your email and enter the login code.";
+}
+
+async function verifyLoginCode() {
+  if (!supabaseClient) return;
+
+  const email = localStorage.getItem(pendingLoginEmailKey) || els.loginEmail.value.trim();
+  const token = els.loginCode.value.trim();
+
+  if (!email || !token) {
+    els.authMessage.textContent = "Enter both your email and the login code.";
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.verifyOtp({
+    email,
+    token,
+    type: "email"
+  });
+
+  if (error) {
+    els.authMessage.textContent = error.message;
+    return;
+  }
+
+  currentSession = data.session;
+  localStorage.removeItem(pendingLoginEmailKey);
+  els.loginCode.value = "";
+  els.authMessage.textContent = "Signed in.";
+  updateAuthUi();
+
+  if (currentSession) await loadSupabaseState();
 }
 
 function startLoginCooldown() {

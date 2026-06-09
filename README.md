@@ -34,3 +34,17 @@ PORT=4176 python3 server.py
 3. Update `supabase-config.js` with your project URL and anon key.
 4. Set `enabled: true`.
 
+
+
+## Supabase email code login
+
+This app uses Supabase Auth email OTP codes. In Supabase, set the auth email template to include the token, for example:
+
+```html
+<h2>Your Fuel Ledger login code</h2>
+<p>Enter this code in the app:</p>
+<h1>{{ .Token }}</h1>
+<p>This code expires soon.</p>
+```
+
+Users enter their email in the app, receive the code, then enter it in the Login code field.
