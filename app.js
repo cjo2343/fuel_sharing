@@ -71,13 +71,16 @@ const els = {
   fuelForm: document.querySelector("#fuelForm"),
   settingsForm: document.querySelector("#settingsForm"),
   settingsPanel: document.querySelector(".settings-panel"),
+  settlementWarning: document.querySelector("#settlementWarning"),
   paymentOverview: document.querySelector("#paymentOverview"),
+  periodBreakdown: document.querySelector("#periodBreakdown"),
   settlements: document.querySelector("#settlements"),
   peopleBalances: document.querySelector("#peopleBalances"),
   tripList: document.querySelector("#tripList"),
   fuelList: document.querySelector("#fuelList"),
   closePeriod: document.querySelector("#closePeriod"),
   periodList: document.querySelector("#periodList"),
+  resetPeriod: document.querySelector("#resetPeriod"),
   resetData: document.querySelector("#resetData"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
@@ -237,6 +240,25 @@ els.settingsForm.addEventListener("submit", (event) => {
   render();
 });
 
+els.resetPeriod.addEventListener("click", () => {
+  if (!canManageSettings()) {
+    alert("Only an admin can reset the current period.");
+    return;
+  }
+  if (state.trips.length === 0 && state.fuel.length === 0) {
+    alert("There is no current period data to reset.");
+    return;
+  }
+  if (!confirm("Remove all trips, fuel payments, and request statuses from the current open period? Settings and archived periods stay unchanged.")) return;
+  state.trips = [];
+  state.fuel = [];
+  state.paymentStatuses = {};
+  state.lastOdometer = getLatestOdometer();
+  saveState();
+  setDefaultDates();
+  render();
+});
+
 els.resetData.addEventListener("click", () => {
   if (!canManageSettings()) {
     alert("Only an admin can reset data.");
@@ -292,7 +314,10 @@ function render() {
   renderSettlements(ledger);
   renderHistory();
   renderClosedPeriods();
+  els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
+  els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
+  els.resetData.classList.toggle("hidden", !canManageSettings());
 }
 
 async function initializeSync() {
@@ -582,6 +607,16 @@ function calculateLedger() {
     people[fuel.payer].fuelPaid += fuel.amount;
   }
 
+  const totalTripKm = round(
+    state.trips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm) - Number(trip.startKm)), 0)
+  );
+  const fuelByPerson = Object.fromEntries(state.members.map((member) => [member, 0]));
+  for (const fuel of state.fuel) {
+    if (fuelByPerson[fuel.payer] !== undefined) {
+      fuelByPerson[fuel.payer] = roundMoney(fuelByPerson[fuel.payer] + Number(fuel.amount || 0));
+    }
+  }
+
   let totalKm = 0;
   let totalPaid = 0;
 
@@ -603,7 +638,11 @@ function calculateLedger() {
 
   return {
     people,
+    totalTripKm,
+    totalShareKm: round(totalKm),
     totalKm: round(totalKm),
+    fuelByPerson,
+    fuelPayments: [...state.fuel].sort(byNewest),
     fuelRate,
     totalCost: roundMoney(totalCost),
     totalPaid: roundMoney(totalPaid),
@@ -639,6 +678,9 @@ function renderBalances(ledger) {
 
 function renderSettlements(ledger) {
   els.closePeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
+
+  renderSettlementWarning(ledger);
+  renderPeriodBreakdown(ledger);
 
   if (ledger.settlements.length === 0) {
     els.paymentOverview.replaceChildren();
@@ -683,6 +725,10 @@ function renderSettlements(ledger) {
               <span class="status-chip ${status}">${statusLabel(status)}</span>
             </div>
             <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} share-km at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
+            <details class="settlement-details">
+              <summary>Fuel payments included</summary>
+              ${renderFuelPaymentList(ledger.fuelPayments)}
+            </details>
           </div>
           <div class="settlement-actions">
             <strong>${formatMoney(item.amount)}</strong>
@@ -720,6 +766,7 @@ function closeCurrentPeriod(options = {}) {
     closedAt: new Date().toISOString(),
     label: ledger.period.label,
     currency: state.currency,
+    totalTripKm: ledger.totalTripKm,
     totalKm: ledger.totalKm,
     fuelRate: roundMoney(ledger.fuelRate),
     totalCost: ledger.totalCost,
@@ -746,6 +793,74 @@ function closeCurrentPeriod(options = {}) {
   saveState();
   setDefaultDates();
   render();
+}
+
+function renderSettlementWarning(ledger) {
+  const hasTrips = state.trips.length > 0 || ledger.totalTripKm > 0;
+  const lowFuelRate = hasTrips && ledger.totalPaid > 0 && ledger.fuelRate < 0.25;
+  const noFuel = hasTrips && ledger.totalPaid <= 0;
+
+  if (noFuel) {
+    els.settlementWarning.classList.remove("hidden");
+    els.settlementWarning.textContent = "There are trips in this period, but no fuel payments yet. Add every refuel receipt before requesting settlements.";
+    return;
+  }
+
+  if (lowFuelRate) {
+    els.settlementWarning.classList.remove("hidden");
+    els.settlementWarning.textContent = `Fuel entered looks low for ${formatNumber(ledger.totalTripKm)} trip-km (${formatMoney(ledger.fuelRate)}/km). Check that all refuel receipts for this period have been added.`;
+    return;
+  }
+
+  els.settlementWarning.classList.add("hidden");
+  els.settlementWarning.textContent = "";
+}
+
+function renderPeriodBreakdown(ledger) {
+  const peopleWithKm = Object.entries(ledger.people)
+    .filter(([, person]) => person.km > 0 || person.fuelPaid > 0)
+    .map(([name, person]) => `<li><span>${escapeHtml(name)}</span><b>${formatNumber(person.km)} share-km · ${formatMoney(person.fuelPaid)} fuel paid</b></li>`)
+    .join("");
+
+  const fuelByPerson = Object.entries(ledger.fuelByPerson || {})
+    .filter(([, amount]) => amount > 0)
+    .map(([name, amount]) => `<li><span>${escapeHtml(name)}</span><b>${formatMoney(amount)}</b></li>`)
+    .join("") || `<li><span>Fuel payments</span><b>None yet</b></li>`;
+
+  els.periodBreakdown.innerHTML = `
+    <div class="period-breakdown-card">
+      <span>Total trip km</span>
+      <strong>${formatNumber(ledger.totalTripKm)} km</strong>
+      <small>Odometer distance logged in this open period.</small>
+    </div>
+    <div class="period-breakdown-card">
+      <span>Total share-km</span>
+      <strong>${formatNumber(ledger.totalShareKm)} km</strong>
+      <small>Distance allocated across trip participants.</small>
+    </div>
+    <div class="period-breakdown-card wide-breakdown">
+      <span>Fuel payments included</span>
+      <ul>${fuelByPerson}</ul>
+    </div>
+    <div class="period-breakdown-card wide-breakdown">
+      <span>People included</span>
+      <ul>${peopleWithKm || `<li><span>People</span><b>No active period data yet</b></li>`}</ul>
+    </div>
+  `;
+}
+
+function renderFuelPaymentList(fuelPayments) {
+  if (!fuelPayments || fuelPayments.length === 0) {
+    return `<p class="entry-meta">No fuel payments have been added to this period.</p>`;
+  }
+
+  return `
+    <ul class="included-fuel-list">
+      ${fuelPayments
+        .map((fuel) => `<li><span>${escapeHtml(fuel.payer)} · ${formatDate(fuel.date)}</span><b>${formatMoney(fuel.amount)}</b></li>`)
+        .join("")}
+    </ul>
+  `;
 }
 
 function renderPaymentOverview(ledger) {

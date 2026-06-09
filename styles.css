@@ -815,7 +815,8 @@ body.auth-locked #authPanel .text-button {
   .auth-form,
   .summary-band,
   .payment-overview,
-  .period-stats {
+  .period-stats,
+  .period-breakdown {
     grid-template-columns: 1fr;
   }
 

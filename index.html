@@ -114,9 +114,10 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Fuel</p>
-              <h2 id="fuelHeading">Log payment</h2>
+              <h2 id="fuelHeading">Log fuel payment</h2>
             </div>
           </div>
+          <p class="section-note">Add every refuel receipt for this settlement period. Long trips can have multiple fuel payments.</p>
 
           <form id="fuelForm" class="form-grid">
             <label>
@@ -182,7 +183,9 @@
           <p class="section-note">
             Mark requests here. When everyone has been requested, close the period before logging the next fuel cycle.
           </p>
+          <div id="settlementWarning" class="ledger-warning hidden"></div>
           <div id="paymentOverview" class="payment-overview"></div>
+          <div id="periodBreakdown" class="period-breakdown"></div>
           <div id="settlements" class="settlements"></div>
         </section>
 
@@ -202,7 +205,10 @@
               <p class="eyebrow">History</p>
               <h2 id="historyHeading">Entries</h2>
             </div>
-            <button id="resetData" class="danger-button" type="button">Reset</button>
+            <div class="admin-history-actions">
+              <button id="resetPeriod" class="danger-button" type="button">Reset current period</button>
+              <button id="resetData" class="danger-button" type="button">Reset all</button>
+            </div>
           </div>
           <div class="history-grid">
             <div>
