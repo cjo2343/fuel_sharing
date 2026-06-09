@@ -101,6 +101,13 @@ const els = {
   periodList: document.querySelector("#periodList"),
   resetPeriod: document.querySelector("#resetPeriod"),
   resetData: document.querySelector("#resetData"),
+  dataToolsPanel: document.querySelector(".data-tools-panel"),
+  dataToolsMessage: document.querySelector("#dataToolsMessage"),
+  exportLedger: document.querySelector("#exportLedger"),
+  importLedger: document.querySelector("#importLedger"),
+  importLedgerFile: document.querySelector("#importLedgerFile"),
+  downloadCsv: document.querySelector("#downloadCsv"),
+  removeTestUsers: document.querySelector("#removeTestUsers"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -305,6 +312,32 @@ els.resetData.addEventListener("click", () => {
   render();
 });
 
+
+els.exportLedger?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  exportLedgerBackup();
+});
+
+els.importLedger?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  els.importLedgerFile?.click();
+});
+
+els.importLedgerFile?.addEventListener("change", async () => {
+  if (!canManageSettings()) return;
+  await importLedgerBackup();
+});
+
+els.downloadCsv?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  downloadLedgerCsv();
+});
+
+els.removeTestUsers?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  removeUnusedTestUsers();
+});
+
 els.closePeriod.addEventListener("click", () => {
   closeCurrentPeriod();
 });
@@ -352,7 +385,9 @@ function render() {
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
   els.resetData.classList.toggle("hidden", !canManageSettings());
+  if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
 }
+
 
 async function initializeSync() {
   if (supabaseClient) {
@@ -1219,6 +1254,188 @@ async function copySettlement(button) {
   window.setTimeout(() => {
     button.textContent = "Copy";
   }, 1600);
+}
+
+
+function exportLedgerBackup() {
+  const filename = `fuel-ledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    app: "Fuel Ledger",
+    version: 1,
+    state: normalizeState(state)
+  };
+  downloadTextFile(filename, JSON.stringify(backup, null, 2), "application/json");
+  setDataToolsMessage("Backup exported.");
+}
+
+async function importLedgerBackup() {
+  const file = els.importLedgerFile?.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const importedState = normalizeState(parsed.state || parsed);
+    const memberCount = importedState.members.length;
+    const tripCount = importedState.trips.length;
+    const fuelCount = importedState.fuel.length;
+    const periodCount = importedState.closedPeriods.length;
+
+    if (
+      !confirm(
+        `Restore this backup? This will replace the current ledger with ${memberCount} people, ${tripCount} current trips, ${fuelCount} current fuel payments, and ${periodCount} closed periods.`
+      )
+    ) {
+      return;
+    }
+
+    state = importedState;
+    state.lastOdometer = getLatestOdometer();
+    saveState();
+    setDefaultDates();
+    render();
+    setDataToolsMessage("Backup imported and saved.");
+  } catch (error) {
+    setDataToolsMessage(`Could not import backup: ${error.message || "invalid JSON"}`);
+  } finally {
+    if (els.importLedgerFile) els.importLedgerFile.value = "";
+  }
+}
+
+function downloadLedgerCsv() {
+  const date = new Date().toISOString().slice(0, 10);
+  const trips = [];
+  for (const trip of state.trips) trips.push(csvTripRow(trip, "current", ""));
+  for (const period of state.closedPeriods) {
+    for (const trip of period.trips || []) trips.push(csvTripRow(trip, "closed", period.label || period.closedAt || ""));
+  }
+
+  const fuel = [];
+  for (const item of state.fuel) fuel.push(csvFuelRow(item, "current", ""));
+  for (const period of state.closedPeriods) {
+    for (const item of period.fuel || []) fuel.push(csvFuelRow(item, "closed", period.label || period.closedAt || ""));
+  }
+
+  downloadTextFile(
+    `fuel-ledger-trips-${date}.csv`,
+    toCsv([
+      ["period_status", "period", "date", "driver", "start_km", "end_km", "trip_km", "participants", "participant_count", "note"],
+      ...trips
+    ]),
+    "text/csv;charset=utf-8"
+  );
+  downloadTextFile(
+    `fuel-ledger-fuel-${date}.csv`,
+    toCsv([
+      ["period_status", "period", "date", "payer", "amount", "currency", "liters", "price_per_liter", "odometer", "station", "full_tank"],
+      ...fuel
+    ]),
+    "text/csv;charset=utf-8"
+  );
+  setDataToolsMessage("CSV files downloaded.");
+}
+
+function csvTripRow(trip, periodStatus, periodLabel) {
+  const participants = getTripParticipants(trip);
+  return [
+    periodStatus,
+    periodLabel,
+    trip.date || "",
+    trip.driver || "",
+    trip.startKm ?? "",
+    trip.endKm ?? "",
+    round(Number(trip.endKm || 0) - Number(trip.startKm || 0)),
+    participants.join("; "),
+    participants.length,
+    trip.note || ""
+  ];
+}
+
+function csvFuelRow(fuel, periodStatus, periodLabel) {
+  const liters = Number(fuel.liters || 0);
+  const amount = Number(fuel.amount || 0);
+  return [
+    periodStatus,
+    periodLabel,
+    fuel.date || "",
+    fuel.payer || "",
+    amount,
+    state.currency,
+    liters || "",
+    liters > 0 ? roundMoney(amount / liters) : "",
+    fuel.odometer || "",
+    fuel.station || "",
+    fuel.fullTank ? "yes" : "no"
+  ];
+}
+
+function removeUnusedTestUsers() {
+  const removable = state.members.filter((member) => /test/i.test(member) && !memberHasLedgerData(member));
+
+  if (removable.length === 0) {
+    setDataToolsMessage("No unused test users found.");
+    return;
+  }
+
+  if (!confirm(`Remove these unused test users?\n\n${removable.join("\n")}`)) return;
+
+  state.members = state.members.filter((member) => !removable.includes(member));
+  for (const member of removable) delete state.memberProfiles[member];
+  if (!state.members.includes(currentUser)) {
+    currentUser = getCurrentMemberProfile()?.name || state.members[0] || "";
+    localStorage.setItem(userKey, currentUser);
+  }
+  saveState();
+  render();
+  setDataToolsMessage(`Removed ${removable.length} unused test user${removable.length === 1 ? "" : "s"}.`);
+}
+
+function memberHasLedgerData(member) {
+  const inCurrentTrips = state.trips.some(
+    (trip) => trip.driver === member || getTripParticipants(trip).includes(member)
+  );
+  const inCurrentFuel = state.fuel.some((fuel) => fuel.payer === member);
+  const inPayments = Object.keys(state.paymentStatuses || {}).some((key) => key.includes(`${member}->`) || key.includes(`->${member}:`));
+  const inClosedPeriods = state.closedPeriods.some((period) => {
+    return (
+      (period.people || []).some((person) => person.name === member) ||
+      (period.trips || []).some((trip) => trip.driver === member || getTripParticipants(trip).includes(member)) ||
+      (period.fuel || []).some((fuel) => fuel.payer === member) ||
+      (period.settlements || []).some((settlement) => settlement.from === member || settlement.to === member)
+    );
+  });
+  return inCurrentTrips || inCurrentFuel || inPayments || inClosedPeriods;
+}
+
+function toCsv(rows) {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const value = String(cell ?? "");
+          return /[",\n;]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+        })
+        .join(",")
+    )
+    .join("\n");
+}
+
+function downloadTextFile(filename, content, type = "text/plain") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function setDataToolsMessage(message) {
+  if (!els.dataToolsMessage) return;
+  els.dataToolsMessage.textContent = message;
 }
 
 function renderHistory() {

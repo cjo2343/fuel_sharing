@@ -258,6 +258,40 @@
           </div>
         </section>
 
+        <section class="panel wide-panel data-tools-panel hidden" aria-labelledby="dataToolsHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Admin</p>
+              <h2 id="dataToolsHeading">Data tools</h2>
+            </div>
+          </div>
+          <p class="section-note">Backup, restore, clean test data, and export trips/fuel before making bigger changes.</p>
+          <div class="data-tools-grid">
+            <article class="data-tool-card">
+              <strong>Backup</strong>
+              <p>Download the full ledger state as JSON. Use this before testing new features or cleaning data.</p>
+              <button id="exportLedger" class="subtle-button" type="button">Export backup</button>
+            </article>
+            <article class="data-tool-card">
+              <strong>Restore</strong>
+              <p>Import a previously exported JSON backup. This replaces the current cloud ledger after confirmation.</p>
+              <button id="importLedger" class="subtle-button" type="button">Import backup</button>
+              <input id="importLedgerFile" class="hidden" type="file" accept="application/json,.json" />
+            </article>
+            <article class="data-tool-card">
+              <strong>CSV export</strong>
+              <p>Download trips and fuel payments as spreadsheet-friendly CSV files.</p>
+              <button id="downloadCsv" class="subtle-button" type="button">Download CSV</button>
+            </article>
+            <article class="data-tool-card danger-zone">
+              <strong>Clean test users</strong>
+              <p>Remove users with “test” in the name when they have no trips, fuel payments, or archived history.</p>
+              <button id="removeTestUsers" class="danger-button" type="button">Remove unused test users</button>
+            </article>
+          </div>
+          <p id="dataToolsMessage" class="section-note"></p>
+        </section>
+
         <section class="panel wide-panel" aria-labelledby="periodsHeading">
           <div class="panel-header">
             <div>
