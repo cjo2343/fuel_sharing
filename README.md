@@ -212,3 +212,20 @@ The app warns before settlement requests if logged fuel looks too low or too hig
 Admins can edit current-period trips and fuel payments from the History section.
 Use **Edit** to load the entry back into the form, correct the values, and save.
 Closed periods stay archived; edit the current period before closing it.
+
+
+## Admin system health
+
+Admins have a **System health** panel that checks for common data quality problems before bigger changes or settlement requests:
+
+- users without attached emails
+- missing or failed cloud saves
+- missing admin users
+- large fuel logs without liters
+- suspicious DKK/L values
+- unusual trip distances
+- open-period fuel sanity warnings
+- local push notification status
+- whether closed periods exist
+
+Use this panel before cleaning test data, requesting settlements, or starting larger refactors.

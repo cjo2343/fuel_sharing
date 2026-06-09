@@ -123,6 +123,9 @@ const els = {
   resetData: document.querySelector("#resetData"),
   dataToolsPanel: document.querySelector(".data-tools-panel"),
   dataToolsMessage: document.querySelector("#dataToolsMessage"),
+  systemHealthPanel: document.querySelector(".system-health-panel"),
+  systemHealthSummary: document.querySelector("#systemHealthSummary"),
+  systemHealthList: document.querySelector("#systemHealthList"),
   exportLedger: document.querySelector("#exportLedger"),
   importLedger: document.querySelector("#importLedger"),
   importLedgerFile: document.querySelector("#importLedgerFile"),
@@ -651,11 +654,13 @@ function render() {
   renderHistory();
   renderClosedPeriods();
   renderTripEstimate();
+  renderSystemHealth(ledger);
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
   els.resetData.classList.toggle("hidden", !canManageSettings());
   if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
   updateEditUi();
 }
 
@@ -1997,6 +2002,164 @@ function renderHistory() {
       )
       .join("");
   }
+}
+
+
+function renderSystemHealth(ledger) {
+  if (!els.systemHealthPanel || !els.systemHealthSummary || !els.systemHealthList) return;
+
+  const checks = buildSystemHealthChecks(ledger);
+  const counts = checks.reduce(
+    (acc, check) => {
+      acc[check.level] = (acc[check.level] || 0) + 1;
+      return acc;
+    },
+    { issue: 0, warning: 0, ok: 0 }
+  );
+
+  els.systemHealthSummary.innerHTML = `
+    <article class="health-summary-card ${counts.issue ? "has-issue" : ""}">
+      <span>Needs attention</span>
+      <strong>${counts.issue || 0}</strong>
+    </article>
+    <article class="health-summary-card ${counts.warning ? "has-warning" : ""}">
+      <span>Warnings</span>
+      <strong>${counts.warning || 0}</strong>
+    </article>
+    <article class="health-summary-card">
+      <span>Looks good</span>
+      <strong>${counts.ok || 0}</strong>
+    </article>
+  `;
+
+  els.systemHealthList.innerHTML = checks
+    .map(
+      (check) => `
+        <article class="health-check ${check.level}">
+          <div>
+            <strong>${escapeHtml(check.title)}</strong>
+            <p>${escapeHtml(check.message)}</p>
+          </div>
+          <span>${healthLevelLabel(check.level)}</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function buildSystemHealthChecks(ledger) {
+  const checks = [];
+  const profiles = getMemberNames().map(getMemberProfile);
+  const membersWithoutEmail = profiles.filter((profile) => !profile.email);
+  const nonAdminProfiles = profiles.filter((profile) => profile.role !== "admin");
+  const adminProfiles = profiles.filter((profile) => profile.role === "admin");
+  const fuelWithMissingLiters = state.fuel.filter((fuel) => Number(fuel.amount || 0) >= 300 && !Number(fuel.liters || 0));
+  const suspiciousPriceLogs = state.fuel.filter((fuel) => {
+    const amount = Number(fuel.amount || 0);
+    const liters = Number(fuel.liters || 0);
+    if (!amount || !liters) return false;
+    const price = amount / liters;
+    return price < 8 || price > 25;
+  });
+  const unusualTrips = state.trips.filter((trip) => {
+    const km = Number(trip.endKm || 0) - Number(trip.startKm || 0);
+    return km <= 0 || km > 1500;
+  });
+  const openFuelWarnings = getFuelSanityWarnings(ledger);
+  const currentPeriodHasData = state.trips.length > 0 || state.fuel.length > 0;
+  const pushSubscriptionHint = pushEnabled
+    ? "Push notifications are enabled on this device."
+    : pushSupported
+      ? "Push is supported, but not enabled on this device yet."
+      : "Push is not enabled or not supported on this device/browser.";
+
+  checks.push({
+    level: currentSession ? "ok" : "issue",
+    title: "Authentication",
+    message: currentSession ? `Signed in as ${getLoggedInEmail()}.` : "Nobody is signed in, so changes cannot be saved to cloud."
+  });
+
+  checks.push({
+    level: (els.syncStatus?.dataset.status || "") === "cloud" ? "ok" : ((els.syncStatus?.dataset.status || "") === "saving" ? "warning" : "issue"),
+    title: "Cloud saving",
+    message: lastCloudSaveAt
+      ? `Last cloud save: ${new Date(lastCloudSaveAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}.`
+      : lastSyncError
+        ? `Last save/load error: ${lastSyncError}.`
+        : "No confirmed cloud save yet in this session."
+  });
+
+  checks.push({
+    level: adminProfiles.length ? "ok" : "issue",
+    title: "Admin users",
+    message: adminProfiles.length
+      ? `${adminProfiles.map((profile) => profile.name).join(", ")} can manage settings and data tools.`
+      : "No admin user is configured. Add one in Group settings."
+  });
+
+  checks.push({
+    level: membersWithoutEmail.length ? "warning" : "ok",
+    title: "People with email",
+    message: membersWithoutEmail.length
+      ? `${membersWithoutEmail.map((profile) => profile.name).join(", ")} ${membersWithoutEmail.length === 1 ? "has" : "have"} no email attached.`
+      : `${nonAdminProfiles.length + adminProfiles.length} people have email/profile data configured.`
+  });
+
+  checks.push({
+    level: fuelWithMissingLiters.length ? "warning" : "ok",
+    title: "Fuel logs with liters",
+    message: fuelWithMissingLiters.length
+      ? `${fuelWithMissingLiters.length} current fuel payment${fuelWithMissingLiters.length === 1 ? "" : "s"} over 300 DKK ${fuelWithMissingLiters.length === 1 ? "is" : "are"} missing liters.`
+      : "Current fuel logs have liters where it matters, or there are no large fuel logs missing liters."
+  });
+
+  checks.push({
+    level: suspiciousPriceLogs.length ? "warning" : "ok",
+    title: "Receipt price checks",
+    message: suspiciousPriceLogs.length
+      ? `${suspiciousPriceLogs.length} fuel log${suspiciousPriceLogs.length === 1 ? "" : "s"} have unusual DKK/L values. Check amount and liters.`
+      : "No current fuel logs have suspicious DKK/L values."
+  });
+
+  checks.push({
+    level: unusualTrips.length ? "warning" : "ok",
+    title: "Trip distance checks",
+    message: unusualTrips.length
+      ? `${unusualTrips.length} trip${unusualTrips.length === 1 ? "" : "s"} look unusual. Check odometer values and very long test trips.`
+      : "Current trip distances look plausible."
+  });
+
+  checks.push({
+    level: openFuelWarnings.length ? "warning" : "ok",
+    title: "Open settlement fuel sanity",
+    message: openFuelWarnings.length
+      ? `${openFuelWarnings.length} fuel sanity warning${openFuelWarnings.length === 1 ? "" : "s"} in the current period. Review before requesting settlement.`
+      : currentPeriodHasData
+        ? "Current period fuel amount looks plausible against distance and settings."
+        : "No current trips or fuel payments to validate."
+  });
+
+  checks.push({
+    level: pushEnabled ? "ok" : (pushSupported ? "warning" : "warning"),
+    title: "Push notifications on this device",
+    message: pushSubscriptionHint
+  });
+
+  checks.push({
+    level: state.closedPeriods.length ? "ok" : "warning",
+    title: "Archive history",
+    message: state.closedPeriods.length
+      ? `${state.closedPeriods.length} closed settlement period${state.closedPeriods.length === 1 ? "" : "s"} archived.`
+      : "No closed periods yet. Close periods regularly to keep settlements clean."
+  });
+
+  return checks;
+}
+
+function healthLevelLabel(level) {
+  if (level === "issue") return "Fix";
+  if (level === "warning") return "Check";
+  return "OK";
 }
 
 function renderClosedPeriods() {
