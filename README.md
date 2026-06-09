@@ -247,3 +247,11 @@ If it says the normalized tables match, Phase 1 data migration is consistent.
 If it reports differences, keep JSON as source of truth and rerun/sync the Phase 1 migration before moving to Phase 2B.
 
 Next phase will be dual-write: every app save updates both JSON and normalized tables.
+
+## Phase 2B normalized dual-write
+
+This build keeps the JSON ledger as the source of truth, but after every successful cloud save it also syncs the current members, open trips, trip participants, and fuel payments into the normalized Supabase tables.
+
+Before deploying this build, run `phase2b-dual-write-policies.sql` once in Supabase SQL Editor. Those policies allow the browser app to write to the normalized tables during this bridge phase. They are intentionally broad and should be tightened in the later normalized-source-of-truth phase.
+
+After deployment, add or edit one test trip/fuel log, then open System health. The "Normalized database tables" check should mention that dual-write sync is active and that normalized counts match JSON.

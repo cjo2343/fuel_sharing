@@ -2751,6 +2751,217 @@ async function sendSettlementPush(settlement) {
 }
 
 
+function normalizedDate(value) {
+  return String(value || new Date().toISOString().slice(0, 10)).slice(0, 10);
+}
+
+function nullableNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+async function syncNormalizedTablesFromJson() {
+  if (!supabaseClient || !currentSession) return;
+
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+
+  try {
+    const ledgerPayload = {
+      id: ledgerId,
+      name: "Fuel Ledger",
+      currency: state.currency || "DKK",
+      fuel_type: state.fuelType || defaults.fuelType,
+      estimated_consumption_l_per_100km: Number(state.fuelConsumption) || defaults.fuelConsumption,
+      fallback_fuel_price: Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice,
+      low_fuel_threshold_percent: Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold,
+      updated_at: new Date().toISOString()
+    };
+
+    const ledgerResult = await supabaseClient.from("ledgers").upsert(ledgerPayload).select("id").single();
+    if (ledgerResult.error) throw ledgerResult.error;
+
+    const memberPayloads = getMemberNames().map((name) => {
+      const profile = getMemberProfile(name);
+      return {
+        ledger_id: ledgerId,
+        name,
+        email: profile.email || null,
+        role: profile.role === "admin" ? "admin" : "member",
+        is_active: true,
+        updated_at: new Date().toISOString()
+      };
+    });
+
+    if (memberPayloads.length) {
+      const upsertMembers = await supabaseClient
+        .from("ledger_members")
+        .upsert(memberPayloads, { onConflict: "ledger_id,name" })
+        .select("id,name,email,role,is_active");
+      if (upsertMembers.error) throw upsertMembers.error;
+    }
+
+    const membersResult = await supabaseClient
+      .from("ledger_members")
+      .select("id,name")
+      .eq("ledger_id", ledgerId)
+      .eq("is_active", true);
+    if (membersResult.error) throw membersResult.error;
+
+    const memberIdsByName = Object.fromEntries((membersResult.data || []).map((member) => [member.name, member.id]));
+
+    let openPeriodId = null;
+    const openPeriodResult = await supabaseClient
+      .from("settlement_periods")
+      .select("id")
+      .eq("ledger_id", ledgerId)
+      .eq("status", "open")
+      .limit(1)
+      .maybeSingle();
+    if (openPeriodResult.error) throw openPeriodResult.error;
+    openPeriodId = openPeriodResult.data?.id || null;
+
+    if (!openPeriodId) {
+      const insertPeriod = await supabaseClient
+        .from("settlement_periods")
+        .insert({ ledger_id: ledgerId, status: "open", label: "Current period" })
+        .select("id")
+        .single();
+      if (insertPeriod.error) throw insertPeriod.error;
+      openPeriodId = insertPeriod.data.id;
+    }
+
+    const tripPayloads = state.trips.map((trip) => ({
+      legacy_id: trip.id,
+      ledger_id: ledgerId,
+      period_id: openPeriodId,
+      driver_member_id: memberIdsByName[trip.driver] || null,
+      trip_date: normalizedDate(trip.date),
+      start_km: Number(trip.startKm || 0),
+      end_km: Number(trip.endKm || 0),
+      note: trip.note || null,
+      deleted_at: null,
+      updated_at: new Date().toISOString()
+    })).filter((trip) => trip.legacy_id && trip.end_km > trip.start_km);
+
+    let tableTrips = [];
+    if (tripPayloads.length) {
+      const upsertTrips = await supabaseClient
+        .from("trips")
+        .upsert(tripPayloads, { onConflict: "ledger_id,legacy_id" })
+        .select("id,legacy_id");
+      if (upsertTrips.error) throw upsertTrips.error;
+      tableTrips = upsertTrips.data || [];
+    }
+
+    const existingTripsResult = await supabaseClient
+      .from("trips")
+      .select("id,legacy_id")
+      .eq("ledger_id", ledgerId)
+      .is("deleted_at", null);
+    if (existingTripsResult.error) throw existingTripsResult.error;
+
+    const activeTripIds = new Set(state.trips.map((trip) => trip.id));
+    const tripsToSoftDelete = (existingTripsResult.data || []).filter((trip) => trip.legacy_id && !activeTripIds.has(trip.legacy_id));
+    for (const trip of tripsToSoftDelete) {
+      const deleted = await supabaseClient
+        .from("trips")
+        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", trip.id);
+      if (deleted.error) throw deleted.error;
+    }
+
+    const tripIdsByLegacyId = Object.fromEntries([...(existingTripsResult.data || []), ...tableTrips].map((trip) => [trip.legacy_id, trip.id]));
+    for (const trip of state.trips) {
+      const normalizedTripId = tripIdsByLegacyId[trip.id];
+      if (!normalizedTripId) continue;
+
+      const deleteParticipants = await supabaseClient
+        .from("trip_participants")
+        .delete()
+        .eq("trip_id", normalizedTripId);
+      if (deleteParticipants.error) throw deleteParticipants.error;
+
+      const participantPayloads = getTripParticipants(trip)
+        .map((name) => memberIdsByName[name])
+        .filter(Boolean)
+        .map((memberId) => ({ trip_id: normalizedTripId, member_id: memberId }));
+
+      if (participantPayloads.length) {
+        const insertParticipants = await supabaseClient
+          .from("trip_participants")
+          .insert(participantPayloads);
+        if (insertParticipants.error) throw insertParticipants.error;
+      }
+    }
+
+    const fuelPayloads = state.fuel.map((fuel) => {
+      const liters = nullableNumber(fuel.liters);
+      const amount = Number(fuel.amount || 0);
+      return {
+        legacy_id: fuel.id,
+        ledger_id: ledgerId,
+        period_id: openPeriodId,
+        payer_member_id: memberIdsByName[fuel.payer] || null,
+        payment_date: normalizedDate(fuel.date),
+        amount,
+        currency: state.currency || "DKK",
+        liters,
+        price_per_liter: liters ? roundMoney(amount / liters) : nullableNumber(fuel.pricePerLiter),
+        odometer: nullableNumber(fuel.odometer),
+        station_name: fuel.station || fuel.stationInfo?.name || null,
+        station_brand: fuel.stationInfo?.brand || null,
+        station_lat: fuel.stationInfo?.latitude || null,
+        station_lng: fuel.stationInfo?.longitude || null,
+        user_lat: fuel.location?.latitude || null,
+        user_lng: fuel.location?.longitude || null,
+        full_tank: Boolean(fuel.fullTank),
+        deleted_at: null,
+        updated_at: new Date().toISOString()
+      };
+    }).filter((fuel) => fuel.legacy_id && fuel.amount > 0);
+
+    if (fuelPayloads.length) {
+      const upsertFuel = await supabaseClient
+        .from("fuel_payments")
+        .upsert(fuelPayloads, { onConflict: "ledger_id,legacy_id" });
+      if (upsertFuel.error) throw upsertFuel.error;
+    }
+
+    const existingFuelResult = await supabaseClient
+      .from("fuel_payments")
+      .select("id,legacy_id")
+      .eq("ledger_id", ledgerId)
+      .is("deleted_at", null);
+    if (existingFuelResult.error) throw existingFuelResult.error;
+
+    const activeFuelIds = new Set(state.fuel.map((fuel) => fuel.id));
+    const fuelToSoftDelete = (existingFuelResult.data || []).filter((fuel) => fuel.legacy_id && !activeFuelIds.has(fuel.legacy_id));
+    for (const fuel of fuelToSoftDelete) {
+      const deleted = await supabaseClient
+        .from("fuel_payments")
+        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", fuel.id);
+      if (deleted.error) throw deleted.error;
+    }
+
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.fuel.length} fuel logs).`
+    };
+  } catch (error) {
+    console.warn("Normalized table dual-write failed", error);
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `JSON was saved, but normalized table dual-write failed: ${error.message || error}`
+    };
+  }
+
+  render();
+}
+
+
 async function checkNormalizedTablesAgainstCurrentState() {
   if (!supabaseClient || !currentSession) return;
 
@@ -2878,6 +3089,7 @@ async function loadSupabaseState() {
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
     applyIncomingState(data.state, "Cloud");
+    await syncNormalizedTablesFromJson();
     checkNormalizedTablesAgainstCurrentState().catch((error) => {
       normalizedTableStatus = {
         checked: true,
