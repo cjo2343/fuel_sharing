@@ -54,6 +54,7 @@ let latestFuelPrice = null;
 let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
 let lastSyncError = "";
+let normalizedTableStatus = { checked: false, ok: false, message: "Normalized tables have not been checked yet." };
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -2146,6 +2147,12 @@ function buildSystemHealthChecks(ledger) {
   });
 
   checks.push({
+    level: normalizedTableStatus.checked ? (normalizedTableStatus.ok ? "ok" : "warning") : "warning",
+    title: "Normalized database tables",
+    message: normalizedTableStatus.message
+  });
+
+  checks.push({
     level: state.closedPeriods.length ? "ok" : "warning",
     title: "Archive history",
     message: state.closedPeriods.length
@@ -2743,6 +2750,64 @@ async function sendSettlementPush(settlement) {
   }
 }
 
+
+async function checkNormalizedTablesAgainstCurrentState() {
+  if (!supabaseClient || !currentSession) return;
+
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const [membersResult, tripsResult, fuelResult, periodsResult] = await Promise.all([
+    supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
+    supabaseClient.from("trips").select("id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
+    supabaseClient.from("fuel_payments").select("id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
+    supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId)
+  ]);
+
+  const firstError = [membersResult, tripsResult, fuelResult, periodsResult].find((result) => result.error)?.error;
+  if (firstError) throw firstError;
+
+  const tableMembers = membersResult.data || [];
+  const tableTrips = tripsResult.data || [];
+  const tableFuel = fuelResult.data || [];
+  const tablePeriods = periodsResult.data || [];
+  const activeMembers = tableMembers.filter((member) => member.is_active !== false);
+  const admins = activeMembers.filter((member) => member.role === "admin");
+  const membersWithoutEmail = activeMembers.filter((member) => !member.email);
+  const mismatchParts = [];
+
+  if (activeMembers.length !== getMemberNames().length) {
+    mismatchParts.push(`members ${activeMembers.length} in tables vs ${getMemberNames().length} in app`);
+  }
+
+  if (tableTrips.length !== state.trips.length) {
+    mismatchParts.push(`trips ${tableTrips.length} in tables vs ${state.trips.length} in app`);
+  }
+
+  if (tableFuel.length !== state.fuel.length) {
+    mismatchParts.push(`fuel logs ${tableFuel.length} in tables vs ${state.fuel.length} in app`);
+  }
+
+  const openPeriods = tablePeriods.filter((period) => period.status === "open").length;
+  if (openPeriods !== 1) {
+    mismatchParts.push(`${openPeriods} open normalized periods`);
+  }
+
+  if (!admins.length) {
+    mismatchParts.push("no normalized admin user");
+  }
+
+  normalizedTableStatus = {
+    checked: true,
+    ok: mismatchParts.length === 0,
+    message: mismatchParts.length
+      ? `Normalized table check found: ${mismatchParts.join("; ")}. JSON remains the source of truth until this is resolved.`
+      : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${tableTrips.length} trips, ${tableFuel.length} fuel logs).`,
+    membersWithoutEmail: membersWithoutEmail.length,
+    admins: admins.length
+  };
+
+  render();
+}
+
 async function loadRemoteState() {
   if (supabaseClient) {
     await loadSupabaseState();
@@ -2813,6 +2878,14 @@ async function loadSupabaseState() {
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
     applyIncomingState(data.state, "Cloud");
+    checkNormalizedTablesAgainstCurrentState().catch((error) => {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: `Could not read normalized tables: ${error.message || error}`
+      };
+      render();
+    });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
     lastSyncError = error.message || "Could not load cloud data.";
@@ -2845,6 +2918,14 @@ async function saveSupabaseState() {
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
     applyIncomingState(data.state, "Cloud");
+    checkNormalizedTablesAgainstCurrentState().catch((error) => {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: `Could not read normalized tables: ${error.message || error}`
+      };
+      render();
+    });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
     lastSyncError = error.message || "Could not save cloud data.";

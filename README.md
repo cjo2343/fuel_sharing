@@ -229,3 +229,21 @@ Admins have a **System health** panel that checks for common data quality proble
 - whether closed periods exist
 
 Use this panel before cleaning test data, requesting settlements, or starting larger refactors.
+
+## Phase 2A: normalized table read/compare mode
+
+This version keeps the existing JSON ledger (`car_share_ledgers.state`) as the app's source of truth, but reads the new normalized tables after cloud load/save and shows a System Health check comparing table counts against the active app state.
+
+This is an intentional safety step before switching the app to normalized table reads/writes.
+
+What to verify:
+
+1. Deploy this version.
+2. Log in as admin.
+3. Open System health.
+4. Check the “Normalized database tables” item.
+
+If it says the normalized tables match, Phase 1 data migration is consistent.
+If it reports differences, keep JSON as source of truth and rerun/sync the Phase 1 migration before moving to Phase 2B.
+
+Next phase will be dual-write: every app save updates both JSON and normalized tables.
