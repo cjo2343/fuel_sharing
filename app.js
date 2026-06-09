@@ -637,6 +637,14 @@ function renderSettlements(ledger) {
         const fromPerson = ledger.people[item.from];
         const toPerson = ledger.people[item.to];
         const message = `${item.from} pays ${item.to} ${formatMoney(item.amount)} for shared car fuel`;
+        const canRequest = canManageSettlementRequest(item);
+        const requestControls = canRequest
+          ? `
+            <button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(message)}">Copy</button>
+            ${status === "open" ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested">Requested</button>` : ""}
+            ${status !== "open" ? `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open">Reopen</button>` : ""}
+          `
+          : `<span class="request-note">Only ${escapeHtml(item.to)} can request this payment.</span>`;
         return `
         <article class="settlement-card ${status === "requested" ? "is-requested" : ""}">
           <div class="settlement-main">
@@ -650,9 +658,7 @@ function renderSettlements(ledger) {
           </div>
           <div class="settlement-actions">
             <strong>${formatMoney(item.amount)}</strong>
-            <button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(message)}">Copy</button>
-            ${status === "open" ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested">Requested</button>` : ""}
-            ${status !== "open" ? `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open">Reopen</button>` : ""}
+            ${requestControls}
           </div>
         </article>
       `;
@@ -745,14 +751,23 @@ function renderPaymentOverview(ledger) {
 }
 
 function updatePaymentStatus(button) {
+  const ledger = calculateLedger();
+  const settlement = ledger.settlements.find((item) => settlementKey(item) === button.dataset.paymentKey);
+
+  if (!settlement || !canManageSettlementRequest(settlement)) {
+    alert("Only the person who paid for fuel in this settlement can request or reopen that payment.");
+    render();
+    return;
+  }
+
   state.paymentStatuses[button.dataset.paymentKey] = button.dataset.paymentStatus;
   saveState();
 
-  const ledger = calculateLedger();
+  const refreshedLedger = calculateLedger();
   const allRequested =
-    ledger.settlements.length > 0 &&
-    ledger.settlements.every(
-      (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "requested"
+    refreshedLedger.settlements.length > 0 &&
+    refreshedLedger.settlements.every(
+      (item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested"
     );
 
   if (
@@ -1019,6 +1034,12 @@ function canManageSettings() {
   if (!currentSession) return false;
   const profile = getCurrentMemberProfile();
   return profile?.role === "admin" || noMemberEmailsConfigured();
+}
+
+function canManageSettlementRequest(settlement) {
+  if (!supabaseClient) return true;
+  const profile = getCurrentMemberProfile();
+  return Boolean(profile && settlement?.to === profile.name);
 }
 
 function noMemberEmailsConfigured() {
