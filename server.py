@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import base64
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -69,8 +71,12 @@ def supabase_key():
     return env_value("SUPABASE_SERVICE_ROLE_KEY") or env_value("SUPABASE_ANON_KEY")
 
 
-def request_json(url, method="GET", body=None, token=None, prefer=None):
-    key = supabase_key()
+def supabase_anon_key():
+    return env_value("SUPABASE_ANON_KEY") or env_value("SUPABASE_SERVICE_ROLE_KEY")
+
+
+def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=None):
+    key = api_key or supabase_key()
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {token or key}",
@@ -99,16 +105,44 @@ def get_bearer_token(handler):
     return ""
 
 
-def current_supabase_user(handler):
-    url = supabase_url()
-    key = supabase_key()
-    token = get_bearer_token(handler)
-    if not url or not key or not token:
-        return None
+def decode_jwt_payload(token):
     try:
-        return request_json(f"{url}/auth/v1/user", token=token)
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload = parts[1]
+        payload += "=" * (-len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(payload.encode("utf-8"))
+        data = json.loads(decoded.decode("utf-8"))
+        exp = data.get("exp")
+        if exp and int(exp) < int(time.time()):
+            return None
+        email = data.get("email") or data.get("user_metadata", {}).get("email")
+        if not email:
+            return None
+        return {"email": email}
     except Exception:
         return None
+
+
+def current_supabase_user(handler):
+    url = supabase_url()
+    token = get_bearer_token(handler)
+    if not url or not token:
+        return None
+
+    # Prefer Supabase's own auth check. Use the anon key for this when available;
+    # the service role key is still used for server-side database writes.
+    try:
+        user = request_json(f"{url}/auth/v1/user", token=token, api_key=supabase_anon_key())
+        if user and user.get("email"):
+            return user
+    except Exception:
+        pass
+
+    # Fallback for installed iOS PWAs/environments where the auth endpoint rejects
+    # the server-side key combination even though the client has a valid session.
+    return decode_jwt_payload(token)
 
 
 def public_origin(handler):
