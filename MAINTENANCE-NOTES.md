@@ -22,21 +22,28 @@ Long-term goal: move fully to normalized tables and either remove `car_share_led
 
 ## Safe refactor order
 
-Refactor in small commits with validation after each step:
+The first extraction pass is complete. Current extracted modules:
 
-1. Extract constants/config helpers.
-2. Continue extracting pure formatting/date/money helpers into `utils.js` as small, behavior-preserving moves.
-3. Extract Supabase read/write helpers.
-4. Extract trip form/render logic.
-5. Extract fuel form/render logic.
-6. Extract settlement logic.
-7. Extract admin/diagnostics logic.
-8. Extract notification helpers.
+1. `utils.js` — pure formatting/date/escaping helpers.
+2. `supabase-helpers.js` — Supabase config/client/session/open-period helpers.
+3. `data-store.js` — local persistence and remote-save queue helpers.
+4. `settlement-calculations.js` — settlement/fuel-estimate calculations.
+5. `ui-messages.js` — toast/save-message helpers.
+6. `notifications.js` — push-notification helper logic.
+7. `admin-tools.js` — diagnostics and settlement-request cleanup helpers.
+
+Next refactors should stay small and target cohesive sections such as trip rendering, fuel rendering, payment action handlers, or settings/admin event wiring. Leave destructive production-reset confirmation flow easy to audit.
 
 After each step, run:
 
 ```sh
 node --check utils.js
+node --check supabase-helpers.js
+node --check data-store.js
+node --check settlement-calculations.js
+node --check ui-messages.js
+node --check notifications.js
+node --check admin-tools.js
 node --check app.js
 node --check service-worker.js
 node --check tools/check-app-references.mjs
@@ -140,3 +147,8 @@ This is intentionally narrower than a full JavaScript linter, but it is designed
 ## Admin tools extraction
 
 `admin-tools.js` now owns reusable database diagnostics and settlement-request cleanup helpers. Keep the admin button wiring and production reset confirmation flow in `app.js`, so destructive actions remain easy to audit.
+
+
+## Runtime module/cache guard
+
+`tools/check-app-references.mjs` now validates that `index.html` loads the runtime modules in the expected order and that `service-worker.js` caches the same runtime assets. This catches the common PWA mistake where a new module is added to the page but not to the home-screen cache.

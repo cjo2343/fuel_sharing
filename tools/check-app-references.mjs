@@ -9,6 +9,68 @@ const extraSourcePaths = ['utils.js', 'supabase-helpers.js', 'data-store.js', 's
   .filter((candidate) => candidate !== appPath && fs.existsSync(candidate));
 const declarationSource = [source, ...extraSourcePaths.map((candidate) => fs.readFileSync(candidate, 'utf8'))].join('\n');
 
+const requiredRuntimeFiles = [
+  'supabase-config.js',
+  'utils.js',
+  'supabase-helpers.js',
+  'data-store.js',
+  'settlement-calculations.js',
+  'ui-messages.js',
+  'notifications.js',
+  'admin-tools.js',
+  'app.js'
+];
+
+function assertRuntimeFilesLoadedAndCached() {
+  const indexPath = path.join(process.cwd(), 'index.html');
+  const serviceWorkerPath = path.join(process.cwd(), 'service-worker.js');
+  if (!fs.existsSync(indexPath) || !fs.existsSync(serviceWorkerPath)) return;
+
+  const indexSource = fs.readFileSync(indexPath, 'utf8');
+  const serviceWorkerSource = fs.readFileSync(serviceWorkerPath, 'utf8');
+  const scripts = [...indexSource.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)]
+    .map((match) => match[1].replace(/^\//, ''))
+    .filter((src) => !/^https?:\/\//i.test(src));
+
+  const missingScripts = requiredRuntimeFiles.filter((file) => !scripts.includes(file));
+  if (missingScripts.length) {
+    console.error('Runtime module guard failed: index.html is missing required script(s):');
+    for (const file of missingScripts) console.error(`- ${file}`);
+    process.exit(1);
+  }
+
+  let previousIndex = -1;
+  for (const file of requiredRuntimeFiles) {
+    const currentIndex = scripts.indexOf(file);
+    if (currentIndex < previousIndex) {
+      console.error('Runtime module guard failed: index.html loads runtime scripts in the wrong order.');
+      console.error(`Expected order: ${requiredRuntimeFiles.join(' -> ')}`);
+      console.error(`Actual local order: ${scripts.join(' -> ')}`);
+      process.exit(1);
+    }
+    previousIndex = currentIndex;
+  }
+
+  const cacheAssetPattern = /["']\/?([^"']+\.(?:js|css|html|json|png))["']/g;
+  const cachedAssets = new Set([...serviceWorkerSource.matchAll(cacheAssetPattern)].map((match) => match[1].replace(/^\//, '')));
+  const requiredCachedAssets = [
+    'index.html',
+    'styles.css',
+    ...requiredRuntimeFiles,
+    'manifest.json',
+    'icon-192.png',
+    'icon-512.png'
+  ];
+  const missingCachedAssets = requiredCachedAssets.filter((file) => !cachedAssets.has(file));
+  if (missingCachedAssets.length) {
+    console.error('Runtime module guard failed: service-worker.js CORE_ASSETS is missing required file(s):');
+    for (const file of missingCachedAssets) console.error(`- ${file}`);
+    process.exit(1);
+  }
+}
+
+assertRuntimeFilesLoadedAndCached();
+
 function stripCommentsAndStringText(input) {
   let out = '';
   let i = 0;

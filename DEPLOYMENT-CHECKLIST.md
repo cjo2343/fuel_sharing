@@ -72,6 +72,17 @@ python3 -m json.tool ledger-data.json
 node tools/check-app-references.mjs
 ```
 
+
+## Runtime module/cache consistency
+
+Before deployment, `node tools/check-app-references.mjs` must pass. It now checks all three of these stay aligned:
+
+- runtime script order in `index.html`
+- cached app-shell files in `service-worker.js`
+- extracted helper files scanned for missing references
+
+If you add a new browser module, update all three places in the same commit.
+
 ## Smoke test
 
 After deployment, test with an admin account and a normal member account:

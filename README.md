@@ -348,9 +348,27 @@ python3 -m json.tool ledger-data.json
 node tools/check-app-references.mjs
 ```
 
-`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, `ui-messages.js`, `notifications.js`, and `admin-tools.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version. It also includes a targeted regression guard for the normalized dual-write path so `syncNormalizedTablesFromJson()` cannot accidentally reference an undefined `context.*` variable again, and related current-member write regressions.
+`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, `ui-messages.js`, `notifications.js`, and `admin-tools.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version. It also checks that `index.html` loads the runtime modules in the expected order and that `service-worker.js` caches those same runtime files. Finally, it includes targeted regression guards for the normalized write paths so `syncNormalizedTablesFromJson()` cannot accidentally reference an undefined `context.*` variable again, and related current-member write regressions.
 
 If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
+
+
+
+## Runtime module map
+
+The browser runtime files are loaded in this order:
+
+1. `supabase-config.js`
+2. `utils.js`
+3. `supabase-helpers.js`
+4. `data-store.js`
+5. `settlement-calculations.js`
+6. `ui-messages.js`
+7. `notifications.js`
+8. `admin-tools.js`
+9. `app.js`
+
+Keep `index.html`, `service-worker.js`, and `tools/check-app-references.mjs` in sync whenever adding or renaming a runtime module.
 
 ### Phase 2AU — route-aware refuel planning helper
 
