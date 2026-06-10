@@ -1712,7 +1712,7 @@ function monthLabelFromKey(key) {
 
 function getMonthlySummaryPeriods() {
   return [
-    { id: getActivePeriodId(), label: "Current period", status: "open", trips: state.trips, fuel: state.fuel },
+    { id: (state.currentPeriodId || "current"), label: "Current period", status: "open", trips: state.trips, fuel: state.fuel },
     ...state.closedPeriods.map((period) => ({
       id: period.id,
       label: period.label || "Closed period",
