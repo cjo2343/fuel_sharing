@@ -3948,7 +3948,6 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     const key = settlementKey({
       from: fromName,
       to: toName,
-      amount: Number(request.amount || 0),
       currency: request.currency || ledger.currency || jsonFallbackState.currency || "DKK"
     });
     paymentStatusesFromTables[key] = normalizePaymentStatus(request.status);
@@ -3980,7 +3979,7 @@ async function checkNormalizedTablesAgainstCurrentState() {
     supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("fuel_payments").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
-    supabaseClient.from("settlement_requests").select("id,period_id,status").eq("ledger_id", ledgerId)
+    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,currency,status").eq("ledger_id", ledgerId)
   ]);
 
   const firstError = [membersResult, tripsResult, fuelResult, periodsResult, requestsResult].find((result) => result.error)?.error;
