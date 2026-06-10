@@ -113,6 +113,30 @@ if (normalizedSyncBody && /\bcontext\s*\./.test(stripCommentsAndStringText(norma
   process.exit(1);
 }
 
+function assertNoBareIdentifierReference(functionName, identifier, message) {
+  const body = extractFunctionBody(source, functionName);
+  if (!body) return;
+  const stripped = stripCommentsAndStringText(body);
+  // Matches identifier as a standalone token, but ignores property access like
+  // context.currentMemberId and declarations like const currentMemberId = ...
+  const pattern = new RegExp(`(?<![.$])\\b${identifier}\\b(?!\\s*[=:])`);
+  if (pattern.test(stripped)) {
+    console.error(message);
+    process.exit(1);
+  }
+}
+
+assertNoBareIdentifierReference(
+  'saveTripToNormalizedTablesFirst',
+  'currentMemberId',
+  'Regression guard failed: saveTripToNormalizedTablesFirst() contains a bare currentMemberId reference. Use context.currentMemberId from getNormalizedWriteContext().'
+);
+assertNoBareIdentifierReference(
+  'saveFuelToNormalizedTablesFirst',
+  'currentMemberId',
+  'Regression guard failed: saveFuelToNormalizedTablesFirst() contains a bare currentMemberId reference. Use context.currentMemberId from getNormalizedWriteContext().'
+);
+
 const declared = new Set();
 
 function addSourceMatches(regex, group = 1) {

@@ -80,3 +80,8 @@ After changing `app.js`, `utils.js`, `supabase-helpers.js`, `styles.css`, icons,
 3. Deploy `service-worker.js` together with the changed app files.
 4. On a phone, fully close and reopen the installed home-screen app.
 5. If an old version is still visible, open the site in the browser once, refresh, then reopen the home-screen app.
+
+
+## Hotfix: table-primary member id guard
+
+After the data-store refactor, table-primary trip/fuel writes must use `context.currentMemberId` from `getNormalizedWriteContext()`. The validation script now guards against bare `currentMemberId` references in `saveTripToNormalizedTablesFirst()` and `saveFuelToNormalizedTablesFirst()`.

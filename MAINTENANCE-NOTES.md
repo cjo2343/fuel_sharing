@@ -101,3 +101,8 @@ Manual regression test for every refactor touching persistence/sync:
 3. Confirm the console does not show `Normalized table dual-write failed`.
 4. Refresh the app.
 5. Confirm the current settlement period still contains the new trip and fuel log.
+
+
+## Hotfix: table-primary member id guard
+
+After the data-store refactor, table-primary trip/fuel writes must use `context.currentMemberId` from `getNormalizedWriteContext()`. The validation script now guards against bare `currentMemberId` references in `saveTripToNormalizedTablesFirst()` and `saveFuelToNormalizedTablesFirst()`.

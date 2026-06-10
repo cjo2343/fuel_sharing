@@ -5807,7 +5807,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
       start_km: Number(trip.startKm || 0),
       end_km: Number(trip.endKm || 0),
       note: trip.note || null,
-      created_by_member_id: currentMemberId,
+      created_by_member_id: context.currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     };
@@ -5878,7 +5878,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       user_lat: fuel.location?.latitude || null,
       user_lng: fuel.location?.longitude || null,
       full_tank: Boolean(fuel.fullTank),
-      created_by_member_id: currentMemberId,
+      created_by_member_id: context.currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     };
