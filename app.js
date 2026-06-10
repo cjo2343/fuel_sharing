@@ -1645,6 +1645,7 @@ function renderSettlementWarning(ledger) {
 }
 
 function renderPeriodBreakdown(ledger) {
+  const activityStats = buildPeriodActivityStats(ledger);
   const peopleWithKm = Object.entries(ledger.people)
     .filter(([, person]) => person.km > 0 || person.fuelPaid > 0)
     .map(([name, person]) => `<li><span>${escapeHtml(name)}</span><b>${formatNumber(person.km)} km distance share · ${formatMoney(person.fuelPaid)} fuel paid</b></li>`)
@@ -1660,6 +1661,16 @@ function renderPeriodBreakdown(ledger) {
     .join("") || `<li><span>Fuel payments</span><b>None yet</b></li>`;
 
   els.periodBreakdown.innerHTML = `
+    <div class="period-breakdown-card wide-breakdown settlement-period-overview">
+      <span>Current settlement period</span>
+      <div class="period-counter-grid">
+        <div><strong>${activityStats.tripCount}</strong><small>trip${activityStats.tripCount === 1 ? "" : "s"}</small></div>
+        <div><strong>${activityStats.fuelCount}</strong><small>fuel log${activityStats.fuelCount === 1 ? "" : "s"}</small></div>
+        <div><strong>${formatNumber(activityStats.totalTripKm)} km</strong><small>total trip km</small></div>
+        <div><strong>${formatMoney(activityStats.totalFuelPaid)}</strong><small>fuel paid</small></div>
+      </div>
+      <small>History below can look noisy during stress tests. These counters show exactly what is included in the current open settlement period.</small>
+    </div>
     <div class="period-breakdown-card">
       <span>Total trip km</span>
       <strong>${formatNumber(ledger.totalTripKm)} km</strong>
@@ -1689,6 +1700,82 @@ function renderPeriodBreakdown(ledger) {
     <div class="period-breakdown-card wide-breakdown">
       <span>People included</span>
       <ul>${peopleWithKm || `<li><span>People</span><b>No active period data yet</b></li>`}</ul>
+    </div>
+    <div class="period-breakdown-card wide-breakdown">
+      <span>Activity by person</span>
+      ${renderPeriodActivityTable(activityStats)}
+    </div>
+  `;
+}
+
+function buildPeriodActivityStats(ledger) {
+  const byPerson = Object.fromEntries(
+    state.members.map((member) => [
+      member,
+      {
+        name: member,
+        driverTrips: 0,
+        joinedTrips: 0,
+        distanceShare: Number(ledger.people?.[member]?.km || 0),
+        fuelLogs: 0,
+        fuelPaid: Number(ledger.people?.[member]?.fuelPaid || 0)
+      }
+    ])
+  );
+
+  let totalTripKm = 0;
+  for (const trip of state.trips) {
+    const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+    totalTripKm += km;
+    if (byPerson[trip.driver]) byPerson[trip.driver].driverTrips += 1;
+    for (const participant of getTripParticipants(trip)) {
+      if (byPerson[participant]) byPerson[participant].joinedTrips += 1;
+    }
+  }
+
+  let totalFuelPaid = 0;
+  for (const fuel of state.fuel) {
+    const amount = Number(fuel.amount || 0);
+    totalFuelPaid += amount;
+    if (byPerson[fuel.payer]) byPerson[fuel.payer].fuelLogs += 1;
+  }
+
+  return {
+    tripCount: state.trips.length,
+    fuelCount: state.fuel.length,
+    totalTripKm: round(totalTripKm),
+    totalFuelPaid: roundMoney(totalFuelPaid),
+    people: Object.values(byPerson)
+      .filter((person) => person.driverTrips || person.joinedTrips || person.fuelLogs || person.distanceShare || person.fuelPaid)
+      .sort((a, b) => (b.distanceShare + b.fuelPaid) - (a.distanceShare + a.fuelPaid) || a.name.localeCompare(b.name))
+  };
+}
+
+function renderPeriodActivityTable(stats) {
+  if (!stats.people.length) {
+    return `<p class="entry-meta">No trips or fuel logs in this settlement period yet.</p>`;
+  }
+
+  return `
+    <div class="activity-table" role="table" aria-label="Current period activity by person">
+      <div class="activity-row activity-head" role="row">
+        <span>Person</span>
+        <span>Trips driven</span>
+        <span>Trips joined</span>
+        <span>Distance share</span>
+        <span>Fuel logs</span>
+        <span>Fuel paid</span>
+      </div>
+      ${stats.people.map((person) => `
+        <div class="activity-row" role="row">
+          <strong>${escapeHtml(person.name)}</strong>
+          <span>${person.driverTrips}</span>
+          <span>${person.joinedTrips}</span>
+          <span>${formatNumber(person.distanceShare)} km</span>
+          <span>${person.fuelLogs}</span>
+          <span>${formatMoney(person.fuelPaid)}</span>
+        </div>
+      `).join("")}
     </div>
   `;
 }
@@ -2305,48 +2392,128 @@ function renderHistory() {
   if (state.trips.length === 0) {
     els.tripList.replaceChildren(emptyNode());
   } else {
-    els.tripList.innerHTML = [...state.trips]
-      .sort(byNewest)
-      .map((trip) => {
-        const km = round(trip.endKm - trip.startKm);
-        const participants = getTripParticipants(trip);
-        return `
-          <article class="entry-card">
-            <header>
-              <strong>${escapeHtml(trip.driver)}</strong>
-              ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
-            </header>
-            <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km</p>
-            <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
-            <p class="entry-meta">Split between ${participants.map(escapeHtml).join(", ")}</p>
-            ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
-          </article>
-        `;
-      })
-      .join("");
+    els.tripList.innerHTML = renderCategorizedTrips(state.trips);
   }
 
   if (state.fuel.length === 0) {
     els.fuelList.replaceChildren(emptyNode());
   } else {
-    els.fuelList.innerHTML = [...state.fuel]
-      .sort(byNewest)
-      .map(
-        (fuel) => `
-          <article class="entry-card">
-            <header>
-              <strong>${escapeHtml(fuel.payer)}</strong>
-              ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
-            </header>
-            <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
-            <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
-          </article>
-        `
-      )
-      .join("");
+    els.fuelList.innerHTML = renderCategorizedFuel(state.fuel);
   }
 }
 
+function renderCategorizedTrips(trips) {
+  const sortedTrips = [...trips].sort(byNewest);
+  const grouped = groupBy(sortedTrips, (trip) => trip.driver || "Unknown");
+  const totalKm = round(sortedTrips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0));
+  const summary = `
+    <article class="entry-card history-summary-card">
+      <strong>Current period trip log</strong>
+      <p>${sortedTrips.length} trip${sortedTrips.length === 1 ? "" : "s"} · ${formatNumber(totalKm)} km total</p>
+      <p class="entry-meta">Grouped by driver to make large stress-test periods easier to scan.</p>
+    </article>
+  `;
+
+  return summary + Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([driver, driverTrips]) => {
+      const driverKm = round(driverTrips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0));
+      return `
+        <details class="history-group" ${driverTrips.length <= 8 ? "open" : ""}>
+          <summary>
+            <strong>${escapeHtml(driver)}</strong>
+            <span>${driverTrips.length} trip${driverTrips.length === 1 ? "" : "s"} · ${formatNumber(driverKm)} km</span>
+          </summary>
+          <div class="entry-list grouped-entry-list">
+            ${driverTrips.map(renderTripEntryCard).join("")}
+          </div>
+        </details>
+      `;
+    })
+    .join("");
+}
+
+function renderTripEntryCard(trip) {
+  const km = round(Number(trip.endKm || 0) - Number(trip.startKm || 0));
+  const participants = getTripParticipants(trip);
+  const category = getTripCategory(trip);
+  return `
+    <article class="entry-card">
+      <header>
+        <strong>${escapeHtml(trip.driver)}</strong>
+        ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
+      </header>
+      <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km <span class="category-chip">${escapeHtml(category)}</span></p>
+      <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
+      <p class="entry-meta">Split between ${participants.map(escapeHtml).join(", ")}</p>
+      ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
+    </article>
+  `;
+}
+
+function renderCategorizedFuel(fuelLogs) {
+  const sortedFuel = [...fuelLogs].sort(byNewest);
+  const grouped = groupBy(sortedFuel, (fuel) => fuel.payer || "Unknown");
+  const totalPaid = roundMoney(sortedFuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0));
+  const totalLiters = round(sortedFuel.reduce((sum, fuel) => sum + Number(fuel.liters || 0), 0));
+  const summary = `
+    <article class="entry-card history-summary-card">
+      <strong>Current period fuel log</strong>
+      <p>${sortedFuel.length} fuel log${sortedFuel.length === 1 ? "" : "s"} · ${formatMoney(totalPaid)}${totalLiters > 0 ? ` · ${formatNumber(totalLiters)} L` : ""}</p>
+      <p class="entry-meta">Grouped by payer so it is clear who is owed money by the shared fuel pool.</p>
+    </article>
+  `;
+
+  return summary + Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([payer, payerFuel]) => {
+      const payerPaid = roundMoney(payerFuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0));
+      const payerLiters = round(payerFuel.reduce((sum, fuel) => sum + Number(fuel.liters || 0), 0));
+      return `
+        <details class="history-group" ${payerFuel.length <= 8 ? "open" : ""}>
+          <summary>
+            <strong>${escapeHtml(payer)}</strong>
+            <span>${payerFuel.length} fuel log${payerFuel.length === 1 ? "" : "s"} · ${formatMoney(payerPaid)}${payerLiters > 0 ? ` · ${formatNumber(payerLiters)} L` : ""}</span>
+          </summary>
+          <div class="entry-list grouped-entry-list">
+            ${payerFuel.map(renderFuelEntryCard).join("")}
+          </div>
+        </details>
+      `;
+    })
+    .join("");
+}
+
+function renderFuelEntryCard(fuel) {
+  return `
+    <article class="entry-card">
+      <header>
+        <strong>${escapeHtml(fuel.payer)}</strong>
+        ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
+      </header>
+      <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
+      <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+    </article>
+  `;
+}
+
+function getTripCategory(trip) {
+  const text = `${trip.note || ""} ${trip.purpose || ""}`.toLowerCase();
+  if (text.includes("auto test") || text.includes("stress")) return "Test";
+  if (text.includes("fuel") || text.includes("refuel") || text.includes("tank")) return "Fuel";
+  if (text.includes("holiday") || text.includes("vacation") || text.includes("weekend")) return "Trip";
+  if (text.includes("work") || text.includes("office")) return "Work";
+  return "General";
+}
+
+function groupBy(items, getKey) {
+  return items.reduce((groups, item) => {
+    const key = getKey(item);
+    groups[key] = groups[key] || [];
+    groups[key].push(item);
+    return groups;
+  }, {});
+}
 
 function renderSystemHealth(ledger) {
   if (!els.systemHealthPanel || !els.systemHealthSummary || !els.systemHealthList) return;
