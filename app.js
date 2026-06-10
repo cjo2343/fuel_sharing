@@ -4831,6 +4831,20 @@ async function syncNormalizedTablesFromJson() {
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
 
+  // Phase 2AA: table-primary writes already saved the specific trip/fuel/request row.
+  // A full JSON-to-table reconciliation can touch admin-only tables and can also
+  // soft-delete rows if a non-admin device has stale backup JSON. Only admins may
+  // run the full reconciliation; regular members keep the table-primary write and
+  // JSON backup snapshot paths separate.
+  if (!canManageSettings()) {
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: "Table-primary save complete. Full JSON-to-table reconciliation is admin-only."
+    };
+    return;
+  }
+
   try {
     const ledgerPayload = {
       id: ledgerId,

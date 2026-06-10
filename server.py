@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import base64
 import json
+import gzip
 import os
 import time
 import urllib.error
@@ -118,10 +119,21 @@ def fetch_fuel_price(path):
     try:
         request = urllib.request.Request(
             "https://api.circlek.com/eu/prices/v1/fuel/countries/DK",
-            headers={"X-App-Name": "PRICES", "Accept": "application/json"},
+            headers={
+                "X-App-Name": "PRICES",
+                "Accept": "application/json",
+                # Avoid compressed bytes that some minimal urllib environments do
+                # not decode automatically. If the server still compresses, handle
+                # gzip explicitly below.
+                "Accept-Encoding": "identity",
+                "User-Agent": "FuelLedger/1.0",
+            },
         )
         with urllib.request.urlopen(request, timeout=12) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            raw = response.read()
+            if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                raw = gzip.decompress(raw)
+            data = json.loads(raw.decode("utf-8-sig", errors="replace"))
 
         prices = []
         last_updated = ""
