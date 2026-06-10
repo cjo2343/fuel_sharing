@@ -50,7 +50,8 @@
       payment_marked_paid: "Payment marked paid",
       payment_reopened: "Payment reopened",
       settlement_closed: "Settlement closed",
-      settlement_reopened: "Settlement reopened"
+      settlement_reopened: "Settlement reopened",
+      settlement_reset: "Settlement reset"
     };
     return labels[type] || "App change";
   }

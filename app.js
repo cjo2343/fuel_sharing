@@ -692,16 +692,21 @@ els.resetPeriod.addEventListener("click", () => {
     return;
   }
   if (!confirm("Remove all trips, fuel payments, and request statuses from the current open period? Settings and archived periods stay unchanged.")) return;
+  const resetLedger = calculateLedger();
+  const resetTripCount = state.trips.length;
+  const resetFuelCount = state.fuel.length;
+  const resetPeriodLabel = resetLedger?.period?.label || "Current period";
+  const resetTotalCost = resetLedger?.totalCost || 0;
   state.trips = [];
   state.fuel = [];
   state.paymentStatuses = {};
   state.lastOdometer = getLatestOdometer();
   addAuditEntry({
-    type: "settlement_closed",
+    type: "settlement_reset",
     entityType: "settlement_period",
-    entityId: period.id,
-    summary: `${period.label} · ${formatMoney(period.totalCost)}`,
-    detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
+    entityId: resetLedger?.period?.id || "current",
+    summary: `${resetPeriodLabel} · ${formatMoney(resetTotalCost)}`,
+    detail: `${resetTripCount} trip${resetTripCount === 1 ? "" : "s"}, ${resetFuelCount} fuel log${resetFuelCount === 1 ? "" : "s"} removed`
   });
   saveState();
   setDefaultDates();

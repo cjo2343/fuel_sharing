@@ -192,3 +192,5 @@ Money-related actions are recorded in `state.auditLog` and rendered in the Histo
 ### Audit log persistence and edit details
 
 Audit entries for trip/fuel/payment/settlement changes are mirrored to the ledger backup immediately when they change, so the change log survives refresh even when normalized tables are the primary data source. Edit entries include concise before/after details for important changed fields.
+
+- Hotfix: current-period reset now records a `settlement_reset` audit entry using a local snapshot instead of referencing an undefined `period` variable.
