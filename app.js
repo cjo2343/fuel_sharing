@@ -701,13 +701,8 @@ els.resetPeriod.addEventListener("click", () => {
   state.fuel = [];
   state.paymentStatuses = {};
   state.lastOdometer = getLatestOdometer();
-  addAuditEntry({
-    type: "settlement_reset",
-    entityType: "settlement_period",
-    entityId: resetLedger?.period?.id || "current",
-    summary: `${resetPeriodLabel} · ${formatMoney(resetTotalCost)}`,
-    detail: `${resetTripCount} trip${resetTripCount === 1 ? "" : "s"}, ${resetFuelCount} fuel log${resetFuelCount === 1 ? "" : "s"} removed`
-  });
+  clearCurrentAuditLog();
+  showAppMessage(`${resetPeriodLabel} reset. ${resetTripCount} trip${resetTripCount === 1 ? "" : "s"} and ${resetFuelCount} fuel log${resetFuelCount === 1 ? "" : "s"} removed.`);
   saveState();
   setDefaultDates();
   render();
@@ -1191,15 +1186,25 @@ function describeFuelAuditChanges(previousFuel, nextFuel) {
   return changes.join(" · ");
 }
 
+function makeAuditEntry(options) {
+  return auditLog.createEntry({
+    actor: currentUser || currentSession?.user?.email || "Unknown",
+    ...options
+  });
+}
+
 function addAuditEntry(options) {
   auditLogDirty = true;
   state.auditLog = auditLog.normalizeAuditEntries([
-    auditLog.createEntry({
-      actor: currentUser || currentSession?.user?.email || "Unknown",
-      ...options
-    }),
+    makeAuditEntry(options),
     ...(state.auditLog || [])
   ]);
+}
+
+function clearCurrentAuditLog() {
+  if (!Array.isArray(state.auditLog) || state.auditLog.length === 0) return;
+  auditLogDirty = true;
+  state.auditLog = [];
 }
 
 function renderAuditLog() {
@@ -2973,8 +2978,18 @@ async function closeCurrentPeriod(options = {}) {
       status: normalizePaymentStatus(state.paymentStatuses[settlementKey(item)])
     })),
     trips: structuredClone(state.trips),
-    fuel: structuredClone(state.fuel)
+    fuel: structuredClone(state.fuel),
+    auditLog: []
   };
+
+  const closeAuditEntry = makeAuditEntry({
+    type: "settlement_closed",
+    entityType: "settlement_period",
+    entityId: period.id,
+    summary: `${period.label} · ${formatMoney(period.totalCost)}`,
+    detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
+  });
+  period.auditLog = auditLog.normalizeAuditEntries([closeAuditEntry, ...(state.auditLog || [])]);
 
   if (!(await closeNormalizedPeriodFirst(period))) {
     return;
@@ -2984,14 +2999,9 @@ async function closeCurrentPeriod(options = {}) {
   state.trips = [];
   state.fuel = [];
   state.paymentStatuses = {};
+  state.auditLog = [];
+  auditLogDirty = true;
   state.lastOdometer = getLatestOdometer();
-  addAuditEntry({
-    type: "settlement_closed",
-    entityType: "settlement_period",
-    entityId: period.id,
-    summary: `${period.label} · ${formatMoney(period.totalCost)}`,
-    detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
-  });
   saveState();
   setDefaultDates();
   render();
@@ -4806,7 +4816,42 @@ function renderClosedPeriodCard(period) {
         <summary>Fuel logs (${fuel.length})</summary>
         ${renderClosedPeriodFuel(fuel, currency)}
       </details>
+
+      <details class="archive-subsection">
+        <summary>Change log (${auditLog.normalizeAuditEntries(period.auditLog).length})</summary>
+        ${renderClosedPeriodAuditLog(period)}
+      </details>
     </details>
+  `;
+}
+
+function renderClosedPeriodAuditLog(period) {
+  const entries = auditLog.normalizeAuditEntries(period.auditLog).slice(0, 60);
+  if (!entries.length) {
+    return `<p class="entry-meta">No change log was saved for this period.</p>`;
+  }
+
+  return `
+    <div class="audit-entry-list archived-audit-list">
+      ${entries.map((entry) => {
+        const createdAt = new Date(entry.createdAt);
+        const dateText = Number.isNaN(createdAt.getTime())
+          ? entry.createdAt
+          : `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+        return `
+          <article class="entry-card audit-entry-card archived-audit-entry">
+            <header>
+              <div>
+                <strong>${escapeHtml(auditLog.actionLabel(entry.type))}</strong>
+                <p>${escapeHtml(entry.summary)}</p>
+              </div>
+              <span class="entry-meta">${escapeHtml(dateText)}</span>
+            </header>
+            <p class="entry-meta">By ${escapeHtml(entry.actor)}${entry.detail ? ` · ${escapeHtml(entry.detail)}` : ""}</p>
+          </article>
+        `;
+      }).join("")}
+    </div>
   `;
 }
 
@@ -5165,7 +5210,8 @@ function normalizeState(saved) {
                 ...settlement,
                 status: normalizePaymentStatus(settlement.status)
               }))
-            : []
+            : [],
+          auditLog: auditLog.normalizeAuditEntries(period.auditLog)
         }))
       : [],
     lastOdometer: saved.lastOdometer ?? "",

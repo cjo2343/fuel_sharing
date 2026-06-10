@@ -166,4 +166,9 @@ Money-related actions are recorded in `state.auditLog` and rendered in the Histo
 
 Audit entries for trip/fuel/payment/settlement changes are mirrored to the ledger backup immediately when they change, so the change log survives refresh even when normalized tables are the primary data source. Edit entries include concise before/after details for important changed fields.
 
-- Hotfix: current-period reset now records a `settlement_reset` audit entry using a local snapshot instead of referencing an undefined `period` variable.
+- Hotfix: current-period reset no longer references an undefined `period` variable. Current-period reset also clears the current audit log because those entries belonged to the deleted open period.
+
+
+### Period-aware audit log
+
+Audit history is now period-aware. Current/open-period audit entries live in `state.auditLog`. When a settlement period is closed, the current audit entries are copied into `closedPeriod.auditLog` together with the settlement-close event, then the new open period starts with an empty audit log. Resetting/deleting the current open period clears its audit entries as well. Closed period cards include a Change log subsection for the frozen period history.
