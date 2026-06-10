@@ -58,6 +58,37 @@ function clearMobilePayReturnPrompt(key) {
   if (prompt) localStorage.removeItem(mobilePayReturnKey);
 }
 
+let appMessageTimer;
+
+function ensureAppMessageContainer() {
+  let container = document.querySelector("#appMessageToast");
+  if (container) return container;
+  container = document.createElement("div");
+  container.id = "appMessageToast";
+  container.className = "app-message-toast hidden";
+  container.setAttribute("role", "status");
+  container.setAttribute("aria-live", "polite");
+  document.body.append(container);
+  return container;
+}
+
+function showAppMessage(message, type = "success", options = {}) {
+  if (!message) return;
+  const container = ensureAppMessageContainer();
+  clearTimeout(appMessageTimer);
+  container.textContent = message;
+  container.dataset.type = type;
+  container.classList.remove("hidden");
+  const timeoutMs = Number(options.timeoutMs || 3200);
+  appMessageTimer = setTimeout(() => {
+    container.classList.add("hidden");
+  }, timeoutMs);
+}
+
+function showSaveMessage(label, isEdit = false) {
+  showAppMessage(`${label} ${isEdit ? "updated" : "saved"}.`);
+}
+
 function openMobilePayApp(settlement) {
   rememberMobilePayReturnPrompt(settlement);
   window.location.href = "mobilepay://";
@@ -327,6 +358,7 @@ els.tripForm.addEventListener("submit", async (event) => {
   const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
   if (!normalizedTripSaved) return;
 
+  const wasEditingTrip = Boolean(editingTripId);
   if (editingTripId) {
     const index = state.trips.findIndex((trip) => trip.id === editingTripId);
     if (index >= 0) state.trips[index] = tripPayload;
@@ -342,6 +374,7 @@ els.tripForm.addEventListener("submit", async (event) => {
   setDefaultDates();
   updateEditUi();
   render();
+  showSaveMessage("Trip", wasEditingTrip);
 });
 
 if (els.useFuelLocation) {
@@ -417,6 +450,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
   const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
   if (!normalizedFuelSaved) return;
 
+  const wasEditingFuel = Boolean(editingFuelId);
   if (editingFuelId) {
     const index = state.fuel.findIndex((fuel) => fuel.id === editingFuelId);
     if (index >= 0) state.fuel[index] = fuelPayload;
@@ -432,6 +466,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
   setDefaultDates();
   updateEditUi();
   render();
+  showSaveMessage("Fuel log", wasEditingFuel);
 });
 
 function captureFuelLocation() {
@@ -1097,6 +1132,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (!assertCurrentPeriodAllowsMoneyChanges(type === "trips" ? "delete trip logs" : "delete fuel logs")) return;
   const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
   if (!normalizedDeleteSaved) return;
   state[type] = state[type].filter((entry) => entry.id !== id);
@@ -1106,6 +1142,7 @@ document.addEventListener("click", async (event) => {
   saveState();
   updateEditUi();
   render();
+  showAppMessage(type === "trips" ? "Trip deleted." : "Fuel log deleted.");
 });
 
 function render() {
@@ -1355,34 +1392,50 @@ function renderSettings() {
   els.settingsForm.querySelector("button").disabled = !canManage;
 }
 
-function getPaidSettlementEntryLock() {
+function getActiveSettlementRequestLock() {
   const ledger = calculateLedger();
-  const paidSettlements = ledger.settlements.filter(
-    (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "paid"
-  );
+  const lockedSettlements = ledger.settlements
+    .map((settlement) => ({
+      ...settlement,
+      status: normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)])
+    }))
+    .filter((settlement) => settlement.status === "requested" || settlement.status === "paid");
+
   return {
-    paidSettlements,
-    count: paidSettlements.length,
-    amount: roundMoney(paidSettlements.reduce((total, settlement) => total + Number(settlement.amount || 0), 0))
+    lockedSettlements,
+    count: lockedSettlements.length,
+    requestedCount: lockedSettlements.filter((settlement) => settlement.status === "requested").length,
+    paidCount: lockedSettlements.filter((settlement) => settlement.status === "paid").length,
+    amount: roundMoney(lockedSettlements.reduce((total, settlement) => total + Number(settlement.amount || 0), 0))
   };
 }
 
 function isCurrentPeriodLockedForNewEntries() {
-  return getPaidSettlementEntryLock().count > 0;
+  return getActiveSettlementRequestLock().count > 0;
 }
 
 function getPeriodEntryLockMessage() {
-  const lock = getPaidSettlementEntryLock();
+  const lock = getActiveSettlementRequestLock();
   if (!lock.count) return "";
   const paymentWord = lock.count === 1 ? "payment" : "payments";
-  return `This settlement period has ${lock.count} ${paymentWord} marked Paid (${formatMoney(lock.amount)}). Close the period before logging new trips/fuel, or reopen the paid payment if the period needs corrections.`;
+  const statusParts = [
+    lock.requestedCount ? `${lock.requestedCount} requested` : "",
+    lock.paidCount ? `${lock.paidCount} paid` : ""
+  ].filter(Boolean).join(", ");
+  return `This settlement period has ${lock.count} active ${paymentWord} (${statusParts}, ${formatMoney(lock.amount)}). Reopen the active payment${lock.count === 1 ? "" : "s"} before changing trips, fuel logs, or amounts that affect the settlement.`;
+}
+
+function assertCurrentPeriodAllowsMoneyChanges(action = "change this period") {
+  if (!isCurrentPeriodLockedForNewEntries()) return true;
+  const message = getPeriodEntryLockMessage();
+  showAppMessage(message, "warning", { timeoutMs: 6500 });
+  alert(message);
+  renderPeriodEntryLock();
+  return false;
 }
 
 function assertCurrentPeriodAllowsNewEntries() {
-  if (!isCurrentPeriodLockedForNewEntries()) return true;
-  alert(getPeriodEntryLockMessage());
-  renderPeriodEntryLock();
-  return false;
+  return assertCurrentPeriodAllowsMoneyChanges("log new trips or fuel");
 }
 
 function renderPeriodEntryLock() {
@@ -1390,7 +1443,7 @@ function renderPeriodEntryLock() {
   const message = getPeriodEntryLockMessage();
   els.periodEntryLock.classList.toggle("hidden", !message);
   els.periodEntryLock.innerHTML = message
-    ? `<p class="eyebrow">Period locked</p><h2>Close this period before adding more entries</h2><p class="section-note">${escapeHtml(message)}</p><p class="section-note">To correct an entry, reopen the paid settlement first, then use History → Edit on your current-period log.</p>`
+    ? `<p class="eyebrow">Period locked</p><h2>Reopen payment requests before changing this period</h2><p class="section-note">${escapeHtml(message)}</p><p class="section-note">To correct an entry, reopen the requested/paid settlement first, then use History → Edit on your current-period log.</p>`
     : "";
 }
 
@@ -3002,6 +3055,7 @@ async function closeCurrentPeriod(options = {}) {
   saveState();
   setDefaultDates();
   render();
+  showAppMessage("Settlement period closed. A fresh period is ready.");
 }
 
 async function closeNormalizedPeriodFirst(periodSnapshot) {
@@ -3663,6 +3717,13 @@ async function updatePaymentStatus(button) {
   pendingSettlementRequestKeys.delete(key);
   render();
 
+  const paymentMessage = nextStatus === "requested"
+    ? `Payment request sent to ${settlement.from}.`
+    : nextStatus === "paid"
+      ? `Payment to ${settlement.to} marked paid.`
+      : "Payment request reopened. You can now correct the settlement if needed.";
+  showAppMessage(paymentMessage);
+
   if (nextStatus === "requested") {
     sendSettlementPush(settlement).catch((error) => {
       console.warn("Settlement push notification failed", error);
@@ -3682,6 +3743,7 @@ async function copySettlement(button) {
   try {
     await navigator.clipboard.writeText(text);
     button.textContent = "Copied";
+    showAppMessage("Amount copied.");
   } catch {
     const helper = document.createElement("textarea");
     helper.value = text;
@@ -4082,6 +4144,7 @@ function editEntry(value) {
       alert("You can only edit your own trip logs.");
       return;
     }
+    if (!assertCurrentPeriodAllowsMoneyChanges("edit trip logs")) return;
     startTripEdit(id);
     return;
   }
@@ -4091,6 +4154,7 @@ function editEntry(value) {
       alert("You can only edit your own fuel logs.");
       return;
     }
+    if (!assertCurrentPeriodAllowsMoneyChanges("edit fuel logs")) return;
     startFuelEdit(id);
   }
 }

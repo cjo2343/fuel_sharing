@@ -352,3 +352,8 @@ This is still not full route optimization. Station suggestions are based on stat
 
 
 `tools/check-app-references.mjs` includes targeted guards plus a narrower undeclared-identifier scan for normalized write regressions.
+
+
+## Payment request locking
+
+When a settlement payment is requested or marked paid, the current period is locked against settlement-affecting trip/fuel changes. Reopen the payment request first, correct the trip/fuel data, then request the payment again. The app also shows toast messages for common save/payment actions so users get clearer feedback after changes.

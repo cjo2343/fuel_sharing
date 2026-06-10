@@ -113,3 +113,10 @@ Manual regression test for every refactor touching persistence/sync:
 - `syncNormalizedTablesFromJson()`
 
 This is intentionally narrower than a full JavaScript linter, but it is designed to catch the class of regressions that caused `context` and `currentMemberId` runtime errors during trip/fuel saves. Keep this guard passing before every deployment.
+
+## Payment request locking and user feedback
+
+- The current/open period is now locked for trip/fuel edits, deletes, and new trip/fuel logs when any settlement payment is `requested` or `paid`.
+- To change settlement-affecting amounts after a request has been sent, reopen the active payment request first, make the correction, and request the payment again.
+- The app now shows toast-style feedback for common successful changes: trip saved/updated/deleted, fuel log saved/updated/deleted, payment requested/paid/reopened, amount copied, and period closed.
+- Keep the manual smoke test after every deployment: create trip -> create fuel log -> request payment -> confirm edit is blocked -> reopen payment -> edit -> refresh.

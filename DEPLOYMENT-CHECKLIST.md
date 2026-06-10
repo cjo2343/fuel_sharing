@@ -99,3 +99,14 @@ After changing `app.js`, `utils.js`, `supabase-helpers.js`, `data-store.js`, `st
 3. Deploy `service-worker.js` together with the changed app files.
 4. On a phone, fully close and reopen the installed home-screen app.
 5. If an old version is still visible, open the site in the browser once, refresh, then reopen the home-screen app.
+
+## Payment request locking smoke test
+
+After deploying a build that touches trips, fuel logs, settlements, or payment request status:
+
+1. Create a trip and confirm a success message appears.
+2. Create a fuel log and confirm a success message appears.
+3. Request a settlement payment and confirm a success message appears.
+4. Try to add/edit/delete a trip or fuel log while the payment is requested; the app should block it and explain that the payment must be reopened first.
+5. Reopen the payment, make the correction, and request it again.
+6. Refresh/reopen the home-screen app and confirm the corrected data persists.

@@ -2630,3 +2630,31 @@ body.auth-locked #authPanel .text-button {
 .route-map-link:hover {
   text-decoration: underline;
 }
+
+.app-message-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: min(92vw, 34rem);
+  padding: 0.85rem 1rem;
+  border-radius: 999px;
+  background: var(--green-dark);
+  color: white;
+  font-weight: 900;
+  box-shadow: 0 14px 40px rgba(28, 49, 44, 0.24);
+  text-align: center;
+}
+
+.app-message-toast[data-type="warning"] {
+  background: #7a4b00;
+}
+
+.app-message-toast[data-type="error"] {
+  background: #8d1d1d;
+}
+
+.app-message-toast.hidden {
+  display: none;
+}
