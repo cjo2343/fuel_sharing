@@ -10,6 +10,7 @@ const pushConfigUrl = "/api/push-config";
 const fuelPriceUrl = "/api/fuel-price";
 const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
+const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const generatedTestPrefix = "auto-test-";
 const generatedTestMarker = "[AUTO TEST]";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
@@ -47,18 +48,52 @@ function buildMobilePayNote(settlement) {
   return `Fuel Ledger: ${settlement.from} pays ${settlement.to}`;
 }
 
-function buildPaymentInstruction(settlement) {
-  const recipient = getMemberProfile(settlement.to);
-  const phone = formatPhoneDisplay(recipient.mobilepayPhone);
-  return [
-    `Pay ${formatMoney(settlement.amount)} to ${settlement.to} in MobilePay.`,
-    phone ? `MobilePay phone: ${phone}` : "MobilePay phone: not saved in Fuel Ledger.",
-    `Note: ${buildMobilePayNote(settlement)}`,
-    "After paying in MobilePay, return to Fuel Ledger and tap Mark paid."
-  ].join("\n");
+function formatPaymentAmountOnly(value) {
+  return new Intl.NumberFormat("da-DK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(roundMoney(value));
 }
 
-function openMobilePayApp() {
+function getMobilePayReturnPrompt(key) {
+  try {
+    const prompt = JSON.parse(localStorage.getItem(mobilePayReturnKey) || "null");
+    if (!prompt || prompt.key !== key) return null;
+    if (Date.now() - Number(prompt.openedAt || 0) > 30 * 60 * 1000) {
+      localStorage.removeItem(mobilePayReturnKey);
+      return null;
+    }
+    return prompt;
+  } catch {
+    localStorage.removeItem(mobilePayReturnKey);
+    return null;
+  }
+}
+
+function rememberMobilePayReturnPrompt(settlement) {
+  if (!settlement) return;
+  try {
+    localStorage.setItem(
+      mobilePayReturnKey,
+      JSON.stringify({
+        key: settlementKey(settlement),
+        amount: formatPaymentAmountOnly(settlement.amount),
+        to: settlement.to,
+        openedAt: Date.now()
+      })
+    );
+  } catch {
+    // Ignore storage errors. The payment still happens in MobilePay.
+  }
+}
+
+function clearMobilePayReturnPrompt(key) {
+  const prompt = getMobilePayReturnPrompt(key);
+  if (prompt) localStorage.removeItem(mobilePayReturnKey);
+}
+
+function openMobilePayApp(settlement) {
+  rememberMobilePayReturnPrompt(settlement);
   window.location.href = "mobilepay://";
 }
 
@@ -1046,7 +1081,10 @@ document.addEventListener("click", async (event) => {
 
   const mobilePayButton = event.target.closest("[data-open-mobilepay]");
   if (mobilePayButton) {
-    openMobilePayApp();
+    const ledger = calculateLedger();
+    const settlement = ledger.settlements.find((item) => settlementKey(item) === mobilePayButton.dataset.paymentKey);
+    openMobilePayApp(settlement);
+    render();
     return;
   }
 
@@ -1875,16 +1913,13 @@ function renderSettlements(ledger) {
             : `<span class="request-note">Only ${escapeHtml(item.to)} can request this payment.</span>`;
         } else if (status === "requested") {
           if (canMarkPaid) {
-            const recipientProfile = getMemberProfile(item.to);
-            const mobilePayPhone = formatPhoneDisplay(recipientProfile.mobilepayPhone);
-            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(buildPaymentInstruction(item))}">Copy instructions</button>`;
-            if (mobilePayPhone) {
-              requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(mobilePayPhone)}">Copy phone</button>`;
-            }
-            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(formatMoney(item.amount))}">Copy amount</button>`;
-            requestControls += `<button class="subtle-button compact-button" type="button" data-open-mobilepay="true">Open MobilePay</button>`;
+            const mobilePayPrompt = getMobilePayReturnPrompt(key);
+            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(formatPaymentAmountOnly(item.amount))}">Copy amount</button>`;
+            requestControls += `<button class="subtle-button compact-button" type="button" data-open-mobilepay="true" data-payment-key="${escapeHtml(key)}">Open MobilePay</button>`;
             requestControls += `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="paid" ${pending ? "disabled" : ""}>${pending ? "Marking paid..." : "Mark paid"}</button>`;
-            requestControls += `<span class="request-note mobilepay-helper">MobilePay opens separately; paste/search the phone number manually, then return and mark paid.</span>`;
+            requestControls += mobilePayPrompt
+              ? `<span class="request-note mobilepay-helper">MobilePay opened. After paying ${escapeHtml(mobilePayPrompt.amount)} to ${escapeHtml(mobilePayPrompt.to)}, return here and tap Mark paid.</span>`
+              : `<span class="request-note mobilepay-helper">Open MobilePay, pay manually, then return and tap Mark paid.</span>`;
           } else {
             requestControls += `<span class="request-note">Waiting for ${escapeHtml(item.from)} to pay.</span>`;
           }
@@ -2645,6 +2680,7 @@ async function updatePaymentStatus(button) {
   }
 
   state.paymentStatuses[key] = nextStatus;
+  if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
   saveState();
   pendingSettlementRequestKeys.delete(key);
   render();
