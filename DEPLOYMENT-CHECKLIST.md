@@ -40,10 +40,29 @@ After the SQL update succeeds, deploy the matching app files:
 - `app.js`
 - `styles.css`
 - `server.py`
+- `utils.js`
+- `supabase-helpers.js`
+- `data-store.js`
 - `service-worker.js`
 - `manifest.json`
 - icons
 - `requirements.txt`
+
+## Validation
+
+Before deploying app files, run:
+
+```bash
+node --check utils.js
+node --check supabase-helpers.js
+node --check data-store.js
+node --check app.js
+node --check service-worker.js
+node --check tools/check-app-references.mjs
+python3 -m py_compile server.py
+python3 -m json.tool ledger-data.json
+node tools/check-app-references.mjs
+```
 
 ## Smoke test
 
@@ -73,15 +92,10 @@ If the app breaks after deployment:
 
 ## Home-screen / PWA deployment check
 
-After changing `app.js`, `utils.js`, `supabase-helpers.js`, `styles.css`, icons, or `index.html`:
+After changing `app.js`, `utils.js`, `supabase-helpers.js`, `data-store.js`, `styles.css`, icons, or `index.html`:
 
 1. Confirm the changed files are listed in `service-worker.js` under `CORE_ASSETS`.
 2. Bump the `CACHE_NAME` value in `service-worker.js`.
 3. Deploy `service-worker.js` together with the changed app files.
 4. On a phone, fully close and reopen the installed home-screen app.
 5. If an old version is still visible, open the site in the browser once, refresh, then reopen the home-screen app.
-
-
-## Hotfix: table-primary member id guard
-
-After the data-store refactor, table-primary trip/fuel writes must use `context.currentMemberId` from `getNormalizedWriteContext()`. The validation script now guards against bare `currentMemberId` references in `saveTripToNormalizedTablesFirst()` and `saveFuelToNormalizedTablesFirst()`.

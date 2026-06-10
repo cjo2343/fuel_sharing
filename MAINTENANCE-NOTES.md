@@ -71,6 +71,7 @@ Current app-shell files include:
 - `supabase-config.js`
 - `utils.js`
 - `supabase-helpers.js`
+- `data-store.js`
 - `app.js`
 - `manifest.json`
 - `icon-192.png`
@@ -103,6 +104,12 @@ Manual regression test for every refactor touching persistence/sync:
 5. Confirm the current settlement period still contains the new trip and fuel log.
 
 
-## Hotfix: table-primary member id guard
+## Safety-net validation for critical writes
 
-After the data-store refactor, table-primary trip/fuel writes must use `context.currentMemberId` from `getNormalizedWriteContext()`. The validation script now guards against bare `currentMemberId` references in `saveTripToNormalizedTablesFirst()` and `saveFuelToNormalizedTablesFirst()`.
+`tools/check-app-references.mjs` now performs a broader undeclared-identifier scan inside the critical normalized write functions:
+
+- `saveTripToNormalizedTablesFirst()`
+- `saveFuelToNormalizedTablesFirst()`
+- `syncNormalizedTablesFromJson()`
+
+This is intentionally narrower than a full JavaScript linter, but it is designed to catch the class of regressions that caused `context` and `currentMemberId` runtime errors during trip/fuel saves. Keep this guard passing before every deployment.

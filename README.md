@@ -349,3 +349,6 @@ If the checker reports an intentional browser/CDN global, add that name to the a
 The trip estimator now supports optional Start / Destination fields. When both are filled, Fuel Ledger creates a driving-route link in Google Maps and combines it with the existing refuel estimate and logged-station suggestions.
 
 This is still not full route optimization. Station suggestions are based on stations previously logged in Fuel Ledger, not every station along the route. A true along-route station finder would require a routing/maps API integration later.
+
+
+`tools/check-app-references.mjs` includes targeted guards plus a narrower undeclared-identifier scan for normalized write regressions.
