@@ -219,6 +219,7 @@ const els = {
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
   tripEstimateResult: document.querySelector("#tripEstimateResult"),
   fuelIntelligence: document.querySelector("#fuelIntelligence"),
+  smartPredictions: document.querySelector("#smartPredictions"),
   monthlyMemberSummaries: document.querySelector("#monthlyMemberSummaries"),
   settingsForm: document.querySelector("#settingsForm"),
   settingsPanel: document.querySelector(".settings-panel"),
@@ -1156,6 +1157,7 @@ function render() {
   renderClosedPeriods();
   renderTripEstimate();
   renderFuelIntelligence(ledger);
+  renderSmartPredictions(ledger);
   renderMonthlyMemberSummaries(ledger);
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
@@ -1828,6 +1830,195 @@ function buildMonthlyMemberSummaries() {
 
   return Array.from(months.values()).sort((a, b) => String(b.key).localeCompare(String(a.key)));
 }
+
+function getCurrentPeriodFuelAnomalies(ledger) {
+  const anomalies = [];
+  const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
+  const referencePrice = latestFuelPrice && Number(latestFuelPrice.price) > 0 ? Number(latestFuelPrice.price) : fallbackPrice;
+
+  for (const fuel of state.fuel) {
+    const amount = Number(fuel.amount || 0);
+    const liters = Number(fuel.liters || 0);
+    const label = `${fuel.payer || "Unknown"}${fuel.date ? ` · ${formatDate(fuel.date)}` : ""}`;
+
+    if (amount >= 500 && !(liters > 0)) {
+      anomalies.push({ severity: "warning", text: `${label}: ${formatMoney(amount)} is missing liters, so DKK/L and consumption cannot be verified.` });
+      continue;
+    }
+
+    if (amount > 0 && liters > 0) {
+      const pricePerLiter = amount / liters;
+      if (pricePerLiter < 8 || pricePerLiter > 25) {
+        anomalies.push({ severity: "issue", text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal diesel range.` });
+      } else if (referencePrice > 0) {
+        const difference = Math.abs(pricePerLiter - referencePrice) / referencePrice;
+        if (difference >= 0.25) {
+          anomalies.push({ severity: "warning", text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L differs a lot from the current/reference price (${formatMoneyFor(referencePrice, state.currency)}/L).` });
+        }
+      }
+    }
+  }
+
+  if (ledger.totalTripKm > 0 && ledger.totalFuelLiters > 0) {
+    const periodConsumption = ledger.totalFuelLiters / ledger.totalTripKm * 100;
+    if (periodConsumption < 3 || periodConsumption > 9) {
+      anomalies.push({ severity: "issue", text: `Current period consumption is ${formatNumber(periodConsumption)} L/100 km. That is unusual for this car; check fuel logs, trip distance, or whether fuel belongs to this period.` });
+    }
+  }
+
+  return anomalies;
+}
+
+function getCurrentPeriodHealthPrediction(ledger) {
+  const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
+  const validationWarnings = getFuelValidationWarnings(ledger);
+  const fuelAnomalies = getCurrentPeriodFuelAnomalies(ledger);
+  const openPayments = ledger.settlements.filter((settlement) => {
+    const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]);
+    return status === "open";
+  }).length;
+  const paidPayments = ledger.settlements.filter((settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "paid").length;
+
+  let status = "Looks normal";
+  let tone = "ok";
+  const reasons = [];
+  const actions = [];
+
+  if (!ledger.totalTripKm && !ledger.totalPaid) {
+    return {
+      status: "Waiting for data",
+      tone: "warning",
+      reasons: ["Add trips and fuel logs to get a useful current-period prediction."],
+      actions: ["Log real trips and receipts before using predictions."],
+      estimate,
+      validationWarnings,
+      fuelAnomalies,
+      openPayments,
+      paidPayments
+    };
+  }
+
+  if (validationWarnings.length || fuelAnomalies.some((item) => item.severity === "issue")) {
+    status = "Check before settling";
+    tone = "issue";
+  } else if (fuelAnomalies.length || openPayments > 0) {
+    status = "Caution";
+    tone = "warning";
+  }
+
+  if (estimate.hasEstimate) {
+    if (estimate.coveragePercent > 135) {
+      reasons.push(`Fuel logged is ${formatNumber(estimate.coveragePercent)}% of the expected amount for this period.`);
+      actions.push("Check for duplicate fuel logs, wrong amounts/liters, or missing trip distance.");
+    } else if (estimate.coveragePercent < 70) {
+      reasons.push(`Fuel logged is only ${formatNumber(estimate.coveragePercent)}% of expected.`);
+      actions.push("Add missing fuel receipts before requesting payments.");
+    } else {
+      reasons.push(`Fuel coverage is ${formatNumber(estimate.coveragePercent)}% of expected.`);
+    }
+  }
+
+  if (fuelAnomalies.length) {
+    reasons.push(`${fuelAnomalies.length} fuel-log anomaly ${fuelAnomalies.length === 1 ? "was" : "were"} detected.`);
+  }
+  if (openPayments > 0) {
+    reasons.push(`${openPayments} final payment${openPayments === 1 ? " is" : "s are"} still open.`);
+    actions.push("Request open final payments before closing the period.");
+  }
+  if (paidPayments > 0) {
+    reasons.push(`${paidPayments} payment${paidPayments === 1 ? " is" : "s are"} marked paid, so the period is locked for new entries.`);
+    actions.push("Close the period before logging more trips/fuel, or reopen the paid payment to correct this period.");
+  }
+
+  if (!actions.length) {
+    actions.push(tone === "ok" ? "No obvious data issue. Continue with the normal settlement flow." : "Review the warnings before requesting payments.");
+  }
+
+  return { status, tone, reasons, actions, estimate, validationWarnings, fuelAnomalies, openPayments, paidPayments };
+}
+
+function getLatestMonthlySignal() {
+  const months = buildMonthlyMemberSummaries().filter((month) => month.tripCount || month.fuelLogCount);
+  if (!months.length) return null;
+  const latest = months[0];
+  const people = Object.values(latest.people || {})
+    .filter((person) => person.joinedTrips || person.drivenTrips || person.fuelLogs || person.fuelPaid)
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  if (!people.length) return { month: latest, text: "No active members in the latest month yet." };
+  const biggest = people[0];
+  const direction = biggest.net >= 0 ? "paid more than their estimated share" : "used more fuel than they paid for";
+  return {
+    month: latest,
+    text: `${biggest.name} has the largest monthly net in ${latest.label}: ${formatMoneyFor(biggest.net, state.currency)} (${direction}).`
+  };
+}
+
+function buildSmartPredictions(ledger) {
+  const intel = buildFuelIntelligence(ledger);
+  const health = getCurrentPeriodHealthPrediction(ledger);
+  const distance = els.tripEstimateDistance ? Number(els.tripEstimateDistance.value || 0) : 0;
+  const participants = Math.max(1, getTripEstimatorParticipants().length || 1);
+  const planDistance = distance > 0 ? distance : 100;
+  const planEstimate = calculateTripCostEstimate(planDistance, participants);
+  const monthlySignal = getLatestMonthlySignal();
+  return { intel, health, planDistance, participants, planEstimate, monthlySignal };
+}
+
+function renderSmartPredictions(ledger) {
+  if (!els.smartPredictions) return;
+  const prediction = buildSmartPredictions(ledger);
+  const hasData = state.trips.length || state.fuel.length || state.closedPeriods.length;
+
+  if (!hasData) {
+    els.smartPredictions.className = "smart-predictions empty-state";
+    els.smartPredictions.textContent = "Add trips and fuel receipts to get smart predictions.";
+    return;
+  }
+
+  const health = prediction.health;
+  const toneClass = health.tone === "ok" ? "ok" : health.tone === "issue" ? "issue" : "warning";
+  const anomalyItems = health.fuelAnomalies.slice(0, 5).map((item) => `<li>${escapeHtml(item.text)}</li>`).join("");
+  const hiddenAnomalyCount = Math.max(0, health.fuelAnomalies.length - 5);
+
+  els.smartPredictions.className = "smart-predictions";
+  els.smartPredictions.innerHTML = `
+    <div class="smart-prediction-grid">
+      <article class="smart-card smart-card-${toneClass}">
+        <span>Current period health</span>
+        <strong>${escapeHtml(health.status)}</strong>
+        <small>${health.reasons.length ? escapeHtml(health.reasons[0]) : "No unusual signal found."}</small>
+      </article>
+      <article>
+        <span>Planning estimate</span>
+        <strong>${formatMoneyFor(prediction.planEstimate.totalCost, state.currency)}</strong>
+        <small>${formatNumber(prediction.planDistance)} km · ${prediction.participants} person${prediction.participants === 1 ? "" : "s"} · ${formatMoneyFor(prediction.planEstimate.perPerson, state.currency)} each.</small>
+      </article>
+      <article>
+        <span>Planning confidence</span>
+        <strong><span class="status-pill status-${prediction.intel.confidenceClass === "ok" ? "ok" : "warning"}">${prediction.intel.confidence}</span></strong>
+        <small>${escapeHtml(prediction.intel.estimateSource)}.</small>
+      </article>
+      <article>
+        <span>Fuel-log anomalies</span>
+        <strong>${health.fuelAnomalies.length}</strong>
+        <small>${health.fuelAnomalies.length ? "Review before settlement." : "No current-period fuel-log anomaly found."}</small>
+      </article>
+    </div>
+    <div class="smart-prediction-details">
+      <article>
+        <h3>Suggested action</h3>
+        <ul>${health.actions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ul>
+      </article>
+      <article>
+        <h3>Why this estimate?</h3>
+        <p>${escapeHtml(prediction.planEstimate.explanation)}</p>
+        ${prediction.monthlySignal ? `<p>${escapeHtml(prediction.monthlySignal.text)}</p>` : ""}
+      </article>
+      ${health.fuelAnomalies.length ? `<article><h3>Fuel anomalies</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here.</li>` : ""}</ul></article>` : ""}
+    </div>
+  `;
+}
+
 
 function renderMonthlyMemberSummaries() {
   if (!els.monthlyMemberSummaries) return;

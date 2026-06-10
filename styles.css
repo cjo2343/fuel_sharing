@@ -2351,3 +2351,71 @@ body.auth-locked #authPanel .text-button {
     white-space: normal;
   }
 }
+
+
+.smart-prediction-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 1rem;
+}
+
+.smart-prediction-grid article,
+.smart-prediction-details article {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.smart-prediction-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.smart-prediction-grid strong {
+  display: block;
+  font-size: 1.45rem;
+  margin: 0.25rem 0;
+}
+
+.smart-card-ok {
+  border-color: rgba(22, 120, 85, 0.25) !important;
+  background: rgba(232, 247, 239, 0.75) !important;
+}
+
+.smart-card-warning {
+  border-color: rgba(217, 145, 35, 0.35) !important;
+  background: rgba(255, 248, 232, 0.85) !important;
+}
+
+.smart-card-issue {
+  border-color: rgba(190, 72, 72, 0.35) !important;
+  background: rgba(255, 238, 238, 0.85) !important;
+}
+
+.smart-prediction-details {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.smart-prediction-details h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.smart-prediction-details ul {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.smart-prediction-details p {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-weight: 700;
+}
