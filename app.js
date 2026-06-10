@@ -1837,6 +1837,124 @@ function buildMonthlyMemberSummaries() {
   return Array.from(months.values()).sort((a, b) => String(b.key).localeCompare(String(a.key)));
 }
 
+
+function getEntryReviewReferencePrice() {
+  const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
+  if (latestFuelPrice && Number(latestFuelPrice.price) > 0) return Number(latestFuelPrice.price);
+  const paidWithLiters = state.fuel.filter((fuel) => Number(fuel.amount || 0) > 0 && Number(fuel.liters || 0) > 0);
+  const totalPaid = paidWithLiters.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0);
+  const totalLiters = paidWithLiters.reduce((sum, fuel) => sum + Number(fuel.liters || 0), 0);
+  if (totalPaid > 0 && totalLiters > 0) return totalPaid / totalLiters;
+  return fallbackPrice;
+}
+
+function getFuelEntryReviewSignal(fuel, ledger = null) {
+  if (!fuel) return null;
+  const amount = Number(fuel.amount || 0);
+  const liters = Number(fuel.liters || 0);
+  const referencePrice = getEntryReviewReferencePrice();
+  const messages = [];
+  let level = "ok";
+
+  const setLevel = (next) => {
+    if (next === "issue" || level !== "issue") level = next;
+  };
+
+  if (amount >= 500 && !(liters > 0)) {
+    setLevel("issue");
+    messages.push("Large fuel payment without liters. Add liters so the app can verify DKK/L and consumption.");
+  }
+
+  if (amount > 0 && liters > 0) {
+    const pricePerLiter = amount / liters;
+    if (pricePerLiter < 8 || pricePerLiter > 25) {
+      setLevel("issue");
+      messages.push(`${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the normal fuel price range.`);
+    } else if (referencePrice > 0) {
+      const difference = Math.abs(pricePerLiter - referencePrice) / referencePrice;
+      if (difference >= 0.25) {
+        setLevel("warning");
+        messages.push(`${formatMoneyFor(pricePerLiter, state.currency)}/L differs from the reference price (${formatMoneyFor(referencePrice, state.currency)}/L).`);
+      }
+    }
+  }
+
+  const duplicates = state.fuel.filter((other) =>
+    other !== fuel
+      && other.payer === fuel.payer
+      && other.date === fuel.date
+      && Math.abs(Number(other.amount || 0) - amount) < 0.01
+  );
+  if (duplicates.length) {
+    setLevel("issue");
+    messages.push("Possible duplicate: same payer, date, and amount exists in this period.");
+  }
+
+  const activeLedger = ledger || calculateLedger();
+  const estimate = activeLedger.fuelEstimate || calculateFuelEstimate(activeLedger);
+  if (estimate?.hasEstimate && estimate.coveragePercent > 135 && amount > 0 && activeLedger.totalPaid > 0) {
+    const shareOfFuel = amount / activeLedger.totalPaid;
+    if (shareOfFuel >= 0.3) {
+      setLevel("warning");
+      messages.push(`This receipt is ${formatNumber(shareOfFuel * 100)}% of the period fuel total. Check that it belongs to this period.`);
+    }
+  }
+
+  if (!messages.length) return null;
+  return {
+    level,
+    title: level === "issue" ? "Likely needs review" : "Worth checking",
+    messages
+  };
+}
+
+function getTripEntryReviewSignal(trip, ledger = null) {
+  if (!trip) return null;
+  const start = Number(trip.startKm || 0);
+  const end = Number(trip.endKm || 0);
+  const km = Math.max(0, end - start);
+  const messages = [];
+  let level = "ok";
+  const setLevel = (next) => {
+    if (next === "issue" || level !== "issue") level = next;
+  };
+
+  if (!(end > start)) {
+    setLevel("issue");
+    messages.push("End odometer must be higher than start odometer.");
+  } else if (km > 1000) {
+    setLevel("warning");
+    messages.push(`${formatNumber(km)} km is unusually long for one trip. Check start/end odometer.`);
+  }
+
+  const activeLedger = ledger || calculateLedger();
+  const estimate = activeLedger.fuelEstimate || calculateFuelEstimate(activeLedger);
+  if (estimate?.hasEstimate && estimate.coveragePercent > 135 && activeLedger.totalTripKm > 0 && km > 0) {
+    const tripShare = km / activeLedger.totalTripKm;
+    if (state.trips.length > 2 && tripShare >= 0.5) {
+      setLevel("warning");
+      messages.push(`This trip is ${formatNumber(tripShare * 100)}% of the period distance. Check odometer if that was not intentional.`);
+    }
+  }
+
+  if (!messages.length) return null;
+  return {
+    level,
+    title: level === "issue" ? "Likely needs review" : "Worth checking",
+    messages
+  };
+}
+
+function renderEntryReviewSignal(signal) {
+  if (!signal) return "";
+  return `
+    <div class="entry-review-signal ${escapeHtml(signal.level)}">
+      <strong>${escapeHtml(signal.title)}</strong>
+      <ul>${signal.messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul>
+    </div>
+  `;
+}
+
 function getAnomalyEditTarget(type, entry) {
   if (!entry?.id) return null;
   if (type === "fuel" && canManageFuelEntry(entry)) return `fuel:${entry.id}`;
@@ -3797,6 +3915,7 @@ function renderHistory() {
 }
 
 function renderCategorizedTrips(trips) {
+  const ledger = calculateLedger();
   const sortedTrips = [...trips].sort(byNewest);
   const grouped = groupBy(sortedTrips, (trip) => trip.driver || "Unknown");
   const totalKm = round(sortedTrips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0));
@@ -3819,7 +3938,7 @@ function renderCategorizedTrips(trips) {
             <span>${driverTrips.length} trip${driverTrips.length === 1 ? "" : "s"} · ${formatNumber(driverKm)} km</span>
           </summary>
           <div class="entry-list grouped-entry-list">
-            ${driverTrips.map(renderTripEntryCard).join("")}
+            ${driverTrips.map((trip) => renderTripEntryCard(trip, ledger)).join("")}
           </div>
         </details>
       `;
@@ -3827,10 +3946,11 @@ function renderCategorizedTrips(trips) {
     .join("");
 }
 
-function renderTripEntryCard(trip) {
+function renderTripEntryCard(trip, ledger = null) {
   const km = round(Number(trip.endKm || 0) - Number(trip.startKm || 0));
   const participants = getTripParticipants(trip);
   const category = getTripCategory(trip);
+  const reviewSignal = getTripEntryReviewSignal(trip, ledger);
   return `
     <article class="entry-card">
       <header>
@@ -3841,11 +3961,13 @@ function renderTripEntryCard(trip) {
       <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
       <p class="entry-meta">Split between ${participants.map(escapeHtml).join(", ")}</p>
       ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
+      ${renderEntryReviewSignal(reviewSignal)}
     </article>
   `;
 }
 
 function renderCategorizedFuel(fuelLogs) {
+  const ledger = calculateLedger();
   const sortedFuel = [...fuelLogs].sort(byNewest);
   const grouped = groupBy(sortedFuel, (fuel) => fuel.payer || "Unknown");
   const totalPaid = roundMoney(sortedFuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0));
@@ -3870,7 +3992,7 @@ function renderCategorizedFuel(fuelLogs) {
             <span>${payerFuel.length} fuel log${payerFuel.length === 1 ? "" : "s"} · ${formatMoney(payerPaid)}${payerLiters > 0 ? ` · ${formatNumber(payerLiters)} L` : ""}</span>
           </summary>
           <div class="entry-list grouped-entry-list">
-            ${payerFuel.map(renderFuelEntryCard).join("")}
+            ${payerFuel.map((fuel) => renderFuelEntryCard(fuel, ledger)).join("")}
           </div>
         </details>
       `;
@@ -3878,7 +4000,8 @@ function renderCategorizedFuel(fuelLogs) {
     .join("");
 }
 
-function renderFuelEntryCard(fuel) {
+function renderFuelEntryCard(fuel, ledger = null) {
+  const reviewSignal = getFuelEntryReviewSignal(fuel, ledger);
   return `
     <article class="entry-card">
       <header>
@@ -3887,6 +4010,7 @@ function renderFuelEntryCard(fuel) {
       </header>
       <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
       <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+      ${renderEntryReviewSignal(reviewSignal)}
     </article>
   `;
 }

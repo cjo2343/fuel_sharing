@@ -2419,3 +2419,44 @@ body.auth-locked #authPanel .text-button {
   color: var(--muted);
   font-weight: 700;
 }
+
+.entry-review-signal {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--green-soft);
+  color: var(--ink-soft);
+}
+
+.entry-review-signal strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--green-dark);
+}
+
+.entry-review-signal.warning {
+  border-color: rgba(216, 154, 50, 0.5);
+  background: var(--amber-soft);
+}
+
+.entry-review-signal.warning strong {
+  color: #805916;
+}
+
+.entry-review-signal.issue {
+  border-color: rgba(185, 77, 69, 0.5);
+  background: var(--red-soft);
+}
+
+.entry-review-signal.issue strong {
+  color: var(--red);
+}
+
+.entry-review-signal ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 720;
+}
