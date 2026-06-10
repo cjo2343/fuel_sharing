@@ -2888,6 +2888,19 @@ async function sendSettlementPush(settlement) {
 }
 
 
+
+async function hasFreshSupabaseSession() {
+  if (!supabaseClient) return false;
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error || !data?.session?.access_token) {
+    currentSession = null;
+    updateAuthUi();
+    return false;
+  }
+  currentSession = data.session;
+  return true;
+}
+
 function normalizedDate(value) {
   return String(value || new Date().toISOString().slice(0, 10)).slice(0, 10);
 }
@@ -2899,6 +2912,7 @@ function nullableNumber(value) {
 
 async function syncNormalizedTablesFromJson() {
   if (!supabaseClient || !currentSession) return;
+  if (!(await hasFreshSupabaseSession())) return;
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
 
@@ -3105,6 +3119,7 @@ async function syncNormalizedTablesFromJson() {
 
 async function checkNormalizedTablesAgainstCurrentState() {
   if (!supabaseClient || !currentSession) return;
+  if (!(await hasFreshSupabaseSession())) return;
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
   const [membersResult, tripsResult, fuelResult, periodsResult] = await Promise.all([
