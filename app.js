@@ -164,6 +164,7 @@ const els = {
   importLedger: document.querySelector("#importLedger"),
   importLedgerFile: document.querySelector("#importLedgerFile"),
   downloadCsv: document.querySelector("#downloadCsv"),
+  downloadPeriodReport: document.querySelector("#downloadPeriodReport"),
   removeTestUsers: document.querySelector("#removeTestUsers"),
   addTestTrip: document.querySelector("#addTestTrip"),
   addTestFuel: document.querySelector("#addTestFuel"),
@@ -616,6 +617,11 @@ els.importLedgerFile?.addEventListener("change", async () => {
 els.downloadCsv?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   downloadLedgerCsv();
+});
+
+els.downloadPeriodReport?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  downloadCurrentPeriodReport();
 });
 
 els.removeTestUsers?.addEventListener("click", () => {
@@ -2261,6 +2267,78 @@ function downloadLedgerCsv() {
     "text/csv;charset=utf-8"
   );
   setDataToolsMessage("CSV files downloaded.");
+}
+
+
+function downloadCurrentPeriodReport() {
+  const ledger = calculateLedger();
+  const activity = buildPeriodActivityStats(ledger);
+  const settlements = ledger.settlements || [];
+  const requestedSettlements = settlements.filter((settlement) => getSettlementStatus(settlement) === "requested");
+  const openSettlements = settlements.filter((settlement) => getSettlementStatus(settlement) !== "requested");
+  const periodLabel = ledger.period?.label || "Current settlement period";
+  const generatedAt = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+  const lines = [];
+  lines.push(`# Fuel Ledger report - ${periodLabel}`);
+  lines.push("");
+  lines.push(`Generated: ${generatedAt}`);
+  lines.push("");
+  lines.push("## Period totals");
+  lines.push(`- Trips: ${activity.tripCount}`);
+  lines.push(`- Fuel logs: ${activity.fuelCount}`);
+  lines.push(`- Trip km: ${formatNumber(activity.totalTripKm)} km`);
+  lines.push(`- Participant km: ${formatNumber(ledger.totalShareKm)} km`);
+  lines.push(`- Fuel paid: ${formatMoney(ledger.totalPaid)}`);
+  lines.push(`- Fuel cost per participant km: ${ledger.totalShareKm > 0 ? `${formatMoney(ledger.fuelRate)}/km` : "-"}`);
+  lines.push(`- Fuel cost per trip km: ${ledger.totalTripKm > 0 ? `${formatMoney(ledger.totalPaid / ledger.totalTripKm)}/km` : "-"}`);
+  lines.push(`- Fuel consumption: ${ledger.receiptConsumption > 0 ? `${formatNumber(ledger.receiptConsumption)} L/100 km (${formatNumber(ledger.receiptKmPerLiter)} km/L)` : "Not enough liter data"}`);
+  lines.push("");
+  lines.push("## Final payments");
+  lines.push(`- Total final payment lines: ${settlements.length}`);
+  lines.push(`- Requested: ${requestedSettlements.length} (${formatMoney(requestedSettlements.reduce((sum, item) => sum + Number(item.amount || 0), 0))})`);
+  lines.push(`- Open: ${openSettlements.length} (${formatMoney(openSettlements.reduce((sum, item) => sum + Number(item.amount || 0), 0))})`);
+  if (settlements.length) {
+    lines.push("");
+    for (const settlement of settlements) {
+      lines.push(`- ${settlement.from} pays ${settlement.to}: ${formatMoney(settlement.amount)} (${statusLabel(getSettlementStatus(settlement))})`);
+    }
+  } else {
+    lines.push("- No payments needed.");
+  }
+  lines.push("");
+  lines.push("## Activity by person");
+  if (activity.people.length) {
+    lines.push("| Person | Trips driven | Trips joined | Distance share | Fuel logs | Fuel paid | Fuel share | Net |");
+    lines.push("|---|---:|---:|---:|---:|---:|---:|---:|");
+    for (const person of activity.people) {
+      const ledgerPerson = ledger.people[person.name] || {};
+      lines.push(`| ${markdownCell(person.name)} | ${person.driverTrips} | ${person.joinedTrips} | ${formatNumber(person.distanceShare)} km | ${person.fuelLogs} | ${formatMoney(person.fuelPaid)} | ${formatMoney(ledgerPerson.tripCost || 0)} | ${formatMoney(ledgerPerson.net || 0)} |`);
+    }
+  } else {
+    lines.push("No activity in this period.");
+  }
+  lines.push("");
+  lines.push("## Fuel payments by payer");
+  const fuelPayers = Object.entries(ledger.fuelByPerson || {}).filter(([, amount]) => Number(amount || 0) > 0);
+  if (fuelPayers.length) {
+    for (const [name, amount] of fuelPayers) {
+      const liters = Number(ledger.fuelLitersByPerson?.[name] || 0);
+      lines.push(`- ${name}: ${formatMoney(amount)}${liters > 0 ? ` · ${formatNumber(liters)} L` : ""}`);
+    }
+  } else {
+    lines.push("- No fuel payments in this period.");
+  }
+  lines.push("");
+  lines.push("## Notes");
+  lines.push("Final payments are not one payment per trip. They are the netted result after all trips and fuel receipts in the open period are balanced.");
+
+  downloadTextFile(`fuel-ledger-period-report-${localDateString()}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+  setDataToolsMessage("Current period report downloaded.");
+}
+
+function markdownCell(value) {
+  return String(value ?? "").replace(/\|/g, "\\|");
 }
 
 function csvTripRow(trip, periodStatus, periodLabel) {
