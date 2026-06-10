@@ -159,6 +159,7 @@ const els = {
   databaseDiagnosticsList: document.querySelector("#databaseDiagnosticsList"),
   refreshDatabaseDiagnostics: document.querySelector("#refreshDatabaseDiagnostics"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
+  cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
   exportLedger: document.querySelector("#exportLedger"),
   importLedger: document.querySelector("#importLedger"),
   importLedgerFile: document.querySelector("#importLedgerFile"),
@@ -654,8 +655,29 @@ els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
 
 els.saveJsonBackupNow?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await saveJsonMirrorBackup({ force: true });
-  await refreshDatabaseDiagnostics();
+  els.saveJsonBackupNow.disabled = true;
+  try {
+    await saveJsonMirrorBackup({ force: true });
+    await refreshDatabaseDiagnostics();
+  } finally {
+    els.saveJsonBackupNow.disabled = false;
+  }
+});
+
+els.cleanStaleRequests?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  els.cleanStaleRequests.disabled = true;
+  try {
+    const cleaned = await cleanStaleSettlementRequests();
+    els.authMessage.textContent = cleaned
+      ? `Cleaned ${cleaned} stale settlement request row${cleaned === 1 ? "" : "s"}.`
+      : "No stale settlement request rows found.";
+  } catch (error) {
+    els.authMessage.textContent = `Could not clean stale request rows: ${error.message || error}`;
+  } finally {
+    els.cleanStaleRequests.disabled = false;
+    await refreshDatabaseDiagnostics();
+  }
 });
 
 
@@ -2607,6 +2629,50 @@ function renderDatabaseDiagnosticsPanel(ledger) {
     .join("");
 }
 
+
+async function getCurrentSettlementRequestContext() {
+  if (!supabaseClient || !currentSession) throw new Error("Sign in before checking settlement request rows.");
+  if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
+
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const [membersResult, periodsResult, requestsResult] = await Promise.all([
+    supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
+    supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
+    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,updated_at").eq("ledger_id", ledgerId)
+  ]);
+
+  const firstError = [membersResult, periodsResult, requestsResult].find((result) => result.error)?.error;
+  if (firstError) throw firstError;
+
+  const activeMembers = (membersResult.data || []).filter((member) => member.is_active !== false);
+  const openPeriod = (periodsResult.data || []).find((period) => period.status === "open") || null;
+  const activeRequests = (requestsResult.data || []).filter((request) =>
+    normalizePaymentStatus(request.status) !== "cancelled" && (!openPeriod || request.period_id === openPeriod.id)
+  );
+  const currentSettlementPairs = new Set(calculateLedger().settlements.map((settlement) => settlementKey(settlement)));
+  const currentRequests = activeRequests.filter((request) => {
+    const fromName = activeMembers.find((member) => member.id === request.from_member_id)?.name;
+    const toName = activeMembers.find((member) => member.id === request.to_member_id)?.name;
+    return fromName && toName && currentSettlementPairs.has(settlementKey({ from: fromName, to: toName, currency: state.currency || "DKK" }));
+  });
+  const staleRequests = activeRequests.filter((request) => !currentRequests.some((current) => current.id === request.id));
+
+  return { ledgerId, openPeriod, activeMembers, activeRequests, currentRequests, staleRequests };
+}
+
+async function cleanStaleSettlementRequests() {
+  const { staleRequests } = await getCurrentSettlementRequestContext();
+  if (!staleRequests.length) return 0;
+
+  const { error } = await supabaseClient
+    .from("settlement_requests")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .in("id", staleRequests.map((request) => request.id));
+
+  if (error) throw error;
+  return staleRequests.length;
+}
+
 async function refreshDatabaseDiagnostics() {
   if (!supabaseClient || !currentSession) {
     databaseDiagnosticsStatus = {
@@ -2705,7 +2771,7 @@ async function refreshDatabaseDiagnostics() {
       {
         level: requestedCurrentRows === visibleRequested && staleRequestRows === 0 ? "ok" : "warning",
         title: "Settlement requests",
-        message: `${requestedCurrentRows} requested current table rows; ${visibleRequested} visible requested payments; ${staleRequestRows} stale active request rows.`
+        message: `${requestedCurrentRows} requested current table rows; ${visibleRequested} visible requested payments; ${staleRequestRows} stale active request row${staleRequestRows === 1 ? "" : "s"}${staleRequestRows ? " (safe to clean)" : ""}.`
       },
       {
         level: legacyState.trips.length === state.trips.length && legacyState.fuel.length === state.fuel.length ? "ok" : "warning",
@@ -2772,14 +2838,16 @@ function buildSystemHealthChecks(ledger) {
     message: currentSession ? `Signed in as ${getLoggedInEmail()}.` : "Nobody is signed in, so changes cannot be saved to cloud."
   });
 
+  const syncStatus = els.syncStatus?.dataset.status || "";
+  const databaseSaveOk = ["cloud", "tables", "shared"].includes(syncStatus);
   checks.push({
-    level: (els.syncStatus?.dataset.status || "") === "cloud" ? "ok" : ((els.syncStatus?.dataset.status || "") === "saving" ? "warning" : "issue"),
-    title: "Cloud saving",
+    level: databaseSaveOk ? "ok" : (syncStatus === "saving" || syncStatus === "syncing" ? "warning" : "issue"),
+    title: "Database saving",
     message: lastCloudSaveAt
-      ? `Last cloud save: ${new Date(lastCloudSaveAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}.`
+      ? `Last database save: ${new Date(lastCloudSaveAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}. ${normalizedReadModeActive ? "Normalized tables are the primary save target; JSON is only a backup snapshot." : "Cloud JSON is the current save target."}`
       : lastSyncError
         ? `Last save/load error: ${lastSyncError}.`
-        : "No confirmed cloud save yet in this session."
+        : "No confirmed database save yet in this session."
   });
 
   checks.push({
