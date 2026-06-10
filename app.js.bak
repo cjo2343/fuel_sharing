@@ -58,7 +58,6 @@ let lastCloudSaveAt = "";
 let lastSyncError = "";
 let normalizedTableStatus = { checked: false, ok: false, message: "Normalized tables have not been checked yet." };
 let normalizedReadModeActive = false;
-const pendingSettlementRequestKeys = new Set();
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -1489,8 +1488,8 @@ function renderSettlements(ledger) {
         const requestControls = canRequest
           ? `
             <button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(message)}">Copy</button>
-            ${status === "open" ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested" ${pendingSettlementRequestKeys.has(key) ? "disabled" : ""}>${pendingSettlementRequestKeys.has(key) ? "Requesting..." : "Requested"}</button>` : ""}
-            ${status !== "open" ? `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open" ${pendingSettlementRequestKeys.has(key) ? "disabled" : ""}>${pendingSettlementRequestKeys.has(key) ? "Reopening..." : "Reopen"}</button>` : ""}
+            ${status === "open" ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested">Requested</button>` : ""}
+            ${status !== "open" ? `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open">Reopen</button>` : ""}
           `
           : `<span class="request-note">Only ${escapeHtml(item.to)} can request this payment.</span>`;
         return `
@@ -1957,11 +1956,8 @@ function renderPaymentOverview(ledger) {
 }
 
 async function updatePaymentStatus(button) {
-  const key = button.dataset.paymentKey;
-  if (pendingSettlementRequestKeys.has(key)) return;
-
   const ledger = calculateLedger();
-  const settlement = ledger.settlements.find((item) => settlementKey(item) === key);
+  const settlement = ledger.settlements.find((item) => settlementKey(item) === button.dataset.paymentKey);
 
   if (!settlement || !canManageSettlementRequest(settlement)) {
     alert("Only the person who paid for fuel in this settlement can request or reopen that payment.");
@@ -1977,28 +1973,14 @@ async function updatePaymentStatus(button) {
   }
 
   const nextStatus = normalizePaymentStatus(button.dataset.paymentStatus);
-  const previousStatus = normalizePaymentStatus(state.paymentStatuses[key]);
-  pendingSettlementRequestKeys.add(key);
-  button.disabled = true;
-  button.textContent = nextStatus === "requested" ? "Requesting..." : "Reopening...";
-  setSyncStatus("Saving");
-
   const tableSaved = await saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus);
-  if (!tableSaved) {
-    pendingSettlementRequestKeys.delete(key);
-    render();
-    return;
-  }
+  if (!tableSaved) return;
 
-  state.paymentStatuses[key] = nextStatus;
+  state.paymentStatuses[button.dataset.paymentKey] = nextStatus;
   saveState();
-  pendingSettlementRequestKeys.delete(key);
-  render();
 
   if (nextStatus === "requested") {
-    sendSettlementPush(settlement).catch((error) => {
-      console.warn("Settlement push notification failed", error);
-    });
+    await sendSettlementPush(settlement);
   }
 
   const refreshedLedger = calculateLedger();
@@ -2009,8 +1991,7 @@ async function updatePaymentStatus(button) {
     );
 
   if (
-    nextStatus === "requested" &&
-    previousStatus !== "requested" &&
+    button.dataset.paymentStatus === "requested" &&
     allRequested &&
     confirm(
       "All current settlements have been requested. Close and archive this period now so new trips start fresh?"
@@ -2019,6 +2000,8 @@ async function updatePaymentStatus(button) {
     await closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true, skipFuelValidation: true });
     return;
   }
+
+  render();
 }
 
 async function copySettlement(button) {

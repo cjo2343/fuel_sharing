@@ -310,3 +310,7 @@ Test flow:
 4. Confirm the request status survives reload.
 5. Click `Reopen` and confirm it also syncs.
 6. Check System health.
+
+## Phase 2E responsiveness patch
+
+Settlement request/reopen buttons now show an immediate busy state while the normalized `settlement_requests` row is saved. Push notifications are sent in the background after the request status is visible, so the UI should no longer feel stuck while waiting on notification delivery.
