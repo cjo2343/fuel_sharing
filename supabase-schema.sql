@@ -30,11 +30,12 @@ values (
   'main-car',
   '{
     "currency": "DKK",
-    "members": ["Christian", "Alex", "Sam"],
+    "members": ["Christian", "Emilie", "Jonas", "Marie"],
     "memberProfiles": {
       "Christian": { "email": "", "role": "admin" },
-      "Alex": { "email": "", "role": "member" },
-      "Sam": { "email": "", "role": "member" }
+      "Emilie": { "email": "", "role": "member" },
+      "Jonas": { "email": "", "role": "member" },
+      "Marie": { "email": "", "role": "member" }
     },
     "trips": [],
     "fuel": [],

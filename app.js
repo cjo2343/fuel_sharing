@@ -24,10 +24,21 @@ const supabaseClient =
     ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
     : null;
 
+function localDateString(date = new Date()) {
+  const local = new Date(date);
+  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
+  return local.toISOString().slice(0, 10);
+}
+
 const defaults = {
   currency: "DKK",
-  members: ["Christian", "Alex", "Sam"],
-  memberProfiles: {},
+  members: ["Christian", "Emilie", "Jonas", "Marie"],
+  memberProfiles: {
+    Christian: { email: "", role: "admin" },
+    Emilie: { email: "", role: "member" },
+    Jonas: { email: "", role: "member" },
+    Marie: { email: "", role: "member" }
+  },
   trips: [],
   fuel: [],
   paymentStatuses: {},
@@ -645,7 +656,7 @@ function addGeneratedTestTrip() {
     id: `${generatedTestPrefix}trip-${crypto.randomUUID()}`,
     driver: actor,
     participants: getTestParticipantNames(actor),
-    date: new Date().toISOString().slice(0, 10),
+    date: localDateString(),
     startKm: round(start),
     endKm: round(end),
     note: `${generatedTestMarker} generated trip ${stamp}`
@@ -672,7 +683,7 @@ function addGeneratedTestFuel() {
   state.fuel.push({
     id: `${generatedTestPrefix}fuel-${crypto.randomUUID()}`,
     payer: actor,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDateString(),
     amount: roundMoney(amount),
     liters: round(liters),
     pricePerLiter: roundMoney(amount / liters),
@@ -734,7 +745,7 @@ function makeGeneratedTestTrip(index = 0) {
     id: `${generatedTestPrefix}trip-${crypto.randomUUID()}`,
     driver: actor,
     participants,
-    date: new Date(Date.now() - (index % 5) * 86400000).toISOString().slice(0, 10),
+    date: localDateString(new Date(Date.now() - (index % 5) * 86400000)),
     startKm: round(start),
     endKm: round(start + distance),
     note: `${generatedTestMarker} stress trip ${index + 1} generated ${stamp}`
@@ -752,7 +763,7 @@ function makeGeneratedTestFuel(index = 0) {
   return {
     id: `${generatedTestPrefix}fuel-${crypto.randomUUID()}`,
     payer: actor,
-    date: new Date(Date.now() - (index % 5) * 86400000).toISOString().slice(0, 10),
+    date: localDateString(new Date(Date.now() - (index % 5) * 86400000)),
     amount,
     liters: round(liters),
     pricePerLiter: roundMoney(amount / liters),
@@ -1466,15 +1477,8 @@ function renderSettlements(ledger) {
     return;
   }
 
-  const activeKeys = new Set(ledger.settlements.map(settlementKey));
-  let prunedPaymentStatuses = false;
-  for (const key of Object.keys(state.paymentStatuses)) {
-    if (!activeKeys.has(key)) {
-      delete state.paymentStatuses[key];
-      prunedPaymentStatuses = true;
-    }
-  }
-  if (prunedPaymentStatuses) saveState();
+  // Rendering must be read-only. Stale payment status keys are ignored here and
+  // cleaned up during explicit save/period-close flows instead of writing while rendering.
   renderPaymentOverview(ledger);
 
   els.settlements.innerHTML = ledger.settlements
@@ -2047,7 +2051,7 @@ async function copySettlement(button) {
 
 
 function exportLedgerBackup() {
-  const filename = `fuel-ledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const filename = `fuel-ledger-backup-${localDateString()}.json`;
   const backup = {
     exportedAt: new Date().toISOString(),
     app: "Fuel Ledger",
@@ -2093,7 +2097,7 @@ async function importLedgerBackup() {
 }
 
 function downloadLedgerCsv() {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDateString();
   const trips = [];
   for (const trip of state.trips) trips.push(csvTripRow(trip, "current", ""));
   for (const period of state.closedPeriods) {
@@ -2608,7 +2612,7 @@ function buildSettlements(people) {
 }
 
 function setDefaultDates() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   els.tripDate.max = today;
   els.fuelDate.max = today;
   els.tripDate.value = today;
@@ -3129,7 +3133,7 @@ async function hasFreshSupabaseSession() {
 }
 
 function normalizedDate(value) {
-  return String(value || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  return String(value || localDateString()).slice(0, 10);
 }
 
 function nullableNumber(value) {

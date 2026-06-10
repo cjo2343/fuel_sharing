@@ -314,3 +314,14 @@ Test flow:
 ## Phase 2E responsiveness patch
 
 Settlement request/reopen buttons now show an immediate busy state while the normalized `settlement_requests` row is saved. Push notifications are sent in the background after the request status is visible, so the UI should no longer feel stuck while waiting on notification delivery.
+
+## Codex review cleanup
+
+This build addresses the immediate low-risk findings from the Codex review:
+
+- `supabase-schema.sql` now seeds the same default people as `ledger-data.json`: Christian, Emilie, Jonas, Marie.
+- The in-app reset/default state now uses Christian, Emilie, Jonas, Marie instead of Christian, Alex, Sam.
+- Settlement rendering no longer calls `saveState()` just because old payment status keys are present. Rendering is read-only.
+- Date defaults now use the browser's local date instead of UTC `toISOString().slice(0, 10)`, so Denmark users do not get yesterday/tomorrow edge cases around midnight.
+
+The SQL file `phase2e-security-hardening-template.sql` is included as a starting point for production RLS hardening. Do not run it until every real member has the correct login email in `ledger_members.email`.
