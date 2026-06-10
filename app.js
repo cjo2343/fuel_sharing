@@ -1896,14 +1896,14 @@ function getFuelEntryReviewSignal(fuel, ledger = null) {
     const shareOfFuel = amount / activeLedger.totalPaid;
     if (shareOfFuel >= 0.3) {
       setLevel("warning");
-      messages.push(`This receipt is ${formatNumber(shareOfFuel * 100)}% of the period fuel total. Check that it belongs to this period.`);
+      messages.push(`Large share of period fuel: ${formatMoneyFor(amount, state.currency)} of ${formatMoneyFor(activeLedger.totalPaid, state.currency)} (${formatNumber(shareOfFuel * 100)}%). Check that it belongs to this period.`);
     }
   }
 
   if (!messages.length) return null;
   return {
     level,
-    title: level === "issue" ? "Likely needs review" : "Worth checking",
+    title: level === "issue" ? "Likely needs review" : "Review suggestion",
     messages
   };
 }
@@ -1933,14 +1933,14 @@ function getTripEntryReviewSignal(trip, ledger = null) {
     const tripShare = km / activeLedger.totalTripKm;
     if (state.trips.length > 2 && tripShare >= 0.5) {
       setLevel("warning");
-      messages.push(`This trip is ${formatNumber(tripShare * 100)}% of the period distance. Check odometer if that was not intentional.`);
+      messages.push(`Large share of period distance: ${formatNumber(km)} km of ${formatNumber(activeLedger.totalTripKm)} km (${formatNumber(tripShare * 100)}%). Check odometer if that was not intentional.`);
     }
   }
 
   if (!messages.length) return null;
   return {
     level,
-    title: level === "issue" ? "Likely needs review" : "Worth checking",
+    title: level === "issue" ? "Likely needs review" : "Review suggestion",
     messages
   };
 }
@@ -1953,6 +1953,13 @@ function renderEntryReviewSignal(signal) {
       <ul>${signal.messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul>
     </div>
   `;
+}
+
+function getHistoryReviewCandidateCount(ledger = null) {
+  const activeLedger = ledger || calculateLedger();
+  const tripCandidates = state.trips.filter((trip) => getTripEntryReviewSignal(trip, activeLedger)).length;
+  const fuelCandidates = state.fuel.filter((fuel) => getFuelEntryReviewSignal(fuel, activeLedger)).length;
+  return { tripCandidates, fuelCandidates, total: tripCandidates + fuelCandidates };
 }
 
 function getAnomalyEditTarget(type, entry) {
@@ -2188,6 +2195,7 @@ function renderSmartPredictions(ledger) {
   const health = prediction.health;
   const toneClass = health.tone === "ok" ? "ok" : health.tone === "issue" ? "issue" : "warning";
   const entryAnomalyCount = health.fuelAnomalies.filter((item) => item.entryLevel).length;
+  const reviewCandidateCounts = getHistoryReviewCandidateCount(ledger);
   const editableAnomalyCount = health.fuelAnomalies.filter((item) => item.target).length;
   const anomalyItems = health.fuelAnomalies.slice(0, 6).map((item) => {
     const action = item.target
@@ -2203,7 +2211,9 @@ function renderSmartPredictions(ledger) {
       ? "Use Edit on linked items before settlement."
       : entryAnomalyCount
         ? "Use History to ask the owner to edit linked entries."
-        : "Period-level warning; no single bad entry found."
+        : reviewCandidateCounts.total
+          ? `Period-level warning; ${reviewCandidateCounts.total} candidate entr${reviewCandidateCounts.total === 1 ? "y" : "ies"} worth reviewing in History.`
+          : "Period-level warning; no single bad entry found."
     : "No current-period outlier found.";
   const historicalTone = prediction.historicalQuality === "Good" ? "ok" : "warning";
   const planningTone = prediction.planningConfidence === "High" ? "ok" : prediction.planningConfidence === "Low" ? "issue" : "warning";
@@ -2253,7 +2263,7 @@ function renderSmartPredictions(ledger) {
         ${!prediction.intel.consumptionLooksRealistic ? `<p>After the production reset and a few real fuel logs, the historical model will become more useful.</p>` : ""}
         ${prediction.monthlySignal ? `<p>${escapeHtml(prediction.monthlySignal.text)}</p>` : ""}
       </article>
-      ${health.fuelAnomalies.length ? `<article><h3>Outliers and next steps</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}</ul>${hasPeriodLevelWarning ? `<button class="subtle-button compact-button" type="button" data-review-period="true">Review period data</button><p class="entry-meta">Opens History and expands current-period trips/fuel so you can inspect totals and edit entries you own.</p>` : ""}</article>` : ""}
+      ${health.fuelAnomalies.length ? `<article><h3>Outliers and next steps</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}${hasPeriodLevelWarning && reviewCandidateCounts.total ? `<li>No definite bad entry was identified, but ${reviewCandidateCounts.total} candidate entr${reviewCandidateCounts.total === 1 ? "y is" : "ies are"} worth reviewing in History.</li>` : ""}</ul>${hasPeriodLevelWarning ? `<button class="subtle-button compact-button" type="button" data-review-period="true">Review period data</button><p class="entry-meta">Opens History and expands current-period trips/fuel so you can inspect totals, review candidate entries, and edit entries you own.</p>` : ""}</article>` : ""}
     </div>
   `;
 }
