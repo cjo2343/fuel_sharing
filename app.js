@@ -1043,6 +1043,7 @@ function render() {
   renderTripEstimatorParticipants();
   syncStartOdometerDefault();
   const ledger = calculateLedger();
+  renderSettleActionBadge(ledger);
   renderSummary(ledger);
   renderBalances(ledger);
   renderSettlements(ledger);
@@ -2302,6 +2303,102 @@ function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlement
 }
 
 
+
+function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlements(ledger)) {
+  const profile = getCurrentMemberProfile();
+  const isAdmin = canManageSettings();
+  const visible = visibleSettlements || [];
+  const requested = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
+  const open = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) !== "requested");
+  const name = profile?.name || currentUser;
+  const sum = (rows) => rows.reduce((total, item) => total + Number(item.amount || 0), 0);
+
+  const openToMe = name ? open.filter((item) => item.to === name) : [];
+  const requestedFromMe = name ? requested.filter((item) => item.from === name) : [];
+  const openFromMe = name ? open.filter((item) => item.from === name) : [];
+  const requestedToMe = name ? requested.filter((item) => item.to === name) : [];
+
+  if (isAdmin) {
+    const all = ledger.settlements || [];
+    const allRequested = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
+    const allOpen = all.length - allRequested.length;
+    return {
+      isAdmin,
+      actionCount: allOpen,
+      title: "Period actions",
+      body: all.length
+        ? `${allRequested.length} of ${all.length} final payment${all.length === 1 ? "" : "s"} requested. ${allOpen ? `${allOpen} still open before closing the period.` : "All final payments are requested; the period can be closed."}`
+        : "No final payments are needed for this period.",
+      detail: "Admin period-wide summary."
+    };
+  }
+
+  if (openToMe.length) {
+    return {
+      isAdmin,
+      actionCount: openToMe.length,
+      title: "What do I need to do?",
+      body: `Request ${openToMe.length} payment${openToMe.length === 1 ? "" : "s"} totaling ${formatMoney(sum(openToMe))}.`,
+      detail: "You paid fuel and these payments are ready for you to request."
+    };
+  }
+
+  if (requestedFromMe.length) {
+    const recipients = requestedFromMe.map((item) => `${item.to} ${formatMoney(item.amount)}`).join(", ");
+    return {
+      isAdmin,
+      actionCount: requestedFromMe.length,
+      title: "What do I need to do?",
+      body: `Pay ${formatMoney(sum(requestedFromMe))}: ${recipients}.`,
+      detail: "These requested payments involve you as the payer."
+    };
+  }
+
+  if (openFromMe.length) {
+    return {
+      isAdmin,
+      actionCount: 0,
+      title: "What do I need to do?",
+      body: `You owe ${formatMoney(sum(openFromMe))}, but the fuel payer has not requested it yet.`,
+      detail: "No action is needed until the fuel payer requests payment."
+    };
+  }
+
+  if (requestedToMe.length) {
+    return {
+      isAdmin,
+      actionCount: 0,
+      title: "What do I need to do?",
+      body: `You requested ${formatMoney(sum(requestedToMe))}. Waiting for payment.`,
+      detail: "The requested payments are visible below."
+    };
+  }
+
+  return {
+    isAdmin,
+    actionCount: 0,
+    title: "What do I need to do?",
+    body: visible.length ? "Your visible payments are balanced for now." : "No final payments involve you in this period.",
+    detail: "Only payments involving your member profile are shown below."
+  };
+}
+
+function renderSettleActionBadge(ledger) {
+  const settleTab = els.sectionTabs.find((button) => button.dataset.viewTab === "settle");
+  if (!settleTab) return;
+  const summary = getMemberActionSummary(ledger);
+  let badge = settleTab.querySelector(".tab-badge");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "tab-badge";
+    settleTab.appendChild(badge);
+  }
+  const count = Number(summary.actionCount || 0);
+  badge.textContent = count > 9 ? "9+" : String(count);
+  badge.classList.toggle("hidden", count <= 0);
+  settleTab.setAttribute("aria-label", count > 0 ? `Settle, ${count} action${count === 1 ? "" : "s"}` : "Settle");
+}
+
 function renderMemberActionPanel(ledger, visibleSettlements = getVisibleSettlements(ledger)) {
   if (!els.memberActionPanel) return;
   if (!currentSession && supabaseClient) {
@@ -2309,50 +2406,12 @@ function renderMemberActionPanel(ledger, visibleSettlements = getVisibleSettleme
     return;
   }
 
-  const profile = getCurrentMemberProfile();
-  const isAdmin = canManageSettings();
-  const visible = visibleSettlements || [];
-  const requested = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
-  const open = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) !== "requested");
-  const name = profile?.name || currentUser;
-
-  const sum = (rows) => rows.reduce((total, item) => total + Number(item.amount || 0), 0);
-  const openToMe = name ? open.filter((item) => item.to === name) : [];
-  const requestedFromMe = name ? requested.filter((item) => item.from === name) : [];
-  const openFromMe = name ? open.filter((item) => item.from === name) : [];
-  const requestedToMe = name ? requested.filter((item) => item.to === name) : [];
-
-  let title = "What do I need to do?";
-  let body = "";
-
-  if (isAdmin) {
-    const all = ledger.settlements || [];
-    const allRequested = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
-    const allOpen = all.length - allRequested.length;
-    title = "Period actions";
-    body = all.length
-      ? `${allRequested.length} of ${all.length} final payment${all.length === 1 ? "" : "s"} requested. ${allOpen ? `${allOpen} still open before closing the period.` : "All final payments are requested; the period can be closed."}`
-      : "No final payments are needed for this period.";
-  } else if (openToMe.length) {
-    body = `Request ${openToMe.length} payment${openToMe.length === 1 ? "" : "s"} totaling ${formatMoney(sum(openToMe))}.`;
-  } else if (requestedFromMe.length) {
-    const recipients = requestedFromMe.map((item) => `${item.to} ${formatMoney(item.amount)}`).join(", ");
-    body = `Pay ${formatMoney(sum(requestedFromMe))}: ${recipients}.`;
-  } else if (openFromMe.length) {
-    body = `You owe ${formatMoney(sum(openFromMe))}, but the fuel payer has not requested it yet.`;
-  } else if (requestedToMe.length) {
-    body = `You requested ${formatMoney(sum(requestedToMe))}. Waiting for payment.`;
-  } else if (visible.length) {
-    body = "Your visible payments are balanced for now.";
-  } else {
-    body = "No final payments involve you in this period.";
-  }
-
+  const summary = getMemberActionSummary(ledger, visibleSettlements);
   els.memberActionPanel.innerHTML = `
-    <div class="member-action-card ${isAdmin ? "is-admin" : ""}">
-      <span>${escapeHtml(title)}</span>
-      <strong>${escapeHtml(body)}</strong>
-      <small>${isAdmin ? "Admin period-wide summary." : "Only payments involving your member profile are shown below."}</small>
+    <div class="member-action-card ${summary.isAdmin ? "is-admin" : ""}">
+      <span>${escapeHtml(summary.title)}</span>
+      <strong>${escapeHtml(summary.body)}</strong>
+      <small>${escapeHtml(summary.detail)}</small>
     </div>
   `;
 }
