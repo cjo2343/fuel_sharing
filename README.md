@@ -29,6 +29,15 @@ If that port is busy:
 PORT=4176 python3 server.py
 ```
 
+
+## Deployment checklist
+
+For production or existing Supabase projects, see [`DEPLOYMENT-CHECKLIST.md`](DEPLOYMENT-CHECKLIST.md) before running SQL or deploying app files. It includes the required order, smoke tests, rollback notes, and the fix for the `production_activity_reset(text)` function-default error.
+
+## Maintenance notes
+
+For architecture notes, the current RLS/security model, known legacy compromises, and the safest refactor order, see [`MAINTENANCE-NOTES.md`](MAINTENANCE-NOTES.md).
+
 ## Supabase Setup
 
 1. Create a Supabase project.

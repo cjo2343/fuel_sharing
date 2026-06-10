@@ -1,16 +1,34 @@
 # Security hardening notes
 
-For a fresh Supabase project, run `supabase-schema.sql`. It now creates the normalized tables and member-restricted RLS policies used by the table-primary app.
+For a fresh Supabase project, run `supabase-schema.sql`. It creates the normalized tables, helper functions, and member-restricted RLS policies used by the table-primary app.
 
-For an older project that was upgraded through the Phase 2 migration patches, the historical `phase2*.sql` files in this repo show the migration path. They do not need to be rerun on a database that is already hardened and working.
+For an existing Supabase project, run the current `supabase-schema.sql` in the SQL Editor before deploying matching app files. If Postgres reports that it cannot remove parameter defaults from `production_activity_reset(text)`, run:
 
-Before relying on the app with real users, confirm:
+```sql
+drop function if exists public.production_activity_reset(text);
+```
+
+Then rerun the full schema.
+
+## What the hardened RLS is intended to enforce
+
+- Only active ledger members can read ledger data.
+- Only ledger admins can manage members, roles, group settings, and settlement periods.
+- Trips can be inserted/updated by admins, the trip creator, or the driver.
+- Trip participants can be changed by admins or users who can manage the parent trip.
+- Fuel payments can be inserted/updated by admins, the fuel-log creator, or the payer.
+- Settlement requests can be inserted/updated by admins or the involved payer/receiver.
+- Push subscriptions are scoped to the signed-in user.
+
+## Checks before relying on real users
 
 1. Every active real member has the correct login email in `ledger_members.email`.
 2. At least one active member has `role = 'admin'`.
 3. Test/generated members are inactive or removed.
-4. Non-admin users can add trips/fuel but cannot access Admin tools.
-5. Settlement request, paid status, and period closing still work after refresh.
+4. Non-admin users can add their own trips/fuel but cannot access Admin tools.
+5. Normal users cannot edit another member's trip/fuel log through the UI.
+6. Settlement request, paid status, and period closing still work after refresh.
+7. Browser console and Supabase logs show no RLS errors during normal flows.
 
 Useful check:
 
@@ -20,3 +38,7 @@ from ledger_members
 where ledger_id = 'main-car'
 order by is_active desc, role, name;
 ```
+
+## Known remaining limitation
+
+`car_share_ledgers` is still a compatibility JSON state table. It is broader than the normalized table RLS because the current app still relies on it for shared state/backups. The safest long-term hardening step is to complete the move to normalized-table-primary reads/writes and then restrict or retire broad JSON updates.
