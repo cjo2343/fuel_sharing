@@ -200,6 +200,8 @@ const els = {
   fuelStationBrand: document.querySelector("#fuelStationBrand"),
   fuelFullTank: document.querySelector("#fuelFullTank"),
   periodEntryLock: document.querySelector("#periodEntryLock"),
+  tripLogPanel: document.querySelector("#tripLogPanel"),
+  fuelLogPanel: document.querySelector("#fuelLogPanel"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
@@ -1405,8 +1407,14 @@ function renderPeriodEntryLock() {
   const message = getPeriodEntryLockMessage();
   els.periodEntryLock.classList.toggle("hidden", !message);
   els.periodEntryLock.innerHTML = message
-    ? `<p class="eyebrow">Period locked</p><h2>Close this period before adding more entries</h2><p class="section-note">${escapeHtml(message)}</p>`
+    ? `<p class="eyebrow">Period locked</p><h2>Close this period before adding more entries</h2><p class="section-note">${escapeHtml(message)}</p><p class="section-note">To correct an entry, reopen the paid settlement first, then use History → Edit on your current-period log.</p>`
     : "";
+}
+
+function renderLogEntryPanelsVisibility() {
+  const locked = isCurrentPeriodLockedForNewEntries();
+  if (els.tripLogPanel) els.tripLogPanel.classList.toggle("hidden", locked);
+  if (els.fuelLogPanel) els.fuelLogPanel.classList.toggle("hidden", locked);
 }
 
 function renderPeopleSelectors() {
@@ -1447,6 +1455,7 @@ function renderPeopleSelectors() {
   setFormDisabled(els.tripForm, !canLogEntries);
   setFormDisabled(els.fuelForm, !canLogEntries);
   renderPeriodEntryLock();
+  renderLogEntryPanelsVisibility();
 
   renderParticipantOptions();
 }

@@ -83,7 +83,7 @@
 
         <section id="periodEntryLock" data-view="log" class="panel warning-panel hidden" aria-live="polite"></section>
 
-        <section class="panel primary-panel" data-view="log" aria-labelledby="tripHeading">
+        <section id="tripLogPanel" class="panel primary-panel" data-view="log" aria-labelledby="tripHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Trip</p>
@@ -121,7 +121,7 @@
           </form>
         </section>
 
-        <section class="panel" data-view="log" aria-labelledby="fuelHeading">
+        <section id="fuelLogPanel" class="panel" data-view="log" aria-labelledby="fuelHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Fuel</p>
@@ -309,6 +309,7 @@
               <button id="resetData" class="danger-button" type="button">Reset all</button>
             </div>
           </div>
+          <p class="section-note">To correct a current-period entry, use Edit below. Members can edit their own current trips/fuel logs; admins can edit all current entries. Closed archives stay locked.</p>
           <div class="history-grid">
             <div>
               <h3>Trips</h3>
