@@ -119,6 +119,7 @@ create table if not exists public.settlement_requests (
   currency text not null default 'DKK',
   status text not null default 'open' check (status in ('open', 'requested', 'paid', 'cancelled')),
   requested_at timestamptz,
+  paid_at timestamptz,
   requested_by_member_id uuid references public.ledger_members(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

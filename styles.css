@@ -628,6 +628,10 @@ button:not(:disabled):active {
   background: #f7faf8;
 }
 
+.settlement-card.is-paid {
+  background: #f3faf4;
+}
+
 .settlement-main {
   display: grid;
   gap: 7px;
@@ -679,6 +683,11 @@ button:not(:disabled):active {
 .status-chip.requested {
   background: var(--blue-soft);
   color: var(--blue);
+}
+
+.status-chip.paid {
+  background: #dff4e6;
+  color: #1f6f43;
 }
 
 .history-grid {

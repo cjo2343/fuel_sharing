@@ -1767,15 +1767,30 @@ function renderSettlements(ledger) {
         const toPerson = ledger.people[item.to];
         const message = `${item.from} pays ${item.to} ${formatMoney(item.amount)} for shared car fuel`;
         const canRequest = canManageSettlementRequest(item);
-        const requestControls = canRequest
-          ? `
-            <button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(message)}">Copy</button>
-            ${status === "open" ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested" ${pendingSettlementRequestKeys.has(key) ? "disabled" : ""}>${pendingSettlementRequestKeys.has(key) ? "Requesting..." : "Requested"}</button>` : ""}
-            ${status !== "open" ? `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open" ${pendingSettlementRequestKeys.has(key) ? "disabled" : ""}>${pendingSettlementRequestKeys.has(key) ? "Reopening..." : "Reopen"}</button>` : ""}
-          `
-          : `<span class="request-note">Only ${escapeHtml(item.to)} can request this payment.</span>`;
+        const canMarkPaid = canMarkSettlementPaid(item);
+        const pending = pendingSettlementRequestKeys.has(key);
+        let requestControls = `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(message)}">Copy</button>`;
+
+        if (status === "open") {
+          requestControls += canRequest
+            ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested" ${pending ? "disabled" : ""}>${pending ? "Requesting..." : "Requested"}</button>`
+            : `<span class="request-note">Only ${escapeHtml(item.to)} can request this payment.</span>`;
+        } else if (status === "requested") {
+          requestControls += canMarkPaid
+            ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="paid" ${pending ? "disabled" : ""}>${pending ? "Marking paid..." : "Mark paid"}</button>`
+            : `<span class="request-note">Waiting for ${escapeHtml(item.from)} to pay.</span>`;
+          if (canRequest) {
+            requestControls += `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open" ${pending ? "disabled" : ""}>${pending ? "Reopening..." : "Reopen"}</button>`;
+          }
+        } else if (status === "paid") {
+          requestControls += `<span class="request-note">Marked paid in the app.</span>`;
+          if (canRequest || canManageSettings()) {
+            requestControls += `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open" ${pending ? "disabled" : ""}>${pending ? "Reopening..." : "Reopen"}</button>`;
+          }
+        }
+
         return `
-        <article class="settlement-card ${status === "requested" ? "is-requested" : ""}">
+        <article class="settlement-card ${status === "requested" ? "is-requested" : ""} ${status === "paid" ? "is-paid" : ""}">
           <div class="settlement-main">
             <div>
               <strong>${escapeHtml(item.from)}</strong>
@@ -2294,7 +2309,10 @@ function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlement
       const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]);
       acc.totalCount += 1;
       acc.totalAmount += item.amount;
-      if (status === "requested") {
+      if (status === "paid") {
+        acc.paidCount += 1;
+        acc.paidAmount += item.amount;
+      } else if (status === "requested") {
         acc.requestedCount += 1;
         acc.requestedAmount += item.amount;
       } else {
@@ -2303,7 +2321,7 @@ function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlement
       }
       return acc;
     },
-    { totalCount: 0, totalAmount: 0, requestedCount: 0, requestedAmount: 0, openCount: 0, openAmount: 0 }
+    { totalCount: 0, totalAmount: 0, requestedCount: 0, requestedAmount: 0, paidCount: 0, paidAmount: 0, openCount: 0, openAmount: 0 }
   );
 
   els.paymentOverview.innerHTML = `
@@ -2313,9 +2331,9 @@ function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlement
       <small>${hiddenCount ? `Showing ${totals.totalCount} payment${totals.totalCount === 1 ? "" : "s"} relevant to you. ${hiddenCount} other period payment${hiddenCount === 1 ? "" : "s"} hidden.` : "Payments needed after all trips and fuel receipts are netted."}</small>
     </div>
     <div>
-      <span>Requested payments</span>
-      <strong>${totals.requestedCount} · ${formatMoney(totals.requestedAmount)}</strong>
-      <small>Final payments already marked as requested.</small>
+      <span>Requested / paid</span>
+      <strong>${totals.requestedCount} requested · ${totals.paidCount} paid</strong>
+      <small>${formatMoney(totals.requestedAmount)} requested; ${formatMoney(totals.paidAmount)} marked paid.</small>
     </div>
     <div>
       <span>Open payments</span>
@@ -2332,19 +2350,23 @@ function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlemen
   const isAdmin = canManageSettings();
   const visible = visibleSettlements || [];
   const requested = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
-  const open = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) !== "requested");
+  const paid = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "paid");
+  const open = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "open");
   const name = profile?.name || currentUser;
   const sum = (rows) => rows.reduce((total, item) => total + Number(item.amount || 0), 0);
 
   const openToMe = name ? open.filter((item) => item.to === name) : [];
   const requestedFromMe = name ? requested.filter((item) => item.from === name) : [];
+  const paidFromMe = name ? paid.filter((item) => item.from === name) : [];
   const openFromMe = name ? open.filter((item) => item.from === name) : [];
   const requestedToMe = name ? requested.filter((item) => item.to === name) : [];
+  const paidToMe = name ? paid.filter((item) => item.to === name) : [];
 
   if (isAdmin) {
     const all = ledger.settlements || [];
     const allRequested = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
-    const allOpenItems = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) !== "requested");
+    const allPaid = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "paid");
+    const allOpenItems = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "open");
     const adminCanRequest = name ? allOpenItems.filter((item) => item.to === name) : [];
     const otherFuelPayersMustRequest = name ? allOpenItems.filter((item) => item.to !== name) : allOpenItems;
     const requestedYouCanManage = name
@@ -2361,7 +2383,7 @@ function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlemen
       actionCount: allOpenItems.length,
       title: "Settlement status",
       body: all.length
-        ? `${allRequested.length} of ${all.length} final payment${all.length === 1 ? "" : "s"} requested. ${openText}`
+        ? `${allRequested.length} requested and ${allPaid.length} paid of ${all.length} final payment${all.length === 1 ? "" : "s"}. ${openText}`
         : "No final payments are needed for this period.",
       detail: all.length
         ? `${adminActionText}${requestedYouCanManage.length ? ` ${requestedYouCanManage.length} requested payment${requestedYouCanManage.length === 1 ? "" : "s"} involving you can be reopened if needed.` : ""}`
@@ -2385,8 +2407,18 @@ function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlemen
       isAdmin,
       actionCount: requestedFromMe.length,
       title: "What do I need to do?",
-      body: `Pay ${formatMoney(sum(requestedFromMe))}: ${recipients}.`,
-      detail: "These requested payments involve you as the payer."
+      body: `You have been asked to pay ${formatMoney(sum(requestedFromMe))}: ${recipients}.`,
+      detail: "Pay in MobilePay, then mark the payment as paid in the app."
+    };
+  }
+
+  if (paidFromMe.length) {
+    return {
+      isAdmin,
+      actionCount: 0,
+      title: "What do I need to do?",
+      body: `You marked ${formatMoney(sum(paidFromMe))} as paid.`,
+      detail: "No further action is needed unless the recipient asks you to reopen it."
     };
   }
 
@@ -2405,8 +2437,18 @@ function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlemen
       isAdmin,
       actionCount: 0,
       title: "What do I need to do?",
-      body: `You requested ${formatMoney(sum(requestedToMe))}. Waiting for payment.`,
-      detail: "The requested payments are visible below."
+      body: `You requested ${formatMoney(sum(requestedToMe))}. Waiting for MobilePay payment.`,
+      detail: "The payer can mark it as paid after paying."
+    };
+  }
+
+  if (paidToMe.length) {
+    return {
+      isAdmin,
+      actionCount: 0,
+      title: "What do I need to do?",
+      body: `${formatMoney(sum(paidToMe))} has been marked as paid to you.`,
+      detail: "Check MobilePay if needed. You can reopen the payment if it was marked paid by mistake."
     };
   }
 
@@ -2459,8 +2501,13 @@ async function updatePaymentStatus(button) {
   const ledger = calculateLedger();
   const settlement = ledger.settlements.find((item) => settlementKey(item) === key);
 
-  if (!settlement || !canManageSettlementRequest(settlement)) {
-    alert("Only the person who paid for fuel in this settlement can request or reopen that payment.");
+  const requestedStatus = normalizePaymentStatus(button.dataset.paymentStatus);
+  const previousStatus = normalizePaymentStatus(state.paymentStatuses[key]);
+  const mayChangeRequest = requestedStatus === "requested" || requestedStatus === "open";
+  const mayMarkPaid = requestedStatus === "paid";
+
+  if (!settlement || (mayChangeRequest && !canManageSettlementRequest(settlement) && !canManageSettings()) || (mayMarkPaid && !canMarkSettlementPaid(settlement))) {
+    alert(requestedStatus === "paid" ? "Only the person who owes this payment can mark it as paid." : "Only the person who paid for fuel in this settlement can request or reopen that payment.");
     render();
     return;
   }
@@ -2472,11 +2519,10 @@ async function updatePaymentStatus(button) {
     }
   }
 
-  const nextStatus = normalizePaymentStatus(button.dataset.paymentStatus);
-  const previousStatus = normalizePaymentStatus(state.paymentStatuses[key]);
+  const nextStatus = requestedStatus;
   pendingSettlementRequestKeys.add(key);
   button.disabled = true;
-  button.textContent = nextStatus === "requested" ? "Requesting..." : "Reopening...";
+  button.textContent = nextStatus === "requested" ? "Requesting..." : nextStatus === "paid" ? "Marking paid..." : "Reopening...";
   setSyncStatus("Saving");
 
   const tableSaved = await saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus);
@@ -2501,7 +2547,7 @@ async function updatePaymentStatus(button) {
   const allRequested =
     refreshedLedger.settlements.length > 0 &&
     refreshedLedger.settlements.every(
-      (item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested"
+      (item) => ["requested", "paid"].includes(normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]))
     );
 
   if (
@@ -2509,7 +2555,7 @@ async function updatePaymentStatus(button) {
     previousStatus !== "requested" &&
     allRequested &&
     confirm(
-      "All current settlements have been requested. Close and archive this period now so new trips start fresh?"
+      "All current settlements have been requested or marked paid. Close and archive this period now so new trips start fresh?"
     )
   ) {
     await closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true, skipFuelValidation: true });
@@ -2627,7 +2673,8 @@ function downloadCurrentPeriodReport() {
   const activity = buildPeriodActivityStats(ledger);
   const settlements = ledger.settlements || [];
   const requestedSettlements = settlements.filter((settlement) => getSettlementStatus(settlement) === "requested");
-  const openSettlements = settlements.filter((settlement) => getSettlementStatus(settlement) !== "requested");
+  const paidSettlements = settlements.filter((settlement) => getSettlementStatus(settlement) === "paid");
+  const openSettlements = settlements.filter((settlement) => getSettlementStatus(settlement) === "open");
   const periodLabel = ledger.period?.label || "Current settlement period";
   const generatedAt = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -2649,6 +2696,7 @@ function downloadCurrentPeriodReport() {
   lines.push("## Final payments");
   lines.push(`- Total final payment lines: ${settlements.length}`);
   lines.push(`- Requested: ${requestedSettlements.length} (${formatMoney(requestedSettlements.reduce((sum, item) => sum + Number(item.amount || 0), 0))})`);
+  lines.push(`- Paid: ${paidSettlements.length} (${formatMoney(paidSettlements.reduce((sum, item) => sum + Number(item.amount || 0), 0))})`);
   lines.push(`- Open: ${openSettlements.length} (${formatMoney(openSettlements.reduce((sum, item) => sum + Number(item.amount || 0), 0))})`);
   if (settlements.length) {
     lines.push("");
@@ -3296,7 +3344,7 @@ async function getCurrentSettlementRequestContext() {
   const [membersResult, periodsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
-    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,updated_at").eq("ledger_id", ledgerId)
+    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,paid_at,updated_at").eq("ledger_id", ledgerId)
   ]);
 
   const firstError = [membersResult, periodsResult, requestsResult].find((result) => result.error)?.error;
@@ -3355,7 +3403,7 @@ async function refreshDatabaseDiagnostics() {
       supabaseClient.from("settlement_periods").select("id,status,label,opened_at,closed_at,created_at,updated_at").eq("ledger_id", ledgerId),
       supabaseClient.from("trips").select("id,period_id,deleted_at,created_at,updated_at").eq("ledger_id", ledgerId),
       supabaseClient.from("fuel_payments").select("id,period_id,deleted_at,created_at,updated_at").eq("ledger_id", ledgerId),
-      supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,updated_at").eq("ledger_id", ledgerId)
+      supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,paid_at,updated_at").eq("ledger_id", ledgerId)
     ]);
 
     const firstError = [legacyResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult].find((result) => result.error)?.error;
@@ -3383,9 +3431,9 @@ async function refreshDatabaseDiagnostics() {
       const toName = activeMembers.find((member) => member.id === request.to_member_id)?.name;
       return fromName && toName && currentSettlementPairs.has(settlementKey({ from: fromName, to: toName, currency: state.currency || "DKK" }));
     });
-    const requestedCurrentRows = currentRequests.filter((request) => normalizePaymentStatus(request.status) === "requested").length;
+    const requestedCurrentRows = currentRequests.filter((request) => ["requested", "paid"].includes(normalizePaymentStatus(request.status))).length;
     const visibleRequested = calculateLedger().settlements.filter(
-      (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "requested"
+      (settlement) => ["requested", "paid"].includes(normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]))
     ).length;
     const staleRequestRows = activeRequests.length - currentRequests.length;
     const lastTableWrite = [
@@ -3429,7 +3477,7 @@ async function refreshDatabaseDiagnostics() {
       {
         level: requestedCurrentRows === visibleRequested && staleRequestRows === 0 ? "ok" : "warning",
         title: "Settlement requests",
-        message: `${requestedCurrentRows} requested current table rows; ${visibleRequested} visible requested payments; ${staleRequestRows} stale active request row${staleRequestRows === 1 ? "" : "s"}${staleRequestRows ? " (safe to clean)" : ""}.`
+        message: `${requestedCurrentRows} requested/paid current table rows; ${visibleRequested} visible requested/paid payments; ${staleRequestRows} stale active request row${staleRequestRows === 1 ? "" : "s"}${staleRequestRows ? " (safe to clean)" : ""}.`
       },
       {
         level: legacyState.trips.length === state.trips.length && legacyState.fuel.length === state.fuel.length ? "ok" : "warning",
@@ -3600,10 +3648,10 @@ function renderClosedPeriods() {
   els.periodList.innerHTML = state.closedPeriods
     .map((period) => {
       const unrequested = period.settlements
-        .filter((settlement) => settlement.status !== "requested")
+        .filter((settlement) => !["requested", "paid"].includes(normalizePaymentStatus(settlement.status)))
         .reduce((sum, settlement) => sum + settlement.amount, 0);
       const requestedCount = period.settlements.filter(
-        (settlement) => normalizePaymentStatus(settlement.status) === "requested"
+        (settlement) => ["requested", "paid"].includes(normalizePaymentStatus(settlement.status))
       ).length;
       return `
         <article class="period-card">
@@ -3618,7 +3666,7 @@ function renderClosedPeriods() {
             <div><span>Kilometers</span><b>${formatNumber(period.totalKm)} km</b></div>
             <div><span>Fuel rate</span><b>${formatMoneyFor(period.fuelRate, period.currency)}/km</b></div>
             <div><span>Not requested</span><b>${formatMoneyFor(unrequested, period.currency)}</b></div>
-            <div><span>Requested</span><b>${requestedCount}/${period.settlements.length}</b></div>
+            <div><span>Requested/paid</span><b>${requestedCount}/${period.settlements.length}</b></div>
           </div>
           ${renderPeriodSettlements(period)}
         </article>
@@ -3777,6 +3825,12 @@ function canManageSettlementRequest(settlement) {
   if (!supabaseClient) return true;
   const profile = getCurrentMemberProfile();
   return Boolean(profile && settlement?.to === profile.name);
+}
+
+function canMarkSettlementPaid(settlement) {
+  if (!supabaseClient) return true;
+  const profile = getCurrentMemberProfile();
+  return Boolean(profile && (settlement?.from === profile.name || canManageSettings()));
 }
 
 function noMemberEmailsConfigured() {
@@ -4467,7 +4521,6 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
     }
 
     const now = new Date().toISOString();
-    const requestedByMemberId = nextStatus === "requested" ? toMemberId : null;
     const payload = {
       ledger_id: context.ledgerId,
       period_id: context.openPeriodId,
@@ -4476,10 +4529,20 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       amount: roundMoney(settlement.amount),
       currency: state.currency || "DKK",
       status: nextStatus,
-      requested_at: nextStatus === "requested" ? now : null,
-      requested_by_member_id: requestedByMemberId,
       updated_at: now
     };
+
+    if (nextStatus === "requested") {
+      payload.requested_at = now;
+      payload.requested_by_member_id = toMemberId;
+      payload.paid_at = null;
+    } else if (nextStatus === "paid") {
+      payload.paid_at = now;
+    } else {
+      payload.requested_at = null;
+      payload.requested_by_member_id = null;
+      payload.paid_at = null;
+    }
 
     const result = await supabaseClient
       .from("settlement_requests")
@@ -4897,7 +4960,7 @@ async function checkNormalizedTablesAgainstCurrentState() {
     supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("fuel_payments").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
-    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,currency,status").eq("ledger_id", ledgerId)
+    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,currency,status,paid_at").eq("ledger_id", ledgerId)
   ]);
 
   const firstError = [membersResult, tripsResult, fuelResult, periodsResult, requestsResult].find((result) => result.error)?.error;
@@ -4943,9 +5006,9 @@ async function checkNormalizedTablesAgainstCurrentState() {
   });
   const staleActiveRequests = activeTableRequests.length - currentActiveRequests.length;
   const requestedStatuses = calculateLedger().settlements.filter(
-    (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "requested"
+    (settlement) => ["requested", "paid"].includes(normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]))
   ).length;
-  const requestedTableStatuses = currentActiveRequests.filter((request) => normalizePaymentStatus(request.status) === "requested").length;
+  const requestedTableStatuses = currentActiveRequests.filter((request) => ["requested", "paid"].includes(normalizePaymentStatus(request.status))).length;
   if (requestedTableStatuses !== requestedStatuses) {
     mismatchParts.push(`requested payments ${requestedTableStatuses} current table rows vs ${requestedStatuses} visible in app`);
   }
@@ -4966,12 +5029,12 @@ async function checkNormalizedTablesAgainstCurrentState() {
     {
       level: activeTableTrips.length === state.trips.length ? "ok" : "warning",
       title: "Normalized trips",
-      message: `${activeTableTrips.length} open-period table trip${activeTableTrips.length === 1 ? "" : "s"}; ${state.trips.length} visible in the app.`
+      message: `${activeTableTrips.length} open-period table trip${activeTableTrips.length === 1 ? "" : "s"}; ${state.trips.length} visible requested/paid in the app.`
     },
     {
       level: activeTableFuel.length === state.fuel.length ? "ok" : "warning",
       title: "Normalized fuel logs",
-      message: `${activeTableFuel.length} open-period table fuel log${activeTableFuel.length === 1 ? "" : "s"}; ${state.fuel.length} visible in the app.`
+      message: `${activeTableFuel.length} open-period table fuel log${activeTableFuel.length === 1 ? "" : "s"}; ${state.fuel.length} visible requested/paid in the app.`
     },
     {
       level: openPeriods === 1 ? "ok" : "warning",
@@ -4982,8 +5045,8 @@ async function checkNormalizedTablesAgainstCurrentState() {
       level: requestedTableStatuses === requestedStatuses && staleActiveRequests === 0 ? "ok" : "warning",
       title: "Normalized payment requests",
       message: staleActiveRequests
-        ? `${requestedTableStatuses} requested current payment${requestedTableStatuses === 1 ? "" : "s"}; ${requestedStatuses} visible in the app; ${staleActiveRequests} stale request row${staleActiveRequests === 1 ? "" : "s"} ignored.`
-        : `${requestedTableStatuses} requested current payment${requestedTableStatuses === 1 ? "" : "s"}; ${requestedStatuses} visible in the app.`
+        ? `${requestedTableStatuses} requested/paid current payment${requestedTableStatuses === 1 ? "" : "s"}; ${requestedStatuses} visible requested/paid in the app; ${staleActiveRequests} stale request row${staleActiveRequests === 1 ? "" : "s"} ignored.`
+        : `${requestedTableStatuses} requested/paid current payment${requestedTableStatuses === 1 ? "" : "s"}; ${requestedStatuses} visible requested/paid in the app.`
     }
   ];
 
@@ -5357,8 +5420,14 @@ function settlementKey(item) {
   return `${item.from}->${item.to}:${currency}`;
 }
 
+function getSettlementStatus(settlement) {
+  return normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]);
+}
+
 function statusLabel(status) {
-  if (normalizePaymentStatus(status) === "requested") return "Requested";
+  const normalized = normalizePaymentStatus(status);
+  if (normalized === "paid") return "Paid";
+  if (normalized === "requested") return "Requested";
   return "Not requested";
 }
 
@@ -5372,7 +5441,8 @@ function normalizePaymentStatuses(statuses) {
 
 function normalizePaymentStatus(status) {
   if (status === "cancelled") return "cancelled";
-  return status === "requested" || status === "paid" ? "requested" : "open";
+  if (status === "paid") return "paid";
+  return status === "requested" ? "requested" : "open";
 }
 
 function escapeHtml(value) {
