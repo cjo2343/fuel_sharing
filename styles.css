@@ -2658,3 +2658,23 @@ body.auth-locked #authPanel .text-button {
 .app-message-toast.hidden {
   display: none;
 }
+
+
+/* Audit/change log */
+.audit-log-panel {
+  margin-top: 1.5rem;
+}
+
+.audit-log-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.audit-entry-card header {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.audit-entry-card header p {
+  margin: 0.2rem 0 0;
+}

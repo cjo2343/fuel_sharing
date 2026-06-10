@@ -19,6 +19,7 @@ const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig
 const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
 const dataStore = window.FuelDataStore;
 const notifications = window.FuelNotifications;
+const auditLog = window.FuelAuditLog;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 
 
@@ -76,6 +77,7 @@ const defaults = {
   trips: [],
   fuel: [],
   paymentStatuses: {},
+  auditLog: [],
   currentPeriodId: "",
   closedPeriods: [],
   lastOdometer: "",
@@ -194,6 +196,7 @@ const els = {
   settingsPanel: document.querySelector(".settings-panel"),
   settlementWarning: document.querySelector("#settlementWarning"),
   paymentOverview: document.querySelector("#paymentOverview"),
+  auditLog: document.querySelector("#auditLog"),
   memberActionPanel: document.querySelector("#memberActionPanel"),
   periodBreakdown: document.querySelector("#periodBreakdown"),
   settlements: document.querySelector("#settlements"),
@@ -338,6 +341,13 @@ els.tripForm.addEventListener("submit", async (event) => {
     state.trips.push(tripPayload);
   }
   state.lastOdometer = getLatestOdometer();
+  addAuditEntry({
+    type: wasEditingTrip ? "trip_updated" : "trip_created",
+    entityType: "trip",
+    entityId: tripPayload.id,
+    summary: `${tripPayload.driver} · ${formatNumber(tripPayload.endKm - tripPayload.startKm)} km`,
+    detail: tripPayload.date || ""
+  });
 
   saveState();
   els.tripForm.reset();
@@ -429,6 +439,14 @@ els.fuelForm.addEventListener("submit", async (event) => {
   } else {
     state.fuel.push(fuelPayload);
   }
+
+  addAuditEntry({
+    type: wasEditingFuel ? "fuel_updated" : "fuel_created",
+    entityType: "fuel",
+    entityId: fuelPayload.id,
+    summary: `${fuelPayload.payer} · ${formatMoney(fuelPayload.amount)}`,
+    detail: fuelPayload.date || ""
+  });
 
   saveState();
   els.fuelForm.reset();
@@ -673,6 +691,13 @@ els.resetPeriod.addEventListener("click", () => {
   state.fuel = [];
   state.paymentStatuses = {};
   state.lastOdometer = getLatestOdometer();
+  addAuditEntry({
+    type: "settlement_closed",
+    entityType: "settlement_period",
+    entityId: period.id,
+    summary: `${period.label} · ${formatMoney(period.totalCost)}`,
+    detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
+  });
   saveState();
   setDefaultDates();
   render();
@@ -1106,6 +1131,15 @@ document.addEventListener("click", async (event) => {
   const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
   if (!normalizedDeleteSaved) return;
   state[type] = state[type].filter((entry) => entry.id !== id);
+  addAuditEntry({
+    type: type === "trips" ? "trip_deleted" : "fuel_deleted",
+    entityType: type === "trips" ? "trip" : "fuel",
+    entityId: id,
+    summary: type === "trips"
+      ? `${entry?.driver || "Trip"} · ${entry ? formatNumber(Number(entry.endKm || 0) - Number(entry.startKm || 0)) : ""} km`
+      : `${entry?.payer || "Fuel log"} · ${entry ? formatMoney(entry.amount) : ""}`,
+    detail: entry?.date || ""
+  });
   if (type === "trips") state.lastOdometer = getLatestOdometer();
   if (editingTripId === id) editingTripId = null;
   if (editingFuelId === id) editingFuelId = null;
@@ -1114,6 +1148,45 @@ document.addEventListener("click", async (event) => {
   render();
   showAppMessage(type === "trips" ? "Trip deleted." : "Fuel log deleted.");
 });
+
+
+function addAuditEntry(options) {
+  state.auditLog = auditLog.normalizeAuditEntries([
+    auditLog.createEntry({
+      actor: currentUser || currentSession?.user?.email || "Unknown",
+      ...options
+    }),
+    ...(state.auditLog || [])
+  ]);
+}
+
+function renderAuditLog() {
+  if (!els.auditLog) return;
+  const entries = auditLog.normalizeAuditEntries(state.auditLog).slice(0, 40);
+  if (!entries.length) {
+    els.auditLog.innerHTML = `<p class="entry-meta">No important changes have been recorded yet.</p>`;
+    return;
+  }
+
+  els.auditLog.innerHTML = entries.map((entry) => {
+    const createdAt = new Date(entry.createdAt);
+    const dateText = Number.isNaN(createdAt.getTime())
+      ? entry.createdAt
+      : `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return `
+      <article class="entry-card audit-entry-card">
+        <header>
+          <div>
+            <strong>${escapeHtml(auditLog.actionLabel(entry.type))}</strong>
+            <p>${escapeHtml(entry.summary)}</p>
+          </div>
+          <span class="entry-meta">${escapeHtml(dateText)}</span>
+        </header>
+        <p class="entry-meta">By ${escapeHtml(entry.actor)}${entry.detail ? ` · ${escapeHtml(entry.detail)}` : ""}</p>
+      </article>
+    `;
+  }).join("");
+}
 
 function render() {
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
@@ -1127,6 +1200,7 @@ function render() {
   renderBalances(ledger);
   renderSettlements(ledger);
   renderHistory();
+  renderAuditLog();
   renderClosedPeriods();
   renderTripEstimate();
   renderFuelIntelligence(ledger);
@@ -2869,6 +2943,13 @@ async function closeCurrentPeriod(options = {}) {
   state.fuel = [];
   state.paymentStatuses = {};
   state.lastOdometer = getLatestOdometer();
+  addAuditEntry({
+    type: "settlement_closed",
+    entityType: "settlement_period",
+    entityId: period.id,
+    summary: `${period.label} · ${formatMoney(period.totalCost)}`,
+    detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
+  });
   saveState();
   setDefaultDates();
   render();
@@ -3494,6 +3575,13 @@ async function updatePaymentStatus(button) {
   }
 
   state.paymentStatuses[key] = nextStatus;
+  addAuditEntry({
+    type: nextStatus === "requested" ? "payment_requested" : nextStatus === "paid" ? "payment_marked_paid" : "payment_reopened",
+    entityType: "payment",
+    entityId: key,
+    summary: `${settlement.from} → ${settlement.to} · ${formatMoney(settlement.amount)}`,
+    detail: `Previous status: ${previousStatus}`
+  });
   if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
   saveState();
   pendingSettlementRequestKeys.delete(key);
@@ -5025,6 +5113,7 @@ function normalizeState(saved) {
     trips: normalizeTripEntries(saved.trips),
     fuel: normalizeFuelEntries(saved.fuel),
     paymentStatuses: normalizePaymentStatuses(saved.paymentStatuses),
+    auditLog: auditLog.normalizeAuditEntries(saved.auditLog),
     currentPeriodId: saved.currentPeriodId || "",
     closedPeriods: Array.isArray(saved.closedPeriods)
       ? saved.closedPeriods.map((period) => ({

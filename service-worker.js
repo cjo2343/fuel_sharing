@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v13";
+const CACHE_NAME = "fuel-ledger-v14";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -9,6 +9,7 @@ const CORE_ASSETS = [
   "/data-store.js",
   "/settlement-calculations.js",
   "/ui-messages.js",
+  "/audit-log.js",
   "/notifications.js",
   "/admin-tools.js",
   "/app.js",

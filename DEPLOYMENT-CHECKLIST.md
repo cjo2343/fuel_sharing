@@ -155,3 +155,8 @@ npm run test:e2e
 ```
 
 The smoke test verifies the local fallback flow: create trip, create fuel log, refresh, and confirm both entries remain visible.
+
+
+### Audit/change log
+
+Money-related actions are recorded in `state.auditLog` and rendered in the History tab. The runtime module `audit-log.js` normalizes entries and labels actions such as trip/fuel changes, payment requests, payment reopening, and settlement close events.

@@ -410,3 +410,8 @@ npm run test:e2e
 If CI fails, open the failed GitHub Actions run and inspect the Playwright trace/report artifact details before deploying the change.
 
 The browser smoke-test suite also covers the payment-request locking rule: once a payment is requested, settlement-affecting trip/fuel inputs lock until the payment request is reopened.
+
+
+### Audit/change log
+
+Money-related actions are recorded in `state.auditLog` and rendered in the History tab. The runtime module `audit-log.js` normalizes entries and labels actions such as trip/fuel changes, payment requests, payment reopening, and settlement close events.

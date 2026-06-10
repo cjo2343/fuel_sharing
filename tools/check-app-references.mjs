@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const appPath = process.argv[2] || path.join(process.cwd(), 'app.js');
 const source = fs.readFileSync(appPath, 'utf8');
-const extraSourcePaths = ['utils.js', 'supabase-helpers.js', 'data-store.js', 'settlement-calculations.js', 'ui-messages.js', 'notifications.js', 'admin-tools.js']
+const extraSourcePaths = ['utils.js', 'supabase-helpers.js', 'data-store.js', 'settlement-calculations.js', 'ui-messages.js', 'audit-log.js', 'notifications.js', 'admin-tools.js']
   .map((name) => path.join(process.cwd(), name))
   .filter((candidate) => candidate !== appPath && fs.existsSync(candidate));
 const declarationSource = [source, ...extraSourcePaths.map((candidate) => fs.readFileSync(candidate, 'utf8'))].join('\n');
@@ -16,6 +16,7 @@ const requiredRuntimeFiles = [
   'data-store.js',
   'settlement-calculations.js',
   'ui-messages.js',
+  'audit-log.js',
   'notifications.js',
   'admin-tools.js',
   'app.js'
