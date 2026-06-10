@@ -66,7 +66,9 @@ let pushEnabled = false;
 let latestFuelPrice = null;
 let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
+let lastJsonMirrorSaveAt = "";
 let lastSyncError = "";
+const jsonMirrorBackupIntervalMs = 30 * 60 * 1000;
 let normalizedTableStatus = {
   checked: false,
   ok: false,
@@ -156,6 +158,7 @@ const els = {
   databaseDiagnosticsPanel: document.querySelector(".database-diagnostics-panel"),
   databaseDiagnosticsList: document.querySelector("#databaseDiagnosticsList"),
   refreshDatabaseDiagnostics: document.querySelector("#refreshDatabaseDiagnostics"),
+  saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   exportLedger: document.querySelector("#exportLedger"),
   importLedger: document.querySelector("#importLedger"),
   importLedgerFile: document.querySelector("#importLedgerFile"),
@@ -646,6 +649,12 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
 
 els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
+  await refreshDatabaseDiagnostics();
+});
+
+els.saveJsonBackupNow?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await saveJsonMirrorBackup({ force: true });
   await refreshDatabaseDiagnostics();
 });
 
@@ -2700,14 +2709,14 @@ async function refreshDatabaseDiagnostics() {
       },
       {
         level: legacyState.trips.length === state.trips.length && legacyState.fuel.length === state.fuel.length ? "ok" : "warning",
-        title: "JSON backup mirror",
-        message: `JSON mirror has ${legacyState.members.length} members, ${legacyState.trips.length} trips, ${legacyState.fuel.length} fuel logs. Current app has ${state.members.length}, ${state.trips.length}, ${state.fuel.length}.`
+        title: "JSON backup snapshot",
+        message: `JSON snapshot has ${legacyState.members.length} members, ${legacyState.trips.length} trips, ${legacyState.fuel.length} fuel logs. Current app has ${state.members.length}, ${state.trips.length}, ${state.fuel.length}. It is now a manual/periodic safety backup, not the primary save target.`
       },
       {
         level: lastTableWrite ? "ok" : "warning",
         title: "Last table write",
         message: lastTableWrite
-          ? `Latest normalized row update: ${new Date(lastTableWrite).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}. Last JSON mirror save: ${legacyResult.data?.updated_at ? new Date(legacyResult.data.updated_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "unknown"}.`
+          ? `Latest normalized row update: ${new Date(lastTableWrite).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}. Last JSON backup snapshot: ${legacyResult.data?.updated_at ? new Date(legacyResult.data.updated_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "unknown"}.`
           : "No updated_at values found in normalized tables."
       }
     ];
@@ -4329,13 +4338,14 @@ async function loadSupabaseState() {
     setSyncStatus("Syncing");
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
-      .select("state")
+      .select("state,updated_at")
       .eq("id", supabaseConfig.ledgerId || "main-car")
       .single();
 
     if (error) throw error;
 
-    lastCloudSaveAt = new Date().toISOString();
+    lastCloudSaveAt = data.updated_at || new Date().toISOString();
+    lastJsonMirrorSaveAt = data.updated_at || "";
     lastSyncError = "";
     const jsonState = normalizeState(data.state);
     let loadedFromTables = false;
@@ -4391,22 +4401,16 @@ async function saveSupabaseState() {
   try {
     setSyncStatus("Saving");
     ignoreRealtimeUntil = Date.now() + 1500;
-    const { data, error } = await supabaseClient
-      .from("car_share_ledgers")
-      .upsert({
-        id: supabaseConfig.ledgerId || "main-car",
-        state,
-        updated_at: new Date().toISOString()
-      })
-      .select("state")
-      .single();
 
-    if (error) throw error;
+    // Phase 2I: normalized tables are primary. Keep them aligned from the
+    // current app state, but do not overwrite the legacy JSON blob on every
+    // save. The JSON mirror is now only a periodic/manual safety snapshot.
+    await syncNormalizedTablesFromJson();
+    await maybeSaveJsonMirrorBackup();
 
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
-    applyIncomingState(data.state, "Cloud");
-    await syncNormalizedTablesFromJson();
+    setSyncStatus("Tables");
     checkNormalizedTablesAgainstCurrentState().catch((error) => {
       normalizedTableStatus = {
         checked: true,
@@ -4417,10 +4421,37 @@ async function saveSupabaseState() {
     });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
-    lastSyncError = error.message || "Could not save cloud data.";
+    lastSyncError = error.message || "Could not save table data.";
     els.authMessage.textContent = `${lastSyncError} Changes on this device may not be saved to the cloud.`;
     setSyncStatus("Local");
   }
+}
+
+async function maybeSaveJsonMirrorBackup() {
+  const lastSaved = Number(localStorage.getItem(`${storageKey}:jsonMirrorSavedAt`) || 0);
+  if (Date.now() - lastSaved < jsonMirrorBackupIntervalMs) return;
+  await saveJsonMirrorBackup({ force: false });
+}
+
+async function saveJsonMirrorBackup({ force = false } = {}) {
+  if (!supabaseClient || !currentSession) return false;
+  if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
+
+  const savedAt = new Date().toISOString();
+  const { error } = await supabaseClient
+    .from("car_share_ledgers")
+    .upsert({
+      id: supabaseConfig.ledgerId || "main-car",
+      state,
+      updated_at: savedAt
+    });
+
+  if (error) throw error;
+
+  lastJsonMirrorSaveAt = savedAt;
+  localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
+  lastCloudSaveAt = savedAt;
+  return true;
 }
 
 function applyIncomingState(nextState, status = "Live") {
@@ -4463,7 +4494,7 @@ function setSyncStatus(label) {
   if (!els.syncDetail) return;
 
   if (label === "Tables") {
-    els.syncDetail.textContent = "Loaded from normalized database tables";
+    els.syncDetail.textContent = "Saved/read through normalized database tables";
     return;
   }
 

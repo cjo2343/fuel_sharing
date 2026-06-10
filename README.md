@@ -339,3 +339,17 @@ This build adds an admin-only **Database diagnostics** panel below System health
 - latest normalized table write vs JSON mirror save time
 
 Use this panel before reducing or removing the JSON fallback mirror.
+
+## Phase 2I: JSON backup snapshot mode
+
+The normalized Supabase tables are now the primary backend for trips, fuel logs, settlement periods, and payment request rows. The legacy `car_share_ledgers.state` JSON blob is kept only as a safety backup/fallback snapshot.
+
+In this version:
+
+- Normal app saves sync normalized tables first.
+- The legacy JSON backup is no longer overwritten on every save.
+- The JSON backup is refreshed periodically, at most every 30 minutes during normal use.
+- Admins can force a JSON backup snapshot from **Admin → Database diagnostics → Save JSON backup**.
+- Database diagnostics labels this as a backup snapshot rather than the primary mirror.
+
+Keep the JSON table for now as a rollback/export safety net. Do not delete it until the app has run table-primary in daily use for a while.

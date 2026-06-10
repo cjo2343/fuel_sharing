@@ -370,9 +370,9 @@
               <p class="eyebrow">Admin</p>
               <h2 id="databaseDiagnosticsHeading">Database diagnostics</h2>
             </div>
-            <button id="refreshDatabaseDiagnostics" class="subtle-button" type="button">Refresh diagnostics</button>
+            <div class="button-row compact-actions"><button id="saveJsonBackupNow" class="subtle-button" type="button">Save JSON backup</button><button id="refreshDatabaseDiagnostics" class="subtle-button" type="button">Refresh diagnostics</button></div>
           </div>
-          <p class="section-note">Detailed table counts and migration status. Use this before removing the JSON fallback.</p>
+          <p class="section-note">Detailed table counts and migration status. JSON is now a manual/safety backup, not saved on every table write.</p>
           <div id="databaseDiagnosticsList" class="database-diagnostics-list"></div>
         </section>
 
