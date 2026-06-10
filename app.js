@@ -5512,7 +5512,24 @@ async function initializePwa() {
 
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register("/service-worker.js");
+      let refreshingForNewServiceWorker = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshingForNewServiceWorker) return;
+        refreshingForNewServiceWorker = true;
+        window.location.reload();
+      });
+
+      const registration = await navigator.serviceWorker.register("/service-worker.js");
+      registration.addEventListener("updatefound", () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            newWorker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+      await registration.update();
     } catch (error) {
       console.warn("Service worker registration failed", error);
     }

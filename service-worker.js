@@ -1,5 +1,16 @@
-const CACHE_NAME = "fuel-ledger-v1";
-const CORE_ASSETS = ["/", "/index.html", "/styles.css", "/app.js", "/supabase-config.js", "/manifest.json"];
+const CACHE_NAME = "fuel-ledger-v3";
+const CORE_ASSETS = [
+  "/",
+  "/index.html",
+  "/styles.css",
+  "/supabase-config.js",
+  "/utils.js",
+  "/supabase-helpers.js",
+  "/app.js",
+  "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png"
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => undefined));
@@ -13,10 +24,18 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
-  if (new URL(request.url).pathname.startsWith("/api/")) return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
   event.respondWith(fetch(request).catch(() => caches.match(request).then((response) => response || caches.match("/"))));
 });
 

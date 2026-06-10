@@ -68,3 +68,13 @@ If the app breaks after deployment:
 1. Redeploy the previous app files.
 2. Restore the Supabase backup if the database state was changed incorrectly.
 3. Check browser console errors and Supabase SQL/RLS errors before retrying.
+
+## Home-screen / PWA deployment check
+
+After changing `app.js`, `utils.js`, `supabase-helpers.js`, `styles.css`, icons, or `index.html`:
+
+1. Confirm the changed files are listed in `service-worker.js` under `CORE_ASSETS`.
+2. Bump the `CACHE_NAME` value in `service-worker.js`.
+3. Deploy `service-worker.js` together with the changed app files.
+4. On a phone, fully close and reopen the installed home-screen app.
+5. If an old version is still visible, open the site in the browser once, refresh, then reopen the home-screen app.

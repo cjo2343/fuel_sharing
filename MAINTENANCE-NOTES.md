@@ -57,3 +57,21 @@ node tools/check-app-references.mjs
 
 - `utils.js` contains pure formatting/date/escaping helpers.
 - `supabase-helpers.js` contains Supabase client/config/session helpers and the open settlement period helper. Keep UI rendering and app state orchestration in `app.js` until each extraction can be validated independently.
+
+## PWA update maintenance
+
+The home-screen app is controlled by `service-worker.js`. Whenever deployable JavaScript, CSS, icons, or the app shell changes, bump `CACHE_NAME` and keep `CORE_ASSETS` in sync with the files loaded by `index.html`.
+
+Current app-shell files include:
+
+- `index.html`
+- `styles.css`
+- `supabase-config.js`
+- `utils.js`
+- `supabase-helpers.js`
+- `app.js`
+- `manifest.json`
+- `icon-192.png`
+- `icon-512.png`
+
+The app registration now calls `registration.update()` and reloads once when a newly activated service worker takes control, so installed PWA users should receive fresh deployments more reliably after closing and reopening the app.
