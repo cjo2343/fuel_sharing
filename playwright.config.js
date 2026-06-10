@@ -6,7 +6,11 @@ export default defineConfig({
   expect: { timeout: 5000 },
   use: {
     baseURL: "http://127.0.0.1:4173",
-    trace: "on-first-retry"
+    trace: "on-first-retry",
+    // The production app registers a service worker for the PWA. In local smoke
+    // tests we block it so cached production files, especially supabase-config.js,
+    // cannot override the mocked test config.
+    serviceWorkers: "block"
   },
   webServer: {
     command: "python3 -m http.server 4173",

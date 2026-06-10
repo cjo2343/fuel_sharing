@@ -5,8 +5,16 @@ async function openLocalApp(page) {
     contentType: "application/javascript",
     body: "window.CAR_SHARE_SUPABASE = { enabled: false, url: '', anonKey: '', ledgerId: 'test-ledger' };"
   }));
+
   await page.goto("/");
+
+  // localStorage is only available after navigating to an HTTP origin.
+  // Do not clear it from about:blank; WebKit/Chromium can throw SecurityError.
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+
   await expect(page.locator("#tripForm")).toBeVisible();
+  await expect(page.locator("#startKm")).toBeEnabled();
 }
 
 async function chooseFirstSelectOption(select) {
@@ -15,11 +23,6 @@ async function chooseFirstSelectOption(select) {
   );
   if (options.length > 0) await select.selectOption(options[0]);
 }
-
-test.beforeEach(async ({ page }) => {
-  await page.goto("about:blank");
-  await page.evaluate(() => localStorage.clear());
-});
 
 test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {
   await openLocalApp(page);
@@ -39,7 +42,7 @@ test("create trip and fuel log, then refresh with data still visible", async ({ 
   await page.locator("#fuelAmount").fill("321.45");
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
 
-  await expect(page.locator("#fuelList")).toContainText("321.45");
+  await expect(page.locator("#fuelList")).toContainText(/321[,.]45/);
 
   const beforeReload = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
   expect(beforeReload.trips).toHaveLength(1);
@@ -47,16 +50,18 @@ test("create trip and fuel log, then refresh with data still visible", async ({ 
 
   await page.reload();
   await expect(page.locator("#tripList")).toContainText("Playwright smoke trip");
-  await expect(page.locator("#fuelList")).toContainText("321.45");
+  await expect(page.locator("#fuelList")).toContainText(/321[,.]45/);
 });
 
 test("critical runtime modules are loaded before app.js", async ({ page }) => {
   await openLocalApp(page);
   const modules = await page.evaluate(() => ({
-    utils: Boolean(window.FuelUtils),
+    // utils.js and settlement-calculations.js currently expose classic global functions,
+    // while the newer modules expose window.Fuel* namespaces.
+    utils: typeof window.formatMoney === "function" && typeof window.escapeHtml === "function",
     supabaseHelpers: Boolean(window.FuelSupabaseHelpers),
     dataStore: Boolean(window.FuelDataStore),
-    settlementCalculations: Boolean(window.FuelSettlementCalculations),
+    settlementCalculations: typeof window.calculateLedger === "function" && typeof window.buildSettlements === "function",
     uiMessages: Boolean(window.FuelUiMessages),
     notifications: Boolean(window.FuelNotifications),
     adminTools: Boolean(window.FuelAdminTools)
