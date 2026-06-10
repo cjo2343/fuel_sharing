@@ -1876,10 +1876,15 @@ function renderSettlements(ledger) {
         } else if (status === "requested") {
           if (canMarkPaid) {
             const recipientProfile = getMemberProfile(item.to);
-            const hasMobilePayPhone = Boolean(recipientProfile.mobilepayPhone);
-            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(buildPaymentInstruction(item))}">Copy payment details</button>`;
-            requestControls += `<button class="subtle-button compact-button" type="button" data-open-mobilepay="true" ${hasMobilePayPhone ? "" : "title=\"Add recipient MobilePay phone in Member management for easier payment details.\""}>Open MobilePay</button>`;
+            const mobilePayPhone = formatPhoneDisplay(recipientProfile.mobilepayPhone);
+            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(buildPaymentInstruction(item))}">Copy instructions</button>`;
+            if (mobilePayPhone) {
+              requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(mobilePayPhone)}">Copy phone</button>`;
+            }
+            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(formatMoney(item.amount))}">Copy amount</button>`;
+            requestControls += `<button class="subtle-button compact-button" type="button" data-open-mobilepay="true">Open MobilePay</button>`;
             requestControls += `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="paid" ${pending ? "disabled" : ""}>${pending ? "Marking paid..." : "Mark paid"}</button>`;
+            requestControls += `<span class="request-note mobilepay-helper">MobilePay opens separately; paste/search the phone number manually, then return and mark paid.</span>`;
           } else {
             requestControls += `<span class="request-note">Waiting for ${escapeHtml(item.from)} to pay.</span>`;
           }
