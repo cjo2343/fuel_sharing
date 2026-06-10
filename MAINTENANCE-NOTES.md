@@ -4,7 +4,7 @@
 
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.
 
-`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, settlement/balance calculations to `settlement-calculations.js`, and toast-style feedback helpers to `ui-messages.js`. Keep those helper files free of DOM rendering.
+`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, settlement/balance calculations to `settlement-calculations.js`, toast-style feedback helpers to `ui-messages.js`, and push helpers to `notifications.js`. Keep those helper files free of DOM rendering.
 
 ## Security model
 
@@ -74,6 +74,7 @@ Current app-shell files include:
 - `data-store.js`
 - `settlement-calculations.js`
 - `ui-messages.js`
+- `notifications.js`
 - `app.js`
 - `manifest.json`
 - `icon-192.png`
@@ -132,3 +133,5 @@ This is intentionally narrower than a full JavaScript linter, but it is designed
 ## UI message helper extraction
 
 `ui-messages.js` now owns `showAppMessage()` and `showSaveMessage()`. Keep lightweight feedback/toast helpers there; leave business rules and UI rendering in `app.js`.
+
+`notifications.js` now owns push-support checks, PWA notification UI decisions, subscription setup, and payment-request push delivery. Keep service-worker registration and install-prompt wiring in `app.js`.

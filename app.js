@@ -18,6 +18,7 @@ const supabaseConfig = supabaseHelpers.getSupabaseConfig();
 const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig);
 const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
 const dataStore = window.FuelDataStore;
+const notifications = window.FuelNotifications;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 
 
@@ -5302,7 +5303,7 @@ function getFuelFallbackPriceForState(saved) {
 
 
 async function initializePwa() {
-  pushSupported = Boolean("serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
+  pushSupported = notifications.isPushSupported();
 
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
@@ -5340,172 +5341,44 @@ async function initializePwa() {
 }
 
 async function refreshPushState() {
-  if (!pushSupported) {
-    pushEnabled = false;
-    return;
-  }
-
-  try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    pushEnabled = Boolean(subscription && Notification.permission === "granted");
-  } catch {
-    pushEnabled = false;
-  }
+  pushEnabled = await notifications.refreshPushState(pushSupported);
 }
 
 function updatePwaUi() {
-  if (!els.pwaPanel) return;
-
-  if (!currentSession) {
-    els.pwaPanel.classList.add("hidden");
-    return;
-  }
-
-  els.pwaPanel.classList.remove("hidden");
-  els.installApp?.classList.toggle("hidden", !deferredInstallPrompt);
-
-  if (!pushSupported) {
-    els.enablePush.disabled = true;
-    els.enablePush.textContent = "Notifications unavailable";
-    els.pwaMessage.textContent = "This browser does not support web push notifications. You can still use the app normally.";
-    return;
-  }
-
-  if (pushEnabled) {
-    els.enablePush.disabled = true;
-    els.enablePush.textContent = "Notifications enabled";
-    els.pwaMessage.textContent = "Payment request notifications are enabled on this device.";
-    return;
-  }
-
-  if (Notification.permission === "denied") {
-    els.enablePush.disabled = true;
-    els.enablePush.textContent = "Notifications blocked";
-    els.pwaMessage.textContent = "Notifications are blocked in this browser. Enable them in browser settings to receive payment alerts.";
-    return;
-  }
-
-  els.enablePush.disabled = false;
-  els.enablePush.textContent = "Enable notifications";
-  els.pwaMessage.textContent = isIosDevice()
-    ? "On iPhone, add Fuel Ledger to your Home Screen first, then open it from there and enable notifications."
-    : "Enable notifications to get a phone alert when someone requests a payment from you.";
-}
-
-function isIosDevice() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  notifications.updatePwaUi({
+    els,
+    currentSession,
+    deferredInstallPrompt,
+    pushSupported,
+    pushEnabled
+  });
 }
 
 async function enablePushNotifications() {
-  if (!supabaseClient) {
-    alert("Cloud login is not configured yet.");
-    return;
-  }
-
-  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-  const session = sessionData?.session;
-  const accessToken = session?.access_token;
-
-  if (sessionError || !session || !accessToken) {
-    currentSession = null;
-    updateAuthUi();
-    alert("Please sign in again before enabling notifications.");
-    return;
-  }
-
-  currentSession = session;
-
-  if (!pushSupported) {
-    alert("This browser does not support web push notifications.");
-    updatePwaUi();
-    return;
-  }
-
-  try {
-    const configResponse = await fetch(pushConfigUrl);
-    const config = await configResponse.json();
-    if (!config.enabled || !config.publicKey) {
-      alert("Push notifications are not configured on the server yet.");
-      updatePwaUi();
-      return;
-    }
-
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") {
-      updatePwaUi();
-      return;
-    }
-
-    const registration = await navigator.serviceWorker.ready;
-    let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(config.publicKey)
-      });
-    }
-
-    const response = await fetch(pushSubscriptionsUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ subscription })
-    });
-
-    if (!response.ok) throw new Error(await response.text());
-    pushEnabled = true;
-    updatePwaUi();
-  } catch (error) {
-    console.error(error);
-    alert("Could not enable notifications yet. Please sign in again and try once more. If it still fails, check the Render logs.");
-    await refreshPushState();
-    updatePwaUi();
-  }
-}
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i += 1) outputArray[i] = rawData.charCodeAt(i);
-  return outputArray;
+  const enabled = await notifications.enablePushNotifications({
+    supabaseClient,
+    pushSupported,
+    pushConfigUrl,
+    pushSubscriptionsUrl,
+    setCurrentSession: (session) => { currentSession = session; },
+    updateAuthUi,
+    updatePwaUi,
+    refreshPushState,
+    showMessage: showAppMessage
+  });
+  pushEnabled = enabled || await notifications.refreshPushState(pushSupported);
+  updatePwaUi();
 }
 
 async function sendSettlementPush(settlement) {
-  if (!supabaseClient || !settlement) return;
-
-  const { data: sessionData } = await supabaseClient.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
-  if (!accessToken) return;
-
-  const targetEmail = getMemberProfile(settlement.from).email;
-  if (!targetEmail) return;
-
-  const title = "Fuel Ledger payment request";
-  const body = `${settlement.to} requested ${formatMoney(settlement.amount)} from you for shared car fuel.`;
-
-  try {
-    await fetch(sendPushUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({
-        targetEmail,
-        title,
-        body,
-        url: `${window.location.origin}/`,
-        tag: settlementKey(settlement)
-      })
-    });
-  } catch (error) {
-    console.warn("Push notification failed", error);
-  }
+  return notifications.sendSettlementPush({
+    supabaseClient,
+    sendPushUrl,
+    settlement,
+    getMemberProfile,
+    formatMoney,
+    settlementKey
+  });
 }
 
 
