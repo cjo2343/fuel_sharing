@@ -152,3 +152,17 @@ This is intentionally narrower than a full JavaScript linter, but it is designed
 ## Runtime module/cache guard
 
 `tools/check-app-references.mjs` now validates that `index.html` loads the runtime modules in the expected order and that `service-worker.js` caches the same runtime assets. This catches the common PWA mistake where a new module is added to the page but not to the home-screen cache.
+
+## Browser smoke tests
+
+A Playwright smoke-test setup was added to catch regressions that only appear in a real browser. The first test disables Supabase with a local test config, creates a trip, creates a fuel log, refreshes the page, and verifies both entries are still visible from local persistence.
+
+Run once on a machine with Node.js:
+
+```bash
+npm install
+npx playwright install
+npm run test:e2e
+```
+
+Keep the existing validation command as the fast pre-deploy check, and use `npm run test:e2e` before larger refactors or write-path changes.

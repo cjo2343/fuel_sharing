@@ -129,3 +129,15 @@ After deploying a build that touches trips, fuel logs, settlements, or payment r
 4. Try to add/edit/delete a trip or fuel log while the payment is requested; the app should block it and explain that the payment must be reopened first.
 5. Reopen the payment, make the correction, and request it again.
 6. Refresh/reopen the home-screen app and confirm the corrected data persists.
+
+## Optional browser smoke test before deployment
+
+For larger app changes, especially changes touching trips, fuel logs, payments, persistence, service workers, or module loading, run:
+
+```bash
+npm install
+npx playwright install
+npm run test:e2e
+```
+
+The smoke test verifies the local fallback flow: create trip, create fuel log, refresh, and confirm both entries remain visible.

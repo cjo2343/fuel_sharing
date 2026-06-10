@@ -383,3 +383,16 @@ This is still not full route optimization. Station suggestions are based on stat
 ## Payment request locking
 
 When a settlement payment is requested or marked paid, the current period is locked against settlement-affecting trip/fuel changes. Reopen the payment request first, correct the trip/fuel data, then request the payment again. The app also shows toast messages for common save/payment actions so users get clearer feedback after changes.
+
+### Browser smoke tests
+
+This repo includes a lightweight Playwright smoke test setup for regression-prone browser flows. Run it before larger refactors or persistence changes:
+
+```bash
+npm install
+npx playwright install
+npm run test:e2e
+```
+
+The first smoke test disables Supabase with a local test config, creates a trip, creates a fuel log, refreshes, and verifies both entries remain visible.
+
