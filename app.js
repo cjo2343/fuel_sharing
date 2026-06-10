@@ -1646,11 +1646,6 @@ function renderSettlementWarning(ledger) {
 
 function renderPeriodBreakdown(ledger) {
   const activityStats = buildPeriodActivityStats(ledger);
-  const peopleWithKm = Object.entries(ledger.people)
-    .filter(([, person]) => person.km > 0 || person.fuelPaid > 0)
-    .map(([name, person]) => `<li><span>${escapeHtml(name)}</span><b>${formatNumber(person.km)} km distance share · ${formatMoney(person.fuelPaid)} fuel paid</b></li>`)
-    .join("");
-
   const fuelByPerson = Object.entries(ledger.fuelByPerson || {})
     .filter(([, amount]) => amount > 0)
     .map(([name, amount]) => {
@@ -1661,48 +1656,32 @@ function renderPeriodBreakdown(ledger) {
     .join("") || `<li><span>Fuel payments</span><b>None yet</b></li>`;
 
   els.periodBreakdown.innerHTML = `
-    <div class="period-breakdown-card wide-breakdown settlement-period-overview">
+    <div class="period-breakdown-card wide-breakdown settlement-period-overview period-summary-card">
       <span>Current settlement period</span>
-      <div class="period-counter-grid">
-        <div><strong>${activityStats.tripCount}</strong><small>trip${activityStats.tripCount === 1 ? "" : "s"}</small></div>
-        <div><strong>${activityStats.fuelCount}</strong><small>fuel log${activityStats.fuelCount === 1 ? "" : "s"}</small></div>
-        <div><strong>${formatNumber(activityStats.totalTripKm)} km</strong><small>total trip km</small></div>
-        <div><strong>${formatMoney(activityStats.totalFuelPaid)}</strong><small>fuel paid</small></div>
+      <div class="period-counter-grid compact-counters">
+        <div><strong>${activityStats.tripCount}</strong><small>Trips</small></div>
+        <div><strong>${activityStats.fuelCount}</strong><small>Fuel logs</small></div>
+        <div><strong>${formatNumber(activityStats.totalTripKm)} km</strong><small>Trip km</small></div>
+        <div><strong>${formatNumber(ledger.totalShareKm)} km</strong><small>Participant km</small></div>
+        <div><strong>${formatMoney(activityStats.totalFuelPaid)}</strong><small>Fuel paid</small></div>
+        <div><strong>${ledger.totalTripKm > 0 && ledger.totalPaid > 0 ? `${formatMoney(ledger.totalPaid / ledger.totalTripKm)}/km` : "—"}</strong><small>Cost per trip km</small></div>
       </div>
-      <small>History below can look noisy during stress tests. These counters show exactly what is included in the current open settlement period.</small>
+      <small>This is the active open period only. History can contain many entries after stress tests, but these totals are what the current settlement uses.</small>
     </div>
-    <div class="period-breakdown-card">
-      <span>Total trip km</span>
-      <strong>${formatNumber(ledger.totalTripKm)} km</strong>
-      <small>Odometer distance logged in this open period.</small>
-    </div>
-    <div class="period-breakdown-card">
-      <span>Total participant km</span>
-      <strong>${formatNumber(ledger.totalShareKm)} km</strong>
-      <small>Trip distance after splitting each trip among the people who joined. This is what fuel cost is divided by.</small>
-    </div>
-    <div class="period-breakdown-card">
-      <span>This period fuel cost per km</span>
-      <strong>${ledger.totalTripKm > 0 && ledger.totalPaid > 0 ? `${formatMoney(ledger.totalPaid / ledger.totalTripKm)}/km` : "Not enough data"}</strong>
-      <small>Based on receipts logged in this open period only.</small>
-    </div>
-    <div class="period-breakdown-card">
-      <span>This period fuel consumption</span>
+    ${renderFuelEstimateCard(ledger)}
+    <div class="period-breakdown-card wide-breakdown fuel-consumption-card">
+      <span>Fuel consumption in this period</span>
       <strong>${ledger.receiptConsumption > 0 ? `${formatNumber(ledger.receiptConsumption)} L/100 km` : "Not enough data"}</strong>
       <small>${ledger.receiptKmPerLiter > 0 ? `${formatNumber(ledger.receiptKmPerLiter)} km/L · ${formatNumber(ledger.totalFuelLiters)} L logged.` : "Add liters on fuel receipts to build consumption statistics."}</small>
     </div>
     ${renderHistoricalFuelStatsCard(ledger.historicalFuelStats)}
-    ${renderFuelEstimateCard(ledger)}
     <div class="period-breakdown-card wide-breakdown">
-      <span>Fuel payments included</span>
+      <span>Fuel payments by payer</span>
       <ul>${fuelByPerson}</ul>
     </div>
-    <div class="period-breakdown-card wide-breakdown">
-      <span>People included</span>
-      <ul>${peopleWithKm || `<li><span>People</span><b>No active period data yet</b></li>`}</ul>
-    </div>
-    <div class="period-breakdown-card wide-breakdown">
+    <div class="period-breakdown-card wide-breakdown full-breakdown">
       <span>Activity by person</span>
+      <small>Per-person totals for this open settlement period. This replaces the old separate “People included” list.</small>
       ${renderPeriodActivityTable(activityStats)}
     </div>
   `;
@@ -2014,28 +1993,35 @@ function renderPaymentOverview(ledger) {
   const totals = ledger.settlements.reduce(
     (acc, item) => {
       const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]);
-      if (status !== "requested") {
-        acc.unrequestedCount += 1;
-        acc.unrequestedAmount += item.amount;
+      acc.totalCount += 1;
+      acc.totalAmount += item.amount;
+      if (status === "requested") {
+        acc.requestedCount += 1;
+        acc.requestedAmount += item.amount;
+      } else {
+        acc.openCount += 1;
+        acc.openAmount += item.amount;
       }
-      if (status === "requested") acc.requestedCount += 1;
       return acc;
     },
-    { unrequestedCount: 0, unrequestedAmount: 0, requestedCount: 0 }
+    { totalCount: 0, totalAmount: 0, requestedCount: 0, requestedAmount: 0, openCount: 0, openAmount: 0 }
   );
 
   els.paymentOverview.innerHTML = `
     <div>
-      <span>Not requested</span>
-      <strong>${formatMoney(totals.unrequestedAmount)}</strong>
+      <span>Settlement requests</span>
+      <strong>${totals.totalCount}</strong>
+      <small>Total payment lines in this period.</small>
     </div>
     <div>
-      <span>Requests</span>
-      <strong>${totals.requestedCount}</strong>
+      <span>Requested</span>
+      <strong>${totals.requestedCount} · ${formatMoney(totals.requestedAmount)}</strong>
+      <small>Already marked as requested.</small>
     </div>
     <div>
-      <span>Remaining</span>
-      <strong>${totals.unrequestedCount}</strong>
+      <span>Still open</span>
+      <strong>${totals.openCount} · ${formatMoney(totals.openAmount)}</strong>
+      <small>Not requested yet. This is period-wide, not just your account.</small>
     </div>
   `;
 }
