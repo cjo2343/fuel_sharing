@@ -310,3 +310,8 @@ After testing/stress testing, admins can start with clean production activity wh
 5. Type `RESET PRODUCTION` to confirm.
 
 This deletes trips, fuel logs, settlement requests, and settlement periods, creates one fresh empty open period, and refreshes the JSON backup snapshot. Use it only after downloading/keeping a backup.
+
+
+### Monthly member summaries
+
+The Insights tab includes monthly member summaries built from normalized trip and fuel tables. Each month shows trip count, fuel logs, distance share, fuel paid, estimated fuel share, and monthly net per member. This is an explainable statistics layer, not a black-box ML model, and is most useful after production reset removes stress-test data.

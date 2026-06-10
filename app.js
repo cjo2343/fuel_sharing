@@ -219,6 +219,7 @@ const els = {
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
   tripEstimateResult: document.querySelector("#tripEstimateResult"),
   fuelIntelligence: document.querySelector("#fuelIntelligence"),
+  monthlyMemberSummaries: document.querySelector("#monthlyMemberSummaries"),
   settingsForm: document.querySelector("#settingsForm"),
   settingsPanel: document.querySelector(".settings-panel"),
   settlementWarning: document.querySelector("#settlementWarning"),
@@ -1155,6 +1156,7 @@ function render() {
   renderClosedPeriods();
   renderTripEstimate();
   renderFuelIntelligence(ledger);
+  renderMonthlyMemberSummaries(ledger);
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
@@ -1692,6 +1694,210 @@ function calculateTripCostEstimate(distanceKm, participantCount) {
     perPerson: roundMoney(totalCost / participantCount),
     explanation
   };
+}
+
+function monthKeyFromDate(value) {
+  if (!value) return "Unknown";
+  const raw = String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}/.test(raw)) return "Unknown";
+  return raw.slice(0, 7);
+}
+
+function monthLabelFromKey(key) {
+  if (!key || key === "Unknown") return "Unknown month";
+  const [year, month] = key.split("-").map(Number);
+  if (!year || !month) return key;
+  return new Date(year, month - 1, 1).toLocaleDateString("da-DK", { month: "long", year: "numeric" });
+}
+
+function getMonthlySummaryPeriods() {
+  return [
+    { id: getActivePeriodId(), label: "Current period", status: "open", trips: state.trips, fuel: state.fuel },
+    ...state.closedPeriods.map((period) => ({
+      id: period.id,
+      label: period.label || "Closed period",
+      status: "closed",
+      trips: Array.isArray(period.trips) ? period.trips : [],
+      fuel: Array.isArray(period.fuel) ? period.fuel : []
+    }))
+  ];
+}
+
+function ensureMonthlyPersonRow(month, personName) {
+  if (!month.people[personName]) {
+    month.people[personName] = {
+      name: personName,
+      drivenTrips: 0,
+      joinedTrips: 0,
+      distanceShare: 0,
+      drivenKm: 0,
+      fuelLogs: 0,
+      fuelPaid: 0,
+      liters: 0,
+      fuelShare: 0,
+      net: 0
+    };
+  }
+  return month.people[personName];
+}
+
+function buildMonthlyMemberSummaries() {
+  const months = new Map();
+
+  const ensureMonth = (key) => {
+    if (!months.has(key)) {
+      months.set(key, {
+        key,
+        label: monthLabelFromKey(key),
+        tripCount: 0,
+        fuelLogCount: 0,
+        totalTripKm: 0,
+        totalParticipantKm: 0,
+        totalFuelPaid: 0,
+        totalLiters: 0,
+        people: {}
+      });
+    }
+    return months.get(key);
+  };
+
+  for (const period of getMonthlySummaryPeriods()) {
+    for (const trip of Array.isArray(period.trips) ? period.trips : []) {
+      const key = monthKeyFromDate(trip.date || trip.trip_date);
+      const month = ensureMonth(key);
+      const start = Number(trip.startKm ?? trip.start_km ?? 0);
+      const end = Number(trip.endKm ?? trip.end_km ?? 0);
+      const km = Math.max(0, end - start);
+      if (km <= 0) continue;
+
+      const participants = normalizeParticipants(trip.participants || trip.participantNames || trip.participant_names || [trip.driver || trip.driverName]).filter(Boolean);
+      const uniqueParticipants = Array.from(new Set(participants));
+      const share = uniqueParticipants.length ? km / uniqueParticipants.length : km;
+      const driver = trip.driver || trip.driverName || trip.driver_name;
+
+      month.tripCount += 1;
+      month.totalTripKm += km;
+      month.totalParticipantKm += share * Math.max(1, uniqueParticipants.length || 1);
+
+      if (driver) {
+        const row = ensureMonthlyPersonRow(month, driver);
+        row.drivenTrips += 1;
+        row.drivenKm += km;
+      }
+
+      uniqueParticipants.forEach((name) => {
+        const row = ensureMonthlyPersonRow(month, name);
+        row.joinedTrips += 1;
+        row.distanceShare += share;
+      });
+    }
+
+    for (const fuel of Array.isArray(period.fuel) ? period.fuel : []) {
+      const key = monthKeyFromDate(fuel.date || fuel.payment_date);
+      const month = ensureMonth(key);
+      const payer = fuel.payer || fuel.payerName || fuel.payer_name;
+      const amount = Number(fuel.amount || 0);
+      const liters = Number(fuel.liters || 0);
+      if (!payer || amount <= 0) continue;
+
+      month.fuelLogCount += 1;
+      month.totalFuelPaid += amount;
+      month.totalLiters += Math.max(0, liters);
+
+      const row = ensureMonthlyPersonRow(month, payer);
+      row.fuelLogs += 1;
+      row.fuelPaid += amount;
+      row.liters += Math.max(0, liters);
+    }
+  }
+
+  for (const month of months.values()) {
+    const rate = month.totalParticipantKm > 0 ? month.totalFuelPaid / month.totalParticipantKm : 0;
+    Object.values(month.people).forEach((person) => {
+      person.distanceShare = round(person.distanceShare);
+      person.drivenKm = round(person.drivenKm);
+      person.fuelShare = roundMoney(person.distanceShare * rate);
+      person.net = roundMoney(person.fuelPaid - person.fuelShare);
+    });
+    month.totalTripKm = round(month.totalTripKm);
+    month.totalParticipantKm = round(month.totalParticipantKm);
+    month.totalFuelPaid = roundMoney(month.totalFuelPaid);
+    month.totalLiters = round(month.totalLiters);
+    month.fuelRate = month.totalParticipantKm > 0 ? roundMoney(month.totalFuelPaid / month.totalParticipantKm) : 0;
+  }
+
+  return Array.from(months.values()).sort((a, b) => String(b.key).localeCompare(String(a.key)));
+}
+
+function renderMonthlyMemberSummaries() {
+  if (!els.monthlyMemberSummaries) return;
+  const months = buildMonthlyMemberSummaries().filter((month) => month.tripCount || month.fuelLogCount);
+
+  if (!months.length) {
+    els.monthlyMemberSummaries.className = "monthly-summary empty-state";
+    els.monthlyMemberSummaries.textContent = "Add trips and fuel receipts to build monthly member summaries.";
+    return;
+  }
+
+  els.monthlyMemberSummaries.className = "monthly-summary";
+  els.monthlyMemberSummaries.innerHTML = months.slice(0, 12).map((month, index) => renderMonthlySummaryCard(month, index === 0)).join("");
+}
+
+function renderMonthlySummaryCard(month, open) {
+  const people = Object.values(month.people)
+    .filter((person) => person.joinedTrips || person.drivenTrips || person.fuelLogs || person.fuelPaid)
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net) || a.name.localeCompare(b.name));
+
+  return `
+    <details class="monthly-summary-card" ${open ? "open" : ""}>
+      <summary>
+        <div>
+          <strong>${escapeHtml(month.label)}</strong>
+          <p>${month.tripCount} trip${month.tripCount === 1 ? "" : "s"} · ${month.fuelLogCount} fuel log${month.fuelLogCount === 1 ? "" : "s"} · ${formatNumber(month.totalTripKm)} km</p>
+        </div>
+        <span>${formatMoneyFor(month.totalFuelPaid, state.currency)}</span>
+      </summary>
+      <div class="period-stats monthly-stats">
+        <div><span>Trip km</span><b>${formatNumber(month.totalTripKm)} km</b></div>
+        <div><span>Distance share</span><b>${formatNumber(month.totalParticipantKm)} km</b></div>
+        <div><span>Fuel paid</span><b>${formatMoneyFor(month.totalFuelPaid, state.currency)}</b></div>
+        <div><span>Fuel rate</span><b>${month.fuelRate > 0 ? `${formatMoneyFor(month.fuelRate, state.currency)}/km` : "-"}</b></div>
+        <div><span>Liters</span><b>${month.totalLiters > 0 ? `${formatNumber(month.totalLiters)} L` : "-"}</b></div>
+        <div><span>People active</span><b>${people.length}</b></div>
+      </div>
+      ${people.length ? `
+        <div class="responsive-table-wrap">
+          <table class="monthly-member-table">
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Driven</th>
+                <th>Joined</th>
+                <th>Distance share</th>
+                <th>Fuel paid</th>
+                <th>Fuel share</th>
+                <th>Monthly net</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${people.map((person) => `
+                <tr>
+                  <td>${escapeHtml(person.name)}</td>
+                  <td>${person.drivenTrips} · ${formatNumber(person.drivenKm)} km</td>
+                  <td>${person.joinedTrips}</td>
+                  <td>${formatNumber(person.distanceShare)} km</td>
+                  <td>${formatMoneyFor(person.fuelPaid, state.currency)}${person.fuelLogs ? `<br><small>${person.fuelLogs} log${person.fuelLogs === 1 ? "" : "s"}</small>` : ""}</td>
+                  <td>${formatMoneyFor(person.fuelShare, state.currency)}</td>
+                  <td><strong class="${person.net >= 0 ? "positive-net" : "negative-net"}">${person.net >= 0 ? "+" : ""}${formatMoneyFor(person.net, state.currency)}</strong></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+        <p class="entry-meta">Monthly net = fuel paid minus estimated fuel share for that month. Positive means the person paid more fuel than their share; negative means they used more fuel than they paid for.</p>
+      ` : `<p class="entry-meta">No member activity for this month.</p>`}
+    </details>
+  `;
 }
 
 function calculateLedger() {
