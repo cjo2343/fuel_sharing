@@ -261,3 +261,26 @@ After deployment, add or edit one test trip/fuel log, then open System health. T
 If the browser console shows normalized dual-write access errors or ON CONFLICT errors, run `phase2b-dual-write-repair.sql` in Supabase SQL Editor.
 
 This build also makes `/api/fuel-price` return a fallback JSON response instead of a 502 when the external fuel price API is temporarily unavailable.
+
+## Phase 2C: normalized read-first mode
+
+This version reads the normalized Supabase tables first after login, while keeping the old `car_share_ledgers.state` JSON as a fallback and backup.
+
+What changes:
+
+- On load, the app tries to rebuild the active ledger from `ledgers`, `ledger_members`, `settlement_periods`, `trips`, `trip_participants`, and `fuel_payments`.
+- If table reads fail, the app falls back to the existing JSON state.
+- Saves still write JSON first and then dual-write to the normalized tables.
+- System health reports whether the app is reading from normalized tables and whether table counts match JSON counts.
+
+Recommended test:
+
+1. Deploy this version.
+2. Sign in as admin.
+3. Check System health.
+4. Add a generated test trip.
+5. Add a generated test fuel log.
+6. Remove generated test data.
+7. Confirm System health stays green and the console has no red errors.
+
+Do not remove `car_share_ledgers.state` yet. It is still the fallback/backup during this phase.

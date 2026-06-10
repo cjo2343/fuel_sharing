@@ -57,6 +57,7 @@ let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
 let lastSyncError = "";
 let normalizedTableStatus = { checked: false, ok: false, message: "Normalized tables have not been checked yet." };
+let normalizedReadModeActive = false;
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -3117,6 +3118,126 @@ async function syncNormalizedTablesFromJson() {
 }
 
 
+
+async function loadStateFromNormalizedTables(jsonFallbackState) {
+  if (!supabaseClient || !currentSession) return null;
+  if (!(await hasFreshSupabaseSession())) return null;
+
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+
+  const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult] = await Promise.all([
+    supabaseClient.from("ledgers").select("*").eq("id", ledgerId).maybeSingle(),
+    supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
+    supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
+    supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
+    supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true })
+  ]);
+
+  const firstError = [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult].find((result) => result.error)?.error;
+  if (firstError) throw firstError;
+
+  const ledger = ledgerResult.data;
+  const members = membersResult.data || [];
+  const periods = periodsResult.data || [];
+  const tableTrips = tripsResult.data || [];
+  const tableFuel = fuelResult.data || [];
+  const openPeriod = periods.find((period) => period.status === "open") || null;
+
+  if (!ledger || members.length === 0 || !openPeriod) return null;
+
+  const memberById = Object.fromEntries(members.map((member) => [member.id, member]));
+  const memberNames = members.map((member) => member.name).filter(Boolean);
+  const memberProfiles = Object.fromEntries(
+    members.map((member) => [
+      member.name,
+      {
+        email: normalizeEmail(member.email || ""),
+        role: member.role === "admin" ? "admin" : "member"
+      }
+    ])
+  );
+
+  const participantResult = tableTrips.length
+    ? await supabaseClient
+        .from("trip_participants")
+        .select("trip_id,member_id")
+        .in("trip_id", tableTrips.map((trip) => trip.id))
+    : { data: [], error: null };
+  if (participantResult.error) throw participantResult.error;
+
+  const participantNamesByTripId = {};
+  for (const participant of participantResult.data || []) {
+    const memberName = memberById[participant.member_id]?.name;
+    if (!memberName) continue;
+    if (!participantNamesByTripId[participant.trip_id]) participantNamesByTripId[participant.trip_id] = [];
+    participantNamesByTripId[participant.trip_id].push(memberName);
+  }
+
+  const activeTrips = tableTrips.filter((trip) => !openPeriod || !trip.period_id || trip.period_id === openPeriod.id);
+  const activeFuel = tableFuel.filter((fuel) => !openPeriod || !fuel.period_id || fuel.period_id === openPeriod.id);
+
+  const trips = activeTrips.map((trip) => {
+    const driver = memberById[trip.driver_member_id]?.name || memberNames[0] || "";
+    const participants = participantNamesByTripId[trip.id]?.length ? [...new Set(participantNamesByTripId[trip.id])] : (driver ? [driver] : []);
+    return {
+      id: trip.legacy_id || trip.id,
+      driver,
+      date: normalizedDate(trip.trip_date),
+      startKm: round(Number(trip.start_km || 0)),
+      endKm: round(Number(trip.end_km || 0)),
+      participants,
+      note: trip.note || ""
+    };
+  });
+
+  const fuel = activeFuel.map((item) => {
+    const payer = memberById[item.payer_member_id]?.name || memberNames[0] || "";
+    const liters = Number(item.liters || 0) > 0 ? round(Number(item.liters)) : "";
+    const amount = roundMoney(Number(item.amount || 0));
+    const stationName = item.station_name || "";
+    const hasUserLocation = Number.isFinite(Number(item.user_lat)) && Number.isFinite(Number(item.user_lng));
+    const hasStationLocation = Number.isFinite(Number(item.station_lat)) && Number.isFinite(Number(item.station_lng));
+    return {
+      id: item.legacy_id || item.id,
+      payer,
+      date: normalizedDate(item.payment_date),
+      amount,
+      liters,
+      pricePerLiter: liters ? roundMoney(amount / liters) : (Number(item.price_per_liter || 0) > 0 ? roundMoney(Number(item.price_per_liter)) : ""),
+      odometer: Number(item.odometer || 0) > 0 ? round(Number(item.odometer)) : "",
+      station: stationName,
+      location: hasUserLocation ? { latitude: Number(item.user_lat), longitude: Number(item.user_lng) } : null,
+      stationInfo: hasStationLocation
+        ? {
+            name: stationName,
+            brand: item.station_brand || "",
+            latitude: Number(item.station_lat),
+            longitude: Number(item.station_lng)
+          }
+        : null,
+      fullTank: Boolean(item.full_tank)
+    };
+  });
+
+  const closedPeriodsFromTables = periods
+    .filter((period) => period.status === "closed" && period.snapshot_json)
+    .map((period) => period.snapshot_json);
+
+  return normalizeState({
+    ...jsonFallbackState,
+    currency: ledger.currency || jsonFallbackState.currency,
+    fuelType: ledger.fuel_type || jsonFallbackState.fuelType,
+    fuelConsumption: Number(ledger.estimated_consumption_l_per_100km) || jsonFallbackState.fuelConsumption,
+    fuelFallbackPrice: Number(ledger.fallback_fuel_price) || jsonFallbackState.fuelFallbackPrice,
+    fuelWarningThreshold: Number(ledger.low_fuel_threshold_percent) || jsonFallbackState.fuelWarningThreshold,
+    members: memberNames,
+    memberProfiles,
+    trips,
+    fuel,
+    closedPeriods: closedPeriodsFromTables.length ? closedPeriodsFromTables : jsonFallbackState.closedPeriods
+  });
+}
+
 async function checkNormalizedTablesAgainstCurrentState() {
   if (!supabaseClient || !currentSession) return;
   if (!(await hasFreshSupabaseSession())) return;
@@ -3166,8 +3287,10 @@ async function checkNormalizedTablesAgainstCurrentState() {
     checked: true,
     ok: mismatchParts.length === 0,
     message: mismatchParts.length
-      ? `Normalized table check found: ${mismatchParts.join("; ")}. JSON remains the source of truth until this is resolved.`
-      : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${tableTrips.length} trips, ${tableFuel.length} fuel logs).`,
+      ? `Normalized table check found: ${mismatchParts.join("; ")}. JSON remains available as fallback until this is resolved.`
+      : normalizedReadModeActive
+        ? `Reading from normalized tables first. Tables match JSON counts (${activeMembers.length} members, ${tableTrips.length} trips, ${tableFuel.length} fuel logs).`
+        : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${tableTrips.length} trips, ${tableFuel.length} fuel logs).`,
     membersWithoutEmail: membersWithoutEmail.length,
     admins: admins.length
   };
@@ -3244,8 +3367,35 @@ async function loadSupabaseState() {
 
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
-    applyIncomingState(data.state, "Cloud");
-    await syncNormalizedTablesFromJson();
+    const jsonState = normalizeState(data.state);
+    let loadedFromTables = false;
+
+    try {
+      const normalizedState = await loadStateFromNormalizedTables(jsonState);
+      if (normalizedState) {
+        normalizedReadModeActive = true;
+        applyIncomingState(normalizedState, "Tables");
+        loadedFromTables = true;
+        normalizedTableStatus = {
+          checked: true,
+          ok: true,
+          message: `Reading from normalized tables first (${normalizedState.members.length} members, ${normalizedState.trips.length} trips, ${normalizedState.fuel.length} fuel logs). JSON remains available as fallback.`
+        };
+      }
+    } catch (tableError) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: `Could not read normalized tables, so JSON was used as fallback: ${tableError.message || tableError}`
+      };
+    }
+
+    if (!loadedFromTables) {
+      normalizedReadModeActive = false;
+      applyIncomingState(jsonState, "Cloud");
+      await syncNormalizedTablesFromJson();
+    }
+
     checkNormalizedTablesAgainstCurrentState().catch((error) => {
       normalizedTableStatus = {
         checked: true,
@@ -3341,6 +3491,11 @@ function setSyncStatus(label) {
   els.syncStatus.dataset.status = label.toLowerCase();
 
   if (!els.syncDetail) return;
+
+  if (label === "Tables") {
+    els.syncDetail.textContent = "Loaded from normalized database tables";
+    return;
+  }
 
   if (label === "Cloud") {
     els.syncDetail.textContent = lastCloudSaveAt
