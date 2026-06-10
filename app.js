@@ -1410,7 +1410,7 @@ function renderSettlements(ledger) {
     .join("");
 }
 
-function closeCurrentPeriod(options = {}) {
+async function closeCurrentPeriod(options = {}) {
   if (!canManageSettings() && !options.allowMemberClose) {
     alert("Only an admin can close periods manually.");
     return;
@@ -1458,6 +1458,10 @@ function closeCurrentPeriod(options = {}) {
     fuel: structuredClone(state.fuel)
   };
 
+  if (!(await closeNormalizedPeriodFirst(period))) {
+    return;
+  }
+
   state.closedPeriods.unshift(period);
   state.trips = [];
   state.fuel = [];
@@ -1466,6 +1470,55 @@ function closeCurrentPeriod(options = {}) {
   saveState();
   setDefaultDates();
   render();
+}
+
+async function closeNormalizedPeriodFirst(periodSnapshot) {
+  if (!supabaseClient || !currentSession) return true;
+
+  try {
+    setSyncStatus("Saving");
+    const context = await getNormalizedWriteContext();
+    if (!context?.openPeriodId) return true;
+
+    const closedAt = periodSnapshot.closedAt || new Date().toISOString();
+    const closeResult = await supabaseClient
+      .from("settlement_periods")
+      .update({
+        status: "closed",
+        label: periodSnapshot.label || "Closed period",
+        closed_at: closedAt,
+        snapshot_json: periodSnapshot,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", context.openPeriodId);
+    if (closeResult.error) throw closeResult.error;
+
+    const newPeriodResult = await supabaseClient
+      .from("settlement_periods")
+      .insert({
+        ledger_id: context.ledgerId,
+        status: "open",
+        label: "Current period"
+      });
+    if (newPeriodResult.error) throw newPeriodResult.error;
+
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: "Closed the normalized settlement period and opened a fresh period. JSON will be updated as backup."
+    };
+    return true;
+  } catch (error) {
+    console.warn("Table-primary period close failed", error);
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Could not close the normalized settlement period, so JSON was not changed: ${error.message || error}`
+    };
+    alert("Could not close this period in the normalized database. The period was not archived. Check the console for details.");
+    render();
+    return false;
+  }
 }
 
 function renderSettlementWarning(ledger) {
@@ -1828,7 +1881,7 @@ async function updatePaymentStatus(button) {
       "All current settlements have been requested. Close and archive this period now so new trips start fresh?"
     )
   ) {
-    closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true, skipFuelValidation: true });
+    await closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true, skipFuelValidation: true });
     return;
   }
 
@@ -3269,6 +3322,7 @@ async function syncNormalizedTablesFromJson() {
       .from("trips")
       .select("id,legacy_id")
       .eq("ledger_id", ledgerId)
+      .eq("period_id", openPeriodId)
       .is("deleted_at", null);
     if (existingTripsResult.error) throw existingTripsResult.error;
 
@@ -3347,6 +3401,7 @@ async function syncNormalizedTablesFromJson() {
       .from("fuel_payments")
       .select("id,legacy_id")
       .eq("ledger_id", ledgerId)
+      .eq("period_id", openPeriodId)
       .is("deleted_at", null);
     if (existingFuelResult.error) throw existingFuelResult.error;
 
@@ -3505,8 +3560,8 @@ async function checkNormalizedTablesAgainstCurrentState() {
   const ledgerId = supabaseConfig.ledgerId || "main-car";
   const [membersResult, tripsResult, fuelResult, periodsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
-    supabaseClient.from("trips").select("id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
-    supabaseClient.from("fuel_payments").select("id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
+    supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
+    supabaseClient.from("fuel_payments").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId)
   ]);
 
@@ -3518,6 +3573,9 @@ async function checkNormalizedTablesAgainstCurrentState() {
   const tableFuel = fuelResult.data || [];
   const tablePeriods = periodsResult.data || [];
   const activeMembers = tableMembers.filter((member) => member.is_active !== false);
+  const openPeriod = tablePeriods.find((period) => period.status === "open") || null;
+  const activeTableTrips = tableTrips.filter((trip) => !openPeriod || !trip.period_id || trip.period_id === openPeriod.id);
+  const activeTableFuel = tableFuel.filter((fuel) => !openPeriod || !fuel.period_id || fuel.period_id === openPeriod.id);
   const admins = activeMembers.filter((member) => member.role === "admin");
   const membersWithoutEmail = activeMembers.filter((member) => !member.email);
   const mismatchParts = [];
@@ -3526,12 +3584,12 @@ async function checkNormalizedTablesAgainstCurrentState() {
     mismatchParts.push(`members ${activeMembers.length} in tables vs ${getMemberNames().length} in app`);
   }
 
-  if (tableTrips.length !== state.trips.length) {
-    mismatchParts.push(`trips ${tableTrips.length} in tables vs ${state.trips.length} in app`);
+  if (activeTableTrips.length !== state.trips.length) {
+    mismatchParts.push(`trips ${activeTableTrips.length} in the open table period vs ${state.trips.length} in app`);
   }
 
-  if (tableFuel.length !== state.fuel.length) {
-    mismatchParts.push(`fuel logs ${tableFuel.length} in tables vs ${state.fuel.length} in app`);
+  if (activeTableFuel.length !== state.fuel.length) {
+    mismatchParts.push(`fuel logs ${activeTableFuel.length} in the open table period vs ${state.fuel.length} in app`);
   }
 
   const openPeriods = tablePeriods.filter((period) => period.status === "open").length;
@@ -3549,8 +3607,8 @@ async function checkNormalizedTablesAgainstCurrentState() {
     message: mismatchParts.length
       ? `Normalized table check found: ${mismatchParts.join("; ")}. JSON remains available as fallback until this is resolved.`
       : normalizedReadModeActive
-        ? `Reading from normalized tables first; trips/fuel write to tables first. Tables match JSON counts (${activeMembers.length} members, ${tableTrips.length} trips, ${tableFuel.length} fuel logs).`
-        : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${tableTrips.length} trips, ${tableFuel.length} fuel logs).`,
+        ? `Reading from normalized tables first; trips/fuel write to tables first. Open period tables match JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs).`
+        : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs).`,
     membersWithoutEmail: membersWithoutEmail.length,
     admins: admins.length
   };
