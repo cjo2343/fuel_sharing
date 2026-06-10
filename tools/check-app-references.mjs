@@ -4,6 +4,10 @@ import path from 'node:path';
 
 const appPath = process.argv[2] || path.join(process.cwd(), 'app.js');
 const source = fs.readFileSync(appPath, 'utf8');
+const extraSourcePaths = ['utils.js']
+  .map((name) => path.join(process.cwd(), name))
+  .filter((candidate) => candidate !== appPath && fs.existsSync(candidate));
+const declarationSource = [source, ...extraSourcePaths.map((candidate) => fs.readFileSync(candidate, 'utf8'))].join('\n');
 
 function stripCommentsAndStringText(input) {
   let out = '';
@@ -73,7 +77,7 @@ const code = stripCommentsAndStringText(source);
 const declared = new Set();
 
 function addSourceMatches(regex, group = 1) {
-  for (const match of source.matchAll(regex)) declared.add(match[group]);
+  for (const match of declarationSource.matchAll(regex)) declared.add(match[group]);
 }
 
 addSourceMatches(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g);
@@ -83,10 +87,17 @@ addSourceMatches(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\b/g);
 addSourceMatches(/\bwindow\.([A-Za-z_$][\w$]*)\s*=/g);
 addSourceMatches(/\bglobalThis\.([A-Za-z_$][\w$]*)\s*=/g);
 
+for (const match of declarationSource.matchAll(/\b(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(([^)]*)\)/g)) {
+  for (const parameter of match[1].split(',')) {
+    const name = parameter.trim().match(/^([A-Za-z_$][\w$]*)/);
+    if (name) declared.add(name[1]);
+  }
+}
+
 const allowed = new Set([
   'Array','Boolean','Date','Error','EvalError','Function','JSON','Map','Math','Number','Object','Promise','RangeError','ReferenceError','RegExp','Set','String','SyntaxError','TypeError','URL','URLSearchParams','WeakMap','WeakSet','parseFloat','parseInt','isFinite','isNaN','decodeURIComponent','encodeURIComponent','clearInterval','clearTimeout','setInterval','setTimeout','queueMicrotask','structuredClone',
   'alert','atob','btoa','confirm','fetch','localStorage','navigator','open','prompt','requestAnimationFrame','scrollTo','sessionStorage','document','window','Blob','File','FileReader','FormData','Headers','Notification','Response','Request','CustomEvent','Event','KeyboardEvent','MouseEvent','crypto',
-  'supabase','createClient','Trips','logs','PushManager','ServiceWorkerRegistration','TextDecoder','TextEncoder','resolve','reject'
+  'Uint8Array','supabase','createClient','Trips','logs','PushManager','ServiceWorkerRegistration','TextDecoder','TextEncoder','resolve','reject'
 ]);
 
 const keywords = new Set(['if','for','while','switch','catch','function','return','typeof','void','delete','new','class','do','else','try','finally','await','async','in','of','throw','case']);
