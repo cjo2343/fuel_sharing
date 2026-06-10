@@ -315,3 +315,18 @@ This deletes trips, fuel logs, settlement requests, and settlement periods, crea
 ### Monthly member summaries
 
 The Insights tab includes monthly member summaries built from normalized trip and fuel tables. Each month shows trip count, fuel logs, distance share, fuel paid, estimated fuel share, and monthly net per member. This is an explainable statistics layer, not a black-box ML model, and is most useful after production reset removes stress-test data.
+
+## Pre-deploy validation
+
+Before packaging or deploying changes, run these checks from the repository root:
+
+```bash
+node --check app.js
+python3 -m py_compile server.py
+python3 -m json.tool ledger-data.json
+node tools/check-app-references.mjs
+```
+
+`tools/check-app-references.mjs` is a lightweight guard for this single-file JavaScript app. It scans `app.js` for likely calls to helper functions that are not defined in the file. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version.
+
+If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
