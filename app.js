@@ -1831,6 +1831,27 @@ function buildMonthlyMemberSummaries() {
   return Array.from(months.values()).sort((a, b) => String(b.key).localeCompare(String(a.key)));
 }
 
+function getAnomalyEditTarget(type, entry) {
+  if (!entry?.id) return null;
+  if (type === "fuel" && canManageFuelEntry(entry)) return `fuel:${entry.id}`;
+  if (type === "trips" && canManageTripEntry(entry)) return `trips:${entry.id}`;
+  return null;
+}
+
+function getAnomalyOwnerText(type, entry) {
+  if (type === "fuel") return `${entry?.payer || "the fuel payer"} can edit this fuel log from History.`;
+  return `${entry?.driver || "the driver"} can edit this trip from History.`;
+}
+
+function createEntryAnomaly({ severity = "warning", text, type, entry }) {
+  return {
+    severity,
+    text,
+    target: getAnomalyEditTarget(type, entry),
+    ownerText: getAnomalyOwnerText(type, entry)
+  };
+}
+
 function getCurrentPeriodFuelAnomalies(ledger) {
   const anomalies = [];
   const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
@@ -1842,27 +1863,59 @@ function getCurrentPeriodFuelAnomalies(ledger) {
     const label = `${fuel.payer || "Unknown"}${fuel.date ? ` · ${formatDate(fuel.date)}` : ""}`;
 
     if (amount >= 500 && !(liters > 0)) {
-      anomalies.push({ severity: "warning", text: `${label}: ${formatMoney(amount)} is missing liters, so DKK/L and consumption cannot be verified.` });
+      anomalies.push(createEntryAnomaly({
+        severity: "warning",
+        text: `${label}: ${formatMoney(amount)} is missing liters, so DKK/L and consumption cannot be verified.`,
+        type: "fuel",
+        entry: fuel
+      }));
       continue;
     }
 
     if (amount > 0 && liters > 0) {
       const pricePerLiter = amount / liters;
       if (pricePerLiter < 8 || pricePerLiter > 25) {
-        anomalies.push({ severity: "issue", text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal diesel range.` });
+        anomalies.push(createEntryAnomaly({
+          severity: "issue",
+          text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal diesel range.`,
+          type: "fuel",
+          entry: fuel
+        }));
       } else if (referencePrice > 0) {
         const difference = Math.abs(pricePerLiter - referencePrice) / referencePrice;
         if (difference >= 0.25) {
-          anomalies.push({ severity: "warning", text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L differs a lot from the current/reference price (${formatMoneyFor(referencePrice, state.currency)}/L).` });
+          anomalies.push(createEntryAnomaly({
+            severity: "warning",
+            text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L differs a lot from the current/reference price (${formatMoneyFor(referencePrice, state.currency)}/L).`,
+            type: "fuel",
+            entry: fuel
+          }));
         }
       }
+    }
+  }
+
+  for (const trip of state.trips) {
+    const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+    const label = `${trip.driver || "Unknown"}${trip.date ? ` · ${formatDate(trip.date)}` : ""}`;
+    if (km > 1000) {
+      anomalies.push(createEntryAnomaly({
+        severity: "warning",
+        text: `${label}: ${formatNumber(km)} km is unusually long for one trip; check start/end odometer.`,
+        type: "trips",
+        entry: trip
+      }));
     }
   }
 
   if (ledger.totalTripKm > 0 && ledger.totalFuelLiters > 0) {
     const periodConsumption = ledger.totalFuelLiters / ledger.totalTripKm * 100;
     if (periodConsumption < 3 || periodConsumption > 9) {
-      anomalies.push({ severity: "issue", text: `Current period consumption is ${formatNumber(periodConsumption)} L/100 km. That is unusual for this car; check fuel logs, trip distance, or whether fuel belongs to this period.` });
+      anomalies.push({
+        severity: "issue",
+        text: `Current period consumption is ${formatNumber(periodConsumption)} L/100 km. That is unusual for this car; check fuel logs, trip distance, or whether fuel belongs to this period.`,
+        ownerText: "Review the linked fuel/trip anomalies below, or use History to edit your own current-period entries."
+      });
     }
   }
 
@@ -1960,8 +2013,11 @@ function buildSmartPredictions(ledger) {
   const participants = Math.max(1, getTripEstimatorParticipants().length || 1);
   const planDistance = distance > 0 ? distance : 100;
   const planEstimate = calculateTripCostEstimate(planDistance, participants);
-  const monthlySignal = getLatestMonthlySignal();
-  return { intel, health, planDistance, participants, planEstimate, monthlySignal };
+  const monthlySignal = intel.consumptionLooksRealistic ? getLatestMonthlySignal() : null;
+  const historicalQuality = intel.consumptionLooksRealistic && intel.confidence !== "Low" ? "Good" : intel.confidence === "Low" ? "Limited" : "Needs cleanup";
+  const planningConfidence = intel.canUseHistoricalForPlanning ? intel.confidence : latestFuelPrice?.price || intel.effectivePrice ? "Medium" : "Low";
+  const planningNote = distance > 0 ? "Using your Plan trip distance." : "Using a 100 km reference because no planned trip distance is entered.";
+  return { intel, health, planDistance, participants, planEstimate, monthlySignal, historicalQuality, planningConfidence, planningNote };
 }
 
 function renderSmartPredictions(ledger) {
@@ -1977,8 +2033,16 @@ function renderSmartPredictions(ledger) {
 
   const health = prediction.health;
   const toneClass = health.tone === "ok" ? "ok" : health.tone === "issue" ? "issue" : "warning";
-  const anomalyItems = health.fuelAnomalies.slice(0, 5).map((item) => `<li>${escapeHtml(item.text)}</li>`).join("");
-  const hiddenAnomalyCount = Math.max(0, health.fuelAnomalies.length - 5);
+  const anomalyItems = health.fuelAnomalies.slice(0, 6).map((item) => {
+    const action = item.target
+      ? ` <button class="subtle-button compact-button" type="button" data-edit="${escapeHtml(item.target)}">Edit</button>`
+      : "";
+    const owner = item.target ? "" : item.ownerText ? ` <small>${escapeHtml(item.ownerText)}</small>` : "";
+    return `<li>${escapeHtml(item.text)}${action}${owner}</li>`;
+  }).join("");
+  const hiddenAnomalyCount = Math.max(0, health.fuelAnomalies.length - 6);
+  const historicalTone = prediction.historicalQuality === "Good" ? "ok" : "warning";
+  const planningTone = prediction.planningConfidence === "High" ? "ok" : prediction.planningConfidence === "Low" ? "issue" : "warning";
 
   els.smartPredictions.className = "smart-predictions";
   els.smartPredictions.innerHTML = `
@@ -1994,14 +2058,24 @@ function renderSmartPredictions(ledger) {
         <small>${formatNumber(prediction.planDistance)} km · ${prediction.participants} person${prediction.participants === 1 ? "" : "s"} · ${formatMoneyFor(prediction.planEstimate.perPerson, state.currency)} each.</small>
       </article>
       <article>
-        <span>Planning confidence</span>
-        <strong><span class="status-pill status-${prediction.intel.confidenceClass === "ok" ? "ok" : "warning"}">${prediction.intel.confidence}</span></strong>
-        <small>${escapeHtml(prediction.intel.estimateSource)}.</small>
+        <span>Planning source</span>
+        <strong>${escapeHtml(prediction.intel.estimateSource)}</strong>
+        <small>${escapeHtml(prediction.planningNote)}</small>
       </article>
       <article>
-        <span>Fuel-log anomalies</span>
+        <span>Planning confidence</span>
+        <strong><span class="status-pill status-${planningTone}">${prediction.planningConfidence}</span></strong>
+        <small>${prediction.intel.canUseHistoricalForPlanning ? "Uses clean historical cost/km." : "Uses car setting because historical data is not trusted for planning."}</small>
+      </article>
+      <article>
+        <span>Historical data quality</span>
+        <strong><span class="status-pill status-${historicalTone}">${prediction.historicalQuality}</span></strong>
+        <small>${prediction.intel.consumptionLooksRealistic ? "Historical consumption looks plausible." : "Historical consumption looks unusual and is ignored for planning."}</small>
+      </article>
+      <article>
+        <span>Outliers to review</span>
         <strong>${health.fuelAnomalies.length}</strong>
-        <small>${health.fuelAnomalies.length ? "Review before settlement." : "No current-period fuel-log anomaly found."}</small>
+        <small>${health.fuelAnomalies.length ? "Use Edit on linked items before settlement." : "No current-period outlier found."}</small>
       </article>
     </div>
     <div class="smart-prediction-details">
@@ -2012,9 +2086,10 @@ function renderSmartPredictions(ledger) {
       <article>
         <h3>Why this estimate?</h3>
         <p>${escapeHtml(prediction.planEstimate.explanation)}</p>
+        ${!prediction.intel.consumptionLooksRealistic ? `<p>After the production reset and a few real fuel logs, the historical model will become more useful.</p>` : ""}
         ${prediction.monthlySignal ? `<p>${escapeHtml(prediction.monthlySignal.text)}</p>` : ""}
       </article>
-      ${health.fuelAnomalies.length ? `<article><h3>Fuel anomalies</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here.</li>` : ""}</ul></article>` : ""}
+      ${health.fuelAnomalies.length ? `<article><h3>Outliers and edit links</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}</ul></article>` : ""}
     </div>
   `;
 }
