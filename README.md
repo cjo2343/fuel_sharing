@@ -284,3 +284,14 @@ Recommended test:
 7. Confirm System health stays green and the console has no red errors.
 
 Do not remove `car_share_ledgers.state` yet. It is still the fallback/backup during this phase.
+
+## Phase 2D: table-primary trip/fuel writes
+
+This build keeps normalized tables as the primary read source and starts writing new trip and fuel changes to normalized tables first.
+
+- Add/edit trip writes to `trips` and `trip_participants` first, then mirrors JSON as backup.
+- Add/edit fuel writes to `fuel_payments` first, then mirrors JSON as backup.
+- Admin delete soft-deletes the normalized row first, then mirrors JSON as backup.
+- Other app settings and period actions still use the JSON mirror and dual-write bridge for now.
+
+This is still a migration bridge: do not remove `car_share_ledgers.state` yet.
