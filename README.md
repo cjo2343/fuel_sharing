@@ -297,3 +297,16 @@ For this diesel car, the default planning fallback remains 5.3 L/100 km. Histori
 ### Paid settlement period lock
 
 Once any final payment in the current open period is marked `Paid`, the current period is treated as locked for new trip/fuel entries. This prevents a paid settlement from changing underneath users after someone has already paid in MobilePay. Admins should close the period to start a fresh one, or reopen the paid payment if the period needs corrections before closing.
+
+
+### Production activity reset
+
+After testing/stress testing, admins can start with clean production activity while keeping members, roles, emails, MobilePay numbers, and ledger settings.
+
+1. Run `phase2ah-production-activity-reset.sql` once in Supabase SQL Editor.
+2. Deploy the app.
+3. Open **Admin → Database diagnostics**.
+4. Click **Reset production activity**.
+5. Type `RESET PRODUCTION` to confirm.
+
+This deletes trips, fuel logs, settlement requests, and settlement periods, creates one fresh empty open period, and refreshes the JSON backup snapshot. Use it only after downloading/keeping a backup.

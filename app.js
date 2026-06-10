@@ -252,6 +252,7 @@ const els = {
   newMemberRole: document.querySelector("#newMemberRole"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
+  productionActivityReset: document.querySelector("#productionActivityReset"),
   exportLedger: document.querySelector("#exportLedger"),
   importLedger: document.querySelector("#importLedger"),
   importLedgerFile: document.querySelector("#importLedgerFile"),
@@ -846,6 +847,11 @@ els.cleanStaleRequests?.addEventListener("click", async () => {
       render();
     });
   }
+});
+
+els.productionActivityReset?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runProductionActivityReset();
 });
 
 
@@ -3632,6 +3638,71 @@ async function afterMemberManagementChange(message) {
   await refreshDatabaseDiagnostics().catch(() => {});
   await checkNormalizedTablesAgainstCurrentState().catch(() => {});
   render();
+}
+
+
+async function runProductionActivityReset() {
+  if (!supabaseClient || !currentSession) {
+    alert("Sign in as an admin before resetting production activity.");
+    return;
+  }
+  if (!canManageSettings()) {
+    alert("Only an admin can reset production activity.");
+    return;
+  }
+  const warning = [
+    "This will permanently delete/reset all activity tables for this ledger:",
+    "- trips and trip participants",
+    "- fuel logs",
+    "- settlement requests",
+    "- open and closed settlement periods",
+    "",
+    "Members, emails, roles, MobilePay phones, and ledger settings are kept.",
+    "A JSON backup download will start before the reset."
+  ].join("\n");
+  if (!confirm(warning)) return;
+  const typed = prompt("Type RESET PRODUCTION to delete all activity data and start one fresh empty period.");
+  if (typed !== "RESET PRODUCTION") {
+    alert("Reset cancelled. The confirmation text did not match.");
+    return;
+  }
+
+  exportLedgerBackup();
+
+  els.productionActivityReset.disabled = true;
+  if (els.authMessage) els.authMessage.textContent = "Resetting production activity...";
+  try {
+    if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
+    const ledgerId = supabaseConfig.ledgerId || "main-car";
+    const { data, error } = await supabaseClient.rpc("production_activity_reset", { target_ledger_id: ledgerId });
+    if (error) throw error;
+
+    state.trips = [];
+    state.fuel = [];
+    state.closedPeriods = [];
+    state.paymentStatuses = {};
+    state.lastOdometer = "";
+    editTripId = null;
+    editFuelId = null;
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: `Production activity reset complete. New open period ${shortId(data?.open_period_id || "")}.`
+    };
+    await loadSupabaseState();
+    await saveJsonMirrorBackup({ force: true }).catch((error) => console.warn("JSON backup after reset failed", error));
+    await refreshDatabaseDiagnostics().catch(() => {});
+    await checkNormalizedTablesAgainstCurrentState().catch(() => {});
+    setDefaultDates();
+    setActiveSection("log");
+    if (els.authMessage) els.authMessage.textContent = "Production activity reset complete. You are ready to enter real trips and fuel logs.";
+  } catch (error) {
+    console.error("Production activity reset failed", error);
+    alert(`Production reset failed: ${error.message || error}`);
+  } finally {
+    els.productionActivityReset.disabled = false;
+    render();
+  }
 }
 
 function renderDatabaseDiagnosticsPanel(ledger) {
