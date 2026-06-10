@@ -1381,24 +1381,32 @@ function buildFuelIntelligence(ledger) {
   const fuelLogCount = state.fuel.length + state.closedPeriods.reduce((sum, period) => sum + (Array.isArray(period.fuel) ? period.fuel.length : 0), 0);
   const logsWithLiters = Number(stats.fuelLogsWithLiters || 0);
   const km = Number(stats.totalTripKm || 0);
-  const confidenceScore = [km >= 500, km >= 1500, logsWithLiters >= 3, logsWithLiters >= 8, Number(stats.periodsWithTripKm || 0) >= 2].filter(Boolean).length;
-  const confidence = confidenceScore >= 4 ? "High" : confidenceScore >= 2 ? "Medium" : "Low";
-  const confidenceClass = confidence === "High" ? "ok" : confidence === "Medium" ? "warning" : "issue";
-  const estimateSource = stats.costPerKm > 0 && km >= 50
-    ? "Historical fuel cost per km"
-    : latestFuelPrice?.price
-      ? "Live diesel reference price + car setting"
-      : "Fallback fuel price + car setting";
   const fallbackConsumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
   const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
-  const effectiveConsumption = stats.litersPer100Km > 0 ? stats.litersPer100Km : fallbackConsumption;
-  const effectivePrice = stats.pricePerLiter > 0 ? stats.pricePerLiter : Number(latestFuelPrice?.price || fallbackPrice);
+  const livePrice = latestFuelPrice && Number(latestFuelPrice.price) > 0 ? Number(latestFuelPrice.price) : 0;
+  const hasHistoricalCost = stats.costPerKm > 0 && km >= 50;
+  const hasHistoricalConsumption = stats.litersPer100Km > 0 && logsWithLiters > 0;
+  const consumptionLooksRealistic = !hasHistoricalConsumption || (stats.litersPer100Km >= 3 && stats.litersPer100Km <= 10);
+  const canUseHistoricalForPlanning = hasHistoricalCost && consumptionLooksRealistic;
+  const confidenceScore = [km >= 500, km >= 1500, logsWithLiters >= 3, logsWithLiters >= 8, Number(stats.periodsWithTripKm || 0) >= 2, consumptionLooksRealistic].filter(Boolean).length;
+  const confidence = confidenceScore >= 5 ? "High" : confidenceScore >= 3 ? "Medium" : "Low";
+  const confidenceClass = canUseHistoricalForPlanning && confidence === "High" ? "ok" : confidence === "Low" ? "issue" : "warning";
+  const estimateSource = canUseHistoricalForPlanning
+    ? "Historical fuel cost per km"
+    : livePrice
+      ? "Car setting + live diesel reference price"
+      : "Car setting + fallback fuel price";
+  const effectiveConsumption = canUseHistoricalForPlanning && stats.litersPer100Km > 0 ? stats.litersPer100Km : fallbackConsumption;
+  const effectivePrice = stats.pricePerLiter > 0 ? stats.pricePerLiter : Number(livePrice || fallbackPrice);
+  const planningCostPerKm = canUseHistoricalForPlanning
+    ? stats.costPerKm
+    : (effectiveConsumption / 100) * effectivePrice;
   const warnings = [];
   if (tripCount === 0) warnings.push("Add trips to learn cost per km.");
   if (fuelLogCount === 0) warnings.push("Add fuel receipts to learn real fuel cost.");
   if (fuelLogCount > 0 && logsWithLiters === 0) warnings.push("Add liters on fuel receipts to learn DKK/L and L/100 km.");
-  if (km > 0 && logsWithLiters > 0 && stats.litersPer100Km > 0 && (stats.litersPer100Km < 3 || stats.litersPer100Km > 10)) {
-    warnings.push(`Historical consumption looks unusual: ${formatNumber(stats.litersPer100Km)} L/100 km.`);
+  if (hasHistoricalConsumption && !consumptionLooksRealistic) {
+    warnings.push(`Historical consumption looks unusual: ${formatNumber(stats.litersPer100Km)} L/100 km, so Plan trip uses the car setting (${formatNumber(fallbackConsumption)} L/100 km) instead.`);
   }
   return {
     stats,
@@ -1410,6 +1418,9 @@ function buildFuelIntelligence(ledger) {
     estimateSource,
     effectiveConsumption,
     effectivePrice,
+    planningCostPerKm,
+    canUseHistoricalForPlanning,
+    consumptionLooksRealistic,
     warnings
   };
 }
@@ -1437,12 +1448,12 @@ function renderFuelIntelligence(ledger) {
       <article>
         <span>Planning source</span>
         <strong>${escapeHtml(intel.estimateSource)}</strong>
-        <small>This is what the trip estimator prefers right now.</small>
+        <small>${intel.canUseHistoricalForPlanning ? "The trip estimator trusts the historical average." : "The trip estimator is avoiding unusual historical data."}</small>
       </article>
       <article>
-        <span>Historical cost</span>
-        <strong>${stats.costPerKm > 0 ? `${formatMoneyFor(stats.costPerKm, state.currency)}/km` : "Not enough data"}</strong>
-        <small>${stats.totalPaid > 0 ? `${formatMoneyFor(stats.totalPaid, state.currency)} fuel across ${formatNumber(stats.totalTripKm)} km.` : "Add trips and fuel receipts."}</small>
+        <span>Planning cost</span>
+        <strong>${intel.planningCostPerKm > 0 ? `${formatMoneyFor(intel.planningCostPerKm, state.currency)}/km` : "Not enough data"}</strong>
+        <small>${intel.canUseHistoricalForPlanning ? `${formatMoneyFor(stats.totalPaid, state.currency)} historical fuel across ${formatNumber(stats.totalTripKm)} km.` : `${formatNumber(intel.effectiveConsumption)} L/100 km × ${formatMoneyFor(intel.effectivePrice, state.currency)}/L.`}</small>
       </article>
       <article>
         <span>Fuel price</span>
@@ -1465,7 +1476,8 @@ function renderFuelIntelligence(ledger) {
 }
 
 function calculateTripCostEstimate(distanceKm, participantCount) {
-  const historical = calculateHistoricalFuelStats({ currentTrips: state.trips, currentFuel: state.fuel });
+  const intel = buildFuelIntelligence(calculateLedger());
+  const historical = intel.stats;
   const fallbackConsumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
   const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
   const livePrice = latestFuelPrice && latestFuelPrice.price > 0 ? Number(latestFuelPrice.price) : 0;
@@ -1474,15 +1486,17 @@ function calculateTripCostEstimate(distanceKm, participantCount) {
   let totalCost = 0;
   let explanation = "";
 
-  if (historical.costPerKm > 0 && historical.totalTripKm >= 50) {
+  if (intel.canUseHistoricalForPlanning) {
     totalCost = distanceKm * historical.costPerKm;
-    explanation = `${formatNumber(distanceKm)} km × historical ${formatMoneyFor(historical.costPerKm, state.currency)}/km, based on ${formatNumber(historical.totalTripKm)} logged km.`;
+    explanation = `${formatNumber(distanceKm)} km × trusted historical ${formatMoneyFor(historical.costPerKm, state.currency)}/km, based on ${formatNumber(historical.totalTripKm)} logged km.`;
   } else {
-    const consumption = historical.litersPer100Km > 0 ? historical.litersPer100Km : fallbackConsumption;
+    const consumption = fallbackConsumption;
     totalCost = (distanceKm * consumption / 100) * pricePerLiter;
     const priceSource = historical.pricePerLiter > 0 ? "historical receipt average" : livePrice ? "live diesel reference price" : "fallback fuel price";
-    const consumptionSource = historical.litersPer100Km > 0 ? "historical consumption" : "car setting";
-    explanation = `${formatNumber(distanceKm)} km × ${formatNumber(consumption)} L/100 km (${consumptionSource}) × ${formatMoneyFor(pricePerLiter, state.currency)}/L (${priceSource}).`;
+    const reason = historical.litersPer100Km > 0 && !intel.consumptionLooksRealistic
+      ? ` Historical consumption (${formatNumber(historical.litersPer100Km)} L/100 km) looks unusual, so it is ignored for planning.`
+      : "";
+    explanation = `${formatNumber(distanceKm)} km × ${formatNumber(consumption)} L/100 km (car setting) × ${formatMoneyFor(pricePerLiter, state.currency)}/L (${priceSource}).${reason}`;
   }
 
   return {

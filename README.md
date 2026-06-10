@@ -374,3 +374,9 @@ This version polishes the non-admin experience by adding a concise “What do I 
 ### Fuel intelligence
 
 The app includes a lightweight fuel-intelligence dashboard. It uses normalized trip and fuel tables to show historical DKK/km, DKK/L, L/100 km, confidence, and the estimate source currently used by the trip estimator. This is intentionally statistics-first rather than a black-box ML model; it gives useful predictions and data-quality notes while the dataset is still small.
+
+### Phase 2P — safer trip planning from fuel intelligence
+
+The Fuel intelligence card now treats historical averages as advisory until they look realistic. If historical receipt data implies an unusual consumption value, the trip planner avoids the inflated historical DKK/km figure and instead estimates from the car setting (`L/100 km`) plus the best available fuel price.
+
+For this diesel car, the default planning fallback remains 5.3 L/100 km. Historical DKK/km is preferred only when there is enough data and the inferred L/100 km is within a realistic range.
