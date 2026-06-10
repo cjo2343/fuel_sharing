@@ -224,9 +224,44 @@ def current_supabase_user(handler):
     except Exception:
         pass
 
-    # Fallback for installed iOS PWAs/environments where the auth endpoint rejects
-    # the server-side key combination even though the client has a valid session.
-    return decode_jwt_payload(token)
+    # Do not decode JWT payloads locally here. The server must only trust tokens
+    # verified by Supabase Auth; otherwise a forged token could reach push endpoints
+    # during an auth outage or misconfiguration.
+    return None
+
+
+
+def active_ledger_members_by_email(*emails):
+    """Return active ledger member rows keyed by lowercase email using service-role Supabase access."""
+    wanted = {str(email or "").strip().lower() for email in emails if str(email or "").strip()}
+    if not wanted or not supabase_url() or not supabase_key():
+        return {}
+    try:
+        rows = request_json(
+            f"{supabase_url()}/rest/v1/ledger_members?select=ledger_id,email,role,is_active&is_active=eq.true"
+        ) or []
+    except Exception:
+        return {}
+    result = {}
+    for row in rows:
+        email = str(row.get("email") or "").strip().lower()
+        if email in wanted:
+            result[email] = row
+    return result
+
+
+def can_send_push_to(sender_email, target_email):
+    """Allow push only between active members of the same ledger."""
+    sender = str(sender_email or "").strip().lower()
+    target = str(target_email or "").strip().lower()
+    if not sender or not target:
+        return False
+    members = active_ledger_members_by_email(sender, target)
+    sender_row = members.get(sender)
+    target_row = members.get(target)
+    if not sender_row or not target_row:
+        return False
+    return sender_row.get("ledger_id") == target_row.get("ledger_id")
 
 
 def public_origin(handler):
@@ -365,6 +400,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         if not target_email:
             self.send_error(400, "Missing targetEmail")
+            return
+
+        if not can_send_push_to(user.get("email"), target_email):
+            self.send_error(403, "Push target must be an active member of your ledger")
             return
 
         encoded_email = urllib.parse.quote(target_email, safe="")

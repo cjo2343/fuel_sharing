@@ -353,3 +353,11 @@ In this version:
 - Database diagnostics labels this as a backup snapshot rather than the primary mirror.
 
 Keep the JSON table for now as a rollback/export safety net. Do not delete it until the app has run table-primary in daily use for a while.
+
+## Phase 2K repo hardening cleanup
+
+This repo now includes the normalized Supabase tables in `supabase-schema.sql` so a fresh project can create the same table-primary backend the app uses in production. The older phase migration SQL files remain checked in for historical/upgrading installs, but new installs should start with `supabase-schema.sql`.
+
+Server-side push endpoints now trust only Supabase-verified JWTs. They no longer fall back to locally decoded JWT payloads. Push sending also verifies that both the sender and requested target email are active members of the same ledger before sending.
+
+Generated backup/build artifacts such as `app.js.bak` and `__pycache__/` are intentionally not included in the ZIP. `.gitignore` also ignores them going forward.
