@@ -1105,7 +1105,7 @@ function updateAuthUi() {
   if (!currentSession) {
     setSyncStatus("Login");
   } else if (!["saving", "syncing", "local"].includes(els.syncStatus.dataset.status || "")) {
-    setSyncStatus("Cloud");
+    setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
   }
   updateLoginCooldown();
   updatePwaUi();
@@ -1577,11 +1577,25 @@ function renderBalances(ledger) {
     .join("");
 }
 
+function shouldShowSettlementToCurrentUser(settlement) {
+  if (!settlement) return false;
+  if (canManageSettings()) return true;
+  const profile = getCurrentMemberProfile();
+  if (!profile?.name) return false;
+  return settlement.from === profile.name || settlement.to === profile.name;
+}
+
+function getVisibleSettlements(ledger) {
+  return (ledger?.settlements || []).filter(shouldShowSettlementToCurrentUser);
+}
+
 function renderSettlements(ledger) {
   els.closePeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
 
   renderSettlementWarning(ledger);
   renderPeriodBreakdown(ledger);
+
+  const visibleSettlements = getVisibleSettlements(ledger);
 
   if (ledger.settlements.length === 0) {
     els.paymentOverview.replaceChildren();
@@ -1591,9 +1605,14 @@ function renderSettlements(ledger) {
 
   // Rendering must be read-only. Stale payment status keys are ignored here and
   // cleaned up during explicit save/period-close flows instead of writing while rendering.
-  renderPaymentOverview(ledger);
+  renderPaymentOverview(ledger, visibleSettlements);
 
-  els.settlements.innerHTML = ledger.settlements
+  if (visibleSettlements.length === 0) {
+    els.settlements.replaceChildren(emptyNode("No final payments involve you in this period."));
+    return;
+  }
+
+  els.settlements.innerHTML = visibleSettlements
     .map(
       (item) => {
         const key = settlementKey(item);
@@ -1619,7 +1638,7 @@ function renderSettlements(ledger) {
               <span class="status-chip ${status}">${statusLabel(status)}</span>
             </div>
             <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} km distance share at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
-            <details class="settlement-details" open>
+            <details class="settlement-details">
               <summary>Why this payment?</summary>
               ${renderSettlementMathDetails(item, ledger)}
             </details>
@@ -2101,8 +2120,9 @@ function buildFuelValidationMessage(ledger, actionLabel = "continue") {
   return lines.join("\n");
 }
 
-function renderPaymentOverview(ledger) {
-  const totals = ledger.settlements.reduce(
+function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlements(ledger)) {
+  const hiddenCount = Math.max(0, (ledger.settlements || []).length - visibleSettlements.length);
+  const totals = visibleSettlements.reduce(
     (acc, item) => {
       const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]);
       acc.totalCount += 1;
@@ -2123,7 +2143,7 @@ function renderPaymentOverview(ledger) {
     <div>
       <span>Final payments</span>
       <strong>${totals.totalCount}</strong>
-      <small>Payments needed after all trips and fuel receipts are netted.</small>
+      <small>${hiddenCount ? `Showing ${totals.totalCount} payment${totals.totalCount === 1 ? "" : "s"} relevant to you. ${hiddenCount} other period payment${hiddenCount === 1 ? "" : "s"} hidden.` : "Payments needed after all trips and fuel receipts are netted."}</small>
     </div>
     <div>
       <span>Requested payments</span>
@@ -2133,7 +2153,7 @@ function renderPaymentOverview(ledger) {
     <div>
       <span>Open payments</span>
       <strong>${totals.openCount} · ${formatMoney(totals.openAmount)}</strong>
-      <small>Final payments not requested yet. Period-wide, not just your account.</small>
+      <small>${hiddenCount ? "Open payments involving you." : "Final payments not requested yet. Period-wide, not just your account."}</small>
     </div>
   `;
 }
@@ -4900,13 +4920,15 @@ function unsubscribeFromSupabaseState() {
 }
 
 function setSyncStatus(label) {
-  els.syncStatus.textContent = label;
+  els.syncStatus.textContent = label === "Tables" ? "Database" : label;
   els.syncStatus.dataset.status = label.toLowerCase();
 
   if (!els.syncDetail) return;
 
   if (label === "Tables") {
-    els.syncDetail.textContent = "Saved/read through normalized database tables";
+    els.syncDetail.textContent = lastCloudSaveAt
+      ? `Saved to database ${new Date(lastCloudSaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+      : "Saved/read through normalized database tables";
     return;
   }
 

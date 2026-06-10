@@ -127,7 +127,7 @@ SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
 VAPID_PRIVATE_KEY=YOUR_PRIVATE_VAPID_KEY
-VAPID_SUBJECT=mailto:login@xxxx.dk
+VAPID_SUBJECT=mailto:login@chrjohn.dk
 ```
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` and `VAPID_PRIVATE_KEY` secret. Do not put them in frontend files.
@@ -361,3 +361,7 @@ This repo now includes the normalized Supabase tables in `supabase-schema.sql` s
 Server-side push endpoints now trust only Supabase-verified JWTs. They no longer fall back to locally decoded JWT payloads. Push sending also verifies that both the sender and requested target email are active members of the same ledger before sending.
 
 Generated backup/build artifacts such as `app.js.bak` and `__pycache__/` are intentionally not included in the ZIP. `.gitignore` also ignores them going forward.
+
+### Phase 2M settlement visibility and save label
+
+Non-admin users now only see final payment lines that involve their own member profile. Admins still see all final payments for the period. The “Why this payment?” explanation is collapsed by default to keep settlement cards compact. The top save badge now shows “Database” when normalized tables are the primary backend, instead of showing a legacy cloud JSON save label.
