@@ -1731,10 +1731,68 @@ function getVisibleSettlements(ledger) {
   return (ledger?.settlements || []).filter(shouldShowSettlementToCurrentUser);
 }
 
+
+function getSettlementProgress(ledger) {
+  const settlements = ledger?.settlements || [];
+  return settlements.reduce(
+    (acc, item) => {
+      const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]);
+      acc.totalCount += 1;
+      acc.totalAmount += Number(item.amount || 0);
+      if (status === "paid") {
+        acc.paidCount += 1;
+        acc.paidAmount += Number(item.amount || 0);
+      } else if (status === "requested") {
+        acc.requestedCount += 1;
+        acc.requestedAmount += Number(item.amount || 0);
+      } else {
+        acc.openCount += 1;
+        acc.openAmount += Number(item.amount || 0);
+      }
+      return acc;
+    },
+    { totalCount: 0, totalAmount: 0, requestedCount: 0, requestedAmount: 0, paidCount: 0, paidAmount: 0, openCount: 0, openAmount: 0 }
+  );
+}
+
+function buildClosePeriodSummary(ledger) {
+  const progress = getSettlementProgress(ledger);
+  const requestedNotPaid = progress.requestedCount;
+  return [
+    `${progress.totalCount} final payment${progress.totalCount === 1 ? "" : "s"}`,
+    `${progress.paidCount} paid`,
+    `${requestedNotPaid} requested but not marked paid`,
+    `${progress.openCount} open`
+  ].join(" · ");
+}
+
+function buildClosePeriodConfirmation(ledger) {
+  const progress = getSettlementProgress(ledger);
+  const lines = [
+    `Close ${ledger.period.label}?`,
+    "",
+    `This archives ${formatNumber(ledger.totalKm)} participant km and ${formatMoney(ledger.totalPaid)} in fuel, then starts a fresh period.`,
+    "",
+    `Settlement status: ${buildClosePeriodSummary(ledger)}.`
+  ];
+
+  if (progress.requestedCount > 0) {
+    lines.push(
+      "",
+      `${progress.requestedCount} payment${progress.requestedCount === 1 ? " is" : "s are"} requested but not marked paid yet. You can still close the period if the MobilePay requests have been sent, but this period will be archived with those payment${progress.requestedCount === 1 ? "" : "s"} still marked Requested.`
+    );
+  }
+
+  lines.push("", "Continue?");
+  return lines.join("\n");
+}
+
 function renderSettlements(ledger) {
   const isAdminView = canManageSettings();
+  const settlementProgress = getSettlementProgress(ledger);
   els.closePeriod.classList.toggle("hidden", !isAdminView);
-  els.closePeriod.disabled = !isAdminView || (state.trips.length === 0 && state.fuel.length === 0);
+  els.closePeriod.disabled = !isAdminView || (state.trips.length === 0 && state.fuel.length === 0) || settlementProgress.openCount > 0;
+  els.closePeriod.title = settlementProgress.openCount > 0 ? "Request all open final payments before closing this period." : "Close this settlement period.";
 
   renderSettlementWarning(ledger);
   renderPeriodBreakdown(ledger);
@@ -1830,16 +1888,17 @@ async function closeCurrentPeriod(options = {}) {
   }
 
   const ledger = calculateLedger();
+  const settlementProgress = getSettlementProgress(ledger);
+  if (settlementProgress.openCount > 0 && !options.allowOpenPayments) {
+    alert(`${settlementProgress.openCount} final payment${settlementProgress.openCount === 1 ? " is" : "s are"} still open. Request all final payments before closing this period.`);
+    return;
+  }
+
   if (!options.skipFuelValidation && isFuelEstimateWarningActive(ledger)) {
     if (!confirm(buildFuelValidationMessage(ledger, "close this period anyway"))) return;
   }
 
-  if (
-    !options.skipConfirm &&
-    !confirm(
-      `Close ${ledger.period.label}? This archives ${formatNumber(ledger.totalKm)} km and ${formatMoney(ledger.totalPaid)} in fuel, then starts a fresh period.`
-    )
-  ) {
+  if (!options.skipConfirm && !confirm(buildClosePeriodConfirmation(ledger))) {
     return;
   }
 
@@ -2372,18 +2431,20 @@ function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlemen
     const requestedYouCanManage = name
       ? allRequested.filter((item) => item.to === name || item.from === name)
       : allRequested;
-    const openText = allOpenItems.length
-      ? `${allOpenItems.length} open payment${allOpenItems.length === 1 ? "" : "s"} remain before closing the period.`
-      : "All final payments are requested; the period can be closed.";
+    const readyText = allOpenItems.length
+      ? `${allOpenItems.length} open payment${allOpenItems.length === 1 ? "" : "s"} must be requested before closing the period.`
+      : `Ready to close: ${all.length} final payment${all.length === 1 ? "" : "s"} · ${allPaid.length} paid · ${allRequested.length} requested but not marked paid · 0 open.`;
     const adminActionText = allOpenItems.length
       ? `You can request ${adminCanRequest.length} payment${adminCanRequest.length === 1 ? "" : "s"} where you are the recipient. ${otherFuelPayersMustRequest.length} open payment${otherFuelPayersMustRequest.length === 1 ? "" : "s"} must be requested by another fuel payer.`
-      : "No open payment requests remain.";
+      : allRequested.length
+        ? `${allRequested.length} payment${allRequested.length === 1 ? " is" : "s are"} requested but not marked paid. You can close anyway if the MobilePay requests have been sent.`
+        : "All final payments are marked paid. The period is ready to close.";
     return {
       isAdmin,
       actionCount: allOpenItems.length,
       title: "Settlement status",
       body: all.length
-        ? `${allRequested.length} requested and ${allPaid.length} paid of ${all.length} final payment${all.length === 1 ? "" : "s"}. ${openText}`
+        ? `${allRequested.length} requested and ${allPaid.length} paid of ${all.length} final payment${all.length === 1 ? "" : "s"}. ${readyText}`
         : "No final payments are needed for this period.",
       detail: all.length
         ? `${adminActionText}${requestedYouCanManage.length ? ` ${requestedYouCanManage.length} requested payment${requestedYouCanManage.length === 1 ? "" : "s"} involving you can be reopened if needed.` : ""}`
@@ -2551,14 +2612,15 @@ async function updatePaymentStatus(button) {
     );
 
   if (
+    canManageSettings() &&
     nextStatus === "requested" &&
     previousStatus !== "requested" &&
     allRequested &&
     confirm(
-      "All current settlements have been requested or marked paid. Close and archive this period now so new trips start fresh?"
+      `All current settlements have been requested or marked paid. ${buildClosePeriodSummary(refreshedLedger)}. Close and archive this period now so new trips start fresh?`
     )
   ) {
-    await closeCurrentPeriod({ skipConfirm: true, allowMemberClose: true, skipFuelValidation: true });
+    await closeCurrentPeriod({ skipConfirm: true, skipFuelValidation: true });
     return;
   }
 }
