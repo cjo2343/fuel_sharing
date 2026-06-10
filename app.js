@@ -1098,6 +1098,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const archiveReportButton = event.target.closest("[data-archive-report]");
+  if (archiveReportButton) {
+    downloadClosedPeriodReport(archiveReportButton.dataset.archiveReport);
+    return;
+  }
+
   const editButton = event.target.closest("[data-edit]");
   if (editButton) {
     editEntry(editButton.dataset.edit);
@@ -2935,6 +2941,100 @@ function downloadCurrentPeriodReport() {
   setDataToolsMessage("Current period report downloaded.");
 }
 
+
+function downloadClosedPeriodReport(periodId) {
+  const period = state.closedPeriods.find((item) => item.id === periodId);
+  if (!period) {
+    alert("Could not find that closed period.");
+    return;
+  }
+
+  const lines = buildClosedPeriodReportLines(period);
+  const closedDate = String(period.closedAt || localDateString()).slice(0, 10);
+  downloadTextFile(`fuel-ledger-closed-period-${closedDate}-${period.id.slice(0, 8)}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+}
+
+function buildClosedPeriodReportLines(period) {
+  const currency = period.currency || state.currency;
+  const trips = Array.isArray(period.trips) ? period.trips : [];
+  const fuel = Array.isArray(period.fuel) ? period.fuel : [];
+  const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+  const people = Array.isArray(period.people) ? period.people : [];
+  const requested = settlements.filter((item) => normalizePaymentStatus(item.status) === "requested");
+  const paid = settlements.filter((item) => normalizePaymentStatus(item.status) === "paid");
+  const open = settlements.filter((item) => normalizePaymentStatus(item.status) === "open");
+  const totalLiters = fuel.reduce((sum, item) => sum + Number(item.liters || 0), 0);
+  const generatedAt = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const label = period.label || "Closed settlement period";
+
+  const lines = [];
+  lines.push(`# Fuel Ledger closed period - ${label}`);
+  lines.push("");
+  lines.push(`Closed: ${period.closedAt ? formatDate(String(period.closedAt).slice(0, 10)) : "-"}`);
+  lines.push(`Report generated: ${generatedAt}`);
+  lines.push("");
+  lines.push("## Period totals");
+  lines.push(`- Trips: ${trips.length}`);
+  lines.push(`- Fuel logs: ${fuel.length}`);
+  lines.push(`- Trip km: ${formatNumber(period.totalTripKm || period.totalKm || 0)} km`);
+  lines.push(`- Participant km: ${formatNumber(period.totalKm || 0)} km`);
+  lines.push(`- Fuel paid: ${formatMoneyFor(period.totalPaid || 0, currency)}`);
+  lines.push(`- Fuel rate: ${formatMoneyFor(period.fuelRate || 0, currency)}/km`);
+  if (totalLiters > 0) lines.push(`- Liters logged: ${formatNumber(totalLiters)} L`);
+  lines.push("");
+  lines.push("## Final payments");
+  lines.push(`- Total final payments: ${settlements.length}`);
+  lines.push(`- Paid: ${paid.length} (${formatMoneyFor(paid.reduce((sum, item) => sum + Number(item.amount || 0), 0), currency)})`);
+  lines.push(`- Requested but not marked paid: ${requested.length} (${formatMoneyFor(requested.reduce((sum, item) => sum + Number(item.amount || 0), 0), currency)})`);
+  lines.push(`- Open / not requested: ${open.length} (${formatMoneyFor(open.reduce((sum, item) => sum + Number(item.amount || 0), 0), currency)})`);
+  if (settlements.length) {
+    lines.push("");
+    for (const item of settlements) {
+      lines.push(`- ${item.from} pays ${item.to}: ${formatMoneyFor(item.amount || 0, currency)} (${statusLabel(item.status)})`);
+    }
+  } else {
+    lines.push("- No payments were needed.");
+  }
+  lines.push("");
+  lines.push("## Activity by person");
+  if (people.length) {
+    lines.push("| Person | Distance share | Fuel share | Fuel paid |");
+    lines.push("|---|---:|---:|---:|");
+    for (const person of people) {
+      lines.push(`| ${markdownCell(person.name)} | ${formatNumber(person.km || 0)} km | ${formatMoneyFor(person.fuelShare || 0, currency)} | ${formatMoneyFor(person.fuelPaid || 0, currency)} |`);
+    }
+  } else {
+    lines.push("No people activity was saved for this period.");
+  }
+  lines.push("");
+  lines.push("## Trips");
+  if (trips.length) {
+    for (const trip of [...trips].sort(byNewest)) {
+      const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+      lines.push(`- ${formatDate(trip.date)} · ${trip.driver} · ${formatNumber(km)} km · ${formatNumber(trip.startKm || 0)} to ${formatNumber(trip.endKm || 0)} km · split: ${getTripParticipants(trip).join(", ")}${trip.note ? ` · ${trip.note}` : ""}`);
+    }
+  } else {
+    lines.push("No trips saved in this period.");
+  }
+  lines.push("");
+  lines.push("## Fuel logs");
+  if (fuel.length) {
+    for (const item of [...fuel].sort(byNewest)) {
+      const liters = Number(item.liters || 0);
+      const price = liters > 0 ? ` · ${formatNumber(liters)} L · ${formatMoneyFor(Number(item.amount || 0) / liters, currency)}/L` : "";
+      const odometer = item.odometer ? ` · ${formatNumber(item.odometer)} km` : "";
+      const station = item.station ? ` · ${item.station}` : "";
+      lines.push(`- ${formatDate(item.date)} · ${item.payer} · ${formatMoneyFor(item.amount || 0, currency)}${price}${odometer}${station}`);
+    }
+  } else {
+    lines.push("No fuel logs saved in this period.");
+  }
+  lines.push("");
+  lines.push("## Note");
+  lines.push("Final payments are netted across the whole settlement period. They are not one payment per trip.");
+  return lines;
+}
+
 function markdownCell(value) {
   return String(value ?? "").replace(/\|/g, "\\|");
 }
@@ -3878,48 +3978,94 @@ function renderClosedPeriods() {
   }
 
   els.periodList.innerHTML = state.closedPeriods
-    .map((period) => {
-      const unrequested = period.settlements
-        .filter((settlement) => !["requested", "paid"].includes(normalizePaymentStatus(settlement.status)))
-        .reduce((sum, settlement) => sum + settlement.amount, 0);
-      const requestedCount = period.settlements.filter(
-        (settlement) => ["requested", "paid"].includes(normalizePaymentStatus(settlement.status))
-      ).length;
-      return `
-        <details class="period-card archived-period-card">
-          <summary>
-            <div>
-              <strong>${escapeHtml(period.label)}</strong>
-              <p>Closed ${formatDate(period.closedAt.slice(0, 10))}</p>
-            </div>
-            <span>${formatMoneyFor(period.totalPaid, period.currency)} fuel</span>
-          </summary>
-          <div class="period-stats">
-            <div><span>Kilometers</span><b>${formatNumber(period.totalKm)} km</b></div>
-            <div><span>Fuel rate</span><b>${formatMoneyFor(period.fuelRate, period.currency)}/km</b></div>
-            <div><span>Not requested</span><b>${formatMoneyFor(unrequested, period.currency)}</b></div>
-            <div><span>Requested/paid</span><b>${requestedCount}/${period.settlements.length}</b></div>
-          </div>
-          ${renderPeriodSettlements(period)}
-        </details>
-      `;
-    })
+    .map((period) => renderClosedPeriodCard(period))
     .join("");
 }
 
+function renderClosedPeriodCard(period) {
+  const currency = period.currency || state.currency;
+  const trips = Array.isArray(period.trips) ? period.trips : [];
+  const fuel = Array.isArray(period.fuel) ? period.fuel : [];
+  const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+  const people = Array.isArray(period.people) ? period.people : [];
+  const paidSettlements = settlements.filter((settlement) => normalizePaymentStatus(settlement.status) === "paid");
+  const requestedSettlements = settlements.filter((settlement) => normalizePaymentStatus(settlement.status) === "requested");
+  const openSettlements = settlements.filter((settlement) => normalizePaymentStatus(settlement.status) === "open");
+  const paidAmount = paidSettlements.reduce((sum, settlement) => sum + Number(settlement.amount || 0), 0);
+  const requestedAmount = requestedSettlements.reduce((sum, settlement) => sum + Number(settlement.amount || 0), 0);
+  const openAmount = openSettlements.reduce((sum, settlement) => sum + Number(settlement.amount || 0), 0);
+  const totalLiters = fuel.reduce((sum, item) => sum + Number(item.liters || 0), 0);
+  const totalFuelPaid = Number(period.totalPaid || fuel.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+  const totalTripKm = Number(period.totalTripKm || trips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0));
+  const participantKm = Number(period.totalKm || 0);
+  const closedDate = period.closedAt ? formatDate(String(period.closedAt).slice(0, 10)) : "Unknown date";
+
+  return `
+    <details class="period-card archived-period-card">
+      <summary>
+        <div>
+          <strong>${escapeHtml(period.label || "Closed period")}</strong>
+          <p>Closed ${closedDate} · ${trips.length} trip${trips.length === 1 ? "" : "s"} · ${fuel.length} fuel log${fuel.length === 1 ? "" : "s"}</p>
+        </div>
+        <span>${formatMoneyFor(totalFuelPaid, currency)} fuel</span>
+      </summary>
+
+      <div class="archive-actions button-row compact-actions">
+        <button class="subtle-button compact-button" type="button" data-archive-report="${escapeHtml(period.id)}">Download report</button>
+      </div>
+
+      <div class="period-stats archive-period-stats">
+        <div><span>Trip km</span><b>${formatNumber(totalTripKm)} km</b></div>
+        <div><span>Participant km</span><b>${formatNumber(participantKm)} km</b></div>
+        <div><span>Fuel rate</span><b>${formatMoneyFor(period.fuelRate || 0, currency)}/km</b></div>
+        <div><span>Fuel paid</span><b>${formatMoneyFor(totalFuelPaid, currency)}</b></div>
+        <div><span>Liters</span><b>${totalLiters > 0 ? `${formatNumber(totalLiters)} L` : "-"}</b></div>
+        <div><span>Final payments</span><b>${settlements.length}</b></div>
+      </div>
+
+      <div class="archive-status-grid">
+        <div class="archive-status-card paid"><span>Paid</span><b>${paidSettlements.length} · ${formatMoneyFor(paidAmount, currency)}</b></div>
+        <div class="archive-status-card requested"><span>Requested</span><b>${requestedSettlements.length} · ${formatMoneyFor(requestedAmount, currency)}</b></div>
+        <div class="archive-status-card open"><span>Open at close</span><b>${openSettlements.length} · ${formatMoneyFor(openAmount, currency)}</b></div>
+      </div>
+
+      <details class="archive-subsection" open>
+        <summary>Final payments</summary>
+        ${renderPeriodSettlements(period)}
+      </details>
+
+      <details class="archive-subsection">
+        <summary>Activity by person</summary>
+        ${renderClosedPeriodPeople(people, currency)}
+      </details>
+
+      <details class="archive-subsection">
+        <summary>Trips (${trips.length})</summary>
+        ${renderClosedPeriodTrips(trips)}
+      </details>
+
+      <details class="archive-subsection">
+        <summary>Fuel logs (${fuel.length})</summary>
+        ${renderClosedPeriodFuel(fuel, currency)}
+      </details>
+    </details>
+  `;
+}
+
 function renderPeriodSettlements(period) {
-  if (period.settlements.length === 0) {
+  const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+  if (settlements.length === 0) {
     return `<p class="entry-meta">No payments were needed.</p>`;
   }
 
   return `
-    <div class="period-settlements">
-      ${period.settlements
+    <div class="period-settlements archive-payment-list">
+      ${settlements
         .map(
           (settlement) => `
             <div>
               <span>${escapeHtml(settlement.from)} pays ${escapeHtml(settlement.to)}</span>
-              <b>${formatMoneyFor(settlement.amount, period.currency)}</b>
+              <b>${formatMoneyFor(settlement.amount, period.currency || state.currency)}</b>
               <span class="status-chip ${normalizePaymentStatus(settlement.status)}">${statusLabel(settlement.status)}</span>
             </div>
           `
@@ -3927,6 +4073,93 @@ function renderPeriodSettlements(period) {
         .join("")}
     </div>
   `;
+}
+
+function renderClosedPeriodPeople(people, currency) {
+  if (!Array.isArray(people) || people.length === 0) {
+    return `<p class="entry-meta">No per-person activity was saved for this period.</p>`;
+  }
+
+  return `
+    <div class="archive-table-wrap">
+      <table class="activity-table archive-activity-table">
+        <thead><tr><th>Person</th><th>Distance share</th><th>Fuel share</th><th>Fuel paid</th></tr></thead>
+        <tbody>
+          ${people.map((person) => `
+            <tr>
+              <td><strong>${escapeHtml(person.name)}</strong></td>
+              <td>${formatNumber(person.km || 0)} km</td>
+              <td>${formatMoneyFor(person.fuelShare || 0, currency)}</td>
+              <td>${formatMoneyFor(person.fuelPaid || 0, currency)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderClosedPeriodTrips(trips) {
+  if (!Array.isArray(trips) || trips.length === 0) {
+    return `<p class="entry-meta">No trips saved in this period.</p>`;
+  }
+  const grouped = groupBy([...trips].sort(byNewest), (trip) => trip.driver || "Unknown");
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([driver, items]) => {
+      const km = items.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0);
+      return `
+        <details class="history-group archive-entry-group">
+          <summary><strong>${escapeHtml(driver)}</strong><span>${items.length} trip${items.length === 1 ? "" : "s"} · ${formatNumber(km)} km</span></summary>
+          <div class="entry-list grouped-entry-list">
+            ${items.map((trip) => {
+              const tripKm = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+              return `
+                <article class="entry-card archive-entry-card">
+                  <strong>${escapeHtml(trip.driver || "Unknown")}</strong>
+                  <p>${formatNumber(tripKm)} km · ${formatDate(trip.date)} · ${formatNumber(trip.startKm || 0)} to ${formatNumber(trip.endKm || 0)} km</p>
+                  <p class="entry-meta">Split between ${getTripParticipants(trip).map(escapeHtml).join(", ")}</p>
+                  ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
+                </article>
+              `;
+            }).join("")}
+          </div>
+        </details>
+      `;
+    })
+    .join("");
+}
+
+function renderClosedPeriodFuel(fuel, currency) {
+  if (!Array.isArray(fuel) || fuel.length === 0) {
+    return `<p class="entry-meta">No fuel logs saved in this period.</p>`;
+  }
+  const grouped = groupBy([...fuel].sort(byNewest), (item) => item.payer || "Unknown");
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([payer, items]) => {
+      const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const liters = items.reduce((sum, item) => sum + Number(item.liters || 0), 0);
+      return `
+        <details class="history-group archive-entry-group">
+          <summary><strong>${escapeHtml(payer)}</strong><span>${items.length} fuel log${items.length === 1 ? "" : "s"} · ${formatMoneyFor(amount, currency)}${liters > 0 ? ` · ${formatNumber(liters)} L` : ""}</span></summary>
+          <div class="entry-list grouped-entry-list">
+            ${items.map((item) => {
+              const itemLiters = Number(item.liters || 0);
+              const price = itemLiters > 0 ? `${formatNumber(itemLiters)} L · ${formatMoneyFor(Number(item.amount || 0) / itemLiters, currency)}/L` : "No liters logged";
+              return `
+                <article class="entry-card archive-entry-card">
+                  <strong>${escapeHtml(item.payer || "Unknown")}</strong>
+                  <p>${formatMoneyFor(item.amount || 0, currency)} · ${price}</p>
+                  <p class="entry-meta">${formatDate(item.date)}${item.odometer ? ` · ${formatNumber(item.odometer)} km` : ""}${item.station ? ` · ${escapeHtml(item.station)}` : ""}</p>
+                </article>
+              `;
+            }).join("")}
+          </div>
+        </details>
+      `;
+    })
+    .join("");
 }
 
 function buildSettlements(people) {

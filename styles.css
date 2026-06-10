@@ -2158,3 +2158,99 @@ body.auth-locked #authPanel .text-button {
   font-weight: 850;
   white-space: nowrap;
 }
+
+.archive-actions {
+  margin: 12px 0 0;
+}
+
+.archive-period-stats {
+  margin-top: 14px;
+}
+
+.archive-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.archive-status-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.archive-status-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.archive-status-card b {
+  font-size: 1rem;
+}
+
+.archive-status-card.paid {
+  background: rgba(46, 125, 90, 0.07);
+}
+
+.archive-status-card.requested {
+  background: rgba(62, 112, 214, 0.07);
+}
+
+.archive-status-card.open {
+  background: rgba(177, 93, 47, 0.07);
+}
+
+.archive-subsection {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0;
+  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.archive-subsection > summary {
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 12px 14px;
+  color: var(--green-dark);
+  font-weight: 850;
+}
+
+.archive-subsection > *:not(summary) {
+  margin: 0 14px 14px;
+}
+
+.archive-payment-list {
+  margin-top: 0;
+}
+
+.archive-table-wrap {
+  overflow-x: auto;
+}
+
+.archive-activity-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.archive-entry-group {
+  margin: 10px 0;
+}
+
+.archive-entry-card {
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .archive-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
