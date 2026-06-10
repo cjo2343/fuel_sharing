@@ -651,6 +651,14 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
 els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await refreshDatabaseDiagnostics();
+  await checkNormalizedTablesAgainstCurrentState().catch((error) => {
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Could not refresh normalized table health: ${error.message || error}`
+    };
+    render();
+  });
 });
 
 els.saveJsonBackupNow?.addEventListener("click", async () => {
@@ -677,6 +685,14 @@ els.cleanStaleRequests?.addEventListener("click", async () => {
   } finally {
     els.cleanStaleRequests.disabled = false;
     await refreshDatabaseDiagnostics();
+    await checkNormalizedTablesAgainstCurrentState().catch((error) => {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: `Could not refresh normalized payment request health after cleanup: ${error.message || error}`
+      };
+      render();
+    });
   }
 });
 
