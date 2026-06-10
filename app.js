@@ -5850,16 +5850,19 @@ async function getNormalizedWriteContext() {
 
   const membersResult = await supabaseClient
     .from("ledger_members")
-    .select("id,name")
+    .select("id,name,email")
     .eq("ledger_id", ledgerId)
     .eq("is_active", true);
   if (membersResult.error) throw membersResult.error;
 
-  const memberIdsByName = Object.fromEntries((membersResult.data || []).map((member) => [member.name, member.id]));
+  const members = membersResult.data || [];
+  const memberIdsByName = Object.fromEntries(members.map((member) => [member.name, member.id]));
+  const currentEmail = String(currentSession?.user?.email || "").toLowerCase();
+  const currentMemberId = members.find((member) => String(member.email || "").toLowerCase() === currentEmail)?.id || null;
 
   const openPeriodId = await ensureOpenSettlementPeriod(ledgerId);
 
-  return { ledgerId, openPeriodId, memberIdsByName };
+  return { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
 }
 
 async function syncLedgerDirectoryForAdmin(ledgerId) {
@@ -5914,6 +5917,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
       start_km: Number(trip.startKm || 0),
       end_km: Number(trip.endKm || 0),
       note: trip.note || null,
+      created_by_member_id: context.currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     };
@@ -5984,6 +5988,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       user_lat: fuel.location?.latitude || null,
       user_lng: fuel.location?.longitude || null,
       full_tank: Boolean(fuel.fullTank),
+      created_by_member_id: context.currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     };
@@ -6236,6 +6241,7 @@ async function syncNormalizedTablesFromJson() {
       start_km: Number(trip.startKm || 0),
       end_km: Number(trip.endKm || 0),
       note: trip.note || null,
+      created_by_member_id: context.currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     })).filter((trip) => trip.legacy_id && trip.end_km > trip.start_km);

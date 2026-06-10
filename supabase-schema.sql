@@ -225,6 +225,63 @@ as $$
   );
 $$;
 
+create or replace function public.current_ledger_member_id(p_ledger_id text)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select lm.id
+  from public.ledger_members lm
+  where lm.ledger_id = p_ledger_id
+    and lm.is_active = true
+    and lm.email is not null
+    and lower(lm.email) = public.current_user_email()
+  limit 1;
+$$;
+
+create or replace function public.can_manage_trip(p_trip_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.trips t
+    where t.id = p_trip_id
+      and public.is_ledger_member(t.ledger_id)
+      and (
+        public.is_ledger_admin(t.ledger_id)
+        or t.created_by_member_id = public.current_ledger_member_id(t.ledger_id)
+        or t.driver_member_id = public.current_ledger_member_id(t.ledger_id)
+      )
+  );
+$$;
+
+create or replace function public.can_manage_fuel_payment(p_fuel_payment_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.fuel_payments fp
+    where fp.id = p_fuel_payment_id
+      and public.is_ledger_member(fp.ledger_id)
+      and (
+        public.is_ledger_admin(fp.ledger_id)
+        or fp.created_by_member_id = public.current_ledger_member_id(fp.ledger_id)
+        or fp.payer_member_id = public.current_ledger_member_id(fp.ledger_id)
+      )
+  );
+$$;
+
+
 create or replace function public.is_ledger_bootstrap_open(p_ledger_id text)
 returns boolean
 language sql
@@ -350,16 +407,25 @@ drop policy if exists "Ledger admins can update periods" on public.settlement_pe
 drop policy if exists "Ledger members can read trips" on public.trips;
 drop policy if exists "Ledger members can insert trips" on public.trips;
 drop policy if exists "Ledger members can update trips" on public.trips;
+drop policy if exists "Trip creators and admins can insert trips" on public.trips;
+drop policy if exists "Trip creators drivers and admins can update trips" on public.trips;
 drop policy if exists "Ledger members can read trip participants" on public.trip_participants;
 drop policy if exists "Ledger members can insert trip participants" on public.trip_participants;
 drop policy if exists "Ledger members can update trip participants" on public.trip_participants;
 drop policy if exists "Ledger members can delete trip participants" on public.trip_participants;
+drop policy if exists "Trip managers can insert trip participants" on public.trip_participants;
+drop policy if exists "Trip managers can update trip participants" on public.trip_participants;
+drop policy if exists "Trip managers can delete trip participants" on public.trip_participants;
 drop policy if exists "Ledger members can read fuel payments" on public.fuel_payments;
 drop policy if exists "Ledger members can insert fuel payments" on public.fuel_payments;
 drop policy if exists "Ledger members can update fuel payments" on public.fuel_payments;
+drop policy if exists "Fuel creators payers and admins can insert fuel payments" on public.fuel_payments;
+drop policy if exists "Fuel creators payers and admins can update fuel payments" on public.fuel_payments;
 drop policy if exists "Ledger members can read settlement requests" on public.settlement_requests;
 drop policy if exists "Ledger members can insert settlement requests" on public.settlement_requests;
 drop policy if exists "Ledger members can update settlement requests" on public.settlement_requests;
+drop policy if exists "Settlement parties and admins can insert settlement requests" on public.settlement_requests;
+drop policy if exists "Settlement parties and admins can update settlement requests" on public.settlement_requests;
 
 create policy "Ledger members can read JSON ledger" on public.car_share_ledgers for select to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
 create policy "Ledger members can insert JSON ledger" on public.car_share_ledgers for insert to authenticated with check (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
@@ -381,21 +447,21 @@ create policy "Ledger members can insert periods" on public.settlement_periods f
 create policy "Ledger admins can update periods" on public.settlement_periods for update to authenticated using (public.is_ledger_admin(ledger_id)) with check (public.is_ledger_admin(ledger_id));
 
 create policy "Ledger members can read trips" on public.trips for select to authenticated using (public.is_ledger_member(ledger_id));
-create policy "Ledger members can insert trips" on public.trips for insert to authenticated with check (public.is_ledger_member(ledger_id));
-create policy "Ledger members can update trips" on public.trips for update to authenticated using (public.is_ledger_member(ledger_id)) with check (public.is_ledger_member(ledger_id));
+create policy "Trip creators and admins can insert trips" on public.trips for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or driver_member_id = public.current_ledger_member_id(ledger_id)));
+create policy "Trip creators drivers and admins can update trips" on public.trips for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or driver_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or driver_member_id = public.current_ledger_member_id(ledger_id)));
 
 create policy "Ledger members can read trip participants" on public.trip_participants for select to authenticated using (exists (select 1 from public.trips t where t.id = trip_participants.trip_id and public.is_ledger_member(t.ledger_id)));
-create policy "Ledger members can insert trip participants" on public.trip_participants for insert to authenticated with check (exists (select 1 from public.trips t where t.id = trip_participants.trip_id and public.is_ledger_member(t.ledger_id)));
-create policy "Ledger members can update trip participants" on public.trip_participants for update to authenticated using (exists (select 1 from public.trips t where t.id = trip_participants.trip_id and public.is_ledger_member(t.ledger_id))) with check (exists (select 1 from public.trips t where t.id = trip_participants.trip_id and public.is_ledger_member(t.ledger_id)));
-create policy "Ledger members can delete trip participants" on public.trip_participants for delete to authenticated using (exists (select 1 from public.trips t where t.id = trip_participants.trip_id and public.is_ledger_member(t.ledger_id)));
+create policy "Trip managers can insert trip participants" on public.trip_participants for insert to authenticated with check (public.can_manage_trip(trip_id));
+create policy "Trip managers can update trip participants" on public.trip_participants for update to authenticated using (public.can_manage_trip(trip_id)) with check (public.can_manage_trip(trip_id));
+create policy "Trip managers can delete trip participants" on public.trip_participants for delete to authenticated using (public.can_manage_trip(trip_id));
 
 create policy "Ledger members can read fuel payments" on public.fuel_payments for select to authenticated using (public.is_ledger_member(ledger_id));
-create policy "Ledger members can insert fuel payments" on public.fuel_payments for insert to authenticated with check (public.is_ledger_member(ledger_id));
-create policy "Ledger members can update fuel payments" on public.fuel_payments for update to authenticated using (public.is_ledger_member(ledger_id)) with check (public.is_ledger_member(ledger_id));
+create policy "Fuel creators payers and admins can insert fuel payments" on public.fuel_payments for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or payer_member_id = public.current_ledger_member_id(ledger_id)));
+create policy "Fuel creators payers and admins can update fuel payments" on public.fuel_payments for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or payer_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or payer_member_id = public.current_ledger_member_id(ledger_id)));
 
 create policy "Ledger members can read settlement requests" on public.settlement_requests for select to authenticated using (public.is_ledger_member(ledger_id));
-create policy "Ledger members can insert settlement requests" on public.settlement_requests for insert to authenticated with check (public.is_ledger_member(ledger_id));
-create policy "Ledger members can update settlement requests" on public.settlement_requests for update to authenticated using (public.is_ledger_member(ledger_id)) with check (public.is_ledger_member(ledger_id));
+create policy "Settlement parties and admins can insert settlement requests" on public.settlement_requests for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id)));
+create policy "Settlement parties and admins can update settlement requests" on public.settlement_requests for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id)));
 
 drop policy if exists "Users can read own push subscriptions" on public.push_subscriptions;
 drop policy if exists "Users can insert own push subscriptions" on public.push_subscriptions;
