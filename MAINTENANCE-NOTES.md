@@ -4,7 +4,7 @@
 
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.
 
-`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`; keep that file free of DOM, Supabase, and application state dependencies.
+`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, and settlement/balance calculations to `settlement-calculations.js`. Keep those helper files free of DOM rendering.
 
 ## Security model
 
@@ -72,6 +72,7 @@ Current app-shell files include:
 - `utils.js`
 - `supabase-helpers.js`
 - `data-store.js`
+- `settlement-calculations.js`
 - `app.js`
 - `manifest.json`
 - `icon-192.png`
@@ -120,3 +121,8 @@ This is intentionally narrower than a full JavaScript linter, but it is designed
 - To change settlement-affecting amounts after a request has been sent, reopen the active payment request first, make the correction, and request the payment again.
 - The app now shows toast-style feedback for common successful changes: trip saved/updated/deleted, fuel log saved/updated/deleted, payment requested/paid/reopened, amount copied, and period closed.
 - Keep the manual smoke test after every deployment: create trip -> create fuel log -> request payment -> confirm edit is blocked -> reopen payment -> edit -> refresh.
+
+
+## Settlement calculations extraction
+
+`settlement-calculations.js` now owns `calculateLedger()`, `calculateHistoricalFuelStats()`, `calculateFuelEstimate()`, `buildSettlements()`, and `getTripParticipants()`. Keep future settlement math changes there where possible, but leave UI rendering and payment-request actions in `app.js`.

@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v9";
+const CACHE_NAME = "fuel-ledger-v10";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -7,6 +7,7 @@ const CORE_ASSETS = [
   "/utils.js",
   "/supabase-helpers.js",
   "/data-store.js",
+  "/settlement-calculations.js",
   "/app.js",
   "/manifest.json",
   "/icon-192.png",
