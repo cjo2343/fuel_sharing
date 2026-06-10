@@ -2321,15 +2321,28 @@ function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlemen
   if (isAdmin) {
     const all = ledger.settlements || [];
     const allRequested = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
-    const allOpen = all.length - allRequested.length;
+    const allOpenItems = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) !== "requested");
+    const adminCanRequest = name ? allOpenItems.filter((item) => item.to === name) : [];
+    const otherFuelPayersMustRequest = name ? allOpenItems.filter((item) => item.to !== name) : allOpenItems;
+    const requestedYouCanManage = name
+      ? allRequested.filter((item) => item.to === name || item.from === name)
+      : allRequested;
+    const openText = allOpenItems.length
+      ? `${allOpenItems.length} open payment${allOpenItems.length === 1 ? "" : "s"} remain before closing the period.`
+      : "All final payments are requested; the period can be closed.";
+    const adminActionText = allOpenItems.length
+      ? `You can request ${adminCanRequest.length} payment${adminCanRequest.length === 1 ? "" : "s"} where you are the recipient. ${otherFuelPayersMustRequest.length} open payment${otherFuelPayersMustRequest.length === 1 ? "" : "s"} must be requested by another fuel payer.`
+      : "No open payment requests remain.";
     return {
       isAdmin,
-      actionCount: allOpen,
-      title: "Period actions",
+      actionCount: allOpenItems.length,
+      title: "Settlement status",
       body: all.length
-        ? `${allRequested.length} of ${all.length} final payment${all.length === 1 ? "" : "s"} requested. ${allOpen ? `${allOpen} still open before closing the period.` : "All final payments are requested; the period can be closed."}`
+        ? `${allRequested.length} of ${all.length} final payment${all.length === 1 ? "" : "s"} requested. ${openText}`
         : "No final payments are needed for this period.",
-      detail: "Admin period-wide summary."
+      detail: all.length
+        ? `${adminActionText}${requestedYouCanManage.length ? ` ${requestedYouCanManage.length} requested payment${requestedYouCanManage.length === 1 ? "" : "s"} involving you can be reopened if needed.` : ""}`
+        : "Admin period-wide summary."
     };
   }
 
