@@ -2460,3 +2460,136 @@ body.auth-locked #authPanel .text-button {
   font-size: 0.9rem;
   font-weight: 720;
 }
+
+.station-insight-table {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.station-table-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  color: var(--muted-text);
+}
+
+.station-table-title strong {
+  color: var(--text-color);
+}
+
+.station-table-title span {
+  max-width: 720px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.station-table-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  overflow-x: auto;
+  background: var(--card-background);
+}
+
+.station-comparison-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.station-comparison-table th,
+.station-comparison-table td {
+  padding: 0.8rem 0.9rem;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.station-comparison-table th {
+  color: var(--muted-text);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.station-comparison-table td:first-child {
+  min-width: 280px;
+}
+
+.station-comparison-table td:first-child strong,
+.station-comparison-table td:first-child span,
+.station-comparison-table td:first-child small,
+.station-comparison-table td:first-child a {
+  display: block;
+}
+
+.station-comparison-table td:first-child span,
+.station-comparison-table td:first-child small {
+  color: var(--muted-text);
+  margin-top: 0.18rem;
+}
+
+.station-comparison-table td:first-child a {
+  margin-top: 0.35rem;
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.trip-refuel-note {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--card-background);
+  padding: 0.85rem;
+  color: var(--muted-text);
+}
+
+.trip-refuel-note strong {
+  color: var(--text-color);
+}
+
+.trip-refuel-note.is-warning {
+  border-color: rgba(196, 120, 31, 0.35);
+  background: #fff7ed;
+}
+
+.trip-refuel-stations {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.trip-refuel-stations strong {
+  display: block;
+}
+
+.trip-refuel-stations a {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--card-background);
+  padding: 0.7rem 0.8rem;
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.trip-refuel-stations a small {
+  color: var(--muted-text);
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .station-table-title {
+    display: block;
+  }
+
+  .trip-refuel-stations a {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

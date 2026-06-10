@@ -1553,6 +1553,14 @@ function renderTripEstimate() {
   }
 
   const estimate = calculateTripCostEstimate(distance, participants.length);
+  const refuel = estimate.refuel || buildRefuelPlanning(distance);
+  const stationSuggestion = refuel.stationCandidates?.length
+    ? `<div class="trip-refuel-stations"><strong>Stations to consider</strong>${refuel.stationCandidates.map((station) => `
+        <a href="${escapeHtml(getStationMapUrl(station))}" target="_blank" rel="noopener">
+          <span>${escapeHtml(station.name)}</span>
+          <small>${formatMoneyFor(station.avgPrice, state.currency)}/L · ${station.logCount} log${station.logCount === 1 ? "" : "s"}</small>
+        </a>`).join("")}</div>`
+    : `<p class="entry-meta">Add station/place to fuel logs to get station suggestions.</p>`;
   els.tripEstimateResult.className = "trip-estimate-result";
   els.tripEstimateResult.innerHTML = `
     <div class="trip-estimate-cards">
@@ -1565,11 +1573,20 @@ function renderTripEstimate() {
         <strong>${formatMoney(estimate.perPerson)}</strong>
       </article>
       <article>
+        <span>Estimated liters</span>
+        <strong>${formatNumber(refuel.plannedLiters)} L</strong>
+      </article>
+      <article>
         <span>People</span>
         <strong>${participants.length}</strong>
       </article>
     </div>
     <p>${escapeHtml(estimate.explanation)}</p>
+    <div class="trip-refuel-note ${refuel.tone === "warning" ? "is-warning" : ""}">
+      <strong>Refuel planning</strong>
+      <span>${escapeHtml(refuel.recommendation)}</span>
+    </div>
+    ${stationSuggestion}
     <small>${escapeHtml(participants.join(", "))}</small>
   `;
 }
@@ -1694,6 +1711,22 @@ function getFuelStationBrand(fuel) {
   return String(fuel.stationBrand || fuel.brand || fuel.station_brand || "").trim();
 }
 
+function getFuelStationCoordinates(fuel) {
+  const info = fuel.stationInfo || {};
+  const latitude = Number(info.latitude ?? fuel.stationLat ?? fuel.station_lat ?? fuel.stationLatitude ?? 0);
+  const longitude = Number(info.longitude ?? fuel.stationLng ?? fuel.station_lng ?? fuel.stationLongitude ?? 0);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude === 0 || longitude === 0) return null;
+  return { latitude, longitude };
+}
+
+function getStationMapUrl(station) {
+  const coords = station.coordinates || null;
+  if (coords) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coords.latitude},${coords.longitude}`)}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${station.name || "fuel station"} ${station.brand || ""}`.trim())}`;
+}
+
 function getFuelPricePerLiter(fuel) {
   const amount = Number(fuel.amount) || 0;
   const liters = Number(fuel.liters) || 0;
@@ -1723,16 +1756,23 @@ function buildStationInsights() {
         liters: 0,
         minPrice: Infinity,
         maxPrice: 0,
-        latestDate: ""
+        latestDate: "",
+        coordinates: null,
+        locationCount: 0
       });
     }
     const group = groups.get(key);
     const amount = Number(fuel.amount) || 0;
     const liters = Number(fuel.liters) || 0;
     const price = getFuelPricePerLiter(fuel);
+    const coordinates = getFuelStationCoordinates(fuel);
     group.logs.push({ ...fuel, pricePerLiter: price });
     group.amount += amount;
     group.liters += liters;
+    if (coordinates) {
+      group.locationCount += 1;
+      if (!group.coordinates) group.coordinates = coordinates;
+    }
     group.minPrice = Math.min(group.minPrice, price || group.minPrice);
     group.maxPrice = Math.max(group.maxPrice, price || 0);
     if (fuel.date && String(fuel.date) > group.latestDate) group.latestDate = String(fuel.date);
@@ -1774,6 +1814,13 @@ function buildStationInsights() {
     .slice(0, 6);
 
   const currentReviewLogs = reviewLogs.filter((item) => currentFuel.some((fuel) => fuel.id === item.fuel.id));
+  const fullTankLogs = usable
+    .filter((fuel) => fuel.fullTank && Number(fuel.odometer) > 0)
+    .sort((a, b) => Number(b.odometer || 0) - Number(a.odometer || 0));
+  const latestFullTank = fullTankLogs[0] || null;
+  const latestOdometerFuel = usable
+    .filter((fuel) => Number(fuel.odometer) > 0)
+    .sort((a, b) => Number(b.odometer || 0) - Number(a.odometer || 0))[0] || null;
 
   return {
     totalFuelLogs: fuelLogs.length,
@@ -1786,9 +1833,40 @@ function buildStationInsights() {
     totalLiters,
     overallAvg,
     referencePrice,
+    latestFullTank,
+    latestOdometerFuel,
     reviewLogs,
     currentReviewLogs
   };
+}
+
+function buildRefuelPlanning(distanceKm = 0) {
+  const insights = buildStationInsights();
+  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const plannedLiters = distanceKm > 0 ? distanceKm * consumption / 100 : 100 * consumption / 100;
+  const currentOdometer = Number(getLatestOdometer() || 0);
+  const latestFuelOdometer = insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0;
+  const kmSinceFuel = currentOdometer > 0 && latestFuelOdometer > 0 ? Math.max(0, currentOdometer - Number(latestFuelOdometer)) : 0;
+  const litersSinceFuel = kmSinceFuel > 0 ? kmSinceFuel * consumption / 100 : 0;
+  const projectedLiters = litersSinceFuel + plannedLiters;
+  const stationCandidates = insights.stations
+    .filter((station) => station.avgPrice > 0)
+    .sort((a, b) => a.avgPrice - b.avgPrice || b.logCount - a.logCount)
+    .slice(0, 3);
+  let recommendation = "Log full-tank odometer readings to estimate whether refueling is needed.";
+  let tone = "neutral";
+  if (distanceKm > 0 && latestFuelOdometer > 0) {
+    recommendation = `Since the last logged fuel odometer, this trip would represent about ${formatNumber(projectedLiters)} L of estimated fuel use.`;
+    if (projectedLiters > 35) {
+      tone = "warning";
+      recommendation += " Consider checking fuel level before leaving or planning a refuel stop.";
+    } else {
+      recommendation += " This does not look like a refuel warning by itself.";
+    }
+  } else if (distanceKm > 0) {
+    recommendation = `This trip is expected to use about ${formatNumber(plannedLiters)} L. Add full-tank odometer logs to make refuel predictions smarter.`;
+  }
+  return { insights, consumption, plannedLiters, kmSinceFuel, projectedLiters, latestFuelOdometer, stationCandidates, recommendation, tone };
 }
 
 function renderStationInsights() {
@@ -1805,7 +1883,21 @@ function renderStationInsights() {
     return;
   }
 
-  const topStations = insights.stations.slice(0, 5);
+  const topStations = insights.stations.slice(0, 8);
+  const stationRows = topStations.map((station) => `
+    <tr>
+      <td>
+        <strong>${escapeHtml(station.name)}</strong>
+        ${station.brand ? `<span>${escapeHtml(station.brand)}</span>` : ""}
+        <small>${station.coordinates ? `${Number(station.coordinates.latitude).toFixed(5)}, ${Number(station.coordinates.longitude).toFixed(5)}` : "No saved GPS coordinate"}</small>
+        <a href="${escapeHtml(getStationMapUrl(station))}" target="_blank" rel="noopener">Open map</a>
+      </td>
+      <td>${station.logCount}</td>
+      <td>${formatNumber(station.liters)} L</td>
+      <td><strong>${formatMoneyFor(station.avgPrice, state.currency)}/L</strong></td>
+      <td>${Number.isFinite(station.minPrice) ? `${formatMoneyFor(station.minPrice, state.currency)}–${formatMoneyFor(station.maxPrice, state.currency)}` : "—"}</td>
+      <td>${escapeHtml(station.latestDate || "—")}</td>
+    </tr>`).join("");
   const reviewList = insights.reviewLogs.length
     ? `<div class="fuel-intelligence-notes"><strong>Fuel receipts worth reviewing</strong><ul>${insights.reviewLogs.map((item) => {
         const fuel = item.fuel;
@@ -1838,21 +1930,23 @@ function renderStationInsights() {
         <small>${insights.mostUsed ? `${insights.mostUsed.logCount} fuel log${insights.mostUsed.logCount === 1 ? "" : "s"} · ${formatMoneyFor(insights.mostUsed.avgPrice, state.currency)}/L avg.` : ""}</small>
       </article>
     </div>
-    <div class="table-scroll station-table-wrap">
-      <table class="compact-table">
-        <thead><tr><th>Station</th><th>Logs</th><th>Liters</th><th>Avg DKK/L</th><th>Range</th><th>Latest</th></tr></thead>
-        <tbody>${topStations.map((station) => `
-          <tr>
-            <td><strong>${escapeHtml(station.name)}</strong>${station.brand ? `<br><span>${escapeHtml(station.brand)}</span>` : ""}</td>
-            <td>${station.logCount}</td>
-            <td>${formatNumber(station.liters)}</td>
-            <td>${formatMoneyFor(station.avgPrice, state.currency)}/L</td>
-            <td>${Number.isFinite(station.minPrice) ? `${formatMoneyFor(station.minPrice, state.currency)}–${formatMoneyFor(station.maxPrice, state.currency)}` : "—"}</td>
-            <td>${escapeHtml(station.latestDate || "—")}</td>
-          </tr>`).join("")}</tbody>
-      </table>
+    <div class="station-insight-table">
+      <div class="station-table-title">
+        <strong>Logged station comparison</strong>
+        <span>Exact station details come from what was saved on each fuel receipt: station name, brand, GPS coordinate when available, and receipt DKK/L.</span>
+      </div>
+      <div class="table-scroll station-table-wrap">
+        <table class="compact-table station-comparison-table">
+          <thead><tr><th>Station</th><th>Logs</th><th>Liters</th><th>Avg DKK/L</th><th>Range</th><th>Latest</th></tr></thead>
+          <tbody>${stationRows}</tbody>
+        </table>
+      </div>
     </div>
     ${reviewList}
+    <div class="trip-refuel-note">
+      <strong>About route-based refuel suggestions</strong>
+      <span>This app can recommend stations you have actually logged. True route planning with stations along the route would require a routing/maps API, so it is a later integration rather than a local-only calculation.</span>
+    </div>
     <p class="entry-meta">Station insights use logged receipts only. They are hints, not proof that one station is always cheapest.</p>
   `;
 }
@@ -1881,10 +1975,13 @@ function calculateTripCostEstimate(distanceKm, participantCount) {
     explanation = `${formatNumber(distanceKm)} km × ${formatNumber(consumption)} L/100 km (car setting) × ${formatMoneyFor(pricePerLiter, state.currency)}/L (${priceSource}).${reason}`;
   }
 
+  const refuel = buildRefuelPlanning(distanceKm);
+
   return {
     totalCost: roundMoney(totalCost),
     perPerson: roundMoney(totalCost / participantCount),
-    explanation
+    explanation,
+    refuel
   };
 }
 
