@@ -1848,7 +1848,8 @@ function createEntryAnomaly({ severity = "warning", text, type, entry }) {
     severity,
     text,
     target: getAnomalyEditTarget(type, entry),
-    ownerText: getAnomalyOwnerText(type, entry)
+    ownerText: getAnomalyOwnerText(type, entry),
+    entryLevel: true
   };
 }
 
@@ -1911,10 +1912,13 @@ function getCurrentPeriodFuelAnomalies(ledger) {
   if (ledger.totalTripKm > 0 && ledger.totalFuelLiters > 0) {
     const periodConsumption = ledger.totalFuelLiters / ledger.totalTripKm * 100;
     if (periodConsumption < 3 || periodConsumption > 9) {
+      const entryAnomalyCount = anomalies.filter((item) => item.entryLevel).length;
       anomalies.push({
         severity: "issue",
         text: `Current period consumption is ${formatNumber(periodConsumption)} L/100 km. That is unusual for this car; check fuel logs, trip distance, or whether fuel belongs to this period.`,
-        ownerText: "Review the linked fuel/trip anomalies below, or use History to edit your own current-period entries."
+        ownerText: entryAnomalyCount
+          ? "Review the linked fuel/trip anomalies above, or use History to edit your own current-period entries."
+          : "No single bad entry was identified. This warning comes from the period total; review recent fuel logs and trip distance in History."
       });
     }
   }
@@ -1983,15 +1987,30 @@ function getCurrentPeriodHealthPrediction(ledger) {
   }
 
   if (fuelAnomalies.length) {
-    reasons.push(`${fuelAnomalies.length} fuel-log anomaly ${fuelAnomalies.length === 1 ? "was" : "were"} detected.`);
+    const entryLinked = fuelAnomalies.filter((item) => item.entryLevel).length;
+    reasons.push(`${fuelAnomalies.length} anomaly ${fuelAnomalies.length === 1 ? "was" : "were"} detected${entryLinked ? `, including ${entryLinked} linked entr${entryLinked === 1 ? "y" : "ies"}` : " at period level"}.`);
   }
   if (openPayments > 0) {
     reasons.push(`${openPayments} final payment${openPayments === 1 ? " is" : "s are"} still open.`);
-    actions.push("Request open final payments before closing the period.");
   }
   if (paidPayments > 0) {
     reasons.push(`${paidPayments} payment${paidPayments === 1 ? " is" : "s are"} marked paid, so the period is locked for new entries.`);
-    actions.push("Close the period before logging more trips/fuel, or reopen the paid payment to correct this period.");
+  }
+
+  if (paidPayments > 0 && (fuelAnomalies.length || validationWarnings.length)) {
+    actions.push("This period is locked because a payment is marked Paid. Reopen the paid payment before correcting trips or fuel logs.");
+    actions.push("Review the outlier links below, or use History to edit your own current-period entries.");
+    actions.push("After corrections, request/mark paid again, then close the period as admin.");
+  } else {
+    if (fuelAnomalies.length || criticalValidationWarnings.length) {
+      actions.push("Review the outlier links below, or use History to edit your own current-period entries before settling.");
+    }
+    if (openPayments > 0) {
+      actions.push("Request open final payments before closing the period.");
+    }
+    if (paidPayments > 0) {
+      actions.push("Close the period before logging more trips/fuel, or reopen the paid payment to correct this period.");
+    }
   }
 
   if (!actions.length) {
@@ -2044,6 +2063,8 @@ function renderSmartPredictions(ledger) {
 
   const health = prediction.health;
   const toneClass = health.tone === "ok" ? "ok" : health.tone === "issue" ? "issue" : "warning";
+  const entryAnomalyCount = health.fuelAnomalies.filter((item) => item.entryLevel).length;
+  const editableAnomalyCount = health.fuelAnomalies.filter((item) => item.target).length;
   const anomalyItems = health.fuelAnomalies.slice(0, 6).map((item) => {
     const action = item.target
       ? ` <button class="subtle-button compact-button" type="button" data-edit="${escapeHtml(item.target)}">Edit</button>`
@@ -2052,6 +2073,13 @@ function renderSmartPredictions(ledger) {
     return `<li>${escapeHtml(item.text)}${action}${owner}</li>`;
   }).join("");
   const hiddenAnomalyCount = Math.max(0, health.fuelAnomalies.length - 6);
+  const outlierHelp = health.fuelAnomalies.length
+    ? editableAnomalyCount
+      ? "Use Edit on linked items before settlement."
+      : entryAnomalyCount
+        ? "Use History to ask the owner to edit linked entries."
+        : "Period-level warning; no single bad entry found."
+    : "No current-period outlier found.";
   const historicalTone = prediction.historicalQuality === "Good" ? "ok" : "warning";
   const planningTone = prediction.planningConfidence === "High" ? "ok" : prediction.planningConfidence === "Low" ? "issue" : "warning";
 
@@ -2086,7 +2114,7 @@ function renderSmartPredictions(ledger) {
       <article>
         <span>Outliers to review</span>
         <strong>${health.fuelAnomalies.length}</strong>
-        <small>${health.fuelAnomalies.length ? "Use Edit on linked items before settlement." : "No current-period outlier found."}</small>
+        <small>${escapeHtml(outlierHelp)}</small>
       </article>
     </div>
     <div class="smart-prediction-details">
@@ -2100,7 +2128,7 @@ function renderSmartPredictions(ledger) {
         ${!prediction.intel.consumptionLooksRealistic ? `<p>After the production reset and a few real fuel logs, the historical model will become more useful.</p>` : ""}
         ${prediction.monthlySignal ? `<p>${escapeHtml(prediction.monthlySignal.text)}</p>` : ""}
       </article>
-      ${health.fuelAnomalies.length ? `<article><h3>Outliers and edit links</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}</ul></article>` : ""}
+      ${health.fuelAnomalies.length ? `<article><h3>Outliers and next steps</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}</ul></article>` : ""}
     </div>
   `;
 }
