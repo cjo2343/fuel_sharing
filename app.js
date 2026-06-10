@@ -198,6 +198,7 @@ const els = {
   fuelStationLongitude: document.querySelector("#fuelStationLongitude"),
   fuelStationBrand: document.querySelector("#fuelStationBrand"),
   fuelFullTank: document.querySelector("#fuelFullTank"),
+  periodEntryLock: document.querySelector("#periodEntryLock"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
@@ -324,6 +325,7 @@ els.tripForm.addEventListener("submit", async (event) => {
     alert("Your email is not assigned to a member yet. Ask an admin to add it.");
     return;
   }
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
   const start = Number(els.startKm.value);
   const end = Number(els.endKm.value);
   const participants = getSelectedParticipants();
@@ -396,6 +398,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
     alert("Your email is not assigned to a member yet. Ask an admin to add it.");
     return;
   }
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
   const amount = Number(els.fuelAmount.value);
   const liters = Number(els.fuelLiters?.value || 0);
   const odometer = Number(els.fuelOdometer?.value || 0);
@@ -854,6 +857,7 @@ function getTestParticipantNames(actor) {
 }
 
 function addGeneratedTestTrip() {
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
   const actor = getTestActorName();
   if (!actor) {
     alert("Add at least one member before creating test trips.");
@@ -882,6 +886,7 @@ function addGeneratedTestTrip() {
 }
 
 function addGeneratedTestFuel() {
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
   const actor = getTestActorName();
   if (!actor) {
     alert("Add at least one member before creating test fuel logs.");
@@ -1000,6 +1005,7 @@ async function flushStressSave(label) {
 }
 
 async function runGeneratedStressTest() {
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
   if (!confirm("Run a generated stress test? This will add 25 test trips and 15 test fuel logs, save them, verify the normalized tables, then leave them visible until you press Remove test data.")) return;
   const members = getMemberNames();
   if (!members.length) {
@@ -1020,6 +1026,7 @@ async function runGeneratedStressTest() {
 }
 
 async function runGeneratedRapidSaveTest() {
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
   if (!confirm("Run a rapid save test? This will perform 8 small generated changes with separate saves. Generated data can be removed afterwards with Remove test data.")) return;
   const members = getMemberNames();
   if (!members.length) {
@@ -1358,6 +1365,45 @@ function renderSettings() {
   els.settingsForm.querySelector("button").disabled = !canManage;
 }
 
+function getPaidSettlementEntryLock() {
+  const ledger = calculateLedger();
+  const paidSettlements = ledger.settlements.filter(
+    (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "paid"
+  );
+  return {
+    paidSettlements,
+    count: paidSettlements.length,
+    amount: roundMoney(paidSettlements.reduce((total, settlement) => total + Number(settlement.amount || 0), 0))
+  };
+}
+
+function isCurrentPeriodLockedForNewEntries() {
+  return getPaidSettlementEntryLock().count > 0;
+}
+
+function getPeriodEntryLockMessage() {
+  const lock = getPaidSettlementEntryLock();
+  if (!lock.count) return "";
+  const paymentWord = lock.count === 1 ? "payment" : "payments";
+  return `This settlement period has ${lock.count} ${paymentWord} marked Paid (${formatMoney(lock.amount)}). Close the period before logging new trips/fuel, or reopen the paid payment if the period needs corrections.`;
+}
+
+function assertCurrentPeriodAllowsNewEntries() {
+  if (!isCurrentPeriodLockedForNewEntries()) return true;
+  alert(getPeriodEntryLockMessage());
+  renderPeriodEntryLock();
+  return false;
+}
+
+function renderPeriodEntryLock() {
+  if (!els.periodEntryLock) return;
+  const message = getPeriodEntryLockMessage();
+  els.periodEntryLock.classList.toggle("hidden", !message);
+  els.periodEntryLock.innerHTML = message
+    ? `<p class="eyebrow">Period locked</p><h2>Close this period before adding more entries</h2><p class="section-note">${escapeHtml(message)}</p>`
+    : "";
+}
+
 function renderPeopleSelectors() {
   const names = getMemberNames();
   const profile = getCurrentMemberProfile();
@@ -1386,13 +1432,16 @@ function renderPeopleSelectors() {
 
   const authRequired = Boolean(supabaseClient);
   const canUse = !authRequired || (loggedIn && knownLoggedInMember);
+  const periodLocked = isCurrentPeriodLockedForNewEntries();
+  const canLogEntries = canUse && !periodLocked;
   const lockToLoggedInUser = authRequired || loggedIn;
   els.currentUser.disabled = lockToLoggedInUser;
-  els.tripDriver.disabled = lockToLoggedInUser;
-  els.fuelPayer.disabled = lockToLoggedInUser;
+  els.tripDriver.disabled = lockToLoggedInUser || periodLocked;
+  els.fuelPayer.disabled = lockToLoggedInUser || periodLocked;
 
-  setFormDisabled(els.tripForm, !canUse);
-  setFormDisabled(els.fuelForm, !canUse);
+  setFormDisabled(els.tripForm, !canLogEntries);
+  setFormDisabled(els.fuelForm, !canLogEntries);
+  renderPeriodEntryLock();
 
   renderParticipantOptions();
 }
@@ -1870,7 +1919,7 @@ function renderSettlements(ledger) {
   const settlementProgress = getSettlementProgress(ledger);
   els.closePeriod.classList.toggle("hidden", !isAdminView);
   els.closePeriod.disabled = !isAdminView || (state.trips.length === 0 && state.fuel.length === 0) || settlementProgress.openCount > 0;
-  els.closePeriod.title = settlementProgress.openCount > 0 ? "Request all open final payments before closing this period." : "Close this settlement period.";
+  els.closePeriod.title = settlementProgress.openCount > 0 ? "Request all open final payments before closing this period." : "Close this settlement period and start a fresh one for new trips/fuel.";
 
   renderSettlementWarning(ledger);
   renderPeriodBreakdown(ledger);

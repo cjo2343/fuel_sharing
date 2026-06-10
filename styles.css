@@ -2127,3 +2127,12 @@ body.auth-locked #authPanel .text-button {
 .member-period-details-grid {
   margin: 12px;
 }
+
+.warning-panel {
+  border-color: #f0c27a;
+  background: #fff8ea;
+}
+
+.warning-panel h2 {
+  margin: 0.2rem 0 0.35rem;
+}

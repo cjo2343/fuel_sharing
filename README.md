@@ -292,3 +292,8 @@ The app includes a lightweight fuel-intelligence dashboard. It uses normalized t
 The Fuel intelligence card now treats historical averages as advisory until they look realistic. If historical receipt data implies an unusual consumption value, the trip planner avoids the inflated historical DKK/km figure and instead estimates from the car setting (`L/100 km`) plus the best available fuel price.
 
 For this diesel car, the default planning fallback remains 5.3 L/100 km. Historical DKK/km is preferred only when there is enough data and the inferred L/100 km is within a realistic range.
+
+
+### Paid settlement period lock
+
+Once any final payment in the current open period is marked `Paid`, the current period is treated as locked for new trip/fuel entries. This prevents a paid settlement from changing underneath users after someone has already paid in MobilePay. Admins should close the period to start a fresh one, or reopen the paid payment if the period needs corrections before closing.
