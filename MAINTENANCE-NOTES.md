@@ -4,7 +4,7 @@
 
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.
 
-`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, settlement/balance calculations to `settlement-calculations.js`, toast-style feedback helpers to `ui-messages.js`, and push helpers to `notifications.js`. Keep those helper files free of DOM rendering.
+`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, settlement/balance calculations to `settlement-calculations.js`, toast-style feedback helpers to `ui-messages.js`, push helpers to `notifications.js`, and admin diagnostics helpers to `admin-tools.js`. Keep those helper files focused and avoid moving sensitive event wiring unnecessarily.
 
 ## Security model
 
@@ -75,6 +75,7 @@ Current app-shell files include:
 - `settlement-calculations.js`
 - `ui-messages.js`
 - `notifications.js`
+- `admin-tools.js`
 - `app.js`
 - `manifest.json`
 - `icon-192.png`
@@ -135,3 +136,7 @@ This is intentionally narrower than a full JavaScript linter, but it is designed
 `ui-messages.js` now owns `showAppMessage()` and `showSaveMessage()`. Keep lightweight feedback/toast helpers there; leave business rules and UI rendering in `app.js`.
 
 `notifications.js` now owns push-support checks, PWA notification UI decisions, subscription setup, and payment-request push delivery. Keep service-worker registration and install-prompt wiring in `app.js`.
+
+## Admin tools extraction
+
+`admin-tools.js` now owns reusable database diagnostics and settlement-request cleanup helpers. Keep the admin button wiring and production reset confirmation flow in `app.js`, so destructive actions remain easy to audit.
