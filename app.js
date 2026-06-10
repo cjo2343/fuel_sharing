@@ -332,6 +332,8 @@ els.tripForm.addEventListener("submit", async (event) => {
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
+  if (!confirmClosedPeriodDateWarning(els.tripDate.value, "trip")) return;
+  if (!confirmPeriodDataChangeWillReopenRequests(editingTripId ? "edit this trip" : "add a new trip")) return;
   const start = Number(els.startKm.value);
   const end = Number(els.endKm.value);
   const participants = getSelectedParticipants();
@@ -358,6 +360,7 @@ els.tripForm.addEventListener("submit", async (event) => {
 
   const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
   if (!normalizedTripSaved) return;
+  if (!(await reopenRequestedPaymentsAfterPeriodDataChange())) return;
 
   if (editingTripId) {
     const index = state.trips.findIndex((trip) => trip.id === editingTripId);
@@ -405,6 +408,8 @@ els.fuelForm.addEventListener("submit", async (event) => {
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
+  if (!confirmClosedPeriodDateWarning(els.fuelDate.value, "fuel log")) return;
+  if (!confirmPeriodDataChangeWillReopenRequests(editingFuelId ? "edit this fuel log" : "add a new fuel log")) return;
   const amount = Number(els.fuelAmount.value);
   const liters = Number(els.fuelLiters?.value || 0);
   const odometer = Number(els.fuelOdometer?.value || 0);
@@ -440,6 +445,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
 
   const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
   if (!normalizedFuelSaved) return;
+  if (!(await reopenRequestedPaymentsAfterPeriodDataChange())) return;
 
   if (editingFuelId) {
     const index = state.fuel.findIndex((fuel) => fuel.id === editingFuelId);
@@ -1137,8 +1143,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
+  if (!confirmPeriodDataChangeWillReopenRequests(type === "trips" ? "delete this trip" : "delete this fuel log")) return;
+
   const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
   if (!normalizedDeleteSaved) return;
+  if (!(await reopenRequestedPaymentsAfterPeriodDataChange())) return;
   state[type] = state[type].filter((entry) => entry.id !== id);
   if (type === "trips") state.lastOdometer = getLatestOdometer();
   if (editingTripId === id) editingTripId = null;
@@ -1431,6 +1441,119 @@ function renderPeriodEntryLock() {
   els.periodEntryLock.innerHTML = message
     ? `<p class="eyebrow">Period locked</p><h2>Close this period before adding more entries</h2><p class="section-note">${escapeHtml(message)}</p><p class="section-note">To correct an entry, reopen the paid settlement first, then use History → Edit on your current-period log.</p>`
     : "";
+}
+
+function dateRangeFromEntries(entries = []) {
+  const dates = entries
+    .map((entry) => normalizedDate(entry.date || entry.trip_date || entry.payment_date || entry.closedAt || entry.closed_at))
+    .filter(Boolean);
+  if (!dates.length) return null;
+  dates.sort();
+  return { start: dates[0], end: dates[dates.length - 1] };
+}
+
+function getClosedPeriodDateRange(period) {
+  if (!period) return null;
+  const entryRanges = [
+    dateRangeFromEntries(period.trips || []),
+    dateRangeFromEntries(period.fuel || [])
+  ].filter(Boolean);
+  const dates = [];
+  entryRanges.forEach((range) => {
+    dates.push(range.start, range.end);
+  });
+  if (period.closedAt || period.closed_at) dates.push(normalizedDate(period.closedAt || period.closed_at));
+  const cleanDates = dates.filter(Boolean).sort();
+  if (!cleanDates.length) return null;
+  return { start: cleanDates[0], end: cleanDates[cleanDates.length - 1] };
+}
+
+function findClosedPeriodForDate(value) {
+  const date = normalizedDate(value);
+  if (!date) return null;
+  return (state.closedPeriods || []).find((period) => {
+    const range = getClosedPeriodDateRange(period);
+    return range && date >= range.start && date <= range.end;
+  }) || null;
+}
+
+function confirmClosedPeriodDateWarning(value, entryLabel = "entry") {
+  const period = findClosedPeriodForDate(value);
+  if (!period) return true;
+  const range = getClosedPeriodDateRange(period);
+  const label = period.label || [range?.start, range?.end].filter(Boolean).join(" – ") || "a closed period";
+  return confirm([
+    `This ${entryLabel} date (${normalizedDate(value)}) falls inside closed period: ${label}.`,
+    "",
+    "New and edited entries are kept in the current open period. The app will not silently change a closed archive.",
+    "",
+    "Continue anyway?"
+  ].join("\n"));
+}
+
+function getRequestedPaymentKeysForCurrentPeriod() {
+  const ledger = calculateLedger();
+  return ledger.settlements
+    .map((settlement) => settlementKey(settlement))
+    .filter((key) => normalizePaymentStatus(state.paymentStatuses[key]) === "requested");
+}
+
+function confirmPeriodDataChangeWillReopenRequests(actionLabel = "change this period") {
+  const requestedKeys = getRequestedPaymentKeysForCurrentPeriod();
+  if (!requestedKeys.length) return true;
+  return confirm([
+    `This will ${actionLabel}.`,
+    "",
+    `${requestedKeys.length} payment request${requestedKeys.length === 1 ? " has" : "s have"} already been sent for this period. Because the settlement math may change, the app will reopen those request${requestedKeys.length === 1 ? "" : "s"} and they must be requested again after the correction.`,
+    "",
+    "Continue?"
+  ].join("\n"));
+}
+
+async function reopenRequestedPaymentsAfterPeriodDataChange() {
+  const requestedKeys = getRequestedPaymentKeysForCurrentPeriod();
+  if (!requestedKeys.length) return true;
+
+  try {
+    if (supabaseClient && currentSession) {
+      const context = await getNormalizedWriteContext();
+      if (context?.openPeriodId) {
+        const result = await supabaseClient
+          .from("settlement_requests")
+          .update({
+            status: "open",
+            requested_at: null,
+            requested_by_member_id: null,
+            paid_at: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("ledger_id", context.ledgerId)
+          .eq("period_id", context.openPeriodId)
+          .eq("status", "requested");
+        if (result.error) throw result.error;
+      }
+    }
+
+    requestedKeys.forEach((key) => {
+      state.paymentStatuses[key] = "open";
+      clearMobilePayReturnPrompt(key);
+    });
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: `Period data changed. ${requestedKeys.length} requested payment${requestedKeys.length === 1 ? " was" : "s were"} reopened so the updated settlement can be requested again.`
+    };
+    return true;
+  } catch (error) {
+    console.warn("Could not reopen requested payments after period data changed", error);
+    alert(`The entry changed, but existing payment request status could not be reopened automatically: ${error.message || error}`);
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Period data changed, but requested payment rows could not be reopened: ${error.message || error}`
+    };
+    return false;
+  }
 }
 
 function renderLogEntryPanelsVisibility() {

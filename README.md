@@ -1,4 +1,4 @@
-# Fuel Sharingd
+# Fuel Sharing
 
 A lightweight car-sharing fuel ledger for friends.
 
@@ -330,3 +330,9 @@ node tools/check-app-references.mjs
 `tools/check-app-references.mjs` is a lightweight guard for this single-file JavaScript app. It scans `app.js` for likely calls to helper functions that are not defined in the file. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version.
 
 If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
+
+### Period integrity rules
+
+The app keeps closed settlement periods stable. New or edited entries always belong to the current open period, even if their date falls inside a closed archive; the app warns before saving that case.
+
+If current-period trip/fuel data changes after payment requests were sent, the app reopens those requested payments so the updated settlement can be requested again. If any payment has been marked Paid, the current period is locked until an admin closes the period or the paid payment is reopened.
