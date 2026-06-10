@@ -219,6 +219,7 @@ const els = {
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
   tripEstimateResult: document.querySelector("#tripEstimateResult"),
   fuelIntelligence: document.querySelector("#fuelIntelligence"),
+  stationInsights: document.querySelector("#stationInsights"),
   smartPredictions: document.querySelector("#smartPredictions"),
   monthlyMemberSummaries: document.querySelector("#monthlyMemberSummaries"),
   settingsForm: document.querySelector("#settingsForm"),
@@ -332,8 +333,6 @@ els.tripForm.addEventListener("submit", async (event) => {
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirmClosedPeriodDateWarning(els.tripDate.value, "trip")) return;
-  if (!confirmPeriodDataChangeWillReopenRequests(editingTripId ? "edit this trip" : "add a new trip")) return;
   const start = Number(els.startKm.value);
   const end = Number(els.endKm.value);
   const participants = getSelectedParticipants();
@@ -360,7 +359,6 @@ els.tripForm.addEventListener("submit", async (event) => {
 
   const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
   if (!normalizedTripSaved) return;
-  if (!(await reopenRequestedPaymentsAfterPeriodDataChange())) return;
 
   if (editingTripId) {
     const index = state.trips.findIndex((trip) => trip.id === editingTripId);
@@ -408,8 +406,6 @@ els.fuelForm.addEventListener("submit", async (event) => {
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirmClosedPeriodDateWarning(els.fuelDate.value, "fuel log")) return;
-  if (!confirmPeriodDataChangeWillReopenRequests(editingFuelId ? "edit this fuel log" : "add a new fuel log")) return;
   const amount = Number(els.fuelAmount.value);
   const liters = Number(els.fuelLiters?.value || 0);
   const odometer = Number(els.fuelOdometer?.value || 0);
@@ -445,7 +441,6 @@ els.fuelForm.addEventListener("submit", async (event) => {
 
   const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
   if (!normalizedFuelSaved) return;
-  if (!(await reopenRequestedPaymentsAfterPeriodDataChange())) return;
 
   if (editingFuelId) {
     const index = state.fuel.findIndex((fuel) => fuel.id === editingFuelId);
@@ -1143,12 +1138,8 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirmPeriodDataChangeWillReopenRequests(type === "trips" ? "delete this trip" : "delete this fuel log")) return;
-
   const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
   if (!normalizedDeleteSaved) return;
-  if (!(await reopenRequestedPaymentsAfterPeriodDataChange())) return;
   state[type] = state[type].filter((entry) => entry.id !== id);
   if (type === "trips") state.lastOdometer = getLatestOdometer();
   if (editingTripId === id) editingTripId = null;
@@ -1173,6 +1164,7 @@ function render() {
   renderClosedPeriods();
   renderTripEstimate();
   renderFuelIntelligence(ledger);
+  renderStationInsights(ledger);
   renderSmartPredictions(ledger);
   renderMonthlyMemberSummaries(ledger);
   renderSystemHealth(ledger);
@@ -1443,119 +1435,6 @@ function renderPeriodEntryLock() {
     : "";
 }
 
-function dateRangeFromEntries(entries = []) {
-  const dates = entries
-    .map((entry) => normalizedDate(entry.date || entry.trip_date || entry.payment_date || entry.closedAt || entry.closed_at))
-    .filter(Boolean);
-  if (!dates.length) return null;
-  dates.sort();
-  return { start: dates[0], end: dates[dates.length - 1] };
-}
-
-function getClosedPeriodDateRange(period) {
-  if (!period) return null;
-  const entryRanges = [
-    dateRangeFromEntries(period.trips || []),
-    dateRangeFromEntries(period.fuel || [])
-  ].filter(Boolean);
-  const dates = [];
-  entryRanges.forEach((range) => {
-    dates.push(range.start, range.end);
-  });
-  if (period.closedAt || period.closed_at) dates.push(normalizedDate(period.closedAt || period.closed_at));
-  const cleanDates = dates.filter(Boolean).sort();
-  if (!cleanDates.length) return null;
-  return { start: cleanDates[0], end: cleanDates[cleanDates.length - 1] };
-}
-
-function findClosedPeriodForDate(value) {
-  const date = normalizedDate(value);
-  if (!date) return null;
-  return (state.closedPeriods || []).find((period) => {
-    const range = getClosedPeriodDateRange(period);
-    return range && date >= range.start && date <= range.end;
-  }) || null;
-}
-
-function confirmClosedPeriodDateWarning(value, entryLabel = "entry") {
-  const period = findClosedPeriodForDate(value);
-  if (!period) return true;
-  const range = getClosedPeriodDateRange(period);
-  const label = period.label || [range?.start, range?.end].filter(Boolean).join(" – ") || "a closed period";
-  return confirm([
-    `This ${entryLabel} date (${normalizedDate(value)}) falls inside closed period: ${label}.`,
-    "",
-    "New and edited entries are kept in the current open period. The app will not silently change a closed archive.",
-    "",
-    "Continue anyway?"
-  ].join("\n"));
-}
-
-function getRequestedPaymentKeysForCurrentPeriod() {
-  const ledger = calculateLedger();
-  return ledger.settlements
-    .map((settlement) => settlementKey(settlement))
-    .filter((key) => normalizePaymentStatus(state.paymentStatuses[key]) === "requested");
-}
-
-function confirmPeriodDataChangeWillReopenRequests(actionLabel = "change this period") {
-  const requestedKeys = getRequestedPaymentKeysForCurrentPeriod();
-  if (!requestedKeys.length) return true;
-  return confirm([
-    `This will ${actionLabel}.`,
-    "",
-    `${requestedKeys.length} payment request${requestedKeys.length === 1 ? " has" : "s have"} already been sent for this period. Because the settlement math may change, the app will reopen those request${requestedKeys.length === 1 ? "" : "s"} and they must be requested again after the correction.`,
-    "",
-    "Continue?"
-  ].join("\n"));
-}
-
-async function reopenRequestedPaymentsAfterPeriodDataChange() {
-  const requestedKeys = getRequestedPaymentKeysForCurrentPeriod();
-  if (!requestedKeys.length) return true;
-
-  try {
-    if (supabaseClient && currentSession) {
-      const context = await getNormalizedWriteContext();
-      if (context?.openPeriodId) {
-        const result = await supabaseClient
-          .from("settlement_requests")
-          .update({
-            status: "open",
-            requested_at: null,
-            requested_by_member_id: null,
-            paid_at: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq("ledger_id", context.ledgerId)
-          .eq("period_id", context.openPeriodId)
-          .eq("status", "requested");
-        if (result.error) throw result.error;
-      }
-    }
-
-    requestedKeys.forEach((key) => {
-      state.paymentStatuses[key] = "open";
-      clearMobilePayReturnPrompt(key);
-    });
-    normalizedTableStatus = {
-      checked: true,
-      ok: true,
-      message: `Period data changed. ${requestedKeys.length} requested payment${requestedKeys.length === 1 ? " was" : "s were"} reopened so the updated settlement can be requested again.`
-    };
-    return true;
-  } catch (error) {
-    console.warn("Could not reopen requested payments after period data changed", error);
-    alert(`The entry changed, but existing payment request status could not be reopened automatically: ${error.message || error}`);
-    normalizedTableStatus = {
-      checked: true,
-      ok: false,
-      message: `Period data changed, but requested payment rows could not be reopened: ${error.message || error}`
-    };
-    return false;
-  }
-}
-
 function renderLogEntryPanelsVisibility() {
   const locked = isCurrentPeriodLockedForNewEntries();
   if (els.tripLogPanel) els.tripLogPanel.classList.toggle("hidden", locked);
@@ -1793,6 +1672,188 @@ function renderFuelIntelligence(ledger) {
       </article>
     </div>
     ${intel.warnings.length ? `<div class="fuel-intelligence-notes"><strong>Data notes</strong><ul>${intel.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul></div>` : ""}
+  `;
+}
+
+
+function getAllFuelLogsForInsights() {
+  const rows = [];
+  state.fuel.forEach((fuel) => rows.push({ ...fuel, periodLabel: "Current period", periodStatus: "open" }));
+  state.closedPeriods.forEach((period) => {
+    const label = period.label || period.closedAt || "Closed period";
+    (Array.isArray(period.fuel) ? period.fuel : []).forEach((fuel) => rows.push({ ...fuel, periodLabel: label, periodStatus: "closed" }));
+  });
+  return rows;
+}
+
+function getFuelStationName(fuel) {
+  return String(fuel.station || fuel.stationName || fuel.station_name || "").trim();
+}
+
+function getFuelStationBrand(fuel) {
+  return String(fuel.stationBrand || fuel.brand || fuel.station_brand || "").trim();
+}
+
+function getFuelPricePerLiter(fuel) {
+  const amount = Number(fuel.amount) || 0;
+  const liters = Number(fuel.liters) || 0;
+  const explicit = Number(fuel.pricePerLiter || fuel.price_per_liter) || 0;
+  if (explicit > 0) return explicit;
+  if (amount > 0 && liters > 0) return amount / liters;
+  return 0;
+}
+
+function buildStationInsights() {
+  const fuelLogs = getAllFuelLogsForInsights();
+  const withStation = fuelLogs.filter((fuel) => getFuelStationName(fuel));
+  const usable = withStation.filter((fuel) => Number(fuel.amount) > 0 && Number(fuel.liters) > 0);
+  const groups = new Map();
+
+  usable.forEach((fuel) => {
+    const name = getFuelStationName(fuel);
+    const brand = getFuelStationBrand(fuel);
+    const key = `${brand || "station"}::${name}`.toLowerCase();
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        name,
+        brand,
+        logs: [],
+        amount: 0,
+        liters: 0,
+        minPrice: Infinity,
+        maxPrice: 0,
+        latestDate: ""
+      });
+    }
+    const group = groups.get(key);
+    const amount = Number(fuel.amount) || 0;
+    const liters = Number(fuel.liters) || 0;
+    const price = getFuelPricePerLiter(fuel);
+    group.logs.push({ ...fuel, pricePerLiter: price });
+    group.amount += amount;
+    group.liters += liters;
+    group.minPrice = Math.min(group.minPrice, price || group.minPrice);
+    group.maxPrice = Math.max(group.maxPrice, price || 0);
+    if (fuel.date && String(fuel.date) > group.latestDate) group.latestDate = String(fuel.date);
+  });
+
+  const stations = Array.from(groups.values()).map((group) => ({
+    ...group,
+    avgPrice: group.liters > 0 ? group.amount / group.liters : 0,
+    logCount: group.logs.length
+  })).sort((a, b) => b.logCount - a.logCount || a.avgPrice - b.avgPrice);
+
+  const priceStations = stations.filter((station) => station.avgPrice > 0);
+  const cheapest = priceStations.filter((station) => station.logCount >= 1).sort((a, b) => a.avgPrice - b.avgPrice)[0] || null;
+  const mostUsed = stations[0] || null;
+  const totalAmount = usable.reduce((sum, fuel) => sum + (Number(fuel.amount) || 0), 0);
+  const totalLiters = usable.reduce((sum, fuel) => sum + (Number(fuel.liters) || 0), 0);
+  const overallAvg = totalLiters > 0 ? totalAmount / totalLiters : 0;
+  const livePrice = latestFuelPrice && Number(latestFuelPrice.price) > 0 ? Number(latestFuelPrice.price) : 0;
+  const referencePrice = overallAvg || livePrice || Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice;
+  const currentFuel = state.fuel.map((fuel) => ({ ...fuel, periodStatus: "open", periodLabel: "Current period" }));
+  const reviewLogs = usable
+    .map((fuel) => {
+      const price = getFuelPricePerLiter(fuel);
+      const station = getFuelStationName(fuel);
+      const reasons = [];
+      if (price > 0 && referencePrice > 0 && price > referencePrice * 1.12) {
+        reasons.push(`${formatMoneyFor(price, state.currency)}/L is ${formatNumber(((price / referencePrice) - 1) * 100)}% above the reference average.`);
+      }
+      if (price > 0 && (price < 8 || price > 25)) {
+        reasons.push(`${formatMoneyFor(price, state.currency)}/L is outside the normal fuel price range.`);
+      }
+      const stationGroup = stations.find((item) => item.name === station);
+      if (stationGroup && stationGroup.logCount >= 3 && price > stationGroup.avgPrice * 1.15) {
+        reasons.push(`Higher than your usual ${escapeHtml(station)} average of ${formatMoneyFor(stationGroup.avgPrice, state.currency)}/L.`);
+      }
+      return { fuel, price, station, reasons };
+    })
+    .filter((item) => item.reasons.length)
+    .slice(0, 6);
+
+  const currentReviewLogs = reviewLogs.filter((item) => currentFuel.some((fuel) => fuel.id === item.fuel.id));
+
+  return {
+    totalFuelLogs: fuelLogs.length,
+    withStationCount: withStation.length,
+    usableCount: usable.length,
+    stations,
+    cheapest,
+    mostUsed,
+    totalAmount,
+    totalLiters,
+    overallAvg,
+    referencePrice,
+    reviewLogs,
+    currentReviewLogs
+  };
+}
+
+function renderStationInsights() {
+  if (!els.stationInsights) return;
+  const insights = buildStationInsights();
+  if (!insights.withStationCount) {
+    els.stationInsights.className = "station-insights empty-state";
+    els.stationInsights.textContent = "Add station/place and liters to fuel logs to compare stations.";
+    return;
+  }
+  if (!insights.usableCount) {
+    els.stationInsights.className = "station-insights empty-state";
+    els.stationInsights.textContent = "Station names are logged. Add liters to compare DKK/L by station.";
+    return;
+  }
+
+  const topStations = insights.stations.slice(0, 5);
+  const reviewList = insights.reviewLogs.length
+    ? `<div class="fuel-intelligence-notes"><strong>Fuel receipts worth reviewing</strong><ul>${insights.reviewLogs.map((item) => {
+        const fuel = item.fuel;
+        const canEdit = fuel.periodStatus === "open" && canManageFuelEntry(fuel) && !isCurrentPeriodLockedForNewEntries();
+        return `<li><strong>${escapeHtml(fuel.date || "No date")} · ${escapeHtml(item.station)}</strong> · ${formatMoneyFor(fuel.amount, state.currency)} · ${formatNumber(fuel.liters)} L · ${formatMoneyFor(item.price, state.currency)}/L<br><span>${item.reasons.join(" ")}</span>${canEdit ? ` <button class="link-button" type="button" data-edit="fuel:${escapeHtml(fuel.id)}">Edit</button>` : ""}</li>`;
+      }).join("")}</ul></div>`
+    : `<p class="entry-meta">No station-level fuel price outliers found.</p>`;
+
+  els.stationInsights.className = "station-insights fuel-intelligence";
+  els.stationInsights.innerHTML = `
+    <div class="fuel-intelligence-grid">
+      <article>
+        <span>Station coverage</span>
+        <strong>${insights.withStationCount} / ${insights.totalFuelLogs}</strong>
+        <small>Fuel logs with a station/place. ${insights.usableCount} include liters for DKK/L analysis.</small>
+      </article>
+      <article>
+        <span>Average receipt price</span>
+        <strong>${insights.overallAvg > 0 ? `${formatMoneyFor(insights.overallAvg, state.currency)}/L` : "Not enough data"}</strong>
+        <small>Across ${formatNumber(insights.totalLiters)} logged liters.</small>
+      </article>
+      <article>
+        <span>Cheapest logged station</span>
+        <strong>${insights.cheapest ? escapeHtml(insights.cheapest.name) : "Not enough data"}</strong>
+        <small>${insights.cheapest ? `${formatMoneyFor(insights.cheapest.avgPrice, state.currency)}/L · ${insights.cheapest.logCount} log${insights.cheapest.logCount === 1 ? "" : "s"}` : "Add more station fuel logs."}</small>
+      </article>
+      <article>
+        <span>Most used station</span>
+        <strong>${insights.mostUsed ? escapeHtml(insights.mostUsed.name) : "Not enough data"}</strong>
+        <small>${insights.mostUsed ? `${insights.mostUsed.logCount} fuel log${insights.mostUsed.logCount === 1 ? "" : "s"} · ${formatMoneyFor(insights.mostUsed.avgPrice, state.currency)}/L avg.` : ""}</small>
+      </article>
+    </div>
+    <div class="table-scroll station-table-wrap">
+      <table class="compact-table">
+        <thead><tr><th>Station</th><th>Logs</th><th>Liters</th><th>Avg DKK/L</th><th>Range</th><th>Latest</th></tr></thead>
+        <tbody>${topStations.map((station) => `
+          <tr>
+            <td><strong>${escapeHtml(station.name)}</strong>${station.brand ? `<br><span>${escapeHtml(station.brand)}</span>` : ""}</td>
+            <td>${station.logCount}</td>
+            <td>${formatNumber(station.liters)}</td>
+            <td>${formatMoneyFor(station.avgPrice, state.currency)}/L</td>
+            <td>${Number.isFinite(station.minPrice) ? `${formatMoneyFor(station.minPrice, state.currency)}–${formatMoneyFor(station.maxPrice, state.currency)}` : "—"}</td>
+            <td>${escapeHtml(station.latestDate || "—")}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>
+    ${reviewList}
+    <p class="entry-meta">Station insights use logged receipts only. They are hints, not proof that one station is always cheapest.</p>
   `;
 }
 
