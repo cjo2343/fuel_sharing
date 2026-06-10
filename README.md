@@ -330,13 +330,17 @@ The Insights tab includes monthly member summaries built from normalized trip an
 Before packaging or deploying changes, run these checks from the repository root:
 
 ```bash
+node --check utils.js
+node --check supabase-helpers.js
+node --check data-store.js
 node --check app.js
+node --check service-worker.js
 python3 -m py_compile server.py
 python3 -m json.tool ledger-data.json
 node tools/check-app-references.mjs
 ```
 
-`tools/check-app-references.mjs` is a lightweight guard for this single-file JavaScript app. It scans `app.js` for likely calls to helper functions that are not defined in the file. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version.
+`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, and `data-store.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version.
 
 If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
 

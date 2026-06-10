@@ -17,6 +17,8 @@ const supabaseHelpers = window.FuelSupabaseHelpers;
 const supabaseConfig = supabaseHelpers.getSupabaseConfig();
 const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig);
 const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
+const dataStore = window.FuelDataStore;
+const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 
 
 function getMobilePayReturnPrompt(key) {
@@ -85,7 +87,6 @@ const defaults = {
 
 let state = loadState();
 let currentUser = localStorage.getItem(userKey) || "";
-let remoteSaveTimer;
 let currentSession = null;
 let loginCooldownTimer;
 let editingTripId = null;
@@ -963,7 +964,7 @@ function makeGeneratedTestFuel(index = 0) {
 }
 
 async function flushStressSave(label) {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  writeLocalState();
   if (supabaseClient && currentSession) {
     await saveSupabaseState();
     await checkNormalizedTablesAgainstCurrentState();
@@ -5378,22 +5379,19 @@ function normalizeEmail(value) {
 }
 
 function loadState() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
-    return normalizeState(saved);
-  } catch {
-    return structuredClone(defaults);
-  }
+  return dataStore.loadLocalState({ storageKey, defaults, normalizeState });
 }
 
 function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
-  queueRemoteSave();
+  dataStore.saveLocalState({ storageKey, state, afterSave: queueRemoteSave });
+}
+
+function writeLocalState() {
+  dataStore.writeLocalState({ storageKey, state });
 }
 
 function makeClientId() {
-  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-  return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return dataStore.makeClientId();
 }
 
 function normalizeTripEntries(trips) {
@@ -6532,7 +6530,7 @@ async function loadRemoteState() {
     const localState = loadState();
     state = !hasLedgerData(remoteState) && hasLedgerData(localState) ? localState : remoteState;
     state.lastOdometer = getLatestOdometer();
-    localStorage.setItem(storageKey, JSON.stringify(state));
+    writeLocalState();
     setDefaultDates();
     render();
     if (state === localState) queueRemoteSave();
@@ -6540,11 +6538,6 @@ async function loadRemoteState() {
   } catch {
     setSyncStatus("Local");
   }
-}
-
-function queueRemoteSave() {
-  window.clearTimeout(remoteSaveTimer);
-  remoteSaveTimer = window.setTimeout(saveRemoteState, 250);
 }
 
 async function saveRemoteState() {
@@ -6562,7 +6555,7 @@ async function saveRemoteState() {
     });
     if (!response.ok) throw new Error("State save failed");
     state = normalizeState(await response.json());
-    localStorage.setItem(storageKey, JSON.stringify(state));
+    writeLocalState();
     setSyncStatus("Shared");
   } catch {
     setSyncStatus("Local");
@@ -6698,7 +6691,7 @@ async function saveJsonMirrorBackup({ force = false } = {}) {
 function applyIncomingState(nextState, status = "Live") {
   state = normalizeState(nextState);
   state.lastOdometer = getLatestOdometer();
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  writeLocalState();
   setDefaultDates();
   render();
   setSyncStatus(status);
