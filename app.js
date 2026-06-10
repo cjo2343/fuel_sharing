@@ -1959,7 +1959,7 @@ function renderSettlements(ledger) {
         const canRequest = canManageSettlementRequest(item);
         const canMarkPaid = canMarkSettlementPaid(item);
         const pending = pendingSettlementRequestKeys.has(key);
-        let requestControls = `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(message)}">Copy</button>`;
+        let requestControls = "";
 
         if (status === "open") {
           requestControls += canRequest
@@ -4054,7 +4054,7 @@ function canManageSettlementRequest(settlement) {
 function canMarkSettlementPaid(settlement) {
   if (!supabaseClient) return true;
   const profile = getCurrentMemberProfile();
-  return Boolean(profile && (settlement?.from === profile.name || canManageSettings()));
+  return Boolean(profile && settlement?.from === profile.name);
 }
 
 function noMemberEmailsConfigured() {
