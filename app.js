@@ -109,6 +109,7 @@ const defaults = {
   trips: [],
   fuel: [],
   paymentStatuses: {},
+  currentPeriodId: "",
   closedPeriods: [],
   lastOdometer: "",
   fuelType: "diesel",
@@ -1104,12 +1105,16 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete]");
   if (!button) return;
 
-  if (!canManageSettings()) {
-    alert("Only an admin can delete entries.");
+  const [type, id] = button.dataset.delete.split(":");
+  const entry = type === "trips"
+    ? state.trips.find((item) => item.id === id)
+    : state.fuel.find((item) => item.id === id);
+  const canDelete = type === "trips" ? canManageTripEntry(entry) : canManageFuelEntry(entry);
+  if (!canDelete) {
+    alert(type === "trips" ? "You can only delete your own trip logs." : "You can only delete your own fuel logs.");
     return;
   }
 
-  const [type, id] = button.dataset.delete.split(":");
   const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
   if (!normalizedDeleteSaved) return;
   state[type] = state[type].filter((entry) => entry.id !== id);
@@ -3049,18 +3054,43 @@ function setDataToolsMessage(message) {
 }
 
 
-function editEntry(value) {
-  if (!canManageSettings()) {
-    alert("Only an admin can edit entries.");
-    return;
-  }
+function canManageTripEntry(trip) {
+  if (!trip) return false;
+  if (canManageSettings()) return true;
+  const profile = getCurrentMemberProfile();
+  return Boolean(profile && trip.driver === profile.name);
+}
 
+function canManageFuelEntry(fuel) {
+  if (!fuel) return false;
+  if (canManageSettings()) return true;
+  const profile = getCurrentMemberProfile();
+  return Boolean(profile && fuel.payer === profile.name);
+}
+
+function showLogViewForEditing() {
+  activeView = "log";
+  localStorage.setItem(viewStorageKey, activeView);
+  renderSectionNavigation();
+}
+
+function editEntry(value) {
   const [type, id] = String(value || "").split(":");
   if (type === "trips") {
+    const trip = state.trips.find((entry) => entry.id === id);
+    if (!canManageTripEntry(trip)) {
+      alert("You can only edit your own trip logs.");
+      return;
+    }
     startTripEdit(id);
     return;
   }
   if (type === "fuel") {
+    const fuel = state.fuel.find((entry) => entry.id === id);
+    if (!canManageFuelEntry(fuel)) {
+      alert("You can only edit your own fuel logs.");
+      return;
+    }
     startFuelEdit(id);
   }
 }
@@ -3069,6 +3099,7 @@ function startTripEdit(id) {
   const trip = state.trips.find((entry) => entry.id === id);
   if (!trip) return;
 
+  showLogViewForEditing();
   editingFuelId = null;
   editingTripId = id;
   renderPeopleSelectors();
@@ -3091,6 +3122,7 @@ function startFuelEdit(id) {
   const fuel = state.fuel.find((entry) => entry.id === id);
   if (!fuel) return;
 
+  showLogViewForEditing();
   editingTripId = null;
   editingFuelId = id;
   renderPeopleSelectors();
@@ -3173,7 +3205,7 @@ function renderTripEntryCard(trip) {
     <article class="entry-card">
       <header>
         <strong>${escapeHtml(trip.driver)}</strong>
-        ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
+        ${canManageTripEntry(trip) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
       </header>
       <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km <span class="category-chip">${escapeHtml(category)}</span></p>
       <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
@@ -3221,7 +3253,7 @@ function renderFuelEntryCard(fuel) {
     <article class="entry-card">
       <header>
         <strong>${escapeHtml(fuel.payer)}</strong>
-        ${canManageSettings() ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
+        ${canManageFuelEntry(fuel) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
       </header>
       <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
       <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
@@ -3861,14 +3893,14 @@ function renderClosedPeriods() {
         (settlement) => ["requested", "paid"].includes(normalizePaymentStatus(settlement.status))
       ).length;
       return `
-        <article class="period-card">
-          <header>
+        <details class="period-card archived-period-card">
+          <summary>
             <div>
               <strong>${escapeHtml(period.label)}</strong>
               <p>Closed ${formatDate(period.closedAt.slice(0, 10))}</p>
             </div>
             <span>${formatMoneyFor(period.totalPaid, period.currency)} fuel</span>
-          </header>
+          </summary>
           <div class="period-stats">
             <div><span>Kilometers</span><b>${formatNumber(period.totalKm)} km</b></div>
             <div><span>Fuel rate</span><b>${formatMoneyFor(period.fuelRate, period.currency)}/km</b></div>
@@ -3876,7 +3908,7 @@ function renderClosedPeriods() {
             <div><span>Requested/paid</span><b>${requestedCount}/${period.settlements.length}</b></div>
           </div>
           ${renderPeriodSettlements(period)}
-        </article>
+        </details>
       `;
     })
     .join("");
@@ -4185,6 +4217,7 @@ function normalizeState(saved) {
     trips: normalizeTripEntries(saved.trips),
     fuel: normalizeFuelEntries(saved.fuel),
     paymentStatuses: normalizePaymentStatuses(saved.paymentStatuses),
+    currentPeriodId: saved.currentPeriodId || "",
     closedPeriods: Array.isArray(saved.closedPeriods)
       ? saved.closedPeriods.map((period) => ({
           ...period,
@@ -5162,11 +5195,11 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     const fromName = memberById[request.from_member_id]?.name;
     const toName = memberById[request.to_member_id]?.name;
     if (!fromName || !toName) continue;
-    const key = settlementKey({
+    const key = settlementKeyForPeriod({
       from: fromName,
       to: toName,
       currency: request.currency || ledger.currency || jsonFallbackState.currency || "DKK"
-    });
+    }, openPeriod.id);
     paymentStatusesFromTables[key] = normalizePaymentStatus(request.status);
   }
 
@@ -5181,6 +5214,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     memberProfiles,
     trips,
     fuel,
+    currentPeriodId: openPeriod.id,
     paymentStatuses: paymentStatusesFromTables,
     closedPeriods: closedPeriodsFromTables.length ? closedPeriodsFromTables : jsonFallbackState.closedPeriods
   });
@@ -5648,12 +5682,17 @@ function syncStartOdometerDefault() {
   }
 }
 
-function settlementKey(item) {
-  // Settlement request status is tied to the payer/recipient pair in the current period.
+function settlementKeyForPeriod(item, periodId = state.currentPeriodId || "") {
+  // Settlement request status is tied to the payer/recipient pair inside one settlement period.
   // Do not include the amount: fuel/trip edits can slightly change the amount, and then
   // a requested payment would appear to reset after refresh even though the database row exists.
   const currency = item.currency || state.currency || "DKK";
-  return `${item.from}->${item.to}:${currency}`;
+  const periodPart = periodId || "current";
+  return `${periodPart}:${item.from}->${item.to}:${currency}`;
+}
+
+function settlementKey(item) {
+  return settlementKeyForPeriod(item);
 }
 
 function getSettlementStatus(settlement) {
