@@ -67,7 +67,12 @@ let latestFuelPrice = null;
 let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
 let lastSyncError = "";
-let normalizedTableStatus = { checked: false, ok: false, message: "Normalized tables have not been checked yet." };
+let normalizedTableStatus = {
+  checked: false,
+  ok: false,
+  message: "Normalized tables have not been checked yet.",
+  details: []
+};
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 
@@ -2641,11 +2646,15 @@ function buildSystemHealthChecks(ledger) {
     message: pushSubscriptionHint
   });
 
-  checks.push({
-    level: normalizedTableStatus.checked ? (normalizedTableStatus.ok ? "ok" : "warning") : "warning",
-    title: "Normalized database tables",
-    message: normalizedTableStatus.message
-  });
+  if (normalizedTableStatus.details && normalizedTableStatus.details.length) {
+    normalizedTableStatus.details.forEach((detail) => checks.push(detail));
+  } else {
+    checks.push({
+      level: normalizedTableStatus.checked ? (normalizedTableStatus.ok ? "ok" : "warning") : "warning",
+      title: "Normalized database tables",
+      message: normalizedTableStatus.message
+    });
+  }
 
   checks.push({
     level: state.closedPeriods.length ? "ok" : "warning",
@@ -3493,6 +3502,39 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   }
 }
 
+async function pruneStaleSettlementRequests(context) {
+  if (!supabaseClient || !context?.openPeriodId) return;
+  const currentPairIds = new Set(
+    calculateLedger().settlements
+      .map((settlement) => {
+        const fromId = context.memberIdsByName[settlement.from];
+        const toId = context.memberIdsByName[settlement.to];
+        return fromId && toId ? `${fromId}->${toId}` : "";
+      })
+      .filter(Boolean)
+  );
+
+  const existing = await supabaseClient
+    .from("settlement_requests")
+    .select("id,from_member_id,to_member_id")
+    .eq("ledger_id", context.ledgerId)
+    .eq("period_id", context.openPeriodId);
+  if (existing.error) throw existing.error;
+
+  const staleIds = (existing.data || [])
+    .filter((request) => !currentPairIds.has(`${request.from_member_id}->${request.to_member_id}`))
+    .map((request) => request.id);
+  if (!staleIds.length) return;
+
+  // RLS allows ledger members to update settlement request rows, but not necessarily delete them.
+  // Mark old payment-line rows as cancelled so they do not count in health checks or reload state.
+  const cancellation = await supabaseClient
+    .from("settlement_requests")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .in("id", staleIds);
+  if (cancellation.error) throw cancellation.error;
+}
+
 async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus) {
   if (!supabaseClient || !currentSession) return true;
   try {
@@ -3525,6 +3567,10 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       .from("settlement_requests")
       .upsert(payload, { onConflict: "period_id,from_member_id,to_member_id" });
     if (result.error) throw result.error;
+
+    await pruneStaleSettlementRequests(context).catch((error) => {
+      console.warn("Could not prune stale settlement request rows", error);
+    });
 
     normalizedTableStatus = {
       checked: true,
@@ -3894,12 +3940,17 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     .map((period) => period.snapshot_json);
 
   const paymentStatusesFromTables = {};
-  const activeRequests = tableRequests.filter((request) => !openPeriod || request.period_id === openPeriod.id);
+  const activeRequests = tableRequests.filter((request) => normalizePaymentStatus(request.status) !== "cancelled" && (!openPeriod || request.period_id === openPeriod.id));
   for (const request of activeRequests) {
     const fromName = memberById[request.from_member_id]?.name;
     const toName = memberById[request.to_member_id]?.name;
     if (!fromName || !toName) continue;
-    const key = settlementKey({ from: fromName, to: toName, amount: Number(request.amount || 0) });
+    const key = settlementKey({
+      from: fromName,
+      to: toName,
+      amount: Number(request.amount || 0),
+      currency: request.currency || ledger.currency || jsonFallbackState.currency || "DKK"
+    });
     paymentStatusesFromTables[key] = normalizePaymentStatus(request.status);
   }
 
@@ -3965,16 +4016,59 @@ async function checkNormalizedTablesAgainstCurrentState() {
     mismatchParts.push(`${openPeriods} open normalized periods`);
   }
 
-  const activeTableRequests = tableRequests.filter((request) => !openPeriod || request.period_id === openPeriod.id);
-  const requestedStatuses = Object.values(state.paymentStatuses || {}).filter((status) => normalizePaymentStatus(status) === "requested").length;
-  const requestedTableStatuses = activeTableRequests.filter((request) => normalizePaymentStatus(request.status) === "requested").length;
+  const activeTableRequests = tableRequests.filter((request) => normalizePaymentStatus(request.status) !== "cancelled" && (!openPeriod || request.period_id === openPeriod.id));
+  const currentSettlementPairs = new Set(calculateLedger().settlements.map((settlement) => settlementKey(settlement)));
+  const currentActiveRequests = activeTableRequests.filter((request) => {
+    const fromName = activeMembers.find((member) => member.id === request.from_member_id)?.name;
+    const toName = activeMembers.find((member) => member.id === request.to_member_id)?.name;
+    if (!fromName || !toName) return false;
+    return currentSettlementPairs.has(settlementKey({ from: fromName, to: toName, currency: state.currency || "DKK" }));
+  });
+  const staleActiveRequests = activeTableRequests.length - currentActiveRequests.length;
+  const requestedStatuses = calculateLedger().settlements.filter(
+    (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "requested"
+  ).length;
+  const requestedTableStatuses = currentActiveRequests.filter((request) => normalizePaymentStatus(request.status) === "requested").length;
   if (requestedTableStatuses !== requestedStatuses) {
-    mismatchParts.push(`requested settlements ${requestedTableStatuses} in tables vs ${requestedStatuses} in app`);
+    mismatchParts.push(`requested payments ${requestedTableStatuses} current table rows vs ${requestedStatuses} visible in app`);
+  }
+  if (staleActiveRequests > 0) {
+    mismatchParts.push(`${staleActiveRequests} stale settlement request row${staleActiveRequests === 1 ? "" : "s"} from old payment lines`);
   }
 
   if (!admins.length) {
     mismatchParts.push("no normalized admin user");
   }
+
+  const normalizedDetails = [
+    {
+      level: activeMembers.length === getMemberNames().length && admins.length ? "ok" : "warning",
+      title: "Normalized members",
+      message: `${activeMembers.length} active table member${activeMembers.length === 1 ? "" : "s"}; ${getMemberNames().length} in the app; ${admins.length} admin${admins.length === 1 ? "" : "s"}.`
+    },
+    {
+      level: activeTableTrips.length === state.trips.length ? "ok" : "warning",
+      title: "Normalized trips",
+      message: `${activeTableTrips.length} open-period table trip${activeTableTrips.length === 1 ? "" : "s"}; ${state.trips.length} visible in the app.`
+    },
+    {
+      level: activeTableFuel.length === state.fuel.length ? "ok" : "warning",
+      title: "Normalized fuel logs",
+      message: `${activeTableFuel.length} open-period table fuel log${activeTableFuel.length === 1 ? "" : "s"}; ${state.fuel.length} visible in the app.`
+    },
+    {
+      level: openPeriods === 1 ? "ok" : "warning",
+      title: "Normalized open period",
+      message: openPeriods === 1 ? "Exactly one open settlement period exists." : `${openPeriods} open settlement periods found.`
+    },
+    {
+      level: requestedTableStatuses === requestedStatuses && staleActiveRequests === 0 ? "ok" : "warning",
+      title: "Normalized payment requests",
+      message: staleActiveRequests
+        ? `${requestedTableStatuses} requested current payment${requestedTableStatuses === 1 ? "" : "s"}; ${requestedStatuses} visible in the app; ${staleActiveRequests} stale request row${staleActiveRequests === 1 ? "" : "s"} ignored.`
+        : `${requestedTableStatuses} requested current payment${requestedTableStatuses === 1 ? "" : "s"}; ${requestedStatuses} visible in the app.`
+    }
+  ];
 
   normalizedTableStatus = {
     checked: true,
@@ -3982,8 +4076,9 @@ async function checkNormalizedTablesAgainstCurrentState() {
     message: mismatchParts.length
       ? `Normalized table check found: ${mismatchParts.join("; ")}. JSON remains available as fallback until this is resolved.`
       : normalizedReadModeActive
-        ? `Reading from normalized tables first; trips/fuel/settlement requests write to tables first. Open period tables match JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs, ${requestedTableStatuses} requested settlements).`
-        : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs).`,
+        ? `Reading from normalized tables first; open period tables match the app state.`
+        : `Normalized tables match the current JSON counts.`,
+    details: normalizedDetails,
     membersWithoutEmail: membersWithoutEmail.length,
     admins: admins.length
   };
@@ -4314,7 +4409,11 @@ function syncStartOdometerDefault() {
 }
 
 function settlementKey(item) {
-  return `${item.from}->${item.to}:${roundMoney(item.amount).toFixed(2)}:${state.currency}`;
+  // Settlement request status is tied to the payer/recipient pair in the current period.
+  // Do not include the amount: fuel/trip edits can slightly change the amount, and then
+  // a requested payment would appear to reset after refresh even though the database row exists.
+  const currency = item.currency || state.currency || "DKK";
+  return `${item.from}->${item.to}:${currency}`;
 }
 
 function statusLabel(status) {
@@ -4331,6 +4430,7 @@ function normalizePaymentStatuses(statuses) {
 }
 
 function normalizePaymentStatus(status) {
+  if (status === "cancelled") return "cancelled";
   return status === "requested" || status === "paid" ? "requested" : "open";
 }
 
