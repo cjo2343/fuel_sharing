@@ -24,25 +24,29 @@ async function chooseFirstSelectOption(select) {
   if (options.length > 0) await select.selectOption(options[0]);
 }
 
-test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {
-  await openLocalApp(page);
-
+async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fuelAmount = "321.45" } = {}) {
   await chooseFirstSelectOption(page.locator("#currentUser"));
   await chooseFirstSelectOption(page.locator("#tripDriver"));
   await page.locator("#tripDate").fill("2026-06-10");
   await page.locator("#startKm").fill("1000");
   await page.locator("#endKm").fill("1042");
-  await page.locator("#tripNote").fill("Playwright smoke trip");
+  await page.locator("#tripNote").fill(note);
   await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
 
-  await expect(page.locator("#tripList")).toContainText("Playwright smoke trip");
+  await expect(page.locator("#tripList")).toContainText(note);
 
   await chooseFirstSelectOption(page.locator("#fuelPayer"));
   await page.locator("#fuelDate").fill("2026-06-10");
-  await page.locator("#fuelAmount").fill("321.45");
+  await page.locator("#fuelAmount").fill(fuelAmount);
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
 
   await expect(page.locator("#fuelList")).toContainText(/321[,.]45/);
+}
+
+test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {
+  await openLocalApp(page);
+
+  await createBasicTripAndFuel(page);
 
   const beforeReload = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
   expect(beforeReload.trips).toHaveLength(1);
@@ -51,6 +55,29 @@ test("create trip and fuel log, then refresh with data still visible", async ({ 
   await page.reload();
   await expect(page.locator("#tripList")).toContainText("Playwright smoke trip");
   await expect(page.locator("#fuelList")).toContainText(/321[,.]45/);
+});
+
+test("requested payments lock settlement-affecting trip and fuel changes until reopened", async ({ page }) => {
+  await openLocalApp(page);
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await createBasicTripAndFuel(page, { note: "Payment lock smoke trip" });
+
+  const requestButton = page.locator('button[data-payment-status="requested"]').first();
+  await expect(requestButton).toHaveCount(1);
+  // Settlement controls can be inside a collapsed/compact section in the UI.
+  // Click the DOM button directly so this test verifies behavior, not layout visibility.
+  await requestButton.evaluate((button) => button.click());
+
+  const reopenButton = page.locator('button[data-payment-status="open"]').first();
+  await expect(reopenButton).toHaveCount(1);
+  await expect(page.locator("#startKm")).toBeDisabled();
+  await expect(page.locator("#fuelAmount")).toBeDisabled();
+  await expect(page.locator("body")).toContainText(/reopen/i);
+
+  await reopenButton.evaluate((button) => button.click());
+  await expect(page.locator("#startKm")).toBeEnabled();
+  await expect(page.locator("#fuelAmount")).toBeEnabled();
 });
 
 test("critical runtime modules are loaded before app.js", async ({ page }) => {

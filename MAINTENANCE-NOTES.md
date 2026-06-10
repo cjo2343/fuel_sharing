@@ -178,3 +178,7 @@ npm run test:e2e
 ```
 
 Keep local validation passing before pushing so GitHub and Render do not receive broken refactors.
+
+### Payment-lock browser smoke test
+
+The Playwright suite now includes a regression test for the settlement locking rule: create trip/fuel data, request a payment, confirm trip/fuel inputs are locked, reopen the payment request, and confirm trip/fuel inputs are editable again. This protects the rule that requested payments must not be silently recalculated by later trip/fuel edits.

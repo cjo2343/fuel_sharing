@@ -8,6 +8,8 @@ npm run validate
 npm run test:e2e
 ```
 
+The Playwright suite includes both persistence smoke tests and a payment-request locking smoke test. Treat either failure as a blocker before deployment.
+
 After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-deploy only after the CI run is green.
 
 # Deployment checklist

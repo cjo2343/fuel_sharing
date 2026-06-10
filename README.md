@@ -408,3 +408,5 @@ npm run test:e2e
 ```
 
 If CI fails, open the failed GitHub Actions run and inspect the Playwright trace/report artifact details before deploying the change.
+
+The browser smoke-test suite also covers the payment-request locking rule: once a payment is requested, settlement-affecting trip/fuel inputs lock until the payment request is reopened.
