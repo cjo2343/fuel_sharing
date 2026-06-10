@@ -216,6 +216,8 @@ const els = {
   cancelFuelEdit: document.querySelector("#cancelFuelEdit"),
   tripEstimatorForm: document.querySelector("#tripEstimatorForm"),
   tripEstimateDistance: document.querySelector("#tripEstimateDistance"),
+  tripEstimateStart: document.querySelector("#tripEstimateStart"),
+  tripEstimateDestination: document.querySelector("#tripEstimateDestination"),
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
   tripEstimateResult: document.querySelector("#tripEstimateResult"),
   fuelIntelligence: document.querySelector("#fuelIntelligence"),
@@ -393,6 +395,14 @@ if (els.stationResults) {
 
 if (els.tripEstimateDistance) {
   els.tripEstimateDistance.addEventListener("input", renderTripEstimate);
+}
+
+if (els.tripEstimateStart) {
+  els.tripEstimateStart.addEventListener("input", renderTripEstimate);
+}
+
+if (els.tripEstimateDestination) {
+  els.tripEstimateDestination.addEventListener("input", renderTripEstimate);
 }
 
 if (els.tripEstimatorParticipants) {
@@ -1554,11 +1564,17 @@ function renderTripEstimate() {
 
   const estimate = calculateTripCostEstimate(distance, participants.length);
   const refuel = estimate.refuel || buildRefuelPlanning(distance);
+  const route = getTripPlannerRoute();
+  const routeUrl = getRouteMapUrl(route);
+  const routeLink = routeUrl
+    ? `<a class="route-map-link" href="${escapeHtml(routeUrl)}" target="_blank" rel="noopener">Open driving route in maps</a>`
+    : "";
+  const routeGuidance = buildRouteRefuelGuidance(route, refuel);
   const stationSuggestion = refuel.stationCandidates?.length
-    ? `<div class="trip-refuel-stations"><strong>Stations to consider</strong>${refuel.stationCandidates.map((station) => `
+    ? `<div class="trip-refuel-stations"><strong>Logged stations to consider</strong>${refuel.stationCandidates.map((station) => `
         <a href="${escapeHtml(getStationMapUrl(station))}" target="_blank" rel="noopener">
           <span>${escapeHtml(station.name)}</span>
-          <small>${formatMoneyFor(station.avgPrice, state.currency)}/L · ${station.logCount} log${station.logCount === 1 ? "" : "s"}</small>
+          <small>${formatMoneyFor(station.avgPrice, state.currency)}/L · ${station.logCount} log${station.logCount === 1 ? "" : "s"}${station.coordinates ? " · map ready" : ""}</small>
         </a>`).join("")}</div>`
     : `<p class="entry-meta">Add station/place to fuel logs to get station suggestions.</p>`;
   els.tripEstimateResult.className = "trip-estimate-result";
@@ -1585,6 +1601,11 @@ function renderTripEstimate() {
     <div class="trip-refuel-note ${refuel.tone === "warning" ? "is-warning" : ""}">
       <strong>Refuel planning</strong>
       <span>${escapeHtml(refuel.recommendation)}</span>
+    </div>
+    <div class="trip-route-note">
+      <strong>${route.hasRoute ? "Route helper" : "Optional route helper"}</strong>
+      <span>${escapeHtml(routeGuidance)}</span>
+      ${routeLink}
     </div>
     ${stationSuggestion}
     <small>${escapeHtml(participants.join(", "))}</small>
@@ -1725,6 +1746,26 @@ function getStationMapUrl(station) {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coords.latitude},${coords.longitude}`)}`;
   }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${station.name || "fuel station"} ${station.brand || ""}`.trim())}`;
+}
+
+
+function getTripPlannerRoute() {
+  const start = els.tripEstimateStart?.value.trim() || "";
+  const destination = els.tripEstimateDestination?.value.trim() || "";
+  return { start, destination, hasRoute: Boolean(start && destination) };
+}
+
+function getRouteMapUrl(route) {
+  if (!route?.hasRoute) return "";
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(route.start)}&destination=${encodeURIComponent(route.destination)}&travelmode=driving`;
+}
+
+function buildRouteRefuelGuidance(route, refuel) {
+  if (!route?.hasRoute) {
+    return "Add start and destination to get a map route link. Station suggestions still come from your logged receipt history.";
+  }
+  const stationCount = refuel.stationCandidates?.length || 0;
+  return `Route link ready: ${route.start} → ${route.destination}. ${stationCount ? "Use the station cards to compare your logged stations, then open map links and decide whether they fit the route." : "Add station/place to fuel logs to get reusable station suggestions."}`;
 }
 
 function getFuelPricePerLiter(fuel) {

@@ -330,3 +330,9 @@ node tools/check-app-references.mjs
 `tools/check-app-references.mjs` is a lightweight guard for this single-file JavaScript app. It scans `app.js` for likely calls to helper functions that are not defined in the file. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version.
 
 If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
+
+### Phase 2AU — route-aware refuel planning helper
+
+The trip estimator now supports optional Start / Destination fields. When both are filled, Fuel Ledger creates a driving-route link in Google Maps and combines it with the existing refuel estimate and logged-station suggestions.
+
+This is still not full route optimization. Station suggestions are based on stations previously logged in Fuel Ledger, not every station along the route. A true along-route station finder would require a routing/maps API integration later.

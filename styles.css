@@ -2593,3 +2593,40 @@ body.auth-locked #authPanel .text-button {
     flex-direction: column;
   }
 }
+
+.trip-route-note {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  margin: 0.85rem 0;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.trip-route-note strong {
+  color: var(--green-dark);
+}
+
+.trip-route-note span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.route-map-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  margin-top: 0.25rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.route-map-link:hover {
+  text-decoration: underline;
+}
