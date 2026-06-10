@@ -1770,7 +1770,7 @@ function buildMonthlyMemberSummaries() {
       const km = Math.max(0, end - start);
       if (km <= 0) continue;
 
-      const participants = normalizeParticipants(trip.participants || trip.participantNames || trip.participant_names || [trip.driver || trip.driverName]).filter(Boolean);
+      const participants = getTripParticipants({ ...trip, driver: trip.driver || trip.driverName || trip.driver_name }).filter(Boolean);
       const uniqueParticipants = Array.from(new Set(participants));
       const share = uniqueParticipants.length ? km / uniqueParticipants.length : km;
       const driver = trip.driver || trip.driverName || trip.driver_name;
