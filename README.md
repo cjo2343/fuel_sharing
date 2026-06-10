@@ -120,6 +120,7 @@ This version can be installed on phones and can send browser push notifications 
 
 - `manifest.json` makes the app installable.
 - `settlement-calculations.js` contains settlement, fuel-estimate, and ledger-balance calculations.
+- `ui-messages.js` contains toast-style app feedback helpers.
 - `service-worker.js` handles offline basics and push notifications.
 - `icon-192.png` and `icon-512.png` are app icons.
 - `requirements.txt` installs `pywebpush` for server-side push delivery.
@@ -335,6 +336,7 @@ node --check utils.js
 node --check supabase-helpers.js
 node --check data-store.js
 node --check settlement-calculations.js
+node --check ui-messages.js
 node --check app.js
 node --check service-worker.js
 python3 -m py_compile server.py
@@ -342,7 +344,7 @@ python3 -m json.tool ledger-data.json
 node tools/check-app-references.mjs
 ```
 
-`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, `data-store.js`, and `settlement-calculations.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version. It also includes a targeted regression guard for the normalized dual-write path so `syncNormalizedTablesFromJson()` cannot accidentally reference an undefined `context.*` variable again.
+`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, and `ui-messages.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version. It also includes a targeted regression guard for the normalized dual-write path so `syncNormalizedTablesFromJson()` cannot accidentally reference an undefined `context.*` variable again.
 
 If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
 

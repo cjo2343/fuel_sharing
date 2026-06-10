@@ -4,7 +4,7 @@
 
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.
 
-`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, and settlement/balance calculations to `settlement-calculations.js`. Keep those helper files free of DOM rendering.
+`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, settlement/balance calculations to `settlement-calculations.js`, and toast-style feedback helpers to `ui-messages.js`. Keep those helper files free of DOM rendering.
 
 ## Security model
 
@@ -73,6 +73,7 @@ Current app-shell files include:
 - `supabase-helpers.js`
 - `data-store.js`
 - `settlement-calculations.js`
+- `ui-messages.js`
 - `app.js`
 - `manifest.json`
 - `icon-192.png`
@@ -126,3 +127,8 @@ This is intentionally narrower than a full JavaScript linter, but it is designed
 ## Settlement calculations extraction
 
 `settlement-calculations.js` now owns `calculateLedger()`, `calculateHistoricalFuelStats()`, `calculateFuelEstimate()`, `buildSettlements()`, and `getTripParticipants()`. Keep future settlement math changes there where possible, but leave UI rendering and payment-request actions in `app.js`.
+
+
+## UI message helper extraction
+
+`ui-messages.js` now owns `showAppMessage()` and `showSaveMessage()`. Keep lightweight feedback/toast helpers there; leave business rules and UI rendering in `app.js`.

@@ -44,6 +44,7 @@ After the SQL update succeeds, deploy the matching app files:
 - `supabase-helpers.js`
 - `data-store.js`
 - `settlement-calculations.js`
+- `ui-messages.js`
 - `service-worker.js`
 - `manifest.json`
 - icons
@@ -58,6 +59,7 @@ node --check utils.js
 node --check supabase-helpers.js
 node --check data-store.js
 node --check settlement-calculations.js
+node --check ui-messages.js
 node --check app.js
 node --check service-worker.js
 node --check tools/check-app-references.mjs
@@ -94,7 +96,7 @@ If the app breaks after deployment:
 
 ## Home-screen / PWA deployment check
 
-After changing `app.js`, `utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, `styles.css`, icons, or `index.html`:
+After changing `app.js`, `utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, `ui-messages.js`, `styles.css`, icons, or `index.html`:
 
 1. Confirm the changed files are listed in `service-worker.js` under `CORE_ASSETS`.
 2. Bump the `CACHE_NAME` value in `service-worker.js`.
