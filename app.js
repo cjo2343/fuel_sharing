@@ -4472,8 +4472,32 @@ async function getNormalizedWriteContext() {
   if (!(await hasFreshSupabaseSession())) return null;
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
-  const now = new Date().toISOString();
 
+  // Important: regular members are allowed to write trips, fuel, and settlement
+  // request rows, but they are not allowed to update ledger settings or the
+  // member directory. Do not upsert ledgers/ledger_members here for every save,
+  // otherwise non-admin trip/fuel saves fail before reaching the table they are
+  // actually allowed to write.
+  if (canManageSettings()) {
+    await syncLedgerDirectoryForAdmin(ledgerId);
+  }
+
+  const membersResult = await supabaseClient
+    .from("ledger_members")
+    .select("id,name")
+    .eq("ledger_id", ledgerId)
+    .eq("is_active", true);
+  if (membersResult.error) throw membersResult.error;
+
+  const memberIdsByName = Object.fromEntries((membersResult.data || []).map((member) => [member.name, member.id]));
+
+  const openPeriodId = await ensureOpenSettlementPeriod(ledgerId);
+
+  return { ledgerId, openPeriodId, memberIdsByName };
+}
+
+async function syncLedgerDirectoryForAdmin(ledgerId) {
+  const now = new Date().toISOString();
   const ledgerPayload = {
     id: ledgerId,
     name: "Fuel Ledger",
@@ -4507,19 +4531,6 @@ async function getNormalizedWriteContext() {
       .select("id,name");
     if (memberResult.error) throw memberResult.error;
   }
-
-  const membersResult = await supabaseClient
-    .from("ledger_members")
-    .select("id,name")
-    .eq("ledger_id", ledgerId)
-    .eq("is_active", true);
-  if (membersResult.error) throw membersResult.error;
-
-  const memberIdsByName = Object.fromEntries((membersResult.data || []).map((member) => [member.name, member.id]));
-
-  const openPeriodId = await ensureOpenSettlementPeriod(ledgerId);
-
-  return { ledgerId, openPeriodId, memberIdsByName };
 }
 
 async function saveTripToNormalizedTablesFirst(trip) {

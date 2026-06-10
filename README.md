@@ -230,101 +230,13 @@ Admins have a **System health** panel that checks for common data quality proble
 
 Use this panel before cleaning test data, requesting settlements, or starting larger refactors.
 
-## Phase 2A: normalized table read/compare mode
+## Current database setup
 
-This version keeps the existing JSON ledger (`car_share_ledgers.state`) as the app's source of truth, but reads the new normalized tables after cloud load/save and shows a System Health check comparing table counts against the active app state.
+This repo is now table-primary. A fresh Supabase project should start by running `supabase-schema.sql`, which creates the normalized tables, seeds the default ledger, and installs member-restricted RLS policies.
 
-This is an intentional safety step before switching the app to normalized table reads/writes.
+The older `phase2*.sql` files are kept for historical/upgrading installs. Do not rerun them on a live database unless you are intentionally repairing that specific phase.
 
-What to verify:
-
-1. Deploy this version.
-2. Log in as admin.
-3. Open System health.
-4. Check the “Normalized database tables” item.
-
-If it says the normalized tables match, Phase 1 data migration is consistent.
-If it reports differences, keep JSON as source of truth and rerun/sync the Phase 1 migration before moving to Phase 2B.
-
-Next phase will be dual-write: every app save updates both JSON and normalized tables.
-
-## Phase 2B normalized dual-write
-
-This build keeps the JSON ledger as the source of truth, but after every successful cloud save it also syncs the current members, open trips, trip participants, and fuel payments into the normalized Supabase tables.
-
-Before deploying this build, run `phase2b-dual-write-policies.sql` once in Supabase SQL Editor. Those policies allow the browser app to write to the normalized tables during this bridge phase. They are intentionally broad and should be tightened in the later normalized-source-of-truth phase.
-
-After deployment, add or edit one test trip/fuel log, then open System health. The "Normalized database tables" check should mention that dual-write sync is active and that normalized counts match JSON.
-
-### Phase 2B console cleanup
-
-If the browser console shows normalized dual-write access errors or ON CONFLICT errors, run `phase2b-dual-write-repair.sql` in Supabase SQL Editor.
-
-This build also makes `/api/fuel-price` return a fallback JSON response instead of a 502 when the external fuel price API is temporarily unavailable.
-
-## Phase 2C: normalized read-first mode
-
-This version reads the normalized Supabase tables first after login, while keeping the old `car_share_ledgers.state` JSON as a fallback and backup.
-
-What changes:
-
-- On load, the app tries to rebuild the active ledger from `ledgers`, `ledger_members`, `settlement_periods`, `trips`, `trip_participants`, and `fuel_payments`.
-- If table reads fail, the app falls back to the existing JSON state.
-- Saves still write JSON first and then dual-write to the normalized tables.
-- System health reports whether the app is reading from normalized tables and whether table counts match JSON counts.
-
-Recommended test:
-
-1. Deploy this version.
-2. Sign in as admin.
-3. Check System health.
-4. Add a generated test trip.
-5. Add a generated test fuel log.
-6. Remove generated test data.
-7. Confirm System health stays green and the console has no red errors.
-
-Do not remove `car_share_ledgers.state` yet. It is still the fallback/backup during this phase.
-
-## Phase 2D: table-primary trip/fuel writes
-
-This build keeps normalized tables as the primary read source and starts writing new trip and fuel changes to normalized tables first.
-
-- Add/edit trip writes to `trips` and `trip_participants` first, then mirrors JSON as backup.
-- Add/edit fuel writes to `fuel_payments` first, then mirrors JSON as backup.
-- Admin delete soft-deletes the normalized row first, then mirrors JSON as backup.
-- Other app settings and period actions still use the JSON mirror and dual-write bridge for now.
-
-This is still a migration bridge: do not remove `car_share_ledgers.state` yet.
-
-## Phase 2E — settlement request rows
-
-Before deploying this version, run `phase2e-settlement-request-policies.sql` in Supabase SQL Editor.
-
-This version writes settlement request status changes to the normalized `settlement_requests` table first. The JSON state is still updated afterwards as a backup mirror.
-
-Test flow:
-
-1. Add test trip/fuel.
-2. Click `Requested` on a settlement.
-3. Refresh on the same device or another device.
-4. Confirm the request status survives reload.
-5. Click `Reopen` and confirm it also syncs.
-6. Check System health.
-
-## Phase 2E responsiveness patch
-
-Settlement request/reopen buttons now show an immediate busy state while the normalized `settlement_requests` row is saved. Push notifications are sent in the background after the request status is visible, so the UI should no longer feel stuck while waiting on notification delivery.
-
-## Codex review cleanup
-
-This build addresses the immediate low-risk findings from the Codex review:
-
-- `supabase-schema.sql` now seeds the same default people as `ledger-data.json`: Christian, Emilie, Jonas, Marie.
-- The in-app reset/default state now uses Christian, Emilie, Jonas, Marie instead of Christian, Alex, Sam.
-- Settlement rendering no longer calls `saveState()` just because old payment status keys are present. Rendering is read-only.
-- Date defaults now use the browser's local date instead of UTC `toISOString().slice(0, 10)`, so Denmark users do not get yesterday/tomorrow edge cases around midnight.
-
-The SQL file `phase2e-security-hardening-template.sql` is included as a starting point for production RLS hardening. Do not run it until every real member has the correct login email in `ledger_members.email`.
+The app now reads and writes the normalized tables first. `car_share_ledgers.state` is kept only as a backup snapshot/fallback, not as the main operational backend.
 
 ## Phase 2H: Database diagnostics
 

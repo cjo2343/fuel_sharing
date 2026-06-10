@@ -225,6 +225,26 @@ as $$
   );
 $$;
 
+create or replace function public.is_ledger_bootstrap_open(p_ledger_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.ledger_members lm where lm.ledger_id = p_ledger_id
+  )
+  and not exists (
+    select 1
+    from public.ledger_members lm
+    where lm.ledger_id = p_ledger_id
+      and lm.is_active = true
+      and lm.email is not null
+      and lm.email <> ''
+  );
+$$;
+
 alter table public.car_share_ledgers enable row level security;
 alter table public.ledgers enable row level security;
 alter table public.ledger_members enable row level security;
@@ -252,10 +272,13 @@ drop policy if exists "Ledger members can insert JSON ledger" on public.car_shar
 drop policy if exists "Ledger members can update JSON ledger" on public.car_share_ledgers;
 drop policy if exists "Ledger members can read ledgers" on public.ledgers;
 drop policy if exists "Ledger admins can update ledgers" on public.ledgers;
+drop policy if exists "Bootstrap users can update ledgers" on public.ledgers;
 drop policy if exists "Ledger members can read members" on public.ledger_members;
 drop policy if exists "Ledger admins can insert members" on public.ledger_members;
 drop policy if exists "Ledger admins can update members" on public.ledger_members;
 drop policy if exists "Ledger admins can delete members" on public.ledger_members;
+drop policy if exists "Bootstrap users can read members" on public.ledger_members;
+drop policy if exists "Bootstrap users can update members" on public.ledger_members;
 drop policy if exists "Ledger members can read periods" on public.settlement_periods;
 drop policy if exists "Ledger members can insert periods" on public.settlement_periods;
 drop policy if exists "Ledger members can update periods" on public.settlement_periods;
@@ -273,17 +296,20 @@ drop policy if exists "Ledger members can read settlement requests" on public.se
 drop policy if exists "Ledger members can insert settlement requests" on public.settlement_requests;
 drop policy if exists "Ledger members can update settlement requests" on public.settlement_requests;
 
-create policy "Ledger members can read JSON ledger" on public.car_share_ledgers for select to authenticated using (public.is_ledger_member(id));
-create policy "Ledger members can insert JSON ledger" on public.car_share_ledgers for insert to authenticated with check (public.is_ledger_member(id));
-create policy "Ledger members can update JSON ledger" on public.car_share_ledgers for update to authenticated using (public.is_ledger_member(id)) with check (public.is_ledger_member(id));
+create policy "Ledger members can read JSON ledger" on public.car_share_ledgers for select to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
+create policy "Ledger members can insert JSON ledger" on public.car_share_ledgers for insert to authenticated with check (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
+create policy "Ledger members can update JSON ledger" on public.car_share_ledgers for update to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id)) with check (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
 
-create policy "Ledger members can read ledgers" on public.ledgers for select to authenticated using (public.is_ledger_member(id));
+create policy "Ledger members can read ledgers" on public.ledgers for select to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
 create policy "Ledger admins can update ledgers" on public.ledgers for update to authenticated using (public.is_ledger_admin(id)) with check (public.is_ledger_admin(id));
+create policy "Bootstrap users can update ledgers" on public.ledgers for update to authenticated using (public.is_ledger_bootstrap_open(id)) with check (public.is_ledger_bootstrap_open(id));
 
-create policy "Ledger members can read members" on public.ledger_members for select to authenticated using (public.is_ledger_member(ledger_id));
+create policy "Ledger members can read members" on public.ledger_members for select to authenticated using (public.is_ledger_member(ledger_id) or public.is_ledger_bootstrap_open(ledger_id));
 create policy "Ledger admins can insert members" on public.ledger_members for insert to authenticated with check (public.is_ledger_admin(ledger_id));
 create policy "Ledger admins can update members" on public.ledger_members for update to authenticated using (public.is_ledger_admin(ledger_id)) with check (public.is_ledger_admin(ledger_id));
 create policy "Ledger admins can delete members" on public.ledger_members for delete to authenticated using (public.is_ledger_admin(ledger_id));
+create policy "Bootstrap users can read members" on public.ledger_members for select to authenticated using (public.is_ledger_bootstrap_open(ledger_id));
+create policy "Bootstrap users can update members" on public.ledger_members for update to authenticated using (public.is_ledger_bootstrap_open(ledger_id)) with check (public.is_ledger_bootstrap_open(ledger_id));
 
 create policy "Ledger members can read periods" on public.settlement_periods for select to authenticated using (public.is_ledger_member(ledger_id));
 create policy "Ledger members can insert periods" on public.settlement_periods for insert to authenticated with check (public.is_ledger_member(ledger_id));

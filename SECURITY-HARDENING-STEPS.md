@@ -1,54 +1,22 @@
-# Fuel Ledger security hardening steps
+# Security hardening notes
 
-Run `phase2f-security-hardening.sql` in Supabase SQL Editor only after confirming the real member emails in `ledger_members`.
+For a fresh Supabase project, run `supabase-schema.sql`. It now creates the normalized tables and member-restricted RLS policies used by the table-primary app.
 
-## Checklist
+For an older project that was upgraded through the Phase 2 migration patches, the historical `phase2*.sql` files in this repo show the migration path. They do not need to be rerun on a database that is already hardened and working.
 
-1. In Supabase, run:
+Before relying on the app with real users, confirm:
+
+1. Every active real member has the correct login email in `ledger_members.email`.
+2. At least one active member has `role = 'admin'`.
+3. Test/generated members are inactive or removed.
+4. Non-admin users can add trips/fuel but cannot access Admin tools.
+5. Settlement request, paid status, and period closing still work after refresh.
+
+Useful check:
 
 ```sql
-select id, ledger_id, name, email, role, is_active
+select name, email, role, is_active
 from ledger_members
-order by is_active desc, name;
+where ledger_id = 'main-car'
+order by is_active desc, role, name;
 ```
-
-2. Make sure every real member has the same email they use to log in.
-3. Make sure Christian is `admin`.
-4. Run `phase2f-security-hardening.sql`.
-5. Log out and log in again.
-6. Test:
-   - add trip
-   - add fuel
-   - request settlement
-   - close period
-   - system health
-
-## What the hardening SQL does
-
-- Deactivates unused generated/test members.
-- Adds helper functions to check whether the logged-in user is an active ledger member/admin.
-- Replaces broad authenticated-user policies with member-only policies.
-- Keeps roster/settings changes admin-only.
-- Keeps trip/fuel/settlement-period actions available to active ledger members so the current app continues to work.
-- Restricts push subscriptions to the logged-in user's own email.
-
-## Important rollback note
-
-If you lock yourself out, run this in Supabase SQL Editor to temporarily reopen access while fixing member emails:
-
-```sql
-drop policy if exists "Ledger members can read JSON ledger" on car_share_ledgers;
-drop policy if exists "Ledger members can insert JSON ledger" on car_share_ledgers;
-drop policy if exists "Ledger members can update JSON ledger" on car_share_ledgers;
-
-create policy "Temporary authenticated read JSON ledger"
-on car_share_ledgers for select to authenticated using (true);
-
-create policy "Temporary authenticated insert JSON ledger"
-on car_share_ledgers for insert to authenticated with check (true);
-
-create policy "Temporary authenticated update JSON ledger"
-on car_share_ledgers for update to authenticated using (true) with check (true);
-```
-
-Then fix `ledger_members.email` and rerun the hardening script.
