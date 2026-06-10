@@ -30,14 +30,46 @@ function localDateString(date = new Date()) {
   return local.toISOString().slice(0, 10);
 }
 
+function normalizePhone(value) {
+  return String(value || "").trim().replace(/[^+\d]/g, "");
+}
+
+function formatPhoneDisplay(value) {
+  const phone = normalizePhone(value);
+  if (!phone) return "";
+  if (phone.startsWith("+45") && phone.length === 11) {
+    return `+45 ${phone.slice(3, 5)} ${phone.slice(5, 7)} ${phone.slice(7, 9)} ${phone.slice(9, 11)}`;
+  }
+  return phone;
+}
+
+function buildMobilePayNote(settlement) {
+  return `Fuel Ledger: ${settlement.from} pays ${settlement.to}`;
+}
+
+function buildPaymentInstruction(settlement) {
+  const recipient = getMemberProfile(settlement.to);
+  const phone = formatPhoneDisplay(recipient.mobilepayPhone);
+  return [
+    `Pay ${formatMoney(settlement.amount)} to ${settlement.to} in MobilePay.`,
+    phone ? `MobilePay phone: ${phone}` : "MobilePay phone: not saved in Fuel Ledger.",
+    `Note: ${buildMobilePayNote(settlement)}`,
+    "After paying in MobilePay, return to Fuel Ledger and tap Mark paid."
+  ].join("\n");
+}
+
+function openMobilePayApp() {
+  window.location.href = "mobilepay://";
+}
+
 const defaults = {
   currency: "DKK",
   members: ["Christian", "Emilie", "Jonas", "Marie"],
   memberProfiles: {
-    Christian: { email: "", role: "admin" },
-    Emilie: { email: "", role: "member" },
-    Jonas: { email: "", role: "member" },
-    Marie: { email: "", role: "member" }
+    Christian: { email: "", role: "admin", mobilepayPhone: "" },
+    Emilie: { email: "", role: "member", mobilepayPhone: "" },
+    Jonas: { email: "", role: "member", mobilepayPhone: "" },
+    Marie: { email: "", role: "member", mobilepayPhone: "" }
   },
   trips: [],
   fuel: [],
@@ -177,6 +209,7 @@ const els = {
   refreshMembers: document.querySelector("#refreshMembers"),
   newMemberName: document.querySelector("#newMemberName"),
   newMemberEmail: document.querySelector("#newMemberEmail"),
+  newMemberMobilePayPhone: document.querySelector("#newMemberMobilePayPhone"),
   newMemberRole: document.querySelector("#newMemberRole"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
@@ -601,7 +634,8 @@ els.settingsForm.addEventListener("submit", (event) => {
       member.name,
       {
         email: member.email,
-        role: member.role || (index === 0 && noMemberEmailsConfigured() ? "admin" : "member")
+        role: member.role || (index === 0 && noMemberEmailsConfigured() ? "admin" : "member"),
+        mobilepayPhone: normalizePhone(member.mobilepayPhone || member.mobilepay_phone || "")
       }
     ])
   );
@@ -1007,6 +1041,12 @@ document.addEventListener("click", async (event) => {
   const copyButton = event.target.closest("[data-copy]");
   if (copyButton) {
     copySettlement(copyButton);
+    return;
+  }
+
+  const mobilePayButton = event.target.closest("[data-open-mobilepay]");
+  if (mobilePayButton) {
+    openMobilePayApp();
     return;
   }
 
@@ -1834,9 +1874,15 @@ function renderSettlements(ledger) {
             ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="requested" ${pending ? "disabled" : ""}>${pending ? "Requesting..." : "Requested"}</button>`
             : `<span class="request-note">Only ${escapeHtml(item.to)} can request this payment.</span>`;
         } else if (status === "requested") {
-          requestControls += canMarkPaid
-            ? `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="paid" ${pending ? "disabled" : ""}>${pending ? "Marking paid..." : "Mark paid"}</button>`
-            : `<span class="request-note">Waiting for ${escapeHtml(item.from)} to pay.</span>`;
+          if (canMarkPaid) {
+            const recipientProfile = getMemberProfile(item.to);
+            const hasMobilePayPhone = Boolean(recipientProfile.mobilepayPhone);
+            requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(buildPaymentInstruction(item))}">Copy payment details</button>`;
+            requestControls += `<button class="subtle-button compact-button" type="button" data-open-mobilepay="true" ${hasMobilePayPhone ? "" : "title=\"Add recipient MobilePay phone in Member management for easier payment details.\""}>Open MobilePay</button>`;
+            requestControls += `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="paid" ${pending ? "disabled" : ""}>${pending ? "Marking paid..." : "Mark paid"}</button>`;
+          } else {
+            requestControls += `<span class="request-note">Waiting for ${escapeHtml(item.from)} to pay.</span>`;
+          }
           if (canRequest) {
             requestControls += `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open" ${pending ? "disabled" : ""}>${pending ? "Reopening..." : "Reopen"}</button>`;
           }
@@ -2627,6 +2673,8 @@ async function updatePaymentStatus(button) {
 
 async function copySettlement(button) {
   const text = button.dataset.copy;
+  const originalText = button.dataset.originalText || button.textContent || "Copy";
+  button.dataset.originalText = originalText;
 
   try {
     await navigator.clipboard.writeText(text);
@@ -2645,7 +2693,7 @@ async function copySettlement(button) {
   }
 
   window.setTimeout(() => {
-    button.textContent = "Copy";
+    button.textContent = button.dataset.originalText || "Copy";
   }, 1600);
 }
 
@@ -3187,6 +3235,7 @@ function renderMemberManagementPanel() {
     <div class="member-management-header">
       <span>Name</span>
       <span>Email</span>
+      <span>MobilePay</span>
       <span>Role</span>
       <span>Status</span>
       <span>Actions</span>
@@ -3210,6 +3259,7 @@ function renderManagedMemberRow(member, activeAdminCount, currentEmail) {
     <div class="member-management-row ${member.is_active ? "" : "inactive"}" data-member-id="${escapeHtml(member.id)}">
       <input class="member-row-name" type="text" value="${escapeHtml(member.name || "")}" />
       <input class="member-row-email" type="email" value="${escapeHtml(member.email || "")}" placeholder="login email" />
+      <input class="member-row-mobilepay" type="tel" value="${escapeHtml(formatPhoneDisplay(member.mobilepay_phone || ""))}" placeholder="MobilePay phone" />
       <select class="member-row-role" ${disableDanger ? "data-protect-admin=\"true\"" : ""}>
         <option value="member" ${member.role === "admin" ? "" : "selected"}>Member</option>
         <option value="admin" ${member.role === "admin" ? "selected" : ""}>Admin</option>
@@ -3233,7 +3283,7 @@ async function refreshMemberManagement() {
   const ledgerId = supabaseConfig.ledgerId || "main-car";
   const { data, error } = await supabaseClient
     .from("ledger_members")
-    .select("id,ledger_id,name,email,role,is_active,created_at,updated_at")
+    .select("id,ledger_id,name,email,role,is_active,mobilepay_phone,created_at,updated_at")
     .eq("ledger_id", ledgerId)
     .order("is_active", { ascending: false })
     .order("name", { ascending: true });
@@ -3254,6 +3304,7 @@ function getManagedMemberPayloadFromRow(row) {
     id: row.dataset.memberId,
     name: row.querySelector(".member-row-name")?.value.trim() || "",
     email: normalizeEmail(row.querySelector(".member-row-email")?.value || "") || null,
+    mobilepay_phone: normalizePhone(row.querySelector(".member-row-mobilepay")?.value || "") || null,
     role: row.querySelector(".member-row-role")?.value === "admin" ? "admin" : "member"
   };
 }
@@ -3292,6 +3343,7 @@ async function saveManagedMember(row) {
     .update({
       name: payload.name,
       email: payload.email,
+      mobilepay_phone: payload.mobilepay_phone,
       role: payload.role,
       updated_at: new Date().toISOString()
     })
@@ -3323,6 +3375,7 @@ async function setManagedMemberActive(row, isActive) {
 async function addManagedMember() {
   const name = els.newMemberName?.value.trim() || "";
   const email = normalizeEmail(els.newMemberEmail?.value || "");
+  const mobilepayPhone = normalizePhone(els.newMemberMobilePayPhone?.value || "");
   const role = els.newMemberRole?.value === "admin" ? "admin" : "member";
   if (!name) {
     alert("Member name is required.");
@@ -3340,6 +3393,7 @@ async function addManagedMember() {
       ledger_id: ledgerId,
       name,
       email,
+      mobilepay_phone: mobilepayPhone || null,
       role,
       is_active: true,
       updated_at: new Date().toISOString()
@@ -3350,6 +3404,7 @@ async function addManagedMember() {
   }
   if (els.newMemberName) els.newMemberName.value = "";
   if (els.newMemberEmail) els.newMemberEmail.value = "";
+  if (els.newMemberMobilePayPhone) els.newMemberMobilePayPhone.value = "";
   if (els.newMemberRole) els.newMemberRole.value = "member";
   await afterMemberManagementChange("Member added.");
 }
@@ -3404,7 +3459,7 @@ async function getCurrentSettlementRequestContext() {
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
   const [membersResult, periodsResult, requestsResult] = await Promise.all([
-    supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
+    supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
     supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,paid_at,updated_at").eq("ledger_id", ledgerId)
   ]);
@@ -3461,7 +3516,7 @@ async function refreshDatabaseDiagnostics() {
     const ledgerId = supabaseConfig.ledgerId || "main-car";
     const [legacyResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
       supabaseClient.from("car_share_ledgers").select("state,updated_at").eq("id", ledgerId).maybeSingle(),
-      supabaseClient.from("ledger_members").select("id,name,email,role,is_active,updated_at").eq("ledger_id", ledgerId),
+      supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone,updated_at").eq("ledger_id", ledgerId),
       supabaseClient.from("settlement_periods").select("id,status,label,opened_at,closed_at,created_at,updated_at").eq("ledger_id", ledgerId),
       supabaseClient.from("trips").select("id,period_id,deleted_at,created_at,updated_at").eq("ledger_id", ledgerId),
       supabaseClient.from("fuel_payments").select("id,period_id,deleted_at,created_at,updated_at").eq("ledger_id", ledgerId),
@@ -3838,7 +3893,8 @@ function normalizeMemberProfiles(members, profiles) {
         name,
         {
           email: normalizeEmail(saved.email || ""),
-          role: saved.role === "admin" || (index === 0 && !profiles) ? "admin" : "member"
+          role: saved.role === "admin" || (index === 0 && !profiles) ? "admin" : "member",
+          mobilepayPhone: normalizePhone(saved.mobilepayPhone || saved.mobilepay_phone || "")
         }
       ];
     })
@@ -3847,7 +3903,7 @@ function normalizeMemberProfiles(members, profiles) {
 
 function getMemberProfile(name) {
   const profile = state.memberProfiles?.[name] || {};
-  return { name, email: normalizeEmail(profile.email || ""), role: profile.role === "admin" ? "admin" : "member" };
+  return { name, email: normalizeEmail(profile.email || ""), role: profile.role === "admin" ? "admin" : "member", mobilepayPhone: normalizePhone(profile.mobilepayPhone || profile.mobilepay_phone || "") };
 }
 
 function getLoggedInEmail() {
@@ -3927,8 +3983,10 @@ function ensureMemberForLoggedInUser() {
   const current = getMemberProfile(targetName);
   const role = noMemberEmailsConfigured() && targetName === names[0] ? "admin" : current.role;
   state.memberProfiles[targetName] = {
+    ...current,
     email,
-    role: role === "admin" ? "admin" : "member"
+    role: role === "admin" ? "admin" : "member",
+    mobilepayPhone: normalizePhone(current.mobilepayPhone || "")
   };
   currentUser = targetName;
   localStorage.setItem(userKey, currentUser);
@@ -4703,7 +4761,7 @@ async function syncNormalizedTablesFromJson() {
       const upsertMembers = await supabaseClient
         .from("ledger_members")
         .upsert(memberPayloads, { onConflict: "ledger_id,name" })
-        .select("id,name,email,role,is_active");
+        .select("id,name,email,role,is_active,mobilepay_phone");
       if (upsertMembers.error) throw upsertMembers.error;
     }
 
@@ -4884,7 +4942,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledgers").select("*").eq("id", ledgerId).maybeSingle(),
-    supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
+    supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
     supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
     supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
     supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true }),
@@ -4911,7 +4969,8 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
       member.name,
       {
         email: normalizeEmail(member.email || ""),
-        role: member.role === "admin" ? "admin" : "member"
+        role: member.role === "admin" ? "admin" : "member",
+        mobilepayPhone: normalizePhone(member.mobilepay_phone || "")
       }
     ])
   );
@@ -5018,7 +5077,7 @@ async function checkNormalizedTablesAgainstCurrentState() {
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
   const [membersResult, tripsResult, fuelResult, periodsResult, requestsResult] = await Promise.all([
-    supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
+    supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId),
     supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("fuel_payments").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),

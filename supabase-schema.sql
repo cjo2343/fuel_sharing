@@ -28,6 +28,7 @@ create table if not exists public.ledger_members (
   ledger_id text not null references public.ledgers(id) on delete cascade,
   name text not null,
   email text,
+  mobilepay_phone text,
   role text not null default 'member' check (role in ('admin', 'member')),
   is_active boolean not null default true,
   created_at timestamptz not null default now(),

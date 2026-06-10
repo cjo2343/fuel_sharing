@@ -1890,7 +1890,7 @@ body.auth-locked #authPanel .text-button {
 
 .member-management-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.6fr) minmax(140px, 0.8fr) auto;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(210px, 1.4fr) minmax(160px, 1fr) minmax(140px, 0.8fr) auto;
   gap: 0.8rem;
   align-items: end;
   margin: 1rem 0;
@@ -1905,7 +1905,7 @@ body.auth-locked #authPanel .text-button {
 .member-management-header,
 .member-management-row {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(190px, 1.4fr) minmax(110px, 0.7fr) minmax(90px, 0.6fr) minmax(190px, 1fr);
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 1.3fr) minmax(150px, 1fr) minmax(110px, 0.7fr) minmax(90px, 0.6fr) minmax(190px, 1fr);
   gap: 0.65rem;
   align-items: center;
 }
