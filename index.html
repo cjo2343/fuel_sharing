@@ -29,6 +29,14 @@
         </div>
       </header>
 
+      <nav class="section-tabs" aria-label="App sections">
+        <button class="section-tab" type="button" data-view-tab="log">Log</button>
+        <button class="section-tab" type="button" data-view-tab="settle">Settle</button>
+        <button class="section-tab" type="button" data-view-tab="history">History</button>
+        <button class="section-tab" type="button" data-view-tab="insights">Insights</button>
+        <button class="section-tab admin-tab" type="button" data-view-tab="admin">Admin</button>
+      </nav>
+
       <main class="layout">
         <section id="authPanel" class="panel auth-panel wide-panel hidden" aria-labelledby="authHeading">
           <div class="panel-header">
@@ -61,7 +69,7 @@
           <p id="authMessage" class="section-note"></p>
         </section>
 
-        <section id="pwaPanel" class="panel pwa-panel wide-panel hidden" aria-labelledby="pwaHeading">
+        <section id="pwaPanel" data-view="log" class="panel pwa-panel wide-panel hidden" aria-labelledby="pwaHeading">
           <div>
             <p class="eyebrow">Phone setup</p>
             <h2 id="pwaHeading">Install and enable notifications</h2>
@@ -73,7 +81,7 @@
           </div>
         </section>
 
-        <section class="panel primary-panel" aria-labelledby="tripHeading">
+        <section class="panel primary-panel" data-view="log" aria-labelledby="tripHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Trip</p>
@@ -111,7 +119,7 @@
           </form>
         </section>
 
-        <section class="panel" aria-labelledby="fuelHeading">
+        <section class="panel" data-view="log" aria-labelledby="fuelHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Fuel</p>
@@ -171,7 +179,7 @@
           </form>
         </section>
 
-        <section class="panel settings-panel" aria-labelledby="settingsHeading">
+        <section class="panel settings-panel" data-view="admin" aria-labelledby="settingsHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Setup</p>
@@ -213,7 +221,7 @@
 
 
 
-        <section class="panel wide-panel trip-estimator-panel" aria-labelledby="tripEstimatorHeading">
+        <section class="panel wide-panel trip-estimator-panel" data-view="insights" aria-labelledby="tripEstimatorHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Plan</p>
@@ -234,7 +242,7 @@
           <div id="tripEstimateResult" class="trip-estimate-result empty-state">Enter a distance to estimate the fuel cost.</div>
         </section>
 
-        <section class="panel wide-panel fuel-intelligence-panel" aria-labelledby="fuelIntelligenceHeading">
+        <section class="panel wide-panel fuel-intelligence-panel" data-view="insights" aria-labelledby="fuelIntelligenceHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Intelligence</p>
@@ -245,7 +253,7 @@
           <div id="fuelIntelligence" class="fuel-intelligence empty-state">Fuel intelligence will appear when there is trip or fuel data.</div>
         </section>
 
-        <section class="summary-band" aria-label="Summary">
+        <section class="summary-band" data-view="settle" aria-label="Summary">
           <article>
             <span>Fuel rate</span>
             <strong id="fuelRate">0</strong>
@@ -260,7 +268,7 @@
           </article>
         </section>
 
-        <section class="panel wide-panel" aria-labelledby="settleHeading">
+        <section class="panel wide-panel" data-view="settle" aria-labelledby="settleHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Settle</p>
@@ -278,7 +286,7 @@
           <div id="settlements" class="settlements"></div>
         </section>
 
-        <section class="panel wide-panel" aria-labelledby="peopleHeading">
+        <section class="panel wide-panel" data-view="settle" aria-labelledby="peopleHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Balances</p>
@@ -288,7 +296,7 @@
           <div id="peopleBalances" class="people-grid"></div>
         </section>
 
-        <section class="panel wide-panel" aria-labelledby="historyHeading">
+        <section class="panel wide-panel" data-view="history" aria-labelledby="historyHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">History</p>
@@ -311,7 +319,7 @@
           </div>
         </section>
 
-        <section class="panel wide-panel data-tools-panel hidden" aria-labelledby="dataToolsHeading">
+        <section class="panel wide-panel data-tools-panel hidden" data-view="admin" aria-labelledby="dataToolsHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Admin</p>
@@ -365,7 +373,7 @@
           <p id="dataToolsMessage" class="section-note"></p>
         </section>
 
-        <section class="panel wide-panel member-management-panel hidden" aria-labelledby="memberManagementHeading">
+        <section class="panel wide-panel member-management-panel hidden" data-view="admin" aria-labelledby="memberManagementHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Admin</p>
@@ -401,7 +409,7 @@
 
 
 
-        <section class="panel wide-panel system-health-panel hidden" aria-labelledby="systemHealthHeading">
+        <section class="panel wide-panel system-health-panel hidden" data-view="admin" aria-labelledby="systemHealthHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Admin</p>
@@ -413,7 +421,7 @@
           <div id="systemHealthList" class="system-health-list"></div>
         </section>
 
-        <section class="panel wide-panel database-diagnostics-panel hidden" aria-labelledby="databaseDiagnosticsHeading">
+        <section class="panel wide-panel database-diagnostics-panel hidden" data-view="admin" aria-labelledby="databaseDiagnosticsHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Admin</p>
@@ -425,7 +433,7 @@
           <div id="databaseDiagnosticsList" class="database-diagnostics-list"></div>
         </section>
 
-        <section class="panel wide-panel" aria-labelledby="periodsHeading">
+        <section class="panel wide-panel" data-view="history" aria-labelledby="periodsHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Archive</p>

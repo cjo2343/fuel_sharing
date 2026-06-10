@@ -89,12 +89,16 @@ let memberManagementStatus = {
 };
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
+const viewStorageKey = "fuel-ledger-active-view";
+let activeView = localStorage.getItem(viewStorageKey) || "log";
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
   fuelRate: document.querySelector("#fuelRate"),
   totalCost: document.querySelector("#totalCost"),
   totalPaid: document.querySelector("#totalPaid"),
+  sectionTabs: Array.from(document.querySelectorAll("[data-view-tab]")),
+  viewSections: Array.from(document.querySelectorAll("[data-view]")),
   authPanel: document.querySelector("#authPanel"),
   loginForm: document.querySelector("#loginForm"),
   otpForm: document.querySelector("#otpForm"),
@@ -540,6 +544,35 @@ function formatStationDistance(meters) {
   if (!Number.isFinite(meters)) return "";
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${new Intl.NumberFormat("en-DK", { maximumFractionDigits: 1 }).format(meters / 1000)} km`;
+}
+
+
+els.sectionTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    setActiveView(button.dataset.viewTab || "log");
+  });
+});
+
+function setActiveView(view) {
+  const requestedView = view || "log";
+  activeView = requestedView === "admin" && !canManageSettings() ? "log" : requestedView;
+  localStorage.setItem(viewStorageKey, activeView);
+  render();
+}
+
+function renderSectionNavigation() {
+  if (activeView === "admin" && !canManageSettings()) activeView = "log";
+  els.sectionTabs.forEach((button) => {
+    const view = button.dataset.viewTab;
+    const isAdminTab = view === "admin";
+    button.classList.toggle("hidden", isAdminTab && !canManageSettings());
+    button.classList.toggle("active", view === activeView);
+    button.setAttribute("aria-current", view === activeView ? "page" : "false");
+  });
+  els.viewSections.forEach((section) => {
+    const view = section.dataset.view;
+    section.classList.toggle("view-hidden", view !== activeView);
+  });
 }
 
 els.settingsForm.addEventListener("submit", (event) => {
@@ -1028,6 +1061,7 @@ function render() {
   if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
   if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
   if (els.memberManagementPanel) els.memberManagementPanel.classList.toggle("hidden", !canManageSettings());
+  renderSectionNavigation();
   updateEditUi();
 }
 

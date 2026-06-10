@@ -2020,3 +2020,53 @@ body.auth-locked #authPanel .text-button {
   margin: 0.2rem 0;
   color: var(--muted-text);
 }
+
+.section-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  padding: 10px 0 16px;
+  margin: -6px 0 6px;
+  overflow-x: auto;
+  background: linear-gradient(180deg, var(--paper) 0%, rgba(251, 250, 247, 0.94) 72%, rgba(251, 250, 247, 0) 100%);
+  -webkit-overflow-scrolling: touch;
+}
+
+.section-tab {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-solid);
+  color: var(--muted);
+  min-height: 42px;
+  padding: 0 16px;
+  font-weight: 860;
+  letter-spacing: 0.01em;
+  box-shadow: var(--shadow-soft);
+}
+
+.section-tab.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.view-hidden {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .section-tabs {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .section-tab {
+    min-height: 44px;
+    padding: 0 15px;
+  }
+}
