@@ -2745,25 +2745,9 @@ async function updatePaymentStatus(button) {
     });
   }
 
-  const refreshedLedger = calculateLedger();
-  const allRequested =
-    refreshedLedger.settlements.length > 0 &&
-    refreshedLedger.settlements.every(
-      (item) => ["requested", "paid"].includes(normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]))
-    );
-
-  if (
-    canManageSettings() &&
-    nextStatus === "requested" &&
-    previousStatus !== "requested" &&
-    allRequested &&
-    confirm(
-      `All current settlements have been requested or marked paid. ${buildClosePeriodSummary(refreshedLedger)}. Close and archive this period now so new trips start fresh?`
-    )
-  ) {
-    await closeCurrentPeriod({ skipConfirm: true, skipFuelValidation: true });
-    return;
-  }
+  // Requesting or marking a payment must never close the period automatically.
+  // A period can contain requested/paid payments while the admin reviews it.
+  // Closing is an explicit admin-only action via the Close period button.
 }
 
 async function copySettlement(button) {
