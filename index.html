@@ -353,6 +353,40 @@
           <p id="dataToolsMessage" class="section-note"></p>
         </section>
 
+        <section class="panel wide-panel member-management-panel hidden" aria-labelledby="memberManagementHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Admin</p>
+              <h2 id="memberManagementHeading">Member management</h2>
+            </div>
+            <button id="refreshMembers" class="subtle-button" type="button">Refresh members</button>
+          </div>
+          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL.</p>
+
+          <form id="memberManagementForm" class="member-management-form">
+            <label>
+              Name
+              <input id="newMemberName" type="text" autocomplete="off" placeholder="e.g. Jonas" />
+            </label>
+            <label>
+              Login email
+              <input id="newMemberEmail" type="email" autocomplete="off" placeholder="person@example.com" />
+            </label>
+            <label>
+              Role
+              <select id="newMemberRole">
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <button class="primary-button" type="submit">Add member</button>
+          </form>
+
+          <div id="memberManagementMessage" class="section-note"></div>
+          <div id="memberManagementList" class="member-management-list"></div>
+        </section>
+
+
 
 
         <section class="panel wide-panel system-health-panel hidden" aria-labelledby="systemHealthHeading">

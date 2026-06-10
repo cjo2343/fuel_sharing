@@ -81,6 +81,12 @@ let databaseDiagnosticsStatus = {
   error: "",
   rows: []
 };
+let memberManagementStatus = {
+  loaded: false,
+  loading: false,
+  error: "",
+  rows: []
+};
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 
@@ -158,6 +164,14 @@ const els = {
   databaseDiagnosticsPanel: document.querySelector(".database-diagnostics-panel"),
   databaseDiagnosticsList: document.querySelector("#databaseDiagnosticsList"),
   refreshDatabaseDiagnostics: document.querySelector("#refreshDatabaseDiagnostics"),
+  memberManagementPanel: document.querySelector(".member-management-panel"),
+  memberManagementForm: document.querySelector("#memberManagementForm"),
+  memberManagementList: document.querySelector("#memberManagementList"),
+  memberManagementMessage: document.querySelector("#memberManagementMessage"),
+  refreshMembers: document.querySelector("#refreshMembers"),
+  newMemberName: document.querySelector("#newMemberName"),
+  newMemberEmail: document.querySelector("#newMemberEmail"),
+  newMemberRole: document.querySelector("#newMemberRole"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
   exportLedger: document.querySelector("#exportLedger"),
@@ -654,6 +668,28 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
   await runGeneratedRapidSaveTest();
 });
 
+els.memberManagementForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!canManageSettings()) return;
+  await addManagedMember();
+});
+
+els.refreshMembers?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await refreshMemberManagement();
+});
+
+els.memberManagementList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-member-action]");
+  if (!button || !canManageSettings()) return;
+  const row = button.closest("[data-member-id]");
+  if (!row) return;
+  const action = button.dataset.memberAction;
+  if (action === "save") await saveManagedMember(row);
+  if (action === "deactivate") await setManagedMemberActive(row, false);
+  if (action === "reactivate") await setManagedMemberActive(row, true);
+});
+
 els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await refreshDatabaseDiagnostics();
@@ -980,6 +1016,7 @@ function render() {
   renderTripEstimate();
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
+  renderMemberManagementPanel();
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
@@ -987,6 +1024,7 @@ function render() {
   if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
   if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
   if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.memberManagementPanel) els.memberManagementPanel.classList.toggle("hidden", !canManageSettings());
   updateEditUi();
 }
 
@@ -2689,6 +2727,218 @@ function renderSystemHealth(ledger) {
     .join("");
 }
 
+
+
+function renderMemberManagementPanel() {
+  if (!els.memberManagementPanel) return;
+  const canManage = canManageSettings();
+  els.memberManagementPanel.classList.toggle("hidden", !canManage);
+  if (!canManage) return;
+
+  if (!memberManagementStatus.loaded && !memberManagementStatus.loading && supabaseClient && currentSession) {
+    refreshMemberManagement().catch((error) => {
+      memberManagementStatus.error = error.message || String(error);
+      renderMemberManagementPanel();
+    });
+  }
+
+  if (els.memberManagementMessage) {
+    els.memberManagementMessage.textContent = memberManagementStatus.loading
+      ? "Loading members..."
+      : memberManagementStatus.error
+        ? `Could not load members: ${memberManagementStatus.error}`
+        : "Active members can use the app. Admins can manage settings, diagnostics, and data tools.";
+  }
+
+  if (!els.memberManagementList) return;
+  const rows = memberManagementStatus.rows || [];
+  if (!rows.length && !memberManagementStatus.loading) {
+    els.memberManagementList.innerHTML = `<p class="empty-state">No members found in the normalized table.</p>`;
+    return;
+  }
+
+  const activeAdmins = rows.filter((member) => member.is_active && member.role === "admin");
+  const currentEmail = getLoggedInEmail();
+  els.memberManagementList.innerHTML = `
+    <div class="member-management-header">
+      <span>Name</span>
+      <span>Email</span>
+      <span>Role</span>
+      <span>Status</span>
+      <span>Actions</span>
+    </div>
+    ${rows.map((member) => renderManagedMemberRow(member, activeAdmins.length, currentEmail)).join("")}
+  `;
+}
+
+function renderManagedMemberRow(member, activeAdminCount, currentEmail) {
+  const isSelf = normalizeEmail(member.email || "") === currentEmail;
+  const isLastAdmin = member.is_active && member.role === "admin" && activeAdminCount <= 1;
+  const statusText = member.is_active ? "Active" : "Inactive";
+  const statusClass = member.is_active ? "status-ok" : "status-warning";
+  const disableDanger = isSelf || isLastAdmin;
+  const dangerTitle = isSelf
+    ? "You cannot deactivate or demote yourself here. Add another admin first."
+    : isLastAdmin
+      ? "At least one active admin is required."
+      : "";
+  return `
+    <div class="member-management-row ${member.is_active ? "" : "inactive"}" data-member-id="${escapeHtml(member.id)}">
+      <input class="member-row-name" type="text" value="${escapeHtml(member.name || "")}" />
+      <input class="member-row-email" type="email" value="${escapeHtml(member.email || "")}" placeholder="login email" />
+      <select class="member-row-role" ${disableDanger ? "data-protect-admin=\"true\"" : ""}>
+        <option value="member" ${member.role === "admin" ? "" : "selected"}>Member</option>
+        <option value="admin" ${member.role === "admin" ? "selected" : ""}>Admin</option>
+      </select>
+      <span class="status-pill ${statusClass}">${statusText}</span>
+      <div class="button-row compact-actions">
+        <button class="subtle-button" type="button" data-member-action="save">Save</button>
+        ${member.is_active
+          ? `<button class="danger-button" type="button" data-member-action="deactivate" ${disableDanger ? "disabled" : ""} title="${escapeHtml(dangerTitle)}">Deactivate</button>`
+          : `<button class="subtle-button" type="button" data-member-action="reactivate">Reactivate</button>`}
+      </div>
+    </div>
+  `;
+}
+
+async function refreshMemberManagement() {
+  if (!supabaseClient || !currentSession) return;
+  memberManagementStatus.loading = true;
+  memberManagementStatus.error = "";
+  renderMemberManagementPanel();
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const { data, error } = await supabaseClient
+    .from("ledger_members")
+    .select("id,ledger_id,name,email,role,is_active,created_at,updated_at")
+    .eq("ledger_id", ledgerId)
+    .order("is_active", { ascending: false })
+    .order("name", { ascending: true });
+  memberManagementStatus.loading = false;
+  if (error) {
+    memberManagementStatus.error = error.message || String(error);
+    memberManagementStatus.loaded = true;
+    renderMemberManagementPanel();
+    return;
+  }
+  memberManagementStatus.rows = data || [];
+  memberManagementStatus.loaded = true;
+  renderMemberManagementPanel();
+}
+
+function getManagedMemberPayloadFromRow(row) {
+  return {
+    id: row.dataset.memberId,
+    name: row.querySelector(".member-row-name")?.value.trim() || "",
+    email: normalizeEmail(row.querySelector(".member-row-email")?.value || "") || null,
+    role: row.querySelector(".member-row-role")?.value === "admin" ? "admin" : "member"
+  };
+}
+
+function protectAgainstAdminLockout(payload, existingMember, nextActive = existingMember?.is_active !== false) {
+  const currentEmail = getLoggedInEmail();
+  const isSelf = normalizeEmail(existingMember?.email || "") === currentEmail;
+  if (isSelf && (!nextActive || payload.role !== "admin")) {
+    alert("You cannot deactivate or demote yourself. Add another admin first, then ask that admin to change your role if needed.");
+    return false;
+  }
+
+  const rows = memberManagementStatus.rows || [];
+  const activeAdminsAfter = rows.filter((member) => {
+    if (member.id !== existingMember?.id) return member.is_active && member.role === "admin";
+    return nextActive && payload.role === "admin";
+  });
+  if (activeAdminsAfter.length === 0) {
+    alert("At least one active admin is required.");
+    return false;
+  }
+  return true;
+}
+
+async function saveManagedMember(row) {
+  const payload = getManagedMemberPayloadFromRow(row);
+  if (!payload.name) {
+    alert("Member name is required.");
+    return;
+  }
+  const existing = (memberManagementStatus.rows || []).find((member) => member.id === payload.id);
+  if (!protectAgainstAdminLockout(payload, existing, existing?.is_active !== false)) return;
+
+  const { error } = await supabaseClient
+    .from("ledger_members")
+    .update({
+      name: payload.name,
+      email: payload.email,
+      role: payload.role,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", payload.id);
+  if (error) {
+    alert(`Could not save member: ${error.message || error}`);
+    return;
+  }
+  await afterMemberManagementChange("Member saved.");
+}
+
+async function setManagedMemberActive(row, isActive) {
+  const payload = getManagedMemberPayloadFromRow(row);
+  const existing = (memberManagementStatus.rows || []).find((member) => member.id === payload.id);
+  if (!isActive && !confirm(`Deactivate ${existing?.name || "this member"}? They will no longer be able to access the app.`)) return;
+  if (!protectAgainstAdminLockout(payload, existing, isActive)) return;
+
+  const { error } = await supabaseClient
+    .from("ledger_members")
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq("id", payload.id);
+  if (error) {
+    alert(`Could not update member: ${error.message || error}`);
+    return;
+  }
+  await afterMemberManagementChange(isActive ? "Member reactivated." : "Member deactivated.");
+}
+
+async function addManagedMember() {
+  const name = els.newMemberName?.value.trim() || "";
+  const email = normalizeEmail(els.newMemberEmail?.value || "");
+  const role = els.newMemberRole?.value === "admin" ? "admin" : "member";
+  if (!name) {
+    alert("Member name is required.");
+    return;
+  }
+  if (!email) {
+    alert("Login email is required before inviting a member.");
+    return;
+  }
+
+  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const { error } = await supabaseClient
+    .from("ledger_members")
+    .upsert({
+      ledger_id: ledgerId,
+      name,
+      email,
+      role,
+      is_active: true,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "ledger_id,name" });
+  if (error) {
+    alert(`Could not add member: ${error.message || error}`);
+    return;
+  }
+  if (els.newMemberName) els.newMemberName.value = "";
+  if (els.newMemberEmail) els.newMemberEmail.value = "";
+  if (els.newMemberRole) els.newMemberRole.value = "member";
+  await afterMemberManagementChange("Member added.");
+}
+
+async function afterMemberManagementChange(message) {
+  if (els.memberManagementMessage) els.memberManagementMessage.textContent = message;
+  await refreshMemberManagement();
+  memberManagementStatus.error = "";
+  await loadSupabaseState();
+  await refreshDatabaseDiagnostics().catch(() => {});
+  await checkNormalizedTablesAgainstCurrentState().catch(() => {});
+  render();
+}
 
 function renderDatabaseDiagnosticsPanel(ledger) {
   if (!els.databaseDiagnosticsPanel || !els.databaseDiagnosticsList) return;

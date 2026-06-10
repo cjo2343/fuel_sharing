@@ -1841,3 +1841,83 @@ body.auth-locked #authPanel .text-button {
   border-color: rgba(185, 28, 28, 0.45);
   background: #fef2f2;
 }
+
+.member-management-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(220px, 1.6fr) minmax(140px, 0.8fr) auto;
+  gap: 0.8rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+
+.member-management-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.member-management-header,
+.member-management-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(190px, 1.4fr) minmax(110px, 0.7fr) minmax(90px, 0.6fr) minmax(190px, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.member-management-header {
+  color: var(--muted-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0 0.35rem;
+}
+
+.member-management-row {
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--card-background);
+}
+
+.member-management-row.inactive {
+  opacity: 0.72;
+}
+
+.member-management-row input,
+.member-management-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+.status-pill {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.status-ok {
+  background: rgba(45, 128, 92, 0.12);
+  color: #236747;
+}
+
+.status-warning {
+  background: rgba(196, 120, 31, 0.14);
+  color: #8a5318;
+}
+
+@media (max-width: 850px) {
+  .member-management-form,
+  .member-management-header,
+  .member-management-row {
+    grid-template-columns: 1fr;
+  }
+
+  .member-management-header {
+    display: none;
+  }
+}
