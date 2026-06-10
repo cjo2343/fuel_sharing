@@ -5181,7 +5181,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     memberProfiles,
     trips,
     fuel,
-    paymentStatuses: Object.keys(paymentStatusesFromTables).length ? paymentStatusesFromTables : jsonFallbackState.paymentStatuses,
+    paymentStatuses: paymentStatusesFromTables,
     closedPeriods: closedPeriodsFromTables.length ? closedPeriodsFromTables : jsonFallbackState.closedPeriods
   });
 }
