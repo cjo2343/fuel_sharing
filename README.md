@@ -396,3 +396,15 @@ npm run test:e2e
 
 The first smoke test disables Supabase with a local test config, creates a trip, creates a fuel log, refreshes, and verifies both entries remain visible.
 
+
+
+### GitHub Actions CI
+
+The repository includes `.github/workflows/ci.yml`, which runs the same validation and Playwright smoke tests on pushes and pull requests to `main`:
+
+```bash
+npm run validate
+npm run test:e2e
+```
+
+If CI fails, open the failed GitHub Actions run and inspect the Playwright trace/report artifact details before deploying the change.

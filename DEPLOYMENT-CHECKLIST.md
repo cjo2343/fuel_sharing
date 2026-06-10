@@ -1,3 +1,15 @@
+
+## Continuous integration
+
+Before pushing, run locally:
+
+```bash
+npm run validate
+npm run test:e2e
+```
+
+After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-deploy only after the CI run is green.
+
 # Deployment checklist
 
 Use this checklist when applying database or app changes to an existing Fuel Sharing deployment.

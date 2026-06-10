@@ -166,3 +166,15 @@ npm run test:e2e
 ```
 
 Keep the existing validation command as the fast pre-deploy check, and use `npm run test:e2e` before larger refactors or write-path changes.
+
+
+### GitHub Actions CI
+
+CI is configured in `.github/workflows/ci.yml` to run on pushes and pull requests to `main`. It installs Node/Python, installs Chromium for Playwright, then runs:
+
+```bash
+npm run validate
+npm run test:e2e
+```
+
+Keep local validation passing before pushing so GitHub and Render do not receive broken refactors.
