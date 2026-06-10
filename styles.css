@@ -2093,3 +2093,28 @@ body.auth-locked #authPanel .text-button {
     padding: 0 15px;
   }
 }
+
+.member-period-details {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(217, 223, 219, 0.9);
+  border-radius: var(--radius-sm);
+  background: #fbfcfb;
+  overflow: hidden;
+}
+
+.member-period-details > summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  color: var(--green-dark);
+  font-weight: 850;
+  list-style-position: inside;
+}
+
+.member-period-details[open] > summary {
+  border-bottom: 1px solid rgba(217, 223, 219, 0.8);
+  background: #f3f8f5;
+}
+
+.member-period-details-grid {
+  margin: 12px;
+}

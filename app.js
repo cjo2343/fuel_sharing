@@ -1732,7 +1732,9 @@ function getVisibleSettlements(ledger) {
 }
 
 function renderSettlements(ledger) {
-  els.closePeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
+  const isAdminView = canManageSettings();
+  els.closePeriod.classList.toggle("hidden", !isAdminView);
+  els.closePeriod.disabled = !isAdminView || (state.trips.length === 0 && state.fuel.length === 0);
 
   renderSettlementWarning(ledger);
   renderPeriodBreakdown(ledger);
@@ -1930,7 +1932,7 @@ function renderPeriodBreakdown(ledger) {
     })
     .join("") || `<li><span>Fuel payments</span><b>None yet</b></li>`;
 
-  els.periodBreakdown.innerHTML = `
+  const periodSummaryCard = `
     <div class="period-breakdown-card wide-breakdown settlement-period-overview period-summary-card">
       <span>Current settlement period</span>
       <div class="period-counter-grid compact-counters">
@@ -1941,8 +1943,11 @@ function renderPeriodBreakdown(ledger) {
         <div><strong>${formatMoney(activityStats.totalFuelPaid)}</strong><small>Fuel paid</small></div>
         <div><strong>${ledger.totalTripKm > 0 && ledger.totalPaid > 0 ? `${formatMoney(ledger.totalPaid / ledger.totalTripKm)}/km` : "—"}</strong><small>Cost per trip km</small></div>
       </div>
-      <small>This is the active open period only. History can contain many entries after stress tests, but these totals are what the current settlement uses.</small>
+      <small>This is the active open period only. These totals are what the current settlement uses.</small>
     </div>
+  `;
+
+  const detailedCards = `
     ${renderFuelEstimateCard(ledger)}
     <div class="period-breakdown-card wide-breakdown fuel-consumption-card">
       <span>Fuel consumption in this period</span>
@@ -1956,9 +1961,27 @@ function renderPeriodBreakdown(ledger) {
     </div>
     <div class="period-breakdown-card wide-breakdown full-breakdown">
       <span>Activity by person</span>
-      <small>Per-person totals for this open settlement period. This replaces the old separate “People included” list.</small>
+      <small>Per-person totals for this open settlement period.</small>
       ${renderPeriodActivityTable(activityStats)}
     </div>
+  `;
+
+  if (!canManageSettings()) {
+    els.periodBreakdown.innerHTML = `
+      ${periodSummaryCard}
+      <details class="member-period-details wide-breakdown">
+        <summary>Show period details</summary>
+        <div class="period-breakdown member-period-details-grid">
+          ${detailedCards}
+        </div>
+      </details>
+    `;
+    return;
+  }
+
+  els.periodBreakdown.innerHTML = `
+    ${periodSummaryCard}
+    ${detailedCards}
   `;
 }
 
