@@ -73,6 +73,12 @@ let normalizedTableStatus = {
   message: "Normalized tables have not been checked yet.",
   details: []
 };
+let databaseDiagnosticsStatus = {
+  checked: false,
+  loading: false,
+  error: "",
+  rows: []
+};
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 
@@ -147,6 +153,9 @@ const els = {
   systemHealthPanel: document.querySelector(".system-health-panel"),
   systemHealthSummary: document.querySelector("#systemHealthSummary"),
   systemHealthList: document.querySelector("#systemHealthList"),
+  databaseDiagnosticsPanel: document.querySelector(".database-diagnostics-panel"),
+  databaseDiagnosticsList: document.querySelector("#databaseDiagnosticsList"),
+  refreshDatabaseDiagnostics: document.querySelector("#refreshDatabaseDiagnostics"),
   exportLedger: document.querySelector("#exportLedger"),
   importLedger: document.querySelector("#importLedger"),
   importLedgerFile: document.querySelector("#importLedgerFile"),
@@ -635,6 +644,11 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
   await runGeneratedRapidSaveTest();
 });
 
+els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await refreshDatabaseDiagnostics();
+});
+
 
 function getTestActorName() {
   return currentUser || getMemberNames()[0] || "Christian";
@@ -912,12 +926,14 @@ function render() {
   renderClosedPeriods();
   renderTripEstimate();
   renderSystemHealth(ledger);
+  renderDatabaseDiagnosticsPanel(ledger);
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
   els.resetData.classList.toggle("hidden", !canManageSettings());
   if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
   if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
   updateEditUi();
 }
 
@@ -2546,6 +2562,173 @@ function renderSystemHealth(ledger) {
       `
     )
     .join("");
+}
+
+
+function renderDatabaseDiagnosticsPanel(ledger) {
+  if (!els.databaseDiagnosticsPanel || !els.databaseDiagnosticsList) return;
+
+  if (!supabaseClient) {
+    els.databaseDiagnosticsList.innerHTML = `<article class="diagnostic-card warning"><strong>Supabase</strong><p>Supabase is not configured in this build.</p></article>`;
+    return;
+  }
+
+  if (!databaseDiagnosticsStatus.checked && !databaseDiagnosticsStatus.loading) {
+    els.databaseDiagnosticsList.innerHTML = `<article class="diagnostic-card warning"><strong>Not checked yet</strong><p>Click Refresh diagnostics to read the live database tables.</p></article>`;
+    return;
+  }
+
+  if (databaseDiagnosticsStatus.loading) {
+    els.databaseDiagnosticsList.innerHTML = `<article class="diagnostic-card warning"><strong>Loading</strong><p>Reading normalized table counts from Supabase...</p></article>`;
+    return;
+  }
+
+  if (databaseDiagnosticsStatus.error) {
+    els.databaseDiagnosticsList.innerHTML = `<article class="diagnostic-card issue"><strong>Diagnostics failed</strong><p>${escapeHtml(databaseDiagnosticsStatus.error)}</p></article>`;
+    return;
+  }
+
+  els.databaseDiagnosticsList.innerHTML = databaseDiagnosticsStatus.rows
+    .map((row) => `
+      <article class="diagnostic-card ${row.level || "ok"}">
+        <strong>${escapeHtml(row.title)}</strong>
+        <p>${escapeHtml(row.message)}</p>
+      </article>
+    `)
+    .join("");
+}
+
+async function refreshDatabaseDiagnostics() {
+  if (!supabaseClient || !currentSession) {
+    databaseDiagnosticsStatus = {
+      checked: true,
+      loading: false,
+      error: "Sign in before running database diagnostics.",
+      rows: []
+    };
+    render();
+    return;
+  }
+
+  databaseDiagnosticsStatus = { checked: true, loading: true, error: "", rows: [] };
+  render();
+
+  try {
+    if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
+    const ledgerId = supabaseConfig.ledgerId || "main-car";
+    const [legacyResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
+      supabaseClient.from("car_share_ledgers").select("state,updated_at").eq("id", ledgerId).maybeSingle(),
+      supabaseClient.from("ledger_members").select("id,name,email,role,is_active,updated_at").eq("ledger_id", ledgerId),
+      supabaseClient.from("settlement_periods").select("id,status,label,opened_at,closed_at,created_at,updated_at").eq("ledger_id", ledgerId),
+      supabaseClient.from("trips").select("id,period_id,deleted_at,created_at,updated_at").eq("ledger_id", ledgerId),
+      supabaseClient.from("fuel_payments").select("id,period_id,deleted_at,created_at,updated_at").eq("ledger_id", ledgerId),
+      supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,updated_at").eq("ledger_id", ledgerId)
+    ]);
+
+    const firstError = [legacyResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult].find((result) => result.error)?.error;
+    if (firstError) throw firstError;
+
+    const legacyState = normalizeState(legacyResult.data?.state || {});
+    const members = membersResult.data || [];
+    const activeMembers = members.filter((member) => member.is_active !== false);
+    const admins = activeMembers.filter((member) => member.role === "admin");
+    const missingEmail = activeMembers.filter((member) => !member.email);
+    const periods = periodsResult.data || [];
+    const openPeriods = periods.filter((period) => period.status === "open");
+    const openPeriod = openPeriods[0] || null;
+    const trips = tripsResult.data || [];
+    const fuel = fuelResult.data || [];
+    const openTrips = trips.filter((trip) => !trip.deleted_at && (!openPeriod || !trip.period_id || trip.period_id === openPeriod.id));
+    const openFuel = fuel.filter((item) => !item.deleted_at && (!openPeriod || !item.period_id || item.period_id === openPeriod.id));
+    const softDeletedTrips = trips.filter((trip) => trip.deleted_at).length;
+    const softDeletedFuel = fuel.filter((item) => item.deleted_at).length;
+    const requests = requestsResult.data || [];
+    const activeRequests = requests.filter((request) => normalizePaymentStatus(request.status) !== "cancelled" && (!openPeriod || request.period_id === openPeriod.id));
+    const currentSettlementPairs = new Set(calculateLedger().settlements.map((settlement) => settlementKey(settlement)));
+    const currentRequests = activeRequests.filter((request) => {
+      const fromName = activeMembers.find((member) => member.id === request.from_member_id)?.name;
+      const toName = activeMembers.find((member) => member.id === request.to_member_id)?.name;
+      return fromName && toName && currentSettlementPairs.has(settlementKey({ from: fromName, to: toName, currency: state.currency || "DKK" }));
+    });
+    const requestedCurrentRows = currentRequests.filter((request) => normalizePaymentStatus(request.status) === "requested").length;
+    const visibleRequested = calculateLedger().settlements.filter(
+      (settlement) => normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]) === "requested"
+    ).length;
+    const staleRequestRows = activeRequests.length - currentRequests.length;
+    const lastTableWrite = [
+      ...members.map((row) => row.updated_at),
+      ...periods.map((row) => row.updated_at),
+      ...trips.map((row) => row.updated_at),
+      ...fuel.map((row) => row.updated_at),
+      ...requests.map((row) => row.updated_at)
+    ].filter(Boolean).sort().pop() || "";
+
+    const rows = [
+      {
+        level: normalizedReadModeActive ? "ok" : "warning",
+        title: "Read mode",
+        message: normalizedReadModeActive
+          ? "The app is reading normalized tables first. JSON is fallback/backup."
+          : "The app is not currently in normalized read-first mode."
+      },
+      {
+        level: openPeriods.length === 1 ? "ok" : "warning",
+        title: "Open period",
+        message: openPeriod
+          ? `${openPeriods.length} open period. Active ID ${shortId(openPeriod.id)} · ${openPeriod.label || "Current period"}.`
+          : `${openPeriods.length} open periods found. The app needs exactly one.`
+      },
+      {
+        level: activeMembers.length === state.members.length && admins.length && !missingEmail.length ? "ok" : "warning",
+        title: "Members",
+        message: `${activeMembers.length} active table members; ${state.members.length} visible in app; ${admins.length} admin; ${missingEmail.length} missing email.`
+      },
+      {
+        level: openTrips.length === state.trips.length ? "ok" : "warning",
+        title: "Trips",
+        message: `${openTrips.length} open-period table trips; ${state.trips.length} visible in app; ${softDeletedTrips} soft-deleted rows kept for audit/history.`
+      },
+      {
+        level: openFuel.length === state.fuel.length ? "ok" : "warning",
+        title: "Fuel logs",
+        message: `${openFuel.length} open-period table fuel logs; ${state.fuel.length} visible in app; ${softDeletedFuel} soft-deleted rows kept for audit/history.`
+      },
+      {
+        level: requestedCurrentRows === visibleRequested && staleRequestRows === 0 ? "ok" : "warning",
+        title: "Settlement requests",
+        message: `${requestedCurrentRows} requested current table rows; ${visibleRequested} visible requested payments; ${staleRequestRows} stale active request rows.`
+      },
+      {
+        level: legacyState.trips.length === state.trips.length && legacyState.fuel.length === state.fuel.length ? "ok" : "warning",
+        title: "JSON backup mirror",
+        message: `JSON mirror has ${legacyState.members.length} members, ${legacyState.trips.length} trips, ${legacyState.fuel.length} fuel logs. Current app has ${state.members.length}, ${state.trips.length}, ${state.fuel.length}.`
+      },
+      {
+        level: lastTableWrite ? "ok" : "warning",
+        title: "Last table write",
+        message: lastTableWrite
+          ? `Latest normalized row update: ${new Date(lastTableWrite).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}. Last JSON mirror save: ${legacyResult.data?.updated_at ? new Date(legacyResult.data.updated_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "unknown"}.`
+          : "No updated_at values found in normalized tables."
+      }
+    ];
+
+    databaseDiagnosticsStatus = { checked: true, loading: false, error: "", rows };
+  } catch (error) {
+    console.warn("Database diagnostics failed", error);
+    databaseDiagnosticsStatus = {
+      checked: true,
+      loading: false,
+      error: error.message || String(error),
+      rows: []
+    };
+  }
+
+  render();
+}
+
+function shortId(value) {
+  const text = String(value || "");
+  return text.length > 8 ? `${text.slice(0, 8)}...` : text || "none";
 }
 
 function buildSystemHealthChecks(ledger) {

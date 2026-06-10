@@ -1801,3 +1801,43 @@ body.auth-locked #authPanel .text-button {
     display: none;
   }
 }
+
+
+.database-diagnostics-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.diagnostic-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem;
+  background: var(--panel-muted);
+}
+
+.diagnostic-card strong {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--ink);
+}
+
+.diagnostic-card p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.diagnostic-card.ok {
+  border-color: rgba(22, 101, 52, 0.18);
+}
+
+.diagnostic-card.warning {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: #fff7ed;
+}
+
+.diagnostic-card.issue {
+  border-color: rgba(185, 28, 28, 0.45);
+  background: #fef2f2;
+}

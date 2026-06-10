@@ -364,6 +364,18 @@
           <div id="systemHealthList" class="system-health-list"></div>
         </section>
 
+        <section class="panel wide-panel database-diagnostics-panel hidden" aria-labelledby="databaseDiagnosticsHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Admin</p>
+              <h2 id="databaseDiagnosticsHeading">Database diagnostics</h2>
+            </div>
+            <button id="refreshDatabaseDiagnostics" class="subtle-button" type="button">Refresh diagnostics</button>
+          </div>
+          <p class="section-note">Detailed table counts and migration status. Use this before removing the JSON fallback.</p>
+          <div id="databaseDiagnosticsList" class="database-diagnostics-list"></div>
+        </section>
+
         <section class="panel wide-panel" aria-labelledby="periodsHeading">
           <div class="panel-header">
             <div>

@@ -325,3 +325,17 @@ This build addresses the immediate low-risk findings from the Codex review:
 - Date defaults now use the browser's local date instead of UTC `toISOString().slice(0, 10)`, so Denmark users do not get yesterday/tomorrow edge cases around midnight.
 
 The SQL file `phase2e-security-hardening-template.sql` is included as a starting point for production RLS hardening. Do not run it until every real member has the correct login email in `ledger_members.email`.
+
+## Phase 2H: Database diagnostics
+
+This build adds an admin-only **Database diagnostics** panel below System health. It reads the live Supabase tables and shows:
+
+- normalized read mode status
+- active/open settlement period id
+- active members and admin/email readiness
+- open-period trip and fuel table counts
+- settlement request row matching
+- JSON backup mirror counts
+- latest normalized table write vs JSON mirror save time
+
+Use this panel before reducing or removing the JSON fallback mirror.

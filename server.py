@@ -20,12 +20,23 @@ DATA_FILE = ROOT / "ledger-data.json"
 
 DEFAULT_STATE = {
     "currency": "DKK",
-    "members": ["Christian", "Alex", "Sam"],
+    "members": ["Christian", "Emilie", "Jonas", "Marie"],
+    "memberProfiles": {
+        "Christian": {"email": "", "role": "admin"},
+        "Emilie": {"email": "", "role": "member"},
+        "Jonas": {"email": "", "role": "member"},
+        "Marie": {"email": "", "role": "member"},
+    },
     "trips": [],
     "fuel": [],
     "paymentStatuses": {},
     "closedPeriods": [],
     "lastOdometer": "",
+    "fuelType": "diesel",
+    "fuelConsumption": 5.3,
+    "fuelFallbackPrice": 14.5,
+    "fuelWarningThreshold": 70,
+    "carSettingsVersion": 2,
 }
 
 
