@@ -138,6 +138,8 @@ const els = {
   addTestTrip: document.querySelector("#addTestTrip"),
   addTestFuel: document.querySelector("#addTestFuel"),
   removeTestData: document.querySelector("#removeTestData"),
+  runStressTest: document.querySelector("#runStressTest"),
+  runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -606,6 +608,16 @@ els.removeTestData?.addEventListener("click", () => {
   removeGeneratedTestData();
 });
 
+els.runStressTest?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runGeneratedStressTest();
+});
+
+els.runRapidSaveTest?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runGeneratedRapidSaveTest();
+});
+
 
 function getTestActorName() {
   return currentUser || getMemberNames()[0] || "Christian";
@@ -702,6 +714,106 @@ function isGeneratedTestEntry(entry) {
   return String(entry.id || "").startsWith(generatedTestPrefix) ||
     String(entry.note || "").includes(generatedTestMarker) ||
     String(entry.station || "").includes(generatedTestMarker);
+}
+
+function makeGeneratedTestTrip(index = 0) {
+  const members = getMemberNames();
+  const actor = members[index % Math.max(1, members.length)] || getTestActorName();
+  const others = members.filter((name) => name !== actor);
+  const participants = Array.from(new Set([
+    actor,
+    ...others.slice(index % Math.max(1, others.length), (index % Math.max(1, others.length)) + 2),
+    ...others.slice(0, 2)
+  ])).slice(0, Math.min(3, Math.max(1, members.length)));
+  const start = Number(getLatestOdometer() || 100000) + 1 + (index * 18);
+  const distance = 8 + (index % 7) * 11;
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  return {
+    id: `${generatedTestPrefix}trip-${crypto.randomUUID()}`,
+    driver: actor,
+    participants,
+    date: new Date(Date.now() - (index % 5) * 86400000).toISOString().slice(0, 10),
+    startKm: round(start),
+    endKm: round(start + distance),
+    note: `${generatedTestMarker} stress trip ${index + 1} generated ${stamp}`
+  };
+}
+
+function makeGeneratedTestFuel(index = 0) {
+  const members = getMemberNames();
+  const actor = members[index % Math.max(1, members.length)] || getTestActorName();
+  const liters = 5 + (index % 9) * 2.25;
+  const price = 12.75 + (index % 5) * 0.45;
+  const amount = roundMoney(liters * price);
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  return {
+    id: `${generatedTestPrefix}fuel-${crypto.randomUUID()}`,
+    payer: actor,
+    date: new Date(Date.now() - (index % 5) * 86400000).toISOString().slice(0, 10),
+    amount,
+    liters: round(liters),
+    pricePerLiter: roundMoney(amount / liters),
+    odometer: round(Number(getLatestOdometer() || 100000) + index * 25),
+    station: `${generatedTestMarker} stress station ${index + 1} ${stamp}`,
+    location: null,
+    stationInfo: null,
+    fullTank: index % 3 === 0
+  };
+}
+
+async function flushStressSave(label) {
+  localStorage.setItem(storageKey, JSON.stringify(state));
+  if (supabaseClient && currentSession) {
+    await saveSupabaseState();
+    await checkNormalizedTablesAgainstCurrentState();
+  } else {
+    saveState();
+  }
+  render();
+  setDataToolsMessage(label);
+}
+
+async function runGeneratedStressTest() {
+  if (!confirm("Run a generated stress test? This will add 25 test trips and 15 test fuel logs, save them, verify the normalized tables, then leave them visible until you press Remove test data.")) return;
+  const members = getMemberNames();
+  if (!members.length) {
+    alert("Add at least one member before running the stress test.");
+    return;
+  }
+
+  setDataToolsMessage("Running stress test: generating entries...");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const tripCount = 25;
+  const fuelCount = 15;
+  for (let i = 0; i < tripCount; i += 1) state.trips.push(makeGeneratedTestTrip(i));
+  for (let i = 0; i < fuelCount; i += 1) state.fuel.push(makeGeneratedTestFuel(i));
+  state.lastOdometer = getLatestOdometer();
+
+  await flushStressSave(`Stress test added ${tripCount} trips and ${fuelCount} fuel logs. Normalized table check: ${normalizedTableStatus.ok ? "green" : "needs review"}.`);
+}
+
+async function runGeneratedRapidSaveTest() {
+  if (!confirm("Run a rapid save test? This will perform 8 small generated changes with separate saves. Generated data can be removed afterwards with Remove test data.")) return;
+  const members = getMemberNames();
+  if (!members.length) {
+    alert("Add at least one member before running the rapid save test.");
+    return;
+  }
+
+  for (let i = 0; i < 8; i += 1) {
+    setDataToolsMessage(`Rapid save test ${i + 1}/8...`);
+    if (i % 2 === 0) state.trips.push(makeGeneratedTestTrip(100 + i));
+    else state.fuel.push(makeGeneratedTestFuel(100 + i));
+    state.lastOdometer = getLatestOdometer();
+    await flushStressSave(`Rapid save test ${i + 1}/8 saved.`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  setDataToolsMessage(`Rapid save test complete. Normalized table check: ${normalizedTableStatus.ok ? "green" : "needs review"}.`);
+  render();
 }
 
 
