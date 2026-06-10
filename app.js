@@ -21,6 +21,7 @@ const dataStore = window.FuelDataStore;
 const notifications = window.FuelNotifications;
 const auditLog = window.FuelAuditLog;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
+let auditLogDirty = false;
 
 
 function getMobilePayReturnPrompt(key) {
@@ -332,8 +333,10 @@ els.tripForm.addEventListener("submit", async (event) => {
   if (!normalizedTripSaved) return;
 
   const wasEditingTrip = Boolean(editingTripId);
+  let previousTrip = null;
   if (editingTripId) {
     const index = state.trips.findIndex((trip) => trip.id === editingTripId);
+    previousTrip = index >= 0 ? { ...state.trips[index], participants: [...(state.trips[index].participants || [])] } : null;
     if (index >= 0) state.trips[index] = tripPayload;
     else state.trips.push(tripPayload);
     editingTripId = null;
@@ -346,7 +349,7 @@ els.tripForm.addEventListener("submit", async (event) => {
     entityType: "trip",
     entityId: tripPayload.id,
     summary: `${tripPayload.driver} · ${formatNumber(tripPayload.endKm - tripPayload.startKm)} km`,
-    detail: tripPayload.date || ""
+    detail: wasEditingTrip ? describeTripAuditChanges(previousTrip, tripPayload) : (tripPayload.date || "")
   });
 
   saveState();
@@ -431,8 +434,10 @@ els.fuelForm.addEventListener("submit", async (event) => {
   if (!normalizedFuelSaved) return;
 
   const wasEditingFuel = Boolean(editingFuelId);
+  let previousFuel = null;
   if (editingFuelId) {
     const index = state.fuel.findIndex((fuel) => fuel.id === editingFuelId);
+    previousFuel = index >= 0 ? { ...state.fuel[index] } : null;
     if (index >= 0) state.fuel[index] = fuelPayload;
     else state.fuel.push(fuelPayload);
     editingFuelId = null;
@@ -445,7 +450,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
     entityType: "fuel",
     entityId: fuelPayload.id,
     summary: `${fuelPayload.payer} · ${formatMoney(fuelPayload.amount)}`,
-    detail: fuelPayload.date || ""
+    detail: wasEditingFuel ? describeFuelAuditChanges(previousFuel, fuelPayload) : (fuelPayload.date || "")
   });
 
   saveState();
@@ -1150,7 +1155,39 @@ document.addEventListener("click", async (event) => {
 });
 
 
+
+function describeTripAuditChanges(previousTrip, nextTrip) {
+  if (!previousTrip || !nextTrip) return "";
+  const changes = [];
+  if (previousTrip.driver !== nextTrip.driver) changes.push(`Driver: ${previousTrip.driver || "—"} → ${nextTrip.driver || "—"}`);
+  if (previousTrip.date !== nextTrip.date) changes.push(`Date: ${previousTrip.date || "—"} → ${nextTrip.date || "—"}`);
+  if (Number(previousTrip.startKm || 0) !== Number(nextTrip.startKm || 0)) changes.push(`Start km: ${formatNumber(previousTrip.startKm || 0)} → ${formatNumber(nextTrip.startKm || 0)}`);
+  if (Number(previousTrip.endKm || 0) !== Number(nextTrip.endKm || 0)) changes.push(`End km: ${formatNumber(previousTrip.endKm || 0)} → ${formatNumber(nextTrip.endKm || 0)}`);
+  const previousDistance = Number(previousTrip.endKm || 0) - Number(previousTrip.startKm || 0);
+  const nextDistance = Number(nextTrip.endKm || 0) - Number(nextTrip.startKm || 0);
+  if (previousDistance !== nextDistance) changes.push(`Distance: ${formatNumber(previousDistance)} km → ${formatNumber(nextDistance)} km`);
+  const previousParticipants = (previousTrip.participants || []).join(", ");
+  const nextParticipants = (nextTrip.participants || []).join(", ");
+  if (previousParticipants !== nextParticipants) changes.push(`Participants: ${previousParticipants || "—"} → ${nextParticipants || "—"}`);
+  if ((previousTrip.note || "") !== (nextTrip.note || "")) changes.push("Note changed");
+  return changes.join(" · ");
+}
+
+function describeFuelAuditChanges(previousFuel, nextFuel) {
+  if (!previousFuel || !nextFuel) return "";
+  const changes = [];
+  if (previousFuel.payer !== nextFuel.payer) changes.push(`Payer: ${previousFuel.payer || "—"} → ${nextFuel.payer || "—"}`);
+  if (previousFuel.date !== nextFuel.date) changes.push(`Date: ${previousFuel.date || "—"} → ${nextFuel.date || "—"}`);
+  if (Number(previousFuel.amount || 0) !== Number(nextFuel.amount || 0)) changes.push(`Amount: ${formatMoney(previousFuel.amount || 0)} → ${formatMoney(nextFuel.amount || 0)}`);
+  if (Number(previousFuel.liters || 0) !== Number(nextFuel.liters || 0)) changes.push(`Liters: ${previousFuel.liters || "—"} → ${nextFuel.liters || "—"}`);
+  if (Number(previousFuel.odometer || 0) !== Number(nextFuel.odometer || 0)) changes.push(`Odometer: ${previousFuel.odometer || "—"} → ${nextFuel.odometer || "—"}`);
+  if ((previousFuel.station || "") !== (nextFuel.station || "")) changes.push(`Station: ${previousFuel.station || "—"} → ${nextFuel.station || "—"}`);
+  if (Boolean(previousFuel.fullTank) !== Boolean(nextFuel.fullTank)) changes.push(`Full tank: ${previousFuel.fullTank ? "yes" : "no"} → ${nextFuel.fullTank ? "yes" : "no"}`);
+  return changes.join(" · ");
+}
+
 function addAuditEntry(options) {
+  auditLogDirty = true;
   state.auditLog = auditLog.normalizeAuditEntries([
     auditLog.createEntry({
       actor: currentUser || currentSession?.user?.email || "Unknown",
@@ -6219,7 +6256,12 @@ async function saveSupabaseState() {
     // current app state, but do not overwrite the legacy JSON blob on every
     // save. The JSON mirror is now only a periodic/manual safety snapshot.
     await syncNormalizedTablesFromJson();
-    await maybeSaveJsonMirrorBackup();
+    if (auditLogDirty) {
+      await saveJsonMirrorBackup({ force: true });
+      auditLogDirty = false;
+    } else {
+      await maybeSaveJsonMirrorBackup();
+    }
 
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";

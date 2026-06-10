@@ -187,3 +187,8 @@ The Playwright suite now includes a regression test for the settlement locking r
 ### Audit/change log
 
 Money-related actions are recorded in `state.auditLog` and rendered in the History tab. The runtime module `audit-log.js` normalizes entries and labels actions such as trip/fuel changes, payment requests, payment reopening, and settlement close events.
+
+
+### Audit log persistence and edit details
+
+Audit entries for trip/fuel/payment/settlement changes are mirrored to the ledger backup immediately when they change, so the change log survives refresh even when normalized tables are the primary data source. Edit entries include concise before/after details for important changed fields.
