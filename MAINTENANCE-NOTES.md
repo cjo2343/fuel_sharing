@@ -199,3 +199,7 @@ Audit entries for trip/fuel/payment/settlement changes are mirrored to the ledge
 ### Period-aware audit log
 
 Audit history is now period-aware. Current/open-period audit entries live in `state.auditLog`. When a settlement period is closed, the current audit entries are copied into `closedPeriod.auditLog` together with the settlement-close event, then the new open period starts with an empty audit log. Resetting/deleting the current open period clears its audit entries as well. Closed period cards include a Change log subsection for the frozen period history.
+
+### Period-aware audit browser smoke test
+
+The Playwright suite now includes a regression test for period-aware audit behavior: create trip/fuel data, confirm current audit entries, reset the current period and confirm the current log clears, then create a new period, close it, and confirm the completed period keeps its frozen Change log.

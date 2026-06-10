@@ -24,6 +24,20 @@ async function chooseFirstSelectOption(select) {
   if (options.length > 0) await select.selectOption(options[0]);
 }
 
+
+async function requestAllOpenPayments(page) {
+  // The settlement UI re-renders after each status change, so do not iterate
+  // through a stale locator index list. Keep clicking the first currently
+  // available Requested button until none remain.
+  for (let attempts = 0; attempts < 20; attempts += 1) {
+    const button = page.locator('button[data-payment-status="requested"]').first();
+    if (await button.count() === 0) return;
+    await button.evaluate((element) => element.click());
+    await page.waitForTimeout(25);
+  }
+  throw new Error("Timed out while requesting all open payments");
+}
+
 async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fuelAmount = "321.45" } = {}) {
   await chooseFirstSelectOption(page.locator("#currentUser"));
   await chooseFirstSelectOption(page.locator("#tripDriver"));
@@ -40,7 +54,8 @@ async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fu
   await page.locator("#fuelAmount").fill(fuelAmount);
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
 
-  await expect(page.locator("#fuelList")).toContainText(/321[,.]45/);
+  const expectedFuelAmount = fuelAmount.replace(".", "[,.]");
+  await expect(page.locator("#fuelList")).toContainText(new RegExp(expectedFuelAmount));
 }
 
 test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {
@@ -82,6 +97,36 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   await expect(page.locator("#auditLog")).toContainText("Payment reopened");
   await expect(page.locator("#startKm")).toBeEnabled();
   await expect(page.locator("#fuelAmount")).toBeEnabled();
+});
+
+
+test("period-aware audit log clears current history and freezes closed-period history", async ({ page }) => {
+  await openLocalApp(page);
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await createBasicTripAndFuel(page, { note: "Audit reset smoke trip", fuelAmount: "111.11" });
+  await expect(page.locator("#auditLog")).toContainText("Trip created");
+  await expect(page.locator("#auditLog")).toContainText("Fuel log created");
+
+  await page.locator("#resetPeriod").evaluate((button) => button.click());
+  await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");
+  await expect(page.locator("#tripList")).not.toContainText("Audit reset smoke trip");
+  await expect(page.locator("#fuelList")).not.toContainText(/111[,.]11/);
+
+  await createBasicTripAndFuel(page, { note: "Audit archive smoke trip", fuelAmount: "222.22" });
+  await expect(page.locator("#auditLog")).toContainText("Trip created");
+  await expect(page.locator("#auditLog")).toContainText("Fuel log created");
+
+  await requestAllOpenPayments(page);
+  await expect(page.locator("#auditLog")).toContainText("Payment requested");
+  await page.locator("#closePeriod").evaluate((button) => button.click());
+
+  await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");
+  await expect(page.locator("#periodList")).toContainText("Change log");
+  await expect(page.locator("#periodList")).toContainText("Trip created");
+  await expect(page.locator("#periodList")).toContainText("Fuel log created");
+  await expect(page.locator("#periodList")).toContainText("Payment requested");
+  await expect(page.locator("#periodList")).toContainText("Settlement closed");
 });
 
 test("critical runtime modules are loaded before app.js", async ({ page }) => {
