@@ -143,6 +143,7 @@ const els = {
   tripEstimateDistance: document.querySelector("#tripEstimateDistance"),
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
   tripEstimateResult: document.querySelector("#tripEstimateResult"),
+  fuelIntelligence: document.querySelector("#fuelIntelligence"),
   settingsForm: document.querySelector("#settingsForm"),
   settingsPanel: document.querySelector(".settings-panel"),
   settlementWarning: document.querySelector("#settlementWarning"),
@@ -1015,6 +1016,7 @@ function render() {
   renderHistory();
   renderClosedPeriods();
   renderTripEstimate();
+  renderFuelIntelligence(ledger);
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
@@ -1369,6 +1371,96 @@ function renderTripEstimate() {
     </div>
     <p>${escapeHtml(estimate.explanation)}</p>
     <small>${escapeHtml(participants.join(", "))}</small>
+  `;
+}
+
+
+function buildFuelIntelligence(ledger) {
+  const stats = ledger.historicalFuelStats || calculateHistoricalFuelStats({ currentTrips: state.trips, currentFuel: state.fuel });
+  const tripCount = state.trips.length + state.closedPeriods.reduce((sum, period) => sum + (Array.isArray(period.trips) ? period.trips.length : 0), 0);
+  const fuelLogCount = state.fuel.length + state.closedPeriods.reduce((sum, period) => sum + (Array.isArray(period.fuel) ? period.fuel.length : 0), 0);
+  const logsWithLiters = Number(stats.fuelLogsWithLiters || 0);
+  const km = Number(stats.totalTripKm || 0);
+  const confidenceScore = [km >= 500, km >= 1500, logsWithLiters >= 3, logsWithLiters >= 8, Number(stats.periodsWithTripKm || 0) >= 2].filter(Boolean).length;
+  const confidence = confidenceScore >= 4 ? "High" : confidenceScore >= 2 ? "Medium" : "Low";
+  const confidenceClass = confidence === "High" ? "ok" : confidence === "Medium" ? "warning" : "issue";
+  const estimateSource = stats.costPerKm > 0 && km >= 50
+    ? "Historical fuel cost per km"
+    : latestFuelPrice?.price
+      ? "Live diesel reference price + car setting"
+      : "Fallback fuel price + car setting";
+  const fallbackConsumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
+  const effectiveConsumption = stats.litersPer100Km > 0 ? stats.litersPer100Km : fallbackConsumption;
+  const effectivePrice = stats.pricePerLiter > 0 ? stats.pricePerLiter : Number(latestFuelPrice?.price || fallbackPrice);
+  const warnings = [];
+  if (tripCount === 0) warnings.push("Add trips to learn cost per km.");
+  if (fuelLogCount === 0) warnings.push("Add fuel receipts to learn real fuel cost.");
+  if (fuelLogCount > 0 && logsWithLiters === 0) warnings.push("Add liters on fuel receipts to learn DKK/L and L/100 km.");
+  if (km > 0 && logsWithLiters > 0 && stats.litersPer100Km > 0 && (stats.litersPer100Km < 3 || stats.litersPer100Km > 10)) {
+    warnings.push(`Historical consumption looks unusual: ${formatNumber(stats.litersPer100Km)} L/100 km.`);
+  }
+  return {
+    stats,
+    tripCount,
+    fuelLogCount,
+    logsWithLiters,
+    confidence,
+    confidenceClass,
+    estimateSource,
+    effectiveConsumption,
+    effectivePrice,
+    warnings
+  };
+}
+
+function renderFuelIntelligence(ledger) {
+  if (!els.fuelIntelligence) return;
+  const intel = buildFuelIntelligence(ledger);
+  const stats = intel.stats;
+  const hasData = intel.tripCount > 0 || intel.fuelLogCount > 0;
+
+  if (!hasData) {
+    els.fuelIntelligence.className = "fuel-intelligence empty-state";
+    els.fuelIntelligence.textContent = "Add trips and fuel receipts to build fuel intelligence.";
+    return;
+  }
+
+  els.fuelIntelligence.className = "fuel-intelligence";
+  els.fuelIntelligence.innerHTML = `
+    <div class="fuel-intelligence-grid">
+      <article>
+        <span>Confidence</span>
+        <strong><span class="status-pill status-${intel.confidenceClass === "ok" ? "ok" : "warning"}">${intel.confidence}</span></strong>
+        <small>Based on ${formatNumber(stats.totalTripKm || 0)} km and ${intel.logsWithLiters} fuel log${intel.logsWithLiters === 1 ? "" : "s"} with liters.</small>
+      </article>
+      <article>
+        <span>Planning source</span>
+        <strong>${escapeHtml(intel.estimateSource)}</strong>
+        <small>This is what the trip estimator prefers right now.</small>
+      </article>
+      <article>
+        <span>Historical cost</span>
+        <strong>${stats.costPerKm > 0 ? `${formatMoneyFor(stats.costPerKm, state.currency)}/km` : "Not enough data"}</strong>
+        <small>${stats.totalPaid > 0 ? `${formatMoneyFor(stats.totalPaid, state.currency)} fuel across ${formatNumber(stats.totalTripKm)} km.` : "Add trips and fuel receipts."}</small>
+      </article>
+      <article>
+        <span>Fuel price</span>
+        <strong>${stats.pricePerLiter > 0 ? `${formatMoneyFor(stats.pricePerLiter, state.currency)}/L` : `${formatMoneyFor(intel.effectivePrice, state.currency)}/L`}</strong>
+        <small>${stats.pricePerLiter > 0 ? "Receipt average." : latestFuelPrice?.price ? "Live reference price." : "Fallback setting."}</small>
+      </article>
+      <article>
+        <span>Consumption</span>
+        <strong>${stats.litersPer100Km > 0 ? `${formatNumber(stats.litersPer100Km)} L/100 km` : `${formatNumber(intel.effectiveConsumption)} L/100 km`}</strong>
+        <small>${stats.kmPerLiter > 0 ? `${formatNumber(stats.kmPerLiter)} km/L from receipts.` : "Using car setting until enough liters are logged."}</small>
+      </article>
+      <article>
+        <span>Data set</span>
+        <strong>${intel.tripCount} trips · ${intel.fuelLogCount} fuel logs</strong>
+        <small>${Number(stats.periodsWithTripKm || 0)} period${Number(stats.periodsWithTripKm || 0) === 1 ? "" : "s"} with distance.</small>
+      </article>
+    </div>
+    ${intel.warnings.length ? `<div class="fuel-intelligence-notes"><strong>Data notes</strong><ul>${intel.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul></div>` : ""}
   `;
 }
 

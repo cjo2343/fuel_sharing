@@ -369,3 +369,8 @@ Non-admin users now only see final payment lines that involve their own member p
 ### Phase 2N: Member-facing action card
 
 This version polishes the non-admin experience by adding a concise “What do I need to do?” card in the settlement area. Regular members see only the action relevant to their visible payments, while admins see a period-wide closing summary.
+
+
+### Fuel intelligence
+
+The app includes a lightweight fuel-intelligence dashboard. It uses normalized trip and fuel tables to show historical DKK/km, DKK/L, L/100 km, confidence, and the estimate source currently used by the trip estimator. This is intentionally statistics-first rather than a black-box ML model; it gives useful predictions and data-quality notes while the dataset is still small.

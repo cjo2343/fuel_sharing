@@ -1958,3 +1958,65 @@ body.auth-locked #authPanel .text-button {
     display: none;
   }
 }
+
+
+.fuel-intelligence-panel {
+  border-color: rgba(42, 96, 191, 0.16);
+}
+
+.fuel-intelligence {
+  display: grid;
+  gap: 1rem;
+}
+
+.fuel-intelligence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.8rem;
+}
+
+.fuel-intelligence-grid article {
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--card-background);
+  padding: 0.9rem;
+}
+
+.fuel-intelligence-grid span {
+  display: block;
+  color: var(--muted-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fuel-intelligence-grid strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.05rem;
+}
+
+.fuel-intelligence-grid small {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--muted-text);
+  line-height: 1.35;
+}
+
+.fuel-intelligence-notes {
+  border: 1px solid rgba(196, 120, 31, 0.24);
+  border-radius: 16px;
+  background: #fff7ed;
+  padding: 0.9rem;
+}
+
+.fuel-intelligence-notes ul {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.fuel-intelligence-notes li {
+  margin: 0.2rem 0;
+  color: var(--muted-text);
+}
