@@ -74,6 +74,45 @@ function stripCommentsAndStringText(input) {
 }
 
 const code = stripCommentsAndStringText(source);
+
+function extractFunctionBody(input, functionName) {
+  const marker = new RegExp(`\\b(?:async\\s+)?function\\s+${functionName}\\s*\\([^)]*\\)\\s*\\{`);
+  const match = marker.exec(input);
+  if (!match) return null;
+  let i = match.index + match[0].length;
+  let depth = 1;
+  let state = 'code';
+  let quote = '';
+  while (i < input.length) {
+    const c = input[i];
+    const n = input[i + 1];
+    if (state === 'code') {
+      if (c === '/' && n === '/') { state = 'line'; i += 2; continue; }
+      if (c === '/' && n === '*') { state = 'block'; i += 2; continue; }
+      if (c === '"' || c === "'") { state = 'string'; quote = c; i++; continue; }
+      if (c === '`') { state = 'template'; i++; continue; }
+      if (c === '{') depth++;
+      if (c === '}') {
+        depth--;
+        if (depth === 0) return input.slice(match.index, i + 1);
+      }
+      i++;
+      continue;
+    }
+    if (state === 'line') { if (c === '\n') state = 'code'; i++; continue; }
+    if (state === 'block') { if (c === '*' && n === '/') { state = 'code'; i += 2; } else i++; continue; }
+    if (state === 'string') { if (c === '\\') { i += 2; continue; } if (c === quote) state = 'code'; i++; continue; }
+    if (state === 'template') { if (c === '\\') { i += 2; continue; } if (c === '`') state = 'code'; i++; continue; }
+  }
+  return null;
+}
+
+const normalizedSyncBody = extractFunctionBody(source, 'syncNormalizedTablesFromJson');
+if (normalizedSyncBody && /\bcontext\s*\./.test(stripCommentsAndStringText(normalizedSyncBody))) {
+  console.error('Regression guard failed: syncNormalizedTablesFromJson() contains a bare context.* reference. Resolve the write context inside the function or pass it explicitly.');
+  process.exit(1);
+}
+
 const declared = new Set();
 
 function addSourceMatches(regex, group = 1) {

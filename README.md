@@ -340,7 +340,7 @@ python3 -m json.tool ledger-data.json
 node tools/check-app-references.mjs
 ```
 
-`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, and `data-store.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version.
+`tools/check-app-references.mjs` is a lightweight guard for the browser JavaScript files. It scans `app.js` and the extracted helper files (`utils.js`, `supabase-helpers.js`, and `data-store.js`) for likely calls to helper functions that are not defined. It is not a full type checker, but it should catch common patch mistakes such as calling `getActivePeriodId()` or `normalizeParticipants()` when those helpers do not exist in the current app version. It also includes a targeted regression guard for the normalized dual-write path so `syncNormalizedTablesFromJson()` cannot accidentally reference an undefined `context.*` variable again.
 
 If the checker reports an intentional browser/CDN global, add that name to the allowlist in the script. If it reports an app helper, either define the helper or change the code to use an existing helper.
 

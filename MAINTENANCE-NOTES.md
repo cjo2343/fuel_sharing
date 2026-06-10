@@ -38,6 +38,8 @@ After each step, run:
 ```sh
 node --check utils.js
 node --check app.js
+node --check service-worker.js
+node --check tools/check-app-references.mjs
 python3 -m py_compile server.py
 python3 -m json.tool ledger-data.json
 node tools/check-app-references.mjs
@@ -86,3 +88,16 @@ The app registration now calls `registration.update()` and reloads once when a n
 Fixed a regression where `syncNormalizedTablesFromJson()` referenced an undefined `context.currentMemberId` during full JSON-to-table reconciliation. The function now resolves the current ledger member id locally before upserting normalized trip and fuel rows.
 
 The normalized table loader also falls back to the JSON mirror if both normalized trips and fuel rows are empty while the JSON mirror still contains activity. This prevents a partial/failed dual-write from making the current settlement period appear empty after refresh.
+
+
+## Stability guard added after context hotfix
+
+`tools/check-app-references.mjs` now includes a targeted regression guard for `syncNormalizedTablesFromJson()`. If that function contains a bare `context.*` reference again, validation fails before deployment.
+
+Manual regression test for every refactor touching persistence/sync:
+
+1. Create a trip.
+2. Create a fuel log.
+3. Confirm the console does not show `Normalized table dual-write failed`.
+4. Refresh the app.
+5. Confirm the current settlement period still contains the new trip and fuel log.

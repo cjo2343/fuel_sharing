@@ -60,6 +60,8 @@ After deployment, test with an admin account and a normal member account:
 9. Confirm the member can create their own trip and fuel payment.
 10. Confirm the member cannot edit another member's trip/fuel payment.
 11. Refresh the page and confirm the data still loads from Supabase.
+12. After creating a trip/fuel log, check the browser console for `Normalized table dual-write failed`. Treat that warning as a failed deployment test.
+13. On a phone/home-screen install, fully close and reopen the app, then confirm the new trip/fuel log is still visible after refresh.
 
 ## Rollback
 
