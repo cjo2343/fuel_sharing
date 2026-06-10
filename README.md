@@ -1,4 +1,4 @@
-# Fuel Sharing
+# Fuel Sharingd
 
 A lightweight car-sharing fuel ledger for friends.
 
