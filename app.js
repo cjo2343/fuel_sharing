@@ -1610,14 +1610,7 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
       .eq("id", context.openPeriodId);
     if (closeResult.error) throw closeResult.error;
 
-    const newPeriodResult = await supabaseClient
-      .from("settlement_periods")
-      .insert({
-        ledger_id: context.ledgerId,
-        status: "open",
-        label: "Current period"
-      });
-    if (newPeriodResult.error) throw newPeriodResult.error;
+    await ensureOpenSettlementPeriod(context.ledgerId);
 
     normalizedTableStatus = {
       checked: true,
@@ -3142,6 +3135,43 @@ function nullableNumber(value) {
 }
 
 
+
+async function ensureOpenSettlementPeriod(ledgerId) {
+  const existing = await supabaseClient
+    .from("settlement_periods")
+    .select("id")
+    .eq("ledger_id", ledgerId)
+    .eq("status", "open")
+    .limit(1)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data?.id) return existing.data.id;
+
+  const created = await supabaseClient
+    .from("settlement_periods")
+    .insert({ ledger_id: ledgerId, status: "open", label: "Current period" })
+    .select("id")
+    .single();
+
+  if (!created.error && created.data?.id) return created.data.id;
+
+  // Another tab/device may have created the open period between our select and insert.
+  // The database correctly rejects a second open period, so re-select and continue.
+  if (created.error?.code === "23505") {
+    const retry = await supabaseClient
+      .from("settlement_periods")
+      .select("id")
+      .eq("ledger_id", ledgerId)
+      .eq("status", "open")
+      .limit(1)
+      .maybeSingle();
+    if (retry.error) throw retry.error;
+    if (retry.data?.id) return retry.data.id;
+  }
+
+  throw created.error || new Error("Could not create an open settlement period");
+}
+
 async function getNormalizedWriteContext() {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
@@ -3192,26 +3222,7 @@ async function getNormalizedWriteContext() {
 
   const memberIdsByName = Object.fromEntries((membersResult.data || []).map((member) => [member.name, member.id]));
 
-  let openPeriodId = null;
-  const openPeriodResult = await supabaseClient
-    .from("settlement_periods")
-    .select("id")
-    .eq("ledger_id", ledgerId)
-    .eq("status", "open")
-    .limit(1)
-    .maybeSingle();
-  if (openPeriodResult.error) throw openPeriodResult.error;
-  openPeriodId = openPeriodResult.data?.id || null;
-
-  if (!openPeriodId) {
-    const insertPeriod = await supabaseClient
-      .from("settlement_periods")
-      .insert({ ledger_id: ledgerId, status: "open", label: "Current period" })
-      .select("id")
-      .single();
-    if (insertPeriod.error) throw insertPeriod.error;
-    openPeriodId = insertPeriod.data.id;
-  }
+  const openPeriodId = await ensureOpenSettlementPeriod(ledgerId);
 
   return { ledgerId, openPeriodId, memberIdsByName };
 }
