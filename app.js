@@ -10,6 +10,8 @@ const pushConfigUrl = "/api/push-config";
 const fuelPriceUrl = "/api/fuel-price";
 const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
+const generatedTestPrefix = "auto-test-";
+const generatedTestMarker = "[AUTO TEST]";
 const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
 const hasSupabaseConfig =
   supabaseConfig.enabled &&
@@ -132,6 +134,9 @@ const els = {
   importLedgerFile: document.querySelector("#importLedgerFile"),
   downloadCsv: document.querySelector("#downloadCsv"),
   removeTestUsers: document.querySelector("#removeTestUsers"),
+  addTestTrip: document.querySelector("#addTestTrip"),
+  addTestFuel: document.querySelector("#addTestFuel"),
+  removeTestData: document.querySelector("#removeTestData"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -578,6 +583,119 @@ els.removeTestUsers?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   removeUnusedTestUsers();
 });
+
+els.addTestTrip?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  addGeneratedTestTrip();
+});
+
+els.addTestFuel?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  addGeneratedTestFuel();
+});
+
+els.removeTestData?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  removeGeneratedTestData();
+});
+
+
+function getTestActorName() {
+  return currentUser || getMemberNames()[0] || "Christian";
+}
+
+function getTestParticipantNames(actor) {
+  const members = getMemberNames();
+  const ordered = [actor, ...members.filter((name) => name !== actor)];
+  return Array.from(new Set(ordered)).slice(0, Math.min(2, Math.max(1, ordered.length)));
+}
+
+function addGeneratedTestTrip() {
+  const actor = getTestActorName();
+  if (!actor) {
+    alert("Add at least one member before creating test trips.");
+    return;
+  }
+
+  const start = Number(getLatestOdometer() || 100000) + 1;
+  const end = start + 12;
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  state.trips.push({
+    id: `${generatedTestPrefix}trip-${crypto.randomUUID()}`,
+    driver: actor,
+    participants: getTestParticipantNames(actor),
+    date: getTodayDate(),
+    startKm: round(start),
+    endKm: round(end),
+    note: `${generatedTestMarker} generated trip ${stamp}`
+  });
+
+  state.lastOdometer = getLatestOdometer();
+  setDataToolsMessage("Added one generated test trip. Triggered save + normalized sync.");
+  saveState();
+  setDefaultDates();
+  render();
+}
+
+function addGeneratedTestFuel() {
+  const actor = getTestActorName();
+  if (!actor) {
+    alert("Add at least one member before creating test fuel logs.");
+    return;
+  }
+
+  const amount = 123.45;
+  const liters = 8.5;
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  state.fuel.push({
+    id: `${generatedTestPrefix}fuel-${crypto.randomUUID()}`,
+    payer: actor,
+    date: getTodayDate(),
+    amount: roundMoney(amount),
+    liters: round(liters),
+    pricePerLiter: roundMoney(amount / liters),
+    odometer: getLatestOdometer() || "",
+    station: `${generatedTestMarker} generated station ${stamp}`,
+    location: null,
+    stationInfo: null,
+    fullTank: false
+  });
+
+  setDataToolsMessage("Added one generated test fuel log. Triggered save + normalized sync.");
+  saveState();
+  setDefaultDates();
+  render();
+}
+
+function removeGeneratedTestData() {
+  const beforeTrips = state.trips.length;
+  const beforeFuel = state.fuel.length;
+
+  state.trips = state.trips.filter((trip) => !isGeneratedTestEntry(trip));
+  state.fuel = state.fuel.filter((fuel) => !isGeneratedTestEntry(fuel));
+
+  const removedTrips = beforeTrips - state.trips.length;
+  const removedFuel = beforeFuel - state.fuel.length;
+
+  Object.keys(state.paymentStatuses || {}).forEach((key) => {
+    if (key.includes(generatedTestPrefix) || key.includes(generatedTestMarker)) delete state.paymentStatuses[key];
+  });
+
+  state.lastOdometer = getLatestOdometer();
+  setDataToolsMessage(`Removed ${removedTrips} generated test trip(s) and ${removedFuel} generated test fuel log(s). Triggered save + normalized sync.`);
+  saveState();
+  setDefaultDates();
+  render();
+}
+
+function isGeneratedTestEntry(entry) {
+  if (!entry) return false;
+  return String(entry.id || "").startsWith(generatedTestPrefix) ||
+    String(entry.note || "").includes(generatedTestMarker) ||
+    String(entry.station || "").includes(generatedTestMarker);
+}
 
 
 if (els.cancelTripEdit) {
