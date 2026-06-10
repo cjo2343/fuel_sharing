@@ -625,7 +625,7 @@ function addGeneratedTestTrip() {
     id: `${generatedTestPrefix}trip-${crypto.randomUUID()}`,
     driver: actor,
     participants: getTestParticipantNames(actor),
-    date: getTodayDate(),
+    date: new Date().toISOString().slice(0, 10),
     startKm: round(start),
     endKm: round(end),
     note: `${generatedTestMarker} generated trip ${stamp}`
@@ -652,7 +652,7 @@ function addGeneratedTestFuel() {
   state.fuel.push({
     id: `${generatedTestPrefix}fuel-${crypto.randomUUID()}`,
     payer: actor,
-    date: getTodayDate(),
+    date: new Date().toISOString().slice(0, 10),
     amount: roundMoney(amount),
     liters: round(liters),
     pricePerLiter: roundMoney(amount / liters),
