@@ -1112,6 +1112,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const reviewPeriodButton = event.target.closest("[data-review-period]");
+  if (reviewPeriodButton) {
+    showHistoryForPeriodReview();
+    return;
+  }
+
   const editButton = event.target.closest("[data-edit]");
   if (editButton) {
     editEntry(editButton.dataset.edit);
@@ -2073,6 +2079,7 @@ function renderSmartPredictions(ledger) {
     return `<li>${escapeHtml(item.text)}${action}${owner}</li>`;
   }).join("");
   const hiddenAnomalyCount = Math.max(0, health.fuelAnomalies.length - 6);
+  const hasPeriodLevelWarning = health.fuelAnomalies.some((item) => !item.entryLevel);
   const outlierHelp = health.fuelAnomalies.length
     ? editableAnomalyCount
       ? "Use Edit on linked items before settlement."
@@ -2128,7 +2135,7 @@ function renderSmartPredictions(ledger) {
         ${!prediction.intel.consumptionLooksRealistic ? `<p>After the production reset and a few real fuel logs, the historical model will become more useful.</p>` : ""}
         ${prediction.monthlySignal ? `<p>${escapeHtml(prediction.monthlySignal.text)}</p>` : ""}
       </article>
-      ${health.fuelAnomalies.length ? `<article><h3>Outliers and next steps</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}</ul></article>` : ""}
+      ${health.fuelAnomalies.length ? `<article><h3>Outliers and next steps</h3><ul>${anomalyItems}${hiddenAnomalyCount ? `<li>${hiddenAnomalyCount} more not shown here. Use History to review all current-period entries.</li>` : ""}</ul>${hasPeriodLevelWarning ? `<button class="subtle-button compact-button" type="button" data-review-period="true">Review period data</button><p class="entry-meta">Opens History and expands current-period trips/fuel so you can inspect totals and edit entries you own.</p>` : ""}</article>` : ""}
     </div>
   `;
 }
@@ -3682,6 +3689,19 @@ function showLogViewForEditing() {
   activeView = "log";
   localStorage.setItem(viewStorageKey, activeView);
   renderSectionNavigation();
+}
+
+function showHistoryForPeriodReview() {
+  activeView = "history";
+  localStorage.setItem(viewStorageKey, activeView);
+  render();
+  const historySection = document.querySelector('[data-view="history"]');
+  if (historySection) {
+    historySection.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  document.querySelectorAll('[data-view="history"] details.history-group').forEach((details) => {
+    details.open = true;
+  });
 }
 
 function editEntry(value) {
