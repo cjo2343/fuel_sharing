@@ -5807,7 +5807,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
       start_km: Number(trip.startKm || 0),
       end_km: Number(trip.endKm || 0),
       note: trip.note || null,
-      created_by_member_id: context.currentMemberId,
+      created_by_member_id: currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     };
@@ -5878,7 +5878,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       user_lat: fuel.location?.latitude || null,
       user_lng: fuel.location?.longitude || null,
       full_tank: Boolean(fuel.fullTank),
-      created_by_member_id: context.currentMemberId,
+      created_by_member_id: currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     };
@@ -6099,7 +6099,10 @@ async function syncNormalizedTablesFromJson() {
       .eq("is_active", true);
     if (membersResult.error) throw membersResult.error;
 
-    const memberIdsByName = Object.fromEntries((membersResult.data || []).map((member) => [member.name, member.id]));
+    const members = membersResult.data || [];
+    const memberIdsByName = Object.fromEntries(members.map((member) => [member.name, member.id]));
+    const currentEmail = String(currentSession?.user?.email || "").toLowerCase();
+    const currentMemberId = members.find((member) => String(member.email || "").toLowerCase() === currentEmail)?.id || null;
 
     let openPeriodId = null;
     const openPeriodResult = await supabaseClient
@@ -6131,7 +6134,7 @@ async function syncNormalizedTablesFromJson() {
       start_km: Number(trip.startKm || 0),
       end_km: Number(trip.endKm || 0),
       note: trip.note || null,
-      created_by_member_id: context.currentMemberId,
+      created_by_member_id: currentMemberId,
       deleted_at: null,
       updated_at: new Date().toISOString()
     })).filter((trip) => trip.legacy_id && trip.end_km > trip.start_km);
@@ -6213,6 +6216,7 @@ async function syncNormalizedTablesFromJson() {
         user_lat: fuel.location?.latitude || null,
         user_lng: fuel.location?.longitude || null,
         full_tank: Boolean(fuel.fullTank),
+        created_by_member_id: currentMemberId,
         deleted_at: null,
         updated_at: new Date().toISOString()
       };
@@ -6321,6 +6325,13 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   const activeTrips = tableTrips.filter((trip) => !openPeriod || !trip.period_id || trip.period_id === openPeriod.id);
   const activeFuel = tableFuel.filter((fuel) => !openPeriod || !fuel.period_id || fuel.period_id === openPeriod.id);
+
+  // Safety fallback: if normalized tables are empty but the JSON mirror still has
+  // active rows, keep using JSON instead of showing an empty settlement period.
+  // This protects users from partial/failed dual-write deployments.
+  if (activeTrips.length === 0 && activeFuel.length === 0 && ((jsonFallbackState.trips || []).length || (jsonFallbackState.fuel || []).length)) {
+    return null;
+  }
 
   const trips = activeTrips.map((trip) => {
     const driver = memberById[trip.driver_member_id]?.name || memberNames[0] || "";

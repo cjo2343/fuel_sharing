@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v4";
+const CACHE_NAME = "fuel-ledger-v5";
 const CORE_ASSETS = [
   "/",
   "/index.html",
