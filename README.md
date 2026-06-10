@@ -365,3 +365,7 @@ Generated backup/build artifacts such as `app.js.bak` and `__pycache__/` are int
 ### Phase 2M settlement visibility and save label
 
 Non-admin users now only see final payment lines that involve their own member profile. Admins still see all final payments for the period. The “Why this payment?” explanation is collapsed by default to keep settlement cards compact. The top save badge now shows “Database” when normalized tables are the primary backend, instead of showing a legacy cloud JSON save label.
+
+### Phase 2N: Member-facing action card
+
+This version polishes the non-admin experience by adding a concise “What do I need to do?” card in the settlement area. Regular members see only the action relevant to their visible payments, while admins see a period-wide closing summary.

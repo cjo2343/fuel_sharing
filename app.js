@@ -147,6 +147,7 @@ const els = {
   settingsPanel: document.querySelector(".settings-panel"),
   settlementWarning: document.querySelector("#settlementWarning"),
   paymentOverview: document.querySelector("#paymentOverview"),
+  memberActionPanel: document.querySelector("#memberActionPanel"),
   periodBreakdown: document.querySelector("#periodBreakdown"),
   settlements: document.querySelector("#settlements"),
   peopleBalances: document.querySelector("#peopleBalances"),
@@ -1599,6 +1600,7 @@ function renderSettlements(ledger) {
 
   if (ledger.settlements.length === 0) {
     els.paymentOverview.replaceChildren();
+    if (els.memberActionPanel) els.memberActionPanel.replaceChildren();
     els.settlements.replaceChildren(emptyNode("All even."));
     return;
   }
@@ -1606,6 +1608,7 @@ function renderSettlements(ledger) {
   // Rendering must be read-only. Stale payment status keys are ignored here and
   // cleaned up during explicit save/period-close flows instead of writing while rendering.
   renderPaymentOverview(ledger, visibleSettlements);
+  renderMemberActionPanel(ledger, visibleSettlements);
 
   if (visibleSettlements.length === 0) {
     els.settlements.replaceChildren(emptyNode("No final payments involve you in this period."));
@@ -2154,6 +2157,62 @@ function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlement
       <span>Open payments</span>
       <strong>${totals.openCount} · ${formatMoney(totals.openAmount)}</strong>
       <small>${hiddenCount ? "Open payments involving you." : "Final payments not requested yet. Period-wide, not just your account."}</small>
+    </div>
+  `;
+}
+
+
+function renderMemberActionPanel(ledger, visibleSettlements = getVisibleSettlements(ledger)) {
+  if (!els.memberActionPanel) return;
+  if (!currentSession && supabaseClient) {
+    els.memberActionPanel.replaceChildren();
+    return;
+  }
+
+  const profile = getCurrentMemberProfile();
+  const isAdmin = canManageSettings();
+  const visible = visibleSettlements || [];
+  const requested = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
+  const open = visible.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) !== "requested");
+  const name = profile?.name || currentUser;
+
+  const sum = (rows) => rows.reduce((total, item) => total + Number(item.amount || 0), 0);
+  const openToMe = name ? open.filter((item) => item.to === name) : [];
+  const requestedFromMe = name ? requested.filter((item) => item.from === name) : [];
+  const openFromMe = name ? open.filter((item) => item.from === name) : [];
+  const requestedToMe = name ? requested.filter((item) => item.to === name) : [];
+
+  let title = "What do I need to do?";
+  let body = "";
+
+  if (isAdmin) {
+    const all = ledger.settlements || [];
+    const allRequested = all.filter((item) => normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]) === "requested");
+    const allOpen = all.length - allRequested.length;
+    title = "Period actions";
+    body = all.length
+      ? `${allRequested.length} of ${all.length} final payment${all.length === 1 ? "" : "s"} requested. ${allOpen ? `${allOpen} still open before closing the period.` : "All final payments are requested; the period can be closed."}`
+      : "No final payments are needed for this period.";
+  } else if (openToMe.length) {
+    body = `Request ${openToMe.length} payment${openToMe.length === 1 ? "" : "s"} totaling ${formatMoney(sum(openToMe))}.`;
+  } else if (requestedFromMe.length) {
+    const recipients = requestedFromMe.map((item) => `${item.to} ${formatMoney(item.amount)}`).join(", ");
+    body = `Pay ${formatMoney(sum(requestedFromMe))}: ${recipients}.`;
+  } else if (openFromMe.length) {
+    body = `You owe ${formatMoney(sum(openFromMe))}, but the fuel payer has not requested it yet.`;
+  } else if (requestedToMe.length) {
+    body = `You requested ${formatMoney(sum(requestedToMe))}. Waiting for payment.`;
+  } else if (visible.length) {
+    body = "Your visible payments are balanced for now.";
+  } else {
+    body = "No final payments involve you in this period.";
+  }
+
+  els.memberActionPanel.innerHTML = `
+    <div class="member-action-card ${isAdmin ? "is-admin" : ""}">
+      <span>${escapeHtml(title)}</span>
+      <strong>${escapeHtml(body)}</strong>
+      <small>${isAdmin ? "Admin period-wide summary." : "Only payments involving your member profile are shown below."}</small>
     </div>
   `;
 }

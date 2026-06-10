@@ -546,6 +546,43 @@ button:not(:disabled):active {
   gap: 10px;
 }
 
+
+.member-action-panel {
+  margin: -2px 0 14px;
+}
+
+.member-action-panel:empty {
+  display: none;
+}
+
+.member-action-card {
+  border: 1px solid rgba(31, 90, 73, 0.16);
+  border-radius: var(--radius-sm);
+  background: #f3f8f5;
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+}
+
+.member-action-card span {
+  color: var(--green-dark);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.member-action-card strong {
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.member-action-card small {
+  color: var(--muted);
+  font-weight: 760;
+}
+
 .payment-overview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
