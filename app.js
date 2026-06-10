@@ -1382,6 +1382,10 @@ function renderSettlements(ledger) {
               <span class="status-chip ${status}">${statusLabel(status)}</span>
             </div>
             <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} km distance share at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
+            <details class="settlement-details" open>
+              <summary>Why this payment?</summary>
+              ${renderSettlementMathDetails(item, ledger)}
+            </details>
             <details class="settlement-details">
               <summary>Fuel payments included</summary>
               ${renderFuelPaymentList(ledger.fuelPayments)}
@@ -1564,6 +1568,34 @@ function renderFuelPaymentList(fuelPayments) {
         })
         .join("")}
     </ul>
+  `;
+}
+
+function renderSettlementMathDetails(settlement, ledger) {
+  const fromPerson = ledger.people?.[settlement.from] || {};
+  const toPerson = ledger.people?.[settlement.to] || {};
+  const fromFuelShare = Number(fromPerson.tripCost || 0);
+  const fromFuelPaid = Number(fromPerson.fuelPaid || 0);
+  const fromOwes = Math.max(0, fromFuelShare - fromFuelPaid);
+  const toFuelShare = Number(toPerson.tripCost || 0);
+  const toFuelPaid = Number(toPerson.fuelPaid || 0);
+  const toIsOwed = Math.max(0, toFuelPaid - toFuelShare);
+
+  return `
+    <div class="settlement-math">
+      <p class="entry-meta">The receipts form one shared fuel pool. The app first calculates each person’s fuel share from their distance share, then balances people who paid too little with people who paid too much.</p>
+      <ul class="included-fuel-list settlement-math-list">
+        <li><span>${escapeHtml(settlement.from)} distance share</span><b>${formatNumber(fromPerson.km || 0)} km</b></li>
+        <li><span>${escapeHtml(settlement.from)} fuel share</span><b>${formatMoney(fromFuelShare)}</b></li>
+        <li><span>${escapeHtml(settlement.from)} fuel paid</span><b>${formatMoney(fromFuelPaid)}</b></li>
+        <li class="math-total"><span>${escapeHtml(settlement.from)} still owes</span><b>${formatMoney(fromOwes)}</b></li>
+        <li><span>${escapeHtml(settlement.to)} fuel paid</span><b>${formatMoney(toFuelPaid)}</b></li>
+        <li><span>${escapeHtml(settlement.to)} own fuel share</span><b>${formatMoney(toFuelShare)}</b></li>
+        <li class="math-total"><span>${escapeHtml(settlement.to)} is owed</span><b>${formatMoney(toIsOwed)}</b></li>
+        <li class="math-result"><span>This payment settles</span><b>${formatMoney(settlement.amount)}</b></li>
+      </ul>
+      <p class="entry-meta">So ${escapeHtml(settlement.from)} is not paying for a specific receipt. ${escapeHtml(settlement.from)} is paying ${escapeHtml(settlement.to)} because ${escapeHtml(settlement.to)} paid more into the shared fuel pool than their own share.</p>
+    </div>
   `;
 }
 

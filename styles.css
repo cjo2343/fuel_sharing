@@ -1623,3 +1623,24 @@ body.auth-locked #authPanel .text-button {
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
+
+.settlement-math .entry-meta {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.settlement-math-list .math-total span,
+.settlement-math-list .math-total b {
+  font-weight: 850;
+}
+
+.settlement-math-list .math-result {
+  border-top: 2px solid rgba(34, 94, 72, 0.25);
+  margin-top: 2px;
+}
+
+.settlement-math-list .math-result span,
+.settlement-math-list .math-result b {
+  color: var(--green-dark);
+  font-weight: 900;
+}
