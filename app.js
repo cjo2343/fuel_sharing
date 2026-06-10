@@ -1877,7 +1877,7 @@ function getCurrentPeriodFuelAnomalies(ledger) {
       if (pricePerLiter < 8 || pricePerLiter > 25) {
         anomalies.push(createEntryAnomaly({
           severity: "issue",
-          text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal diesel range.`,
+          text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal fuel price range.`,
           type: "fuel",
           entry: fuel
         }));
@@ -1922,9 +1922,20 @@ function getCurrentPeriodFuelAnomalies(ledger) {
   return anomalies;
 }
 
+function isCriticalFuelValidationWarning(warning) {
+  const text = String(warning || "").toLowerCase();
+  return text.includes("unusually high")
+    || text.includes("unusual price")
+    || text.includes("unusual for this car")
+    || text.includes("duplicate fuel")
+    || text.includes("wrong amounts")
+    || text.includes("wrong amount");
+}
+
 function getCurrentPeriodHealthPrediction(ledger) {
   const estimate = ledger.fuelEstimate || calculateFuelEstimate(ledger);
   const validationWarnings = getFuelValidationWarnings(ledger);
+  const criticalValidationWarnings = validationWarnings.filter(isCriticalFuelValidationWarning);
   const fuelAnomalies = getCurrentPeriodFuelAnomalies(ledger);
   const openPayments = ledger.settlements.filter((settlement) => {
     const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]);
@@ -1951,10 +1962,10 @@ function getCurrentPeriodHealthPrediction(ledger) {
     };
   }
 
-  if (validationWarnings.length || fuelAnomalies.some((item) => item.severity === "issue")) {
+  if (criticalValidationWarnings.length || fuelAnomalies.some((item) => item.severity === "issue")) {
     status = "Check before settling";
     tone = "issue";
-  } else if (fuelAnomalies.length || openPayments > 0) {
+  } else if (validationWarnings.length || fuelAnomalies.length || openPayments > 0) {
     status = "Caution";
     tone = "warning";
   }
