@@ -245,6 +245,70 @@ as $$
   );
 $$;
 
+create or replace function public.production_activity_reset(target_ledger_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_open_period_id uuid;
+  existing_state jsonb;
+  reset_state jsonb;
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Missing ledger id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_admin(target_ledger_id) then
+    raise exception 'Only ledger admins can reset production activity' using errcode = '42501';
+  end if;
+
+  delete from public.settlement_requests where ledger_id = target_ledger_id;
+
+  delete from public.trip_participants tp
+  using public.trips t
+  where tp.trip_id = t.id
+    and t.ledger_id = target_ledger_id;
+
+  delete from public.trips where ledger_id = target_ledger_id;
+  delete from public.fuel_payments where ledger_id = target_ledger_id;
+  delete from public.settlement_periods where ledger_id = target_ledger_id;
+
+  insert into public.settlement_periods (ledger_id, status, label)
+  values (target_ledger_id, 'open', 'Current period')
+  returning id into new_open_period_id;
+
+  select state into existing_state
+  from public.car_share_ledgers
+  where id = target_ledger_id;
+
+  reset_state := coalesce(existing_state, '{}'::jsonb)
+    || jsonb_build_object(
+      'trips', '[]'::jsonb,
+      'fuel', '[]'::jsonb,
+      'paymentStatuses', '{}'::jsonb,
+      'closedPeriods', '[]'::jsonb,
+      'lastOdometer', ''
+    );
+
+  insert into public.car_share_ledgers (id, state, updated_at)
+  values (target_ledger_id, reset_state, now())
+  on conflict (id) do update
+    set state = excluded.state,
+        updated_at = excluded.updated_at;
+
+  return jsonb_build_object(
+    'ok', true,
+    'ledger_id', target_ledger_id,
+    'open_period_id', new_open_period_id
+  );
+end;
+$$;
+
+revoke all on function public.production_activity_reset(text) from public;
+grant execute on function public.production_activity_reset(text) to authenticated;
+
 alter table public.car_share_ledgers enable row level security;
 alter table public.ledgers enable row level security;
 alter table public.ledger_members enable row level security;
@@ -282,6 +346,7 @@ drop policy if exists "Bootstrap users can update members" on public.ledger_memb
 drop policy if exists "Ledger members can read periods" on public.settlement_periods;
 drop policy if exists "Ledger members can insert periods" on public.settlement_periods;
 drop policy if exists "Ledger members can update periods" on public.settlement_periods;
+drop policy if exists "Ledger admins can update periods" on public.settlement_periods;
 drop policy if exists "Ledger members can read trips" on public.trips;
 drop policy if exists "Ledger members can insert trips" on public.trips;
 drop policy if exists "Ledger members can update trips" on public.trips;
@@ -313,7 +378,7 @@ create policy "Bootstrap users can update members" on public.ledger_members for 
 
 create policy "Ledger members can read periods" on public.settlement_periods for select to authenticated using (public.is_ledger_member(ledger_id));
 create policy "Ledger members can insert periods" on public.settlement_periods for insert to authenticated with check (public.is_ledger_member(ledger_id));
-create policy "Ledger members can update periods" on public.settlement_periods for update to authenticated using (public.is_ledger_member(ledger_id)) with check (public.is_ledger_member(ledger_id));
+create policy "Ledger admins can update periods" on public.settlement_periods for update to authenticated using (public.is_ledger_admin(ledger_id)) with check (public.is_ledger_admin(ledger_id));
 
 create policy "Ledger members can read trips" on public.trips for select to authenticated using (public.is_ledger_member(ledger_id));
 create policy "Ledger members can insert trips" on public.trips for insert to authenticated with check (public.is_ledger_member(ledger_id));
