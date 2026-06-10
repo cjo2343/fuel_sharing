@@ -2009,19 +2009,19 @@ function renderPaymentOverview(ledger) {
 
   els.paymentOverview.innerHTML = `
     <div>
-      <span>Settlement requests</span>
+      <span>Final payments</span>
       <strong>${totals.totalCount}</strong>
-      <small>Total payment lines in this period.</small>
+      <small>Payments needed after all trips and fuel receipts are netted.</small>
     </div>
     <div>
-      <span>Requested</span>
+      <span>Requested payments</span>
       <strong>${totals.requestedCount} · ${formatMoney(totals.requestedAmount)}</strong>
-      <small>Already marked as requested.</small>
+      <small>Final payments already marked as requested.</small>
     </div>
     <div>
-      <span>Still open</span>
+      <span>Open payments</span>
       <strong>${totals.openCount} · ${formatMoney(totals.openAmount)}</strong>
-      <small>Not requested yet. This is period-wide, not just your account.</small>
+      <small>Final payments not requested yet. Period-wide, not just your account.</small>
     </div>
   `;
 }
@@ -2396,7 +2396,7 @@ function renderCategorizedTrips(trips) {
     <article class="entry-card history-summary-card">
       <strong>Current period trip log</strong>
       <p>${sortedTrips.length} trip${sortedTrips.length === 1 ? "" : "s"} · ${formatNumber(totalKm)} km total</p>
-      <p class="entry-meta">Grouped by driver to make large stress-test periods easier to scan.</p>
+      <p class="entry-meta">Grouped by driver and collapsed by default. Open a driver to inspect the individual trips.</p>
     </article>
   `;
 
@@ -2405,7 +2405,7 @@ function renderCategorizedTrips(trips) {
     .map(([driver, driverTrips]) => {
       const driverKm = round(driverTrips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0));
       return `
-        <details class="history-group" ${driverTrips.length <= 8 ? "open" : ""}>
+        <details class="history-group">
           <summary>
             <strong>${escapeHtml(driver)}</strong>
             <span>${driverTrips.length} trip${driverTrips.length === 1 ? "" : "s"} · ${formatNumber(driverKm)} km</span>
@@ -2446,7 +2446,7 @@ function renderCategorizedFuel(fuelLogs) {
     <article class="entry-card history-summary-card">
       <strong>Current period fuel log</strong>
       <p>${sortedFuel.length} fuel log${sortedFuel.length === 1 ? "" : "s"} · ${formatMoney(totalPaid)}${totalLiters > 0 ? ` · ${formatNumber(totalLiters)} L` : ""}</p>
-      <p class="entry-meta">Grouped by payer so it is clear who is owed money by the shared fuel pool.</p>
+      <p class="entry-meta">Grouped by payer and collapsed by default. Open a payer to inspect the individual fuel logs.</p>
     </article>
   `;
 
@@ -2456,7 +2456,7 @@ function renderCategorizedFuel(fuelLogs) {
       const payerPaid = roundMoney(payerFuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0));
       const payerLiters = round(payerFuel.reduce((sum, fuel) => sum + Number(fuel.liters || 0), 0));
       return `
-        <details class="history-group" ${payerFuel.length <= 8 ? "open" : ""}>
+        <details class="history-group">
           <summary>
             <strong>${escapeHtml(payer)}</strong>
             <span>${payerFuel.length} fuel log${payerFuel.length === 1 ? "" : "s"} · ${formatMoney(payerPaid)}${payerLiters > 0 ? ` · ${formatNumber(payerLiters)} L` : ""}</span>
