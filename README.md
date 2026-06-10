@@ -295,3 +295,18 @@ This build keeps normalized tables as the primary read source and starts writing
 - Other app settings and period actions still use the JSON mirror and dual-write bridge for now.
 
 This is still a migration bridge: do not remove `car_share_ledgers.state` yet.
+
+## Phase 2E — settlement request rows
+
+Before deploying this version, run `phase2e-settlement-request-policies.sql` in Supabase SQL Editor.
+
+This version writes settlement request status changes to the normalized `settlement_requests` table first. The JSON state is still updated afterwards as a backup mirror.
+
+Test flow:
+
+1. Add test trip/fuel.
+2. Click `Requested` on a settlement.
+3. Refresh on the same device or another device.
+4. Confirm the request status survives reload.
+5. Click `Reopen` and confirm it also syncs.
+6. Check System health.

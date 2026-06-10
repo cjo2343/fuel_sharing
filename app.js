@@ -1972,10 +1972,14 @@ async function updatePaymentStatus(button) {
     }
   }
 
-  state.paymentStatuses[button.dataset.paymentKey] = button.dataset.paymentStatus;
+  const nextStatus = normalizePaymentStatus(button.dataset.paymentStatus);
+  const tableSaved = await saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus);
+  if (!tableSaved) return;
+
+  state.paymentStatuses[button.dataset.paymentKey] = nextStatus;
   saveState();
 
-  if (button.dataset.paymentStatus === "requested") {
+  if (nextStatus === "requested") {
     await sendSettlementPush(settlement);
   }
 
@@ -3304,6 +3308,58 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   }
 }
 
+async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus) {
+  if (!supabaseClient || !currentSession) return true;
+  try {
+    setSyncStatus("Saving");
+    const context = await getNormalizedWriteContext();
+    if (!context) return true;
+
+    const fromMemberId = context.memberIdsByName[settlement.from] || null;
+    const toMemberId = context.memberIdsByName[settlement.to] || null;
+    if (!fromMemberId || !toMemberId) {
+      throw new Error("Could not match settlement members in normalized ledger_members.");
+    }
+
+    const now = new Date().toISOString();
+    const requestedByMemberId = nextStatus === "requested" ? toMemberId : null;
+    const payload = {
+      ledger_id: context.ledgerId,
+      period_id: context.openPeriodId,
+      from_member_id: fromMemberId,
+      to_member_id: toMemberId,
+      amount: roundMoney(settlement.amount),
+      currency: state.currency || "DKK",
+      status: nextStatus,
+      requested_at: nextStatus === "requested" ? now : null,
+      requested_by_member_id: requestedByMemberId,
+      updated_at: now
+    };
+
+    const result = await supabaseClient
+      .from("settlement_requests")
+      .upsert(payload, { onConflict: "period_id,from_member_id,to_member_id" });
+    if (result.error) throw result.error;
+
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: "Table-primary write saved the settlement request status to normalized tables. JSON will be updated as backup."
+    };
+    return true;
+  } catch (error) {
+    console.warn("Table-primary settlement request write failed", error);
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Could not save settlement request to normalized tables, so JSON was not changed: ${error.message || error}`
+    };
+    alert("Could not save this settlement request to the normalized database. The local JSON backup was not changed. Check the console for details.");
+    render();
+    return false;
+  }
+}
+
 async function softDeleteNormalizedEntryFirst(type, id) {
   if (!supabaseClient || !currentSession) return true;
   try {
@@ -3552,15 +3608,16 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
 
-  const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult] = await Promise.all([
+  const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledgers").select("*").eq("id", ledgerId).maybeSingle(),
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
     supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
     supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
-    supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true })
+    supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true }),
+    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status").eq("ledger_id", ledgerId)
   ]);
 
-  const firstError = [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult].find((result) => result.error)?.error;
+  const firstError = [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult].find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
   const ledger = ledgerResult.data;
@@ -3568,6 +3625,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   const periods = periodsResult.data || [];
   const tableTrips = tripsResult.data || [];
   const tableFuel = fuelResult.data || [];
+  const tableRequests = requestsResult.data || [];
   const openPeriod = periods.find((period) => period.status === "open") || null;
 
   if (!ledger || members.length === 0 || !openPeriod) return null;
@@ -3650,6 +3708,16 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     .filter((period) => period.status === "closed" && period.snapshot_json)
     .map((period) => period.snapshot_json);
 
+  const paymentStatusesFromTables = {};
+  const activeRequests = tableRequests.filter((request) => !openPeriod || request.period_id === openPeriod.id);
+  for (const request of activeRequests) {
+    const fromName = memberById[request.from_member_id]?.name;
+    const toName = memberById[request.to_member_id]?.name;
+    if (!fromName || !toName) continue;
+    const key = settlementKey({ from: fromName, to: toName, amount: Number(request.amount || 0) });
+    paymentStatusesFromTables[key] = normalizePaymentStatus(request.status);
+  }
+
   return normalizeState({
     ...jsonFallbackState,
     currency: ledger.currency || jsonFallbackState.currency,
@@ -3661,6 +3729,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     memberProfiles,
     trips,
     fuel,
+    paymentStatuses: Object.keys(paymentStatusesFromTables).length ? paymentStatusesFromTables : jsonFallbackState.paymentStatuses,
     closedPeriods: closedPeriodsFromTables.length ? closedPeriodsFromTables : jsonFallbackState.closedPeriods
   });
 }
@@ -3670,20 +3739,22 @@ async function checkNormalizedTablesAgainstCurrentState() {
   if (!(await hasFreshSupabaseSession())) return;
 
   const ledgerId = supabaseConfig.ledgerId || "main-car";
-  const [membersResult, tripsResult, fuelResult, periodsResult] = await Promise.all([
+  const [membersResult, tripsResult, fuelResult, periodsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active").eq("ledger_id", ledgerId),
     supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("fuel_payments").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
-    supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId)
+    supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
+    supabaseClient.from("settlement_requests").select("id,period_id,status").eq("ledger_id", ledgerId)
   ]);
 
-  const firstError = [membersResult, tripsResult, fuelResult, periodsResult].find((result) => result.error)?.error;
+  const firstError = [membersResult, tripsResult, fuelResult, periodsResult, requestsResult].find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
   const tableMembers = membersResult.data || [];
   const tableTrips = tripsResult.data || [];
   const tableFuel = fuelResult.data || [];
   const tablePeriods = periodsResult.data || [];
+  const tableRequests = requestsResult.data || [];
   const activeMembers = tableMembers.filter((member) => member.is_active !== false);
   const openPeriod = tablePeriods.find((period) => period.status === "open") || null;
   const activeTableTrips = tableTrips.filter((trip) => !openPeriod || !trip.period_id || trip.period_id === openPeriod.id);
@@ -3709,6 +3780,13 @@ async function checkNormalizedTablesAgainstCurrentState() {
     mismatchParts.push(`${openPeriods} open normalized periods`);
   }
 
+  const activeTableRequests = tableRequests.filter((request) => !openPeriod || request.period_id === openPeriod.id);
+  const requestedStatuses = Object.values(state.paymentStatuses || {}).filter((status) => normalizePaymentStatus(status) === "requested").length;
+  const requestedTableStatuses = activeTableRequests.filter((request) => normalizePaymentStatus(request.status) === "requested").length;
+  if (requestedTableStatuses !== requestedStatuses) {
+    mismatchParts.push(`requested settlements ${requestedTableStatuses} in tables vs ${requestedStatuses} in app`);
+  }
+
   if (!admins.length) {
     mismatchParts.push("no normalized admin user");
   }
@@ -3719,7 +3797,7 @@ async function checkNormalizedTablesAgainstCurrentState() {
     message: mismatchParts.length
       ? `Normalized table check found: ${mismatchParts.join("; ")}. JSON remains available as fallback until this is resolved.`
       : normalizedReadModeActive
-        ? `Reading from normalized tables first; trips/fuel write to tables first. Open period tables match JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs).`
+        ? `Reading from normalized tables first; trips/fuel/settlement requests write to tables first. Open period tables match JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs, ${requestedTableStatuses} requested settlements).`
         : `Normalized tables match the current JSON counts (${activeMembers.length} members, ${activeTableTrips.length} trips, ${activeTableFuel.length} fuel logs).`,
     membersWithoutEmail: membersWithoutEmail.length,
     admins: admins.length
