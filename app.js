@@ -13,17 +13,10 @@ const sendPushUrl = "/api/send-push";
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const generatedTestPrefix = "auto-test-";
 const generatedTestMarker = "[AUTO TEST]";
-const supabaseConfig = window.CAR_SHARE_SUPABASE || {};
-const hasSupabaseConfig =
-  supabaseConfig.enabled &&
-  supabaseConfig.url &&
-  supabaseConfig.anonKey &&
-  !supabaseConfig.url.includes("YOUR_PROJECT_REF") &&
-  !supabaseConfig.anonKey.includes("YOUR_SUPABASE");
-const supabaseClient =
-  hasSupabaseConfig && window.supabase
-    ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
-    : null;
+const supabaseHelpers = window.FuelSupabaseHelpers;
+const supabaseConfig = supabaseHelpers.getSupabaseConfig();
+const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig);
+const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
 
 
 function getMobilePayReturnPrompt(key) {
@@ -4414,7 +4407,7 @@ async function refreshMemberManagement() {
   memberManagementStatus.loading = true;
   memberManagementStatus.error = "";
   renderMemberManagementPanel();
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const { data, error } = await supabaseClient
     .from("ledger_members")
     .select("id,ledger_id,name,email,role,is_active,mobilepay_phone,created_at,updated_at")
@@ -4520,7 +4513,7 @@ async function addManagedMember() {
     return;
   }
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const { error } = await supabaseClient
     .from("ledger_members")
     .upsert({
@@ -4586,7 +4579,7 @@ async function runProductionActivityReset() {
   if (els.authMessage) els.authMessage.textContent = "Resetting production activity...";
   try {
     if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
-    const ledgerId = supabaseConfig.ledgerId || "main-car";
+    const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
     const { data, error } = await supabaseClient.rpc("production_activity_reset", { target_ledger_id: ledgerId });
     if (error) throw error;
 
@@ -4656,7 +4649,7 @@ async function getCurrentSettlementRequestContext() {
   if (!supabaseClient || !currentSession) throw new Error("Sign in before checking settlement request rows.");
   if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const [membersResult, periodsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
@@ -4712,7 +4705,7 @@ async function refreshDatabaseDiagnostics() {
 
   try {
     if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
-    const ledgerId = supabaseConfig.ledgerId || "main-car";
+    const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
     const [legacyResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
       supabaseClient.from("car_share_ledgers").select("state,updated_at").eq("id", ledgerId).maybeSingle(),
       supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone,updated_at").eq("ledger_id", ledgerId),
@@ -5701,58 +5694,25 @@ async function sendSettlementPush(settlement) {
 
 
 async function hasFreshSupabaseSession() {
-  if (!supabaseClient) return false;
-  const { data, error } = await supabaseClient.auth.getSession();
-  if (error || !data?.session?.access_token) {
+  const session = await supabaseHelpers.getFreshSession(supabaseClient);
+  if (!session) {
     currentSession = null;
     updateAuthUi();
     return false;
   }
-  currentSession = data.session;
+  currentSession = session;
   return true;
 }
 
 async function ensureOpenSettlementPeriod(ledgerId) {
-  const existing = await supabaseClient
-    .from("settlement_periods")
-    .select("id")
-    .eq("ledger_id", ledgerId)
-    .eq("status", "open")
-    .limit(1)
-    .maybeSingle();
-  if (existing.error) throw existing.error;
-  if (existing.data?.id) return existing.data.id;
-
-  const created = await supabaseClient
-    .from("settlement_periods")
-    .insert({ ledger_id: ledgerId, status: "open", label: "Current period" })
-    .select("id")
-    .single();
-
-  if (!created.error && created.data?.id) return created.data.id;
-
-  // Another tab/device may have created the open period between our select and insert.
-  // The database correctly rejects a second open period, so re-select and continue.
-  if (created.error?.code === "23505") {
-    const retry = await supabaseClient
-      .from("settlement_periods")
-      .select("id")
-      .eq("ledger_id", ledgerId)
-      .eq("status", "open")
-      .limit(1)
-      .maybeSingle();
-    if (retry.error) throw retry.error;
-    if (retry.data?.id) return retry.data.id;
-  }
-
-  throw created.error || new Error("Could not create an open settlement period");
+  return supabaseHelpers.ensureOpenSettlementPeriod(supabaseClient, ledgerId);
 }
 
 async function getNormalizedWriteContext() {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
   // Important: regular members are allowed to write trips, fuel, and settlement
   // request rows, but they are not allowed to update ledger settings or the
@@ -6066,7 +6026,7 @@ async function syncNormalizedTablesFromJson() {
   if (!supabaseClient || !currentSession) return;
   if (!(await hasFreshSupabaseSession())) return;
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
   // Phase 2AA: table-primary writes already saved the specific trip/fuel/request row.
   // A full JSON-to-table reconciliation can touch admin-only tables and can also
@@ -6291,7 +6251,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
   const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledgers").select("*").eq("id", ledgerId).maybeSingle(),
@@ -6429,7 +6389,7 @@ async function checkNormalizedTablesAgainstCurrentState() {
   if (!supabaseClient || !currentSession) return;
   if (!(await hasFreshSupabaseSession())) return;
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const [membersResult, tripsResult, fuelResult, periodsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId),
     supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
@@ -6603,7 +6563,7 @@ async function loadSupabaseState() {
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
       .select("state,updated_at")
-      .eq("id", supabaseConfig.ledgerId || "main-car")
+      .eq("id", supabaseHelpers.getLedgerId(supabaseConfig))
       .single();
 
     if (error) throw error;
@@ -6705,7 +6665,7 @@ async function saveJsonMirrorBackup({ force = false } = {}) {
   const { error } = await supabaseClient
     .from("car_share_ledgers")
     .upsert({
-      id: supabaseConfig.ledgerId || "main-car",
+      id: supabaseHelpers.getLedgerId(supabaseConfig),
       state,
       updated_at: savedAt
     });
@@ -6731,7 +6691,7 @@ function applyIncomingState(nextState, status = "Live") {
 function subscribeToSupabaseState() {
   if (!supabaseClient || supabaseStateChannel) return;
 
-  const ledgerId = supabaseConfig.ledgerId || "main-car";
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   supabaseStateChannel = supabaseClient
     .channel(`ledger:${ledgerId}`)
     .on(

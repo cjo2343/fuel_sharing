@@ -51,3 +51,9 @@ node tools/check-app-references.mjs
 - service-role keys
 - private VAPID keys
 - one-off local backup files
+
+
+## Refactor progress
+
+- `utils.js` contains pure formatting/date/escaping helpers.
+- `supabase-helpers.js` contains Supabase client/config/session helpers and the open settlement period helper. Keep UI rendering and app state orchestration in `app.js` until each extraction can be validated independently.
