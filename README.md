@@ -452,3 +452,7 @@ Completed-period CSV downloads keep their temporary Blob URLs alive briefly and 
 ### Safari CSV fallback
 
 Completed-period exports now keep only CSV actions. Safari/iOS/home-screen PWAs use an in-app CSV export panel with Copy CSV and Try download instead of relying only on direct Blob downloads. The old Markdown Download report action was removed.
+
+### Payment audit details
+
+Payment audit entries now include clearer summaries and before/after status details, for example `Status: Not requested -> Requested` together with payer, recipient, amount, and currency metadata. The completed-period change-log CSV export includes these payment metadata columns so frozen payment history is easier to audit.

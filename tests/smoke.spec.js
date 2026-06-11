@@ -86,6 +86,7 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   // Click the DOM button directly so this test verifies behavior, not layout visibility.
   await requestButton.evaluate((button) => button.click());
   await expect(page.locator("#auditLog")).toContainText("Payment requested");
+  await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
 
   const reopenButton = page.locator('button[data-payment-status="open"]').first();
   await expect(reopenButton).toHaveCount(1);
@@ -95,6 +96,7 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
 
   await reopenButton.evaluate((button) => button.click());
   await expect(page.locator("#auditLog")).toContainText("Payment reopened");
+  await expect(page.locator("#auditLog")).toContainText(/Status: Requested .* Not requested/);
   await expect(page.locator("#startKm")).toBeEnabled();
   await expect(page.locator("#fuelAmount")).toBeEnabled();
 });
@@ -119,6 +121,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
 
   await requestAllOpenPayments(page);
   await expect(page.locator("#auditLog")).toContainText("Payment requested");
+  await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
   await page.locator("#closePeriod").evaluate((button) => button.click());
 
   await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");
@@ -133,6 +136,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#periodList")).toContainText("Trip created");
   await expect(page.locator("#periodList")).toContainText("Fuel log created");
   await expect(page.locator("#periodList")).toContainText("Payment requested");
+  await expect(page.locator("#periodList")).toContainText(/Status: Not requested .* Requested/);
   await expect(page.locator("#periodList")).toContainText("Settlement closed");
   await expect(page.locator("[data-archive-csv]")).toHaveCount(1);
   await expect(page.locator("[data-archive-audit-csv]")).toHaveCount(1);
@@ -172,12 +176,12 @@ test("build info is visible to all users in About and admin panels", async ({ pa
   await page.evaluate(() => window.FuelBuildInfo?.refreshBuildInfo?.());
 
   await page.locator('[data-view-tab="about"]').click();
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.4");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("safari-csv-fallback-panel");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v23");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.7");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("payment-audit-details");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v24");
 
   await page.locator('[data-view-tab="admin"]').click();
-  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.4");
-  await expect(page.locator("#buildInfoPanel")).toContainText("safari-csv-fallback-panel");
-  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v23");
+  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.7");
+  await expect(page.locator("#buildInfoPanel")).toContainText("payment-audit-details");
+  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v24");
 });

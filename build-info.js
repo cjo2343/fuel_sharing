@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.11.6",
-    buildLabel: "safari-csv-fallback-panel",
-    updatedAt: "2026-06-11T12:20:00+02:00",
-    expectedServiceWorkerCache: "fuel-ledger-v23"
+    version: "2026.06.11.7",
+    buildLabel: "payment-audit-details",
+    updatedAt: "2026-06-11T12:35:00+02:00",
+    expectedServiceWorkerCache: "fuel-ledger-v24"
   });
 
   function formatDateTime(value) {

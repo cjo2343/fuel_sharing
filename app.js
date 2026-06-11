@@ -1236,6 +1236,37 @@ function describeFuelAuditChanges(previousFuel, nextFuel) {
   return changes.join(" · ");
 }
 
+function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
+  const from = settlement?.from || "Someone";
+  const to = settlement?.to || "someone";
+  const amount = Number(settlement?.amount || 0);
+  const currency = settlement?.currency || state.currency || "DKK";
+  const amountText = formatMoneyFor(amount, currency);
+  const previousLabel = statusLabel(previousStatus);
+  const nextLabel = statusLabel(nextStatus);
+  const routeText = `${from} → ${to}`;
+  const summary = nextStatus === "paid"
+    ? `${from} paid ${to} · ${amountText}`
+    : nextStatus === "requested"
+      ? `${routeText} · ${amountText}`
+      : `${routeText} · ${amountText}`;
+  const detail = `Status: ${previousLabel} → ${nextLabel} · ${from} pays ${to} · ${amountText}`;
+  return {
+    summary,
+    detail,
+    metadata: {
+      from,
+      to,
+      amount,
+      currency,
+      previousStatus: normalizePaymentStatus(previousStatus),
+      nextStatus: normalizePaymentStatus(nextStatus),
+      previousStatusLabel: previousLabel,
+      nextStatusLabel: nextLabel
+    }
+  };
+}
+
 function makeAuditEntry(options) {
   return auditLog.createEntry({
     actor: currentUser || currentSession?.user?.email || "Unknown",
@@ -3677,12 +3708,14 @@ async function updatePaymentStatus(button) {
   }
 
   state.paymentStatuses[key] = nextStatus;
+  const paymentAuditInfo = buildPaymentAuditInfo(settlement, previousStatus, nextStatus);
   addAuditEntry({
     type: nextStatus === "requested" ? "payment_requested" : nextStatus === "paid" ? "payment_marked_paid" : "payment_reopened",
     entityType: "payment",
     entityId: key,
-    summary: `${settlement.from} → ${settlement.to} · ${formatMoney(settlement.amount)}`,
-    detail: `Previous status: ${previousStatus}`
+    summary: paymentAuditInfo.summary,
+    detail: paymentAuditInfo.detail,
+    metadata: paymentAuditInfo.metadata
   });
   if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
   saveState();
@@ -4059,7 +4092,7 @@ function buildClosedPeriodCsvRows(period) {
 function buildClosedPeriodAuditCsvRows(period) {
   const entries = auditLog.normalizeAuditEntries(period.auditLog);
   return [
-    ["period_label", "closed_at", "created_at", "action", "summary", "actor", "detail", "entity_type", "entity_id"],
+    ["period_label", "closed_at", "created_at", "action", "summary", "actor", "detail", "entity_type", "entity_id", "payment_from", "payment_to", "payment_amount", "payment_currency", "previous_status", "next_status"],
     ...entries.map((entry) => [
       period.label || "Closed period",
       period.closedAt || "",
@@ -4069,7 +4102,13 @@ function buildClosedPeriodAuditCsvRows(period) {
       entry.actor || "",
       entry.detail || "",
       entry.entityType || "",
-      entry.entityId || ""
+      entry.entityId || "",
+      entry.metadata?.from || "",
+      entry.metadata?.to || "",
+      entry.metadata?.amount ?? "",
+      entry.metadata?.currency || "",
+      entry.metadata?.previousStatus || "",
+      entry.metadata?.nextStatus || ""
     ])
   ];
 }

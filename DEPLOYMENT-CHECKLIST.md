@@ -205,3 +205,7 @@ After deploying CSV export changes, test at least one completed period in Safari
 3. Click Export change log CSV.
 4. In Chrome, confirm files download. In Safari or a home-screen PWA, confirm the in-app CSV export panel appears and Copy CSV works.
 5. If testing a home-screen PWA, also verify About -> App version shows the expected cache.
+
+### Payment audit details
+
+Payment audit entries now include clearer summaries and before/after status details, for example `Status: Not requested -> Requested` together with payer, recipient, amount, and currency metadata. The completed-period change-log CSV export includes these payment metadata columns so frozen payment history is easier to audit.
