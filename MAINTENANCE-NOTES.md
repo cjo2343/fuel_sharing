@@ -242,3 +242,20 @@ Codex review found that generated artifacts could be tracked and that Playwright
 Playwright now starts `server.py` with `PORT=4173` and `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`, which keeps local browser tests isolated while still covering app API routes.
 
 Fuel-price warning thresholds are centralized in `fuelPriceWarningRange` in `app.js` instead of repeated magic numbers.
+
+## Tracked artifact guard
+
+`npm run validate` now runs `tools/check-tracked-artifacts.mjs`. The guard fails when generated or machine-local files are tracked by Git, including `node_modules/`, `__pycache__/`, `*.bak`, Playwright reports/results, `.playwright-ledger-data.json`, and `.DS_Store`.
+
+If it fails after a local install or test run, remove the generated files from Git tracking without deleting your working copies where appropriate:
+
+```bash
+git rm -r --cached node_modules __pycache__ playwright-report test-results .playwright-ledger-data.json 2>/dev/null || true
+git rm --cached app.js.bak 2>/dev/null || true
+```
+
+Then run:
+
+```bash
+npm run validate
+```

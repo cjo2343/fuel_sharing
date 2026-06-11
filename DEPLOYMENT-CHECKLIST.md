@@ -234,3 +234,14 @@ npm run test:e2e
 ```
 
 The browser tests now use `server.py`, not a static file server, and write local test state to `.playwright-ledger-data.json`. That file is ignored by Git.
+
+## Repository hygiene before pushing
+
+Run the validation suite before every push:
+
+```bash
+npm run validate
+npm run test:e2e
+```
+
+The validation suite includes a tracked-artifact guard. It fails if generated files such as `node_modules/`, `__pycache__/`, `*.bak`, Playwright reports/results, `.playwright-ledger-data.json`, or `.DS_Store` are accidentally committed.
