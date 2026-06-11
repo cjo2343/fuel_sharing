@@ -147,6 +147,10 @@ const defaults = {
   fuelPriceWarningMinDkkPerLiter: defaultFuelPriceWarningRange.minDkkPerLiter,
   fuelPriceWarningMaxDkkPerLiter: defaultFuelPriceWarningRange.maxDkkPerLiter,
   fuelWarningThreshold: 70,
+  paymentRemindersEnabled: true,
+  paymentReminderAfterDays: 3,
+  paymentReminderRepeatDays: 3,
+  paymentReminderMaxCount: 3,
   carSettingsVersion: 2
 };
 
@@ -244,6 +248,10 @@ const els = {
   fuelPriceWarningMin: document.querySelector("#fuelPriceWarningMin"),
   fuelPriceWarningMax: document.querySelector("#fuelPriceWarningMax"),
   fuelWarningThreshold: document.querySelector("#fuelWarningThreshold"),
+  paymentRemindersEnabled: document.querySelector("#paymentRemindersEnabled"),
+  paymentReminderAfterDays: document.querySelector("#paymentReminderAfterDays"),
+  paymentReminderRepeatDays: document.querySelector("#paymentReminderRepeatDays"),
+  paymentReminderMaxCount: document.querySelector("#paymentReminderMaxCount"),
   members: document.querySelector("#members"),
   tripForm: document.querySelector("#tripForm"),
   tripSubmit: document.querySelector("#tripSubmit"),
@@ -322,7 +330,7 @@ const els = {
 state.lastOdometer = getLatestOdometer();
 setDefaultDates();
 render();
-initializeSync();
+initializeSync().then(() => runAutomaticPaymentReminders()).catch((error) => console.warn("Automatic payment reminder check failed", error));
 initializePwa();
 refreshFuelPriceEstimate();
 
@@ -1201,6 +1209,12 @@ document.addEventListener("click", async (event) => {
   const reminderButton = event.target.closest("[data-payment-reminder]");
   if (reminderButton) {
     sendPaymentReminder(reminderButton);
+    return;
+  }
+
+  const closedStatusButton = event.target.closest("[data-closed-payment-status]");
+  if (closedStatusButton) {
+    updateClosedPaymentStatus(closedStatusButton);
     return;
   }
 
@@ -3896,6 +3910,147 @@ async function sendPaymentReminder(button) {
   button.textContent = originalText;
 }
 
+
+async function updateClosedPaymentStatus(button) {
+  const period = findClosedPeriod(button.dataset.closedPeriodId);
+  const index = Number(button.dataset.closedSettlementIndex);
+  const nextStatus = normalizePaymentStatus(button.dataset.closedPaymentStatus);
+  const settlement = period?.settlements?.[index];
+  const previousStatus = normalizePaymentStatus(settlement?.status);
+
+  if (!period || !settlement || nextStatus !== "paid" || previousStatus !== "requested" || !canMarkSettlementPaid(settlement)) {
+    showPermissionBlocked(describePaymentPermissionMessage(settlement, nextStatus));
+    render();
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Marking paid...";
+  settlement.status = "paid";
+
+  const paymentAuditInfo = buildPaymentAuditInfo(settlement, previousStatus, "paid");
+  period.auditLog = auditLog.normalizeAuditEntries([
+    makeAuditEntry({
+      type: "payment_marked_paid",
+      entityType: "payment",
+      entityId: settlementKeyForPeriod(settlement, period.id),
+      summary: paymentAuditInfo.summary,
+      detail: `${paymentAuditInfo.detail} · Closed period payment status updated after settlement close`,
+      metadata: paymentAuditInfo.metadata
+    }),
+    ...(period.auditLog || [])
+  ]);
+
+  saveState();
+  render();
+  showAppMessage(`Closed-period payment to ${settlement.to} marked paid.`);
+}
+
+function getPaymentReminderSettings() {
+  return {
+    enabled: state.paymentRemindersEnabled !== false,
+    afterDays: Math.max(1, Number(state.paymentReminderAfterDays || defaults.paymentReminderAfterDays)),
+    repeatDays: Math.max(1, Number(state.paymentReminderRepeatDays || defaults.paymentReminderRepeatDays)),
+    maxCount: Math.max(0, Number(state.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount))
+  };
+}
+
+function auditEntryTime(entry) {
+  const time = Date.parse(entry?.createdAt || "");
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getPaymentAuditEntries(entries, paymentKey, type) {
+  return auditLog.normalizeAuditEntries(entries)
+    .filter((entry) => entry.entityType === "payment" && entry.entityId === paymentKey && (!type || entry.type === type));
+}
+
+function getPaymentReminderDueInfo(entries, paymentKey, settings, now = Date.now()) {
+  if (!settings.enabled) return { due: false, reason: "disabled" };
+  const requestedEntries = getPaymentAuditEntries(entries, paymentKey, "payment_requested");
+  const requestedAt = requestedEntries.reduce((latest, entry) => Math.max(latest, auditEntryTime(entry)), 0);
+  if (!requestedAt) return { due: false, reason: "missing-request-time" };
+
+  const reminderEntries = getPaymentAuditEntries(entries, paymentKey, "payment_reminder_sent");
+  if (settings.maxCount > 0 && reminderEntries.length >= settings.maxCount) {
+    return { due: false, reason: "max-reminders" };
+  }
+
+  const lastReminderAt = reminderEntries.reduce((latest, entry) => Math.max(latest, auditEntryTime(entry)), 0);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dueAt = lastReminderAt
+    ? lastReminderAt + settings.repeatDays * dayMs
+    : requestedAt + settings.afterDays * dayMs;
+
+  return {
+    due: now >= dueAt,
+    requestedAt,
+    lastReminderAt,
+    reminderCount: reminderEntries.length,
+    dueAt
+  };
+}
+
+async function runAutomaticPaymentReminders() {
+  const settings = getPaymentReminderSettings();
+  if (!settings.enabled) return;
+
+  const now = Date.now();
+  let sentOrRecorded = 0;
+  let changed = false;
+
+  const ledger = calculateLedger();
+  for (const settlement of ledger.settlements || []) {
+    const key = settlementKey(settlement);
+    if (normalizePaymentStatus(state.paymentStatuses[key]) !== "requested") continue;
+    const due = getPaymentReminderDueInfo(state.auditLog, key, settings, now);
+    if (!due.due) continue;
+    const pushResult = await sendPaymentReminderPush(settlement).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
+    const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
+    addAuditEntry({
+      type: "payment_reminder_sent",
+      entityType: "payment",
+      entityId: key,
+      summary: auditInfo.summary,
+      detail: `${auditInfo.detail} · Automatic reminder`,
+      metadata: { ...auditInfo.metadata, automatic: true, reminderCount: due.reminderCount + 1 }
+    });
+    sentOrRecorded += 1;
+    changed = true;
+  }
+
+  for (const period of state.closedPeriods || []) {
+    const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+    for (const settlement of settlements) {
+      if (normalizePaymentStatus(settlement.status) !== "requested") continue;
+      const key = settlementKeyForPeriod(settlement, period.id);
+      const due = getPaymentReminderDueInfo(period.auditLog, key, settings, now);
+      if (!due.due) continue;
+      const pushResult = await sendPaymentReminderPush(settlement).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
+      const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
+      period.auditLog = auditLog.normalizeAuditEntries([
+        makeAuditEntry({
+          type: "payment_reminder_sent",
+          entityType: "payment",
+          entityId: key,
+          summary: auditInfo.summary,
+          detail: `${auditInfo.detail} · Automatic reminder for closed settlement`,
+          metadata: { ...auditInfo.metadata, automatic: true, reminderCount: due.reminderCount + 1, periodId: period.id }
+        }),
+        ...(period.auditLog || [])
+      ]);
+      sentOrRecorded += 1;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    saveState();
+    render();
+    showAppMessage(`${sentOrRecorded} overdue payment reminder${sentOrRecorded === 1 ? "" : "s"} recorded${supabaseClient ? " and notification delivery attempted" : ""}.`, "success", { timeoutMs: 6000 });
+  }
+}
+
 async function copySettlement(button) {
   const text = button.dataset.copy;
   const originalText = button.dataset.originalText || button.textContent || "Copy";
@@ -5579,13 +5734,19 @@ function renderPeriodSettlements(period) {
     <div class="period-settlements archive-payment-list">
       ${settlements
         .map(
-          (settlement) => `
+          (settlement, index) => {
+            const status = normalizePaymentStatus(settlement.status);
+            const canMarkPaid = status === "requested" && canMarkSettlementPaid(settlement);
+            return `
             <div>
               <span>${escapeHtml(settlement.from)} pays ${escapeHtml(settlement.to)}</span>
               <b>${formatMoneyFor(settlement.amount, period.currency || state.currency)}</b>
-              <span class="status-chip ${normalizePaymentStatus(settlement.status)}">${statusLabel(settlement.status)}</span>
+              <span class="status-chip ${status}">${statusLabel(status)}</span>
+              ${canMarkPaid ? `<button class="subtle-button compact-button" type="button" data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid">Mark paid</button>` : ""}
+              ${status === "requested" && !canMarkPaid ? `<span class="request-note">Waiting for ${escapeHtml(settlement.from)} to pay.</span>` : ""}
             </div>
-          `
+          `;
+          }
         )
         .join("")}
     </div>

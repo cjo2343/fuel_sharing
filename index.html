@@ -222,6 +222,25 @@
               Warning threshold, %
               <input id="fuelWarningThreshold" type="number" min="1" max="100" step="1" />
             </label>
+            <label class="checkbox-label setting-toggle">
+              <input id="paymentRemindersEnabled" type="checkbox" />
+              <span>
+                <strong>Automatic payment reminders</strong>
+                <small>When the app opens, remind people about requested payments that are still unpaid.</small>
+              </span>
+            </label>
+            <label>
+              Remind after days
+              <input id="paymentReminderAfterDays" type="number" min="1" max="90" step="1" />
+            </label>
+            <label>
+              Repeat every days
+              <input id="paymentReminderRepeatDays" type="number" min="1" max="90" step="1" />
+            </label>
+            <label>
+              Maximum automatic reminders
+              <input id="paymentReminderMaxCount" type="number" min="0" max="20" step="1" />
+            </label>
             <label class="wide">
               People
               <textarea id="members" rows="4" required></textarea>

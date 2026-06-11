@@ -269,3 +269,8 @@ After deploying the payment-reminders build:
 3. Confirm History -> Change log shows **Payment reminder sent**.
 4. On a device with notifications enabled for the payer, confirm a mobile/PWA notification is received.
 5. On devices without notification subscriptions, confirm the app explains that the reminder was recorded but no active subscription was found.
+
+
+### Automatic payment reminders
+
+Build `automatic-payment-reminders` adds configurable app-open payment reminders. Admins can enable/disable reminders and set the first reminder delay, repeat interval, and maximum automatic reminder count in **Admin → Group settings**. Requested payments are checked in both the current settlement and closed settlements when the app opens. Closed settlement amounts stay frozen, but requested payments can still be marked paid from the closed-period detail view, with the payment status change recorded in that period's frozen change log.

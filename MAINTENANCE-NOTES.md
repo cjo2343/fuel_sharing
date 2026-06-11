@@ -279,3 +279,8 @@ The browser smoke tests run against `server.py` with `FUEL_LEDGER_DATA_FILE=.pla
 ## Payment reminders
 
 Requested payments now include a **Send reminder** action for the payment requester/admin. The reminder is always recorded in the current period audit log. When the payer has an active push subscription, the server also sends a mobile/PWA notification; otherwise the app shows a non-fatal message explaining that the reminder was recorded but no active notification subscription was reached.
+
+
+### Automatic payment reminders
+
+Build `automatic-payment-reminders` adds configurable app-open payment reminders. Admins can enable/disable reminders and set the first reminder delay, repeat interval, and maximum automatic reminder count in **Admin → Group settings**. Requested payments are checked in both the current settlement and closed settlements when the app opens. Closed settlement amounts stay frozen, but requested payments can still be marked paid from the closed-period detail view, with the payment status change recorded in that period's frozen change log.

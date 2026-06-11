@@ -490,3 +490,8 @@ Playwright runs against the local `server.py` with `FUEL_LEDGER_DATA_FILE=.playw
 ### Payment reminders
 
 Requested payments include a **Send reminder** action. Reminders are recorded in the period audit log and, when the payer has enabled PWA push notifications on a device, are also sent as mobile/home-screen notifications. If the payer has no active notification subscription, the reminder is still recorded and the app explains that no mobile notification was reached.
+
+
+### Automatic payment reminders
+
+Build `automatic-payment-reminders` adds configurable app-open payment reminders. Admins can enable/disable reminders and set the first reminder delay, repeat interval, and maximum automatic reminder count in **Admin → Group settings**. Requested payments are checked in both the current settlement and closed settlements when the app opens. Closed settlement amounts stay frozen, but requested payments can still be marked paid from the closed-period detail view, with the payment status change recorded in that period's frozen change log.
