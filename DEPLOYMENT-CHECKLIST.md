@@ -247,7 +247,7 @@ npm run test:e2e
 The validation suite includes a tracked-artifact guard. It fails if generated files such as `node_modules/`, `__pycache__/`, `*.bak`, Playwright reports/results, `.playwright-ledger-data.json`, or `.DS_Store` are accidentally committed.
 
 
-- In Admin → Group settings, confirm the low/high fuel-price warning range saves and still allows valid fuel logs.
+- In Admin → Group settings, confirm the low/high fuel-price warning range saves, valid fuel logs save, missing liters are blocked, and outside-range DKK/L values are blocked with a clear message.
 
 ### Member and role management UX
 
@@ -255,3 +255,7 @@ Admin member management now shows clearer role/access descriptions for each memb
 
 Manual check: Admin -> Member management, verify Member/Admin descriptions, try promoting/demoting a test member, and confirm at least one active admin remains protected.
 
+
+### Playwright state isolation
+
+Before committing test changes, run `npm run test:e2e`. The suite should reset its isolated `.playwright-ledger-data.json` state automatically before each test. If local state ever looks suspicious, remove it manually with `rm -f .playwright-ledger-data.json` and rerun the tests.

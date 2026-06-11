@@ -263,7 +263,7 @@ npm run validate
 
 ### Configurable fuel-price warning range
 
-Admins can adjust the low/high DKK/L anomaly range in Group settings. Keep Playwright and manual checks focused on warnings being non-blocking.
+Admins can adjust the low/high DKK/L anomaly range in Group settings. Keep Playwright and manual checks focused on valid fuel logs saving, missing liters being blocked, and outside-range DKK/L being blocked with a clear message.
 
 ### Member and role management UX
 
@@ -271,3 +271,7 @@ Admin member management now shows clearer role/access descriptions for each memb
 
 Manual check: Admin -> Member management, verify Member/Admin descriptions, try promoting/demoting a test member, and confirm at least one active admin remains protected.
 
+
+## Playwright state isolation
+
+The browser smoke tests run against `server.py` with `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`. The test suite now resets `/api/state` before each test, so trips, fuel logs, payment statuses, audit entries, and closed periods from one smoke test cannot leak into another.

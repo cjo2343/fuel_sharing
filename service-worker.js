@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v28";
-const BUILD_LABEL = "configurable-fuel-price-warnings";
-const BUILD_UPDATED_AT = "2026-06-11T13:30:00+02:00";
+const CACHE_NAME = "fuel-ledger-v30";
+const BUILD_LABEL = "fuel-liters-visible-required";
+const BUILD_UPDATED_AT = "2026-06-11T14:55:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

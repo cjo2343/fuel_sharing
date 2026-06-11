@@ -144,13 +144,13 @@
               Amount paid
               <input id="fuelAmount" type="number" min="0" step="0.01" required />
             </label>
+            <label>
+              Liters added
+              <input id="fuelLiters" type="number" min="0" step="0.01" required placeholder="Required" />
+            </label>
             <details id="fuelDetails" class="form-details wide">
               <summary>More fuel details <span>optional, useful for stats</span></summary>
               <div class="form-grid nested-grid">
-                <label>
-                  Liters added
-                  <input id="fuelLiters" type="number" min="0" step="0.01" placeholder="Optional" />
-                </label>
                 <label>
                   Odometer at refuel
                   <input id="fuelOdometer" type="number" min="0" step="0.1" placeholder="Optional" />
@@ -175,7 +175,7 @@
                   <span>Filled to full tank</span>
                 </label>
               </div>
-              <p class="section-note">Liters, odometer, station and full-tank status are optional, but adding them makes price-per-liter, real consumption and future trip-cost estimates much better over time. Nearby stations use your phone location only when you tap the button.</p>
+              <p class="section-note">Odometer, station and full-tank status are optional, but adding them makes real consumption and future trip-cost estimates much better over time. Nearby stations use your phone location only when you tap the button.</p>
             </details>
             <button id="fuelSubmit" class="action-button wide" type="submit">Add fuel</button>
             <button id="cancelFuelEdit" class="subtle-button wide hidden" type="button">Cancel editing fuel payment</button>

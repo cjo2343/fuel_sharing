@@ -1,5 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+function makeCleanState() {
+  return {
+    currency: "DKK",
+    members: ["Christian", "Emilie", "Jonas", "Marie"],
+    trips: [],
+    fuel: [],
+    paymentStatuses: {},
+    auditLog: [],
+    closedPeriods: [],
+    lastOdometer: "",
+    memberProfiles: {
+      Christian: { email: "", role: "admin", mobilepayPhone: "" },
+      Emilie: { email: "", role: "member", mobilepayPhone: "" },
+      Jonas: { email: "", role: "member", mobilepayPhone: "" },
+      Marie: { email: "", role: "member", mobilepayPhone: "" }
+    },
+    fuelType: "diesel",
+    fuelConsumption: 5.3,
+    fuelFallbackPrice: 14.5,
+    fuelWarningThreshold: 70,
+    fuelPriceWarningRange: { min: 8, max: 25 },
+    carSettingsVersion: 2
+  };
+}
+
+test.beforeEach(async ({ request }) => {
+  // The smoke tests run against the real local server.py. Reset the isolated
+  // Playwright state file before each test so trips/fuel/payments from one
+  // test cannot leak into another test through /api/state.
+  await request.put("/api/state", { data: makeCleanState() });
+});
+
+
 async function openLocalApp(page) {
   await page.route("**/supabase-config.js", (route) => route.fulfill({
     contentType: "application/javascript",
@@ -22,6 +55,18 @@ async function chooseFirstSelectOption(select) {
     items.map((item) => item.value).filter(Boolean)
   );
   if (options.length > 0) await select.selectOption(options[0]);
+}
+
+function decimalPattern(value, fractionDigits = null) {
+  const numeric = Number(value);
+  const rounded = Number.isFinite(numeric) && fractionDigits !== null
+    ? String(Math.round(numeric * (10 ** fractionDigits)) / (10 ** fractionDigits))
+    : String(value);
+  return rounded.replace(".", "[,.]");
+}
+
+function litersDisplayPattern(value) {
+  return new RegExp(`${decimalPattern(value, 1)}\\s*L`);
 }
 
 
@@ -152,7 +197,8 @@ async function requestAllOpenPayments(page) {
   throw new Error("Timed out while requesting all open payments");
 }
 
-async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fuelAmount = "321.45" } = {}) {
+async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fuelAmount = "321.45", fuelLiters = null } = {}) {
+  const effectiveFuelLiters = fuelLiters || String(Math.max(1, Math.round((Number(fuelAmount) / 15) * 100) / 100));
   await chooseFirstSelectOption(page.locator("#currentUser"));
   await chooseFirstSelectOption(page.locator("#tripDriver"));
   await page.locator("#tripDate").fill("2026-06-10");
@@ -166,11 +212,41 @@ async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fu
   await chooseFirstSelectOption(page.locator("#fuelPayer"));
   await page.locator("#fuelDate").fill("2026-06-10");
   await page.locator("#fuelAmount").fill(fuelAmount);
+  await page.locator("#fuelLiters").fill(effectiveFuelLiters);
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
 
   const expectedFuelAmount = fuelAmount.replace(".", "[,.]");
   await expect(page.locator("#fuelList")).toContainText(new RegExp(expectedFuelAmount));
+  await expect(page.locator("#fuelList")).toContainText(litersDisplayPattern(effectiveFuelLiters));
 }
+
+
+test("fuel logs require liters and configured DKK/L range", async ({ page }) => {
+  await openLocalApp(page);
+
+  await chooseFirstSelectOption(page.locator("#currentUser"));
+  await chooseFirstSelectOption(page.locator("#fuelPayer"));
+  await page.locator("#fuelDate").fill("2026-06-10");
+  await page.locator("#fuelAmount").fill("300");
+
+  await expect(page.locator("#fuelLiters")).toBeVisible();
+  await expect(page.locator("#fuelLiters")).toHaveAttribute("required", "");
+  await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#fuelList")).not.toContainText("300,00 DKK");
+
+  await page.locator("#fuelLiters").fill("5");
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("outside the configured fuel price range");
+    await dialog.accept();
+  });
+  await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#fuelList")).not.toContainText("300,00 DKK");
+
+  await page.locator("#fuelLiters").fill("20");
+  await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#fuelList")).toContainText("20 L");
+  await expect(page.locator("#fuelList")).toContainText(/15[,.]00 DKK\/L/);
+});
 
 test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {
   await openLocalApp(page);

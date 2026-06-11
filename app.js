@@ -93,6 +93,38 @@ function formatFuelPriceWarningRange(source = state) {
   return `${formatNumber(range.minDkkPerLiter)}-${formatNumber(range.maxDkkPerLiter)} DKK/L`;
 }
 
+
+function formatFuelAmountLitersAndPrice(fuel, currency = state.currency) {
+  const amount = Number(fuel?.amount || 0);
+  const liters = Number(fuel?.liters || 0);
+  const parts = [formatMoneyFor(amount, currency)];
+  if (liters > 0) {
+    parts.push(`${formatNumber(liters)} L`);
+    if (amount > 0) parts.push(`${formatMoneyFor(amount / liters, currency)}/L`);
+  }
+  return parts.join(" · ");
+}
+
+function validateFuelLogInput({ amount, liters }) {
+  if (!(amount > 0)) {
+    return { ok: false, message: "Fuel amount must be higher than zero." };
+  }
+  if (!(liters > 0)) {
+    return {
+      ok: false,
+      message: "Add liters from the receipt before saving this fuel log. The app needs liters to verify DKK/L and prevent settlement mistakes."
+    };
+  }
+  const pricePerLiter = amount / liters;
+  if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
+    return {
+      ok: false,
+      message: `${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the configured fuel price range (${formatFuelPriceWarningRange()}). Check the amount/liters or ask an admin to adjust the warning range in Group settings.`
+    };
+  }
+  return { ok: true, pricePerLiter };
+}
+
 const defaults = {
   currency: "DKK",
   members: ["Christian", "Emilie", "Jonas", "Marie"],
@@ -449,19 +481,21 @@ els.fuelForm.addEventListener("submit", async (event) => {
   const stationBrand = els.fuelStationBrand?.value.trim() || "";
   const fullTank = Boolean(els.fuelFullTank?.checked);
 
-  if (amount <= 0) {
-    alert("Fuel amount must be higher than zero.");
+  const validation = validateFuelLogInput({ amount, liters });
+  if (!validation.ok) {
+    alert(validation.message);
+    showAppMessage(validation.message, "error");
     return;
   }
 
-  const normalizedLiters = liters > 0 ? round(liters) : "";
+  const normalizedLiters = round(liters);
   const fuelPayload = {
     id: editingFuelId || crypto.randomUUID(),
     payer: els.fuelPayer.value,
     date: els.fuelDate.value,
     amount: roundMoney(amount),
     liters: normalizedLiters,
-    pricePerLiter: normalizedLiters ? roundMoney(amount / normalizedLiters) : "",
+    pricePerLiter: roundMoney(amount / normalizedLiters),
     odometer: odometer > 0 ? round(odometer) : "",
     station,
     location: latitude && longitude ? { latitude, longitude } : null,
@@ -490,8 +524,8 @@ els.fuelForm.addEventListener("submit", async (event) => {
     type: wasEditingFuel ? "fuel_updated" : "fuel_created",
     entityType: "fuel",
     entityId: fuelPayload.id,
-    summary: `${fuelPayload.payer} · ${formatMoney(fuelPayload.amount)}`,
-    detail: wasEditingFuel ? describeFuelAuditChanges(previousFuel, fuelPayload) : (fuelPayload.date || "")
+    summary: `${fuelPayload.payer} · ${formatFuelAmountLitersAndPrice(fuelPayload)}`,
+    detail: wasEditingFuel ? describeFuelAuditChanges(previousFuel, fuelPayload) : `${fuelPayload.date || ""}${fuelPayload.odometer ? ` · ${formatNumber(fuelPayload.odometer)} km` : ""}`
   });
 
   saveState();
@@ -4715,8 +4749,8 @@ function renderFuelEntryCard(fuel, ledger = null) {
         ${canManageFuelEntry(fuel) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
       </header>
       ${!canManageFuelEntry(fuel) ? renderPermissionNote(describeFuelPermissionMessage(fuel, "edit or delete")) : ""}
-      <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
-      <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+      <p>${formatFuelAmountLitersAndPrice(fuel)}</p>
+      <p class="entry-meta">${formatDate(fuel.date)}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
       ${renderEntryReviewSignal(reviewSignal)}
     </article>
   `;

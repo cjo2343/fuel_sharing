@@ -474,7 +474,7 @@ Fuel price anomaly bounds are configurable in Admin → Group settings as low/hi
 
 ### Configurable fuel-price warnings
 
-Admins can tune the low/high DKK/L warning range in Group settings. These warnings help catch amount/liter typos without blocking valid fuel logs.
+Admins can tune the low/high DKK/L warning range in Group settings. Liters are now required on new/edited fuel logs. The configured low/high DKK/L range blocks obviously invalid saves and tells the user to correct amount/liters or adjust the range in Admin settings.
 
 ### Member and role management UX
 
@@ -482,3 +482,7 @@ Admin member management now shows clearer role/access descriptions for each memb
 
 Manual check: Admin -> Member management, verify Member/Admin descriptions, try promoting/demoting a test member, and confirm at least one active admin remains protected.
 
+
+### Smoke test state isolation
+
+Playwright runs against the local `server.py` with `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`. Each test resets `/api/state` before opening the app so smoke-test trips, fuel logs, payments, audit entries, and closed periods do not leak between tests.

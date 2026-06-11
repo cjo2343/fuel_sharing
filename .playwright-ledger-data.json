@@ -1,0 +1,46 @@
+{
+  "currency": "DKK",
+  "members": [
+    "Christian",
+    "Emilie",
+    "Jonas",
+    "Marie"
+  ],
+  "memberProfiles": {
+    "Christian": {
+      "email": "",
+      "role": "admin",
+      "mobilepayPhone": ""
+    },
+    "Emilie": {
+      "email": "",
+      "role": "member",
+      "mobilepayPhone": ""
+    },
+    "Jonas": {
+      "email": "",
+      "role": "member",
+      "mobilepayPhone": ""
+    },
+    "Marie": {
+      "email": "",
+      "role": "member",
+      "mobilepayPhone": ""
+    }
+  },
+  "trips": [],
+  "fuel": [],
+  "paymentStatuses": {},
+  "closedPeriods": [],
+  "lastOdometer": "",
+  "fuelType": "diesel",
+  "fuelConsumption": 5.3,
+  "fuelFallbackPrice": 14.5,
+  "fuelWarningThreshold": 70,
+  "carSettingsVersion": 2,
+  "auditLog": [],
+  "fuelPriceWarningRange": {
+    "min": 8,
+    "max": 25
+  }
+}
