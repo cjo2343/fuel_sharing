@@ -469,8 +469,9 @@ git add .gitignore
 
 Playwright smoke tests now run against `server.py` instead of a static `python3 -m http.server` process, so `/api/state` and `/api/fuel-price` are exercised during browser tests. Test data is isolated through `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`.
 
-Fuel price anomaly bounds are centralized in `app.js` as `fuelPriceWarningRange` so the DKK/L warning range can be adjusted in one place if fuel prices or markets change.
+Fuel price anomaly bounds are configurable in Admin → Group settings as low/high DKK/L warning values. Defaults remain 8–25 DKK/L for Denmark, but admins can adjust them if prices or markets change.
 
-### Repository hygiene guard
 
-`npm run validate` includes a tracked-artifact guard that prevents generated or local-machine files from being committed. It checks for tracked `node_modules/`, Python cache files, `.bak` files, Playwright reports/results, `.playwright-ledger-data.json`, and `.DS_Store`.
+### Configurable fuel-price warnings
+
+Admins can tune the low/high DKK/L warning range in Group settings. These warnings help catch amount/liter typos without blocking valid fuel logs.

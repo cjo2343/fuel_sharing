@@ -245,3 +245,6 @@ npm run test:e2e
 ```
 
 The validation suite includes a tracked-artifact guard. It fails if generated files such as `node_modules/`, `__pycache__/`, `*.bak`, Playwright reports/results, `.playwright-ledger-data.json`, or `.DS_Store` are accidentally committed.
+
+
+- In Admin → Group settings, confirm the low/high fuel-price warning range saves and still allows valid fuel logs.

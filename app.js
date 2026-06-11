@@ -1,6 +1,6 @@
 const storageKey = "car-share-ledger-v1";
 const stationSearchRadiusMeters = 2500;
-const fuelPriceWarningRange = Object.freeze({
+const defaultFuelPriceWarningRange = Object.freeze({
   minDkkPerLiter: 8,
   maxDkkPerLiter: 25
 });
@@ -71,10 +71,26 @@ function openMobilePayApp(settlement) {
 }
 
 
-function isFuelPriceOutsideWarningRange(pricePerLiter) {
+function getFuelPriceWarningRange(source = state) {
+  const min = Number(source?.fuelPriceWarningMinDkkPerLiter);
+  const max = Number(source?.fuelPriceWarningMaxDkkPerLiter);
+  const fallbackMin = defaultFuelPriceWarningRange.minDkkPerLiter;
+  const fallbackMax = defaultFuelPriceWarningRange.maxDkkPerLiter;
+  const normalizedMin = Number.isFinite(min) && min > 0 ? min : fallbackMin;
+  const normalizedMax = Number.isFinite(max) && max > normalizedMin ? max : Math.max(fallbackMax, normalizedMin + 1);
+  return { minDkkPerLiter: normalizedMin, maxDkkPerLiter: normalizedMax };
+}
+
+function isFuelPriceOutsideWarningRange(pricePerLiter, source = state) {
   const price = Number(pricePerLiter);
+  const range = getFuelPriceWarningRange(source);
   return Number.isFinite(price)
-    && (price < fuelPriceWarningRange.minDkkPerLiter || price > fuelPriceWarningRange.maxDkkPerLiter);
+    && (price < range.minDkkPerLiter || price > range.maxDkkPerLiter);
+}
+
+function formatFuelPriceWarningRange(source = state) {
+  const range = getFuelPriceWarningRange(source);
+  return `${formatNumber(range.minDkkPerLiter)}-${formatNumber(range.maxDkkPerLiter)} DKK/L`;
 }
 
 const defaults = {
@@ -96,6 +112,8 @@ const defaults = {
   fuelType: "diesel",
   fuelConsumption: 5.3,
   fuelFallbackPrice: 14.5,
+  fuelPriceWarningMinDkkPerLiter: defaultFuelPriceWarningRange.minDkkPerLiter,
+  fuelPriceWarningMaxDkkPerLiter: defaultFuelPriceWarningRange.maxDkkPerLiter,
   fuelWarningThreshold: 70,
   carSettingsVersion: 2
 };
@@ -191,6 +209,8 @@ const els = {
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
   fuelFallbackPrice: document.querySelector("#fuelFallbackPrice"),
+  fuelPriceWarningMin: document.querySelector("#fuelPriceWarningMin"),
+  fuelPriceWarningMax: document.querySelector("#fuelPriceWarningMax"),
   fuelWarningThreshold: document.querySelector("#fuelWarningThreshold"),
   members: document.querySelector("#members"),
   tripForm: document.querySelector("#tripForm"),
@@ -680,6 +700,10 @@ els.settingsForm.addEventListener("submit", (event) => {
   state.fuelType = els.fuelType?.value || defaults.fuelType;
   state.fuelConsumption = Math.max(0.1, Number(els.fuelConsumption?.value) || defaults.fuelConsumption);
   state.fuelFallbackPrice = Math.max(0.1, Number(els.fuelFallbackPrice?.value) || defaults.fuelFallbackPrice);
+  const minFuelPriceWarning = Math.max(0.1, Number(els.fuelPriceWarningMin?.value) || defaults.fuelPriceWarningMinDkkPerLiter);
+  const maxFuelPriceWarning = Math.max(minFuelPriceWarning + 0.1, Number(els.fuelPriceWarningMax?.value) || defaults.fuelPriceWarningMaxDkkPerLiter);
+  state.fuelPriceWarningMinDkkPerLiter = round(minFuelPriceWarning);
+  state.fuelPriceWarningMaxDkkPerLiter = round(maxFuelPriceWarning);
   state.fuelWarningThreshold = Math.min(100, Math.max(1, Number(els.fuelWarningThreshold?.value) || defaults.fuelWarningThreshold));
   state.members = [...new Set(members)];
   state.memberProfiles = Object.fromEntries(
@@ -1556,6 +1580,9 @@ function renderSettings() {
   if (els.fuelType) els.fuelType.value = state.fuelType || defaults.fuelType;
   if (els.fuelConsumption) els.fuelConsumption.value = state.fuelConsumption || defaults.fuelConsumption;
   if (els.fuelFallbackPrice) els.fuelFallbackPrice.value = state.fuelFallbackPrice || defaults.fuelFallbackPrice;
+  const fuelPriceRange = getFuelPriceWarningRange(state);
+  if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.value = fuelPriceRange.minDkkPerLiter;
+  if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.value = fuelPriceRange.maxDkkPerLiter;
   if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
   els.members.value = state.members
     .map((name) => {
@@ -1570,6 +1597,8 @@ function renderSettings() {
   if (els.fuelType) els.fuelType.disabled = !canManage;
   if (els.fuelConsumption) els.fuelConsumption.disabled = !canManage;
   if (els.fuelFallbackPrice) els.fuelFallbackPrice.disabled = !canManage;
+  if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.disabled = !canManage;
+  if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.disabled = !canManage;
   if (els.fuelWarningThreshold) els.fuelWarningThreshold.disabled = !canManage;
   els.members.disabled = !canManage;
   els.settingsForm.querySelector("button").disabled = !canManage;
@@ -2028,7 +2057,7 @@ function buildStationInsights() {
         reasons.push(`${formatMoneyFor(price, state.currency)}/L is ${formatNumber(((price / referencePrice) - 1) * 100)}% above the reference average.`);
       }
       if (price > 0 && (isFuelPriceOutsideWarningRange(price))) {
-        reasons.push(`${formatMoneyFor(price, state.currency)}/L is outside the normal fuel price range.`);
+        reasons.push(`${formatMoneyFor(price, state.currency)}/L is outside the configured fuel price range (${formatFuelPriceWarningRange()}).`);
       }
       const stationGroup = stations.find((item) => item.name === station);
       if (stationGroup && stationGroup.logCount >= 3 && price > stationGroup.avgPrice * 1.15) {
@@ -2362,7 +2391,7 @@ function getFuelEntryReviewSignal(fuel, ledger = null) {
     const pricePerLiter = amount / liters;
     if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
       setLevel("issue");
-      messages.push(`${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the normal fuel price range.`);
+      messages.push(`${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the configured fuel price range (${formatFuelPriceWarningRange()}).`);
     } else if (referencePrice > 0) {
       const difference = Math.abs(pricePerLiter - referencePrice) / referencePrice;
       if (difference >= 0.25) {
@@ -2502,7 +2531,7 @@ function getCurrentPeriodFuelAnomalies(ledger) {
       if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
         anomalies.push(createEntryAnomaly({
           severity: "issue",
-          text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal fuel price range.`,
+          text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the configured fuel price range (${formatFuelPriceWarningRange()}).`,
           type: "fuel",
           entry: fuel
         }));
@@ -5124,7 +5153,7 @@ function buildSystemHealthChecks(ledger) {
     level: suspiciousPriceLogs.length ? "warning" : "ok",
     title: "Receipt price checks",
     message: suspiciousPriceLogs.length
-      ? `${suspiciousPriceLogs.length} fuel log${suspiciousPriceLogs.length === 1 ? "" : "s"} have unusual DKK/L values. Check amount and liters.`
+      ? `${suspiciousPriceLogs.length} fuel log${suspiciousPriceLogs.length === 1 ? "" : "s"} have unusual DKK/L values for the configured range. Check amount, liters, or Group settings.`
       : "No current fuel logs have suspicious DKK/L values."
   });
 
@@ -5738,6 +5767,8 @@ function normalizeState(saved) {
     fuelType: getFuelTypeForState(saved),
     fuelConsumption: getFuelConsumptionForState(saved),
     fuelFallbackPrice: getFuelFallbackPriceForState(saved),
+    fuelPriceWarningMinDkkPerLiter: getFuelPriceWarningRange(saved).minDkkPerLiter,
+    fuelPriceWarningMaxDkkPerLiter: getFuelPriceWarningRange(saved).maxDkkPerLiter,
     fuelWarningThreshold: Number(saved.fuelWarningThreshold) || defaults.fuelWarningThreshold,
     carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion
   };

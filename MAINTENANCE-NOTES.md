@@ -241,7 +241,7 @@ Codex review found that generated artifacts could be tracked and that Playwright
 
 Playwright now starts `server.py` with `PORT=4173` and `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`, which keeps local browser tests isolated while still covering app API routes.
 
-Fuel-price warning thresholds are centralized in `fuelPriceWarningRange` in `app.js` instead of repeated magic numbers.
+Fuel-price warning thresholds are configurable in Group settings (`fuelPriceWarningMinDkkPerLiter` / `fuelPriceWarningMaxDkkPerLiter`) with 8–25 DKK/L defaults. The warning helper reads the saved state range, so future markets/prices do not require code changes.
 
 ## Tracked artifact guard
 
@@ -259,3 +259,8 @@ Then run:
 ```bash
 npm run validate
 ```
+
+
+### Configurable fuel-price warning range
+
+Admins can adjust the low/high DKK/L anomaly range in Group settings. Keep Playwright and manual checks focused on warnings being non-blocking.
