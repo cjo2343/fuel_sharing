@@ -2678,3 +2678,21 @@ body.auth-locked #authPanel .text-button {
 .audit-entry-card header p {
   margin: 0.2rem 0 0;
 }
+
+.build-info-panel-content {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.build-info-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.build-info-grid .diagnostic-card small {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-weight: 700;
+}

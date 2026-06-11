@@ -203,3 +203,7 @@ Audit history is now period-aware. Current/open-period audit entries live in `st
 ### Period-aware audit browser smoke test
 
 The Playwright suite now includes a regression test for period-aware audit behavior: create trip/fuel data, confirm current audit entries, reset the current period and confirm the current log clears, then create a new period, close it, and confirm the completed period keeps its frozen Change log.
+
+## Version/build info panel
+
+`build-info.js` exposes `window.FuelBuildInfo` and renders the Admin -> Version & update status panel. Update `BUILD_INFO.version`, `BUILD_INFO.buildLabel`, `BUILD_INFO.updatedAt`, and the expected service-worker cache whenever shipping a user-visible deployment. Keep `service-worker.js` `CACHE_NAME` in sync with `BUILD_INFO.expectedServiceWorkerCache`.

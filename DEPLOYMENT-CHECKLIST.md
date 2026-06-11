@@ -176,3 +176,7 @@ Audit history is now period-aware. Current/open-period audit entries live in `st
 ### Period-aware audit smoke test
 
 The automated Playwright suite verifies that current-period audit entries clear on reset/close and that completed settlement periods keep a frozen Change log. Run `npm run test:e2e` before deploying audit or settlement-period changes.
+
+## PWA version check
+
+After deployment, open Admin -> Version & update status and verify the app version/build label and service-worker cache match the expected release. On phones/home-screen installs, fully close and reopen the app if the service-worker cache is stale.

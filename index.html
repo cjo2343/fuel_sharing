@@ -474,6 +474,19 @@
           <div id="systemHealthList" class="system-health-list"></div>
         </section>
 
+
+        <section class="panel wide-panel build-info-panel" data-view="admin" aria-labelledby="buildInfoHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Admin</p>
+              <h2 id="buildInfoHeading">Version & update status</h2>
+            </div>
+            <button id="refreshBuildInfo" class="subtle-button" type="button" onclick="window.FuelBuildInfo?.refreshBuildInfo?.()">Refresh status</button>
+          </div>
+          <p class="section-note">Use this panel to confirm a phone or home-screen PWA is running the newest deployed files and service worker cache.</p>
+          <div id="buildInfoPanel" class="build-info-panel-content"></div>
+        </section>
+
         <section class="panel wide-panel database-diagnostics-panel hidden" data-view="admin" aria-labelledby="databaseDiagnosticsHeading">
           <div class="panel-header">
             <div>
@@ -512,6 +525,7 @@
     <script src="audit-log.js"></script>
     <script src="notifications.js"></script>
     <script src="admin-tools.js"></script>
+    <script src="build-info.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

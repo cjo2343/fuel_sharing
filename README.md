@@ -429,3 +429,7 @@ Audit entries for trip/fuel/payment/settlement changes are mirrored to the ledge
 Audit history is now period-aware. Current/open-period audit entries live in `state.auditLog`. When a settlement period is closed, the current audit entries are copied into `closedPeriod.auditLog` together with the settlement-close event, then the new open period starts with an empty audit log. Resetting/deleting the current open period clears its audit entries as well. Closed period cards include a Change log subsection for the frozen period history.
 
 The browser smoke-test suite also covers the period-aware audit rule: resetting the current period clears current-period audit entries, and closing a period freezes that period's audit history into the completed period card.
+
+### Version and PWA update status
+
+Admins can open **Admin -> Version & update status** to confirm the deployed app version, build label, expected service-worker cache, and whether the current browser/PWA page is controlled by the service worker. This is useful when a home-screen install appears stale after a deployment.

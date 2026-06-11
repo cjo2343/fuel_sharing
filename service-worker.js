@@ -1,4 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v17";
+const CACHE_NAME = "fuel-ledger-v18";
+const BUILD_LABEL = "version-info-panel";
+const BUILD_UPDATED_AT = "2026-06-11T00:00:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -12,6 +14,7 @@ const CORE_ASSETS = [
   "/audit-log.js",
   "/notifications.js",
   "/admin-tools.js",
+  "/build-info.js",
   "/app.js",
   "/manifest.json",
   "/icon-192.png",
@@ -33,6 +36,14 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting();
+    return;
+  }
+  if (event.data?.type === "GET_BUILD_INFO") {
+    event.ports?.[0]?.postMessage({
+      cacheName: CACHE_NAME,
+      buildLabel: BUILD_LABEL,
+      updatedAt: BUILD_UPDATED_AT
+    });
   }
 });
 

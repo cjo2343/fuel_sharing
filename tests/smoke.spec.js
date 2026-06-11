@@ -141,7 +141,8 @@ test("critical runtime modules are loaded before app.js", async ({ page }) => {
     uiMessages: Boolean(window.FuelUiMessages),
     auditLog: Boolean(window.FuelAuditLog),
     notifications: Boolean(window.FuelNotifications),
-    adminTools: Boolean(window.FuelAdminTools)
+    adminTools: Boolean(window.FuelAdminTools),
+    buildInfo: Boolean(window.FuelBuildInfo)
   }));
   expect(modules).toEqual({
     utils: true,
@@ -151,6 +152,16 @@ test("critical runtime modules are loaded before app.js", async ({ page }) => {
     uiMessages: true,
     auditLog: true,
     notifications: true,
-    adminTools: true
+    adminTools: true,
+    buildInfo: true
   });
+});
+
+
+test("build info panel reports app version and expected service worker cache", async ({ page }) => {
+  await openLocalApp(page);
+  await page.evaluate(() => window.FuelBuildInfo?.refreshBuildInfo?.());
+  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.1");
+  await expect(page.locator("#buildInfoPanel")).toContainText("version-info-panel");
+  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v18");
 });
