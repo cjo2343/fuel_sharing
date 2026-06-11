@@ -215,3 +215,22 @@ Payment audit entries now include clearer summaries and before/after status deta
 - Sign in as a normal member and open another member's trip/fuel entry in History.
 - Confirm edit/delete controls are absent and a permission note explains who can change the entry. This is also covered by `npm run test:e2e`.
 - Try a payment action for the wrong side of a settlement and confirm the app explains who must request, reopen, or mark it paid.
+
+
+## Repo cleanup after applying this patch
+
+If your repository already tracks generated files, run this once locally before committing:
+
+```bash
+git rm -r --cached node_modules __pycache__ app.js.bak 2>/dev/null || true
+git status
+```
+
+Then run:
+
+```bash
+npm run validate
+npm run test:e2e
+```
+
+The browser tests now use `server.py`, not a static file server, and write local test state to `.playwright-ledger-data.json`. That file is ignored by Git.

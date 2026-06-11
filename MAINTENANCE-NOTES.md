@@ -233,3 +233,12 @@ Payment audit entries now include clearer summaries and before/after status deta
 ## Permission UX messages
 
 The app now shows clearer messages when users are blocked from editing or deleting another member's trip/fuel log, or from changing a payment status they do not own. Non-editable History cards also show a small permission note so members understand why edit/delete controls are missing. The Playwright suite includes a Supabase-authenticated non-admin smoke test that verifies these notes appear and edit/delete controls are hidden for entries owned by another member.
+
+
+## Repo cleanup + real server smoke tests
+
+Codex review found that generated artifacts could be tracked and that Playwright was using a static file server. This patch adds `.gitignore` coverage for `node_modules/`, Python caches, backup files, Playwright reports, and local test data. If those files are already tracked, remove them with `git rm -r --cached ...` before committing.
+
+Playwright now starts `server.py` with `PORT=4173` and `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`, which keeps local browser tests isolated while still covering app API routes.
+
+Fuel-price warning thresholds are centralized in `fuelPriceWarningRange` in `app.js` instead of repeated magic numbers.

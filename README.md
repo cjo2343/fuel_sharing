@@ -456,3 +456,17 @@ Completed-period exports now keep only CSV actions. Safari/iOS/home-screen PWAs 
 ### Permission UX messages
 
 Blocked trip, fuel, and payment actions now explain who can make the change and which signed-in member is currently using the app. This mirrors the database ownership rules: admins can manage everything, trip drivers/creators can manage their trip logs, fuel payers/creators can manage their fuel logs, and payment request/paid/reopen actions are limited to the correct payer/receiver unless an admin is allowed.
+
+
+### Repo hygiene and test server
+
+The repo should not track generated dependencies or machine-local artifacts. `.gitignore` ignores `node_modules/`, `__pycache__/`, `*.bak`, Playwright reports, and local test data. If any of those files were previously committed, remove them from Git tracking with:
+
+```bash
+git rm -r --cached node_modules __pycache__ app.js.bak 2>/dev/null || true
+git add .gitignore
+```
+
+Playwright smoke tests now run against `server.py` instead of a static `python3 -m http.server` process, so `/api/state` and `/api/fuel-price` are exercised during browser tests. Test data is isolated through `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`.
+
+Fuel price anomaly bounds are centralized in `app.js` as `fuelPriceWarningRange` so the DKK/L warning range can be adjusted in one place if fuel prices or markets change.

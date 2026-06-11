@@ -17,7 +17,7 @@ except Exception:  # pywebpush is optional for local development until notificat
     webpush = None
 
 ROOT = Path(__file__).resolve().parent
-DATA_FILE = ROOT / "ledger-data.json"
+DATA_FILE = Path(os.environ.get("FUEL_LEDGER_DATA_FILE", ROOT / "ledger-data.json")).expanduser()
 
 DEFAULT_STATE = {
     "currency": "DKK",

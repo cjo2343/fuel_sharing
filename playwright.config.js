@@ -13,7 +13,7 @@ export default defineConfig({
     serviceWorkers: "block"
   },
   webServer: {
-    command: "python3 -m http.server 4173",
+    command: "FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json PORT=4173 python3 server.py",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     stdout: "ignore",

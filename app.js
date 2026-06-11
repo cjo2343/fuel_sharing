@@ -1,5 +1,9 @@
 const storageKey = "car-share-ledger-v1";
 const stationSearchRadiusMeters = 2500;
+const fuelPriceWarningRange = Object.freeze({
+  minDkkPerLiter: 8,
+  maxDkkPerLiter: 25
+});
 const userKey = "car-share-current-user";
 const loginCooldownKey = "car-share-login-cooldown-until";
 const pendingLoginEmailKey = "car-share-pending-login-email";
@@ -64,6 +68,13 @@ function clearMobilePayReturnPrompt(key) {
 function openMobilePayApp(settlement) {
   rememberMobilePayReturnPrompt(settlement);
   window.location.href = "mobilepay://";
+}
+
+
+function isFuelPriceOutsideWarningRange(pricePerLiter) {
+  const price = Number(pricePerLiter);
+  return Number.isFinite(price)
+    && (price < fuelPriceWarningRange.minDkkPerLiter || price > fuelPriceWarningRange.maxDkkPerLiter);
 }
 
 const defaults = {
@@ -2016,7 +2027,7 @@ function buildStationInsights() {
       if (price > 0 && referencePrice > 0 && price > referencePrice * 1.12) {
         reasons.push(`${formatMoneyFor(price, state.currency)}/L is ${formatNumber(((price / referencePrice) - 1) * 100)}% above the reference average.`);
       }
-      if (price > 0 && (price < 8 || price > 25)) {
+      if (price > 0 && (isFuelPriceOutsideWarningRange(price))) {
         reasons.push(`${formatMoneyFor(price, state.currency)}/L is outside the normal fuel price range.`);
       }
       const stationGroup = stations.find((item) => item.name === station);
@@ -2349,7 +2360,7 @@ function getFuelEntryReviewSignal(fuel, ledger = null) {
 
   if (amount > 0 && liters > 0) {
     const pricePerLiter = amount / liters;
-    if (pricePerLiter < 8 || pricePerLiter > 25) {
+    if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
       setLevel("issue");
       messages.push(`${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the normal fuel price range.`);
     } else if (referencePrice > 0) {
@@ -2488,7 +2499,7 @@ function getCurrentPeriodFuelAnomalies(ledger) {
 
     if (amount > 0 && liters > 0) {
       const pricePerLiter = amount / liters;
-      if (pricePerLiter < 8 || pricePerLiter > 25) {
+      if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
         anomalies.push(createEntryAnomaly({
           severity: "issue",
           text: `${label}: ${formatMoneyFor(pricePerLiter, state.currency)}/L looks outside the normal fuel price range.`,
@@ -3423,7 +3434,7 @@ function getFuelValidationWarnings(ledger) {
     const liters = Number(fuel.liters || 0);
     if (!(amount > 0 && liters > 0)) continue;
     const pricePerLiter = amount / liters;
-    if (pricePerLiter < 8 || pricePerLiter > 25) {
+    if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
       warnings.push(`${fuel.payer}'s fuel log on ${formatDate(fuel.date)} has an unusual price: ${formatMoneyFor(pricePerLiter, state.currency)}/L.`);
     }
   }
@@ -5053,7 +5064,7 @@ function buildSystemHealthChecks(ledger) {
     const liters = Number(fuel.liters || 0);
     if (!amount || !liters) return false;
     const price = amount / liters;
-    return price < 8 || price > 25;
+    return isFuelPriceOutsideWarningRange(price);
   });
   const unusualTrips = state.trips.filter((trip) => {
     const km = Number(trip.endKm || 0) - Number(trip.startKm || 0);
