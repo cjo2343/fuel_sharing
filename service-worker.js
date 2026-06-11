@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v24";
-const BUILD_LABEL = "payment-audit-details";
+const CACHE_NAME = "fuel-ledger-v25";
+const BUILD_LABEL = "permission-ux-messages";
 const BUILD_UPDATED_AT = "2026-06-11T12:35:00+02:00";
 const CORE_ASSETS = [
   "/",

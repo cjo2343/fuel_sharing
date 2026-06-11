@@ -175,13 +175,26 @@ test("build info is visible to all users in About and admin panels", async ({ pa
   await openLocalApp(page);
   await page.evaluate(() => window.FuelBuildInfo?.refreshBuildInfo?.());
 
+  const expectedBuildInfo = await page.evaluate(() => window.FuelBuildInfo?.BUILD_INFO);
+  expect(expectedBuildInfo).toMatchObject({
+    version: expect.any(String),
+    buildLabel: expect.any(String),
+    expectedServiceWorkerCache: expect.any(String)
+  });
+
+  const expectedBuildStrings = [
+    expectedBuildInfo.version,
+    expectedBuildInfo.buildLabel,
+    expectedBuildInfo.expectedServiceWorkerCache
+  ];
+
   await page.locator('[data-view-tab="about"]').click();
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.7");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("payment-audit-details");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v24");
+  for (const value of expectedBuildStrings) {
+    await expect(page.locator("#aboutBuildInfoPanel")).toContainText(value);
+  }
 
   await page.locator('[data-view-tab="admin"]').click();
-  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.7");
-  await expect(page.locator("#buildInfoPanel")).toContainText("payment-audit-details");
-  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v24");
+  for (const value of expectedBuildStrings) {
+    await expect(page.locator("#buildInfoPanel")).toContainText(value);
+  }
 });

@@ -209,3 +209,9 @@ After deploying CSV export changes, test at least one completed period in Safari
 ### Payment audit details
 
 Payment audit entries now include clearer summaries and before/after status details, for example `Status: Not requested -> Requested` together with payer, recipient, amount, and currency metadata. The completed-period change-log CSV export includes these payment metadata columns so frozen payment history is easier to audit.
+
+### Permission UX smoke check
+
+- Sign in as a normal member and open another member's trip/fuel entry in History.
+- Confirm edit/delete controls are absent and a permission note explains who can change the entry.
+- Try a payment action for the wrong side of a settlement and confirm the app explains who must request, reopen, or mark it paid.

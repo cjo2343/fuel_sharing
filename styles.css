@@ -2791,3 +2791,9 @@ body.auth-locked #authPanel .text-button {
     display: grid;
   }
 }
+
+.permission-note {
+  border-left: 3px solid var(--warning, #d97706);
+  margin-top: 0.5rem;
+  padding-left: 0.65rem;
+}

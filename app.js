@@ -1178,7 +1178,7 @@ document.addEventListener("click", async (event) => {
     : state.fuel.find((item) => item.id === id);
   const canDelete = type === "trips" ? canManageTripEntry(entry) : canManageFuelEntry(entry);
   if (!canDelete) {
-    alert(type === "trips" ? "You can only delete your own trip logs." : "You can only delete your own fuel logs.");
+    showPermissionBlocked(type === "trips" ? describeTripPermissionMessage(entry, "delete") : describeFuelPermissionMessage(entry, "delete"));
     return;
   }
 
@@ -3682,7 +3682,7 @@ async function updatePaymentStatus(button) {
   const mayMarkPaid = requestedStatus === "paid";
 
   if (!settlement || (mayChangeRequest && !canManageSettlementRequest(settlement) && !canManageSettings()) || (mayMarkPaid && !canMarkSettlementPaid(settlement))) {
-    alert(requestedStatus === "paid" ? "Only the person who owes this payment can mark it as paid." : "Only the person who paid for fuel in this settlement can request or reopen that payment.");
+    showPermissionBlocked(describePaymentPermissionMessage(settlement, requestedStatus));
     render();
     return;
   }
@@ -4402,6 +4402,56 @@ function setDataToolsMessage(message) {
 }
 
 
+
+function describeCurrentActor() {
+  const profile = getCurrentMemberProfile();
+  if (profile?.name) return profile.name;
+  const email = getLoggedInEmail();
+  return email || "This user";
+}
+
+function describeTripPermissionMessage(trip, action = "edit") {
+  const owner = trip?.driver || "the driver";
+  const actor = describeCurrentActor();
+  if (canManageSettings()) return "";
+  if (!getCurrentMemberProfile() && supabaseClient) {
+    return `You are signed in as ${actor}, but this email is not linked to a ledger member. Ask an admin to add your email before changing trip logs.`;
+  }
+  return `Only ${owner}, the trip creator, or an admin can ${action} this trip. You are signed in as ${actor}.`;
+}
+
+function describeFuelPermissionMessage(fuel, action = "edit") {
+  const owner = fuel?.payer || "the fuel payer";
+  const actor = describeCurrentActor();
+  if (canManageSettings()) return "";
+  if (!getCurrentMemberProfile() && supabaseClient) {
+    return `You are signed in as ${actor}, but this email is not linked to a ledger member. Ask an admin to add your email before changing fuel logs.`;
+  }
+  return `Only ${owner}, the fuel payer/creator, or an admin can ${action} this fuel log. You are signed in as ${actor}.`;
+}
+
+function showPermissionBlocked(message) {
+  if (!message) return;
+  showAppMessage(message, "warning", { timeoutMs: 7000 });
+  alert(message);
+}
+
+function renderPermissionNote(message) {
+  return message ? `<p class="entry-meta permission-note">${escapeHtml(message)}</p>` : "";
+}
+
+function describePaymentPermissionMessage(settlement, nextStatus) {
+  const actor = describeCurrentActor();
+  if (!settlement) return "This payment no longer exists in the current settlement. Refresh and try again.";
+  if (nextStatus === "paid") {
+    return `Only ${settlement.from}, the person who owes this payment, can mark it as paid. You are signed in as ${actor}.`;
+  }
+  if (nextStatus === "requested") {
+    return `Only ${settlement.to}, the fuel payer receiving this payment, can request it. You are signed in as ${actor}.`;
+  }
+  return `Only ${settlement.to}, the fuel payer who requested this payment, or an admin can reopen it. You are signed in as ${actor}.`;
+}
+
 function canManageTripEntry(trip) {
   if (!trip) return false;
   if (canManageSettings()) return true;
@@ -4440,7 +4490,7 @@ function editEntry(value) {
   if (type === "trips") {
     const trip = state.trips.find((entry) => entry.id === id);
     if (!canManageTripEntry(trip)) {
-      alert("You can only edit your own trip logs.");
+      showPermissionBlocked(describeTripPermissionMessage(trip, "edit"));
       return;
     }
     if (!assertCurrentPeriodAllowsMoneyChanges("edit trip logs")) return;
@@ -4450,7 +4500,7 @@ function editEntry(value) {
   if (type === "fuel") {
     const fuel = state.fuel.find((entry) => entry.id === id);
     if (!canManageFuelEntry(fuel)) {
-      alert("You can only edit your own fuel logs.");
+      showPermissionBlocked(describeFuelPermissionMessage(fuel, "edit"));
       return;
     }
     if (!assertCurrentPeriodAllowsMoneyChanges("edit fuel logs")) return;
@@ -4572,6 +4622,7 @@ function renderTripEntryCard(trip, ledger = null) {
         <strong>${escapeHtml(trip.driver)}</strong>
         ${canManageTripEntry(trip) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
       </header>
+      ${!canManageTripEntry(trip) ? renderPermissionNote(describeTripPermissionMessage(trip, "edit or delete")) : ""}
       <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km <span class="category-chip">${escapeHtml(category)}</span></p>
       <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
       <p class="entry-meta">Split between ${participants.map(escapeHtml).join(", ")}</p>
@@ -4623,6 +4674,7 @@ function renderFuelEntryCard(fuel, ledger = null) {
         <strong>${escapeHtml(fuel.payer)}</strong>
         ${canManageFuelEntry(fuel) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
       </header>
+      ${!canManageFuelEntry(fuel) ? renderPermissionNote(describeFuelPermissionMessage(fuel, "edit or delete")) : ""}
       <p>${formatMoney(fuel.amount)}${Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : ""}</p>
       <p class="entry-meta">${formatDate(fuel.date)}${Number(fuel.liters || 0) > 0 ? ` · ${formatMoneyFor(Number(fuel.amount || 0) / Number(fuel.liters || 1), state.currency)}/L` : ""}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
       ${renderEntryReviewSignal(reviewSignal)}

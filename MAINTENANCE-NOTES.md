@@ -229,3 +229,7 @@ Completed-period exports now keep only CSV actions. Safari/iOS/home-screen PWAs 
 ### Payment audit details
 
 Payment audit entries now include clearer summaries and before/after status details, for example `Status: Not requested -> Requested` together with payer, recipient, amount, and currency metadata. The completed-period change-log CSV export includes these payment metadata columns so frozen payment history is easier to audit.
+
+## Permission UX messages
+
+The app now shows clearer messages when users are blocked from editing or deleting another member's trip/fuel log, or from changing a payment status they do not own. Non-editable History cards also show a small permission note so members understand why edit/delete controls are missing.

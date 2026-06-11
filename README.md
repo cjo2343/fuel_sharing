@@ -453,6 +453,6 @@ Completed-period CSV downloads keep their temporary Blob URLs alive briefly and 
 
 Completed-period exports now keep only CSV actions. Safari/iOS/home-screen PWAs use an in-app CSV export panel with Copy CSV and Try download instead of relying only on direct Blob downloads. The old Markdown Download report action was removed.
 
-### Payment audit details
+### Permission UX messages
 
-Payment audit entries now include clearer summaries and before/after status details, for example `Status: Not requested -> Requested` together with payer, recipient, amount, and currency metadata. The completed-period change-log CSV export includes these payment metadata columns so frozen payment history is easier to audit.
+Blocked trip, fuel, and payment actions now explain who can make the change and which signed-in member is currently using the app. This mirrors the database ownership rules: admins can manage everything, trip drivers/creators can manage their trip logs, fuel payers/creators can manage their fuel logs, and payment request/paid/reopen actions are limited to the correct payer/receiver unless an admin is allowed.
