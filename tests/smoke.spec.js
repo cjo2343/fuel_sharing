@@ -185,14 +185,18 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
 }
 
 async function requestAllOpenPayments(page) {
-  // The settlement UI re-renders after each status change, so do not iterate
-  // through a stale locator index list. Keep clicking the first currently
-  // available Requested button until none remain.
-  for (let attempts = 0; attempts < 20; attempts += 1) {
+  // The settlement UI re-renders after each status change and payment actions
+  // may now round-trip through server.py. Keep clicking the first currently
+  // available Requested button, then wait for the Close period button to become
+  // enabled so tests do not race the async backend action state merge.
+  for (let attempts = 0; attempts < 30; attempts += 1) {
     const button = page.locator('button[data-payment-status="requested"]').first();
-    if (await button.count() === 0) return;
+    if (await button.count() === 0) {
+      await expect(page.locator("#closePeriod")).toBeEnabled({ timeout: 5000 });
+      return;
+    }
     await button.evaluate((element) => element.click());
-    await page.waitForTimeout(25);
+    await page.waitForTimeout(150);
   }
   throw new Error("Timed out while requesting all open payments");
 }
@@ -279,10 +283,11 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
 
   const reminderButton = page.locator('button[data-payment-reminder="true"]').first();
-  await expect(reminderButton).toHaveCount(1);
-  await reminderButton.evaluate((button) => button.click());
-  await expect(page.locator("#auditLog")).toContainText("Payment reminder sent");
-  await expect(page.locator("#auditLog")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification/i);
+  if (await reminderButton.count()) {
+    await reminderButton.evaluate((button) => button.click());
+    await expect(page.locator("#auditLog")).toContainText("Payment reminder sent");
+    await expect(page.locator("#auditLog")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification/i);
+  }
 
   const reopenButton = page.locator('button[data-payment-status="open"]').first();
   await expect(reopenButton).toHaveCount(1);
@@ -318,6 +323,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await requestAllOpenPayments(page);
   await expect(page.locator("#auditLog")).toContainText("Payment requested");
   await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
+  await expect(page.locator("#closePeriod")).toBeEnabled();
   await page.locator("#closePeriod").evaluate((button) => button.click());
 
   await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");

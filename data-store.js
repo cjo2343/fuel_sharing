@@ -24,10 +24,18 @@
 
   function createRemoteSaveQueue(saveRemoteState, delayMs = 250) {
     let timer;
-    return function queueRemoteSave() {
+    function queueRemoteSave() {
       window.clearTimeout(timer);
-      timer = window.setTimeout(saveRemoteState, delayMs);
+      timer = window.setTimeout(() => {
+        timer = null;
+        saveRemoteState();
+      }, delayMs);
+    }
+    queueRemoteSave.cancel = function cancelRemoteSave() {
+      window.clearTimeout(timer);
+      timer = null;
     };
+    return queueRemoteSave;
   }
 
   window.FuelDataStore = {

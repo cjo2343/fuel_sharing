@@ -282,6 +282,91 @@ def public_origin(handler):
     return f"{proto}://{host}"
 
 
+PAYMENT_STATUSES = {"open", "requested", "paid"}
+
+
+def normalize_payment_status(value):
+    value = str(value or "open").strip().lower()
+    return value if value in PAYMENT_STATUSES else "open"
+
+
+def normalize_audit_entry(entry):
+    if not isinstance(entry, dict):
+        entry = {}
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    return {
+        "id": str(entry.get("id") or f"server-audit-{int(time.time() * 1000)}"),
+        "createdAt": str(entry.get("createdAt") or now),
+        "actor": str(entry.get("actor") or "Server"),
+        "type": str(entry.get("type") or "change"),
+        "entityType": str(entry.get("entityType") or "payment"),
+        "entityId": str(entry.get("entityId") or ""),
+        "summary": str(entry.get("summary") or "Payment action"),
+        "detail": str(entry.get("detail") or ""),
+        "metadata": entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {},
+    }
+
+
+def prepend_audit(entries, entry):
+    existing = entries if isinstance(entries, list) else []
+    return [normalize_audit_entry(entry), *existing][:250]
+
+
+def apply_payment_action_to_state(state, payload):
+    action = str(payload.get("action") or "").strip()
+    scope = str(payload.get("scope") or "current").strip()
+    audit_entry = normalize_audit_entry(payload.get("auditEntry"))
+
+    if action == "payment_status" and scope == "current":
+        key = str(payload.get("paymentKey") or "").strip()
+        next_status = normalize_payment_status(payload.get("nextStatus"))
+        if not key or next_status not in PAYMENT_STATUSES:
+            raise ValueError("Missing paymentKey or invalid nextStatus")
+        statuses = state.setdefault("paymentStatuses", {})
+        if not isinstance(statuses, dict):
+            statuses = {}
+            state["paymentStatuses"] = statuses
+        statuses[key] = next_status
+        state["auditLog"] = prepend_audit(state.get("auditLog"), audit_entry)
+        return state
+
+    if action == "payment_reminder" and scope == "current":
+        key = str(payload.get("paymentKey") or "").strip()
+        if not key:
+            raise ValueError("Missing paymentKey")
+        state["auditLog"] = prepend_audit(state.get("auditLog"), audit_entry)
+        return state
+
+    if action == "payment_status" and scope == "closed":
+        period_id = str(payload.get("periodId") or "").strip()
+        index = int(payload.get("settlementIndex"))
+        next_status = normalize_payment_status(payload.get("nextStatus"))
+        if not period_id or next_status != "paid":
+            raise ValueError("Closed-period payment actions currently support mark-paid only")
+        for period in state.get("closedPeriods", []) or []:
+            if str(period.get("id") or "") != period_id:
+                continue
+            settlements = period.get("settlements") if isinstance(period.get("settlements"), list) else []
+            if index < 0 or index >= len(settlements):
+                raise ValueError("Invalid closed settlement index")
+            settlements[index]["status"] = next_status
+            period["auditLog"] = prepend_audit(period.get("auditLog"), audit_entry)
+            return state
+        raise ValueError("Closed period not found")
+
+    if action == "payment_reminder" and scope == "closed":
+        period_id = str(payload.get("periodId") or "").strip()
+        if not period_id:
+            raise ValueError("Missing periodId")
+        for period in state.get("closedPeriods", []) or []:
+            if str(period.get("id") or "") == period_id:
+                period["auditLog"] = prepend_audit(period.get("auditLog"), audit_entry)
+                return state
+        raise ValueError("Closed period not found")
+
+    raise ValueError("Unsupported payment action")
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -333,6 +418,9 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json(read_state())
 
     def do_POST(self):
+        if self.path == "/api/payment-action":
+            self.apply_payment_action()
+            return
         if self.path == "/api/push-subscriptions":
             self.save_push_subscription()
             return
@@ -340,6 +428,23 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_push_notifications()
             return
         self.send_error(404)
+
+    def apply_payment_action(self):
+        try:
+            payload = read_request_body(self)
+            if not isinstance(payload, dict):
+                raise ValueError("Payment action payload must be an object")
+            state = read_state()
+            updated = apply_payment_action_to_state(state, payload)
+            write_state(updated)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "state": read_state()})
 
     def save_push_subscription(self):
         user = current_supabase_user(self)
@@ -462,7 +567,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
 
 if __name__ == "__main__":

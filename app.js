@@ -14,6 +14,7 @@ const pushConfigUrl = "/api/push-config";
 const fuelPriceUrl = "/api/fuel-price";
 const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
+const paymentActionUrl = "/api/payment-action";
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const generatedTestPrefix = "auto-test-";
 const generatedTestMarker = "[AUTO TEST]";
@@ -1202,19 +1203,19 @@ if (els.clearPeriodFilters) {
 document.addEventListener("click", async (event) => {
   const statusButton = event.target.closest("[data-payment-status]");
   if (statusButton) {
-    updatePaymentStatus(statusButton);
+    await updatePaymentStatus(statusButton);
     return;
   }
 
   const reminderButton = event.target.closest("[data-payment-reminder]");
   if (reminderButton) {
-    sendPaymentReminder(reminderButton);
+    await sendPaymentReminder(reminderButton);
     return;
   }
 
   const closedStatusButton = event.target.closest("[data-closed-payment-status]");
   if (closedStatusButton) {
-    updateClosedPaymentStatus(closedStatusButton);
+    await updateClosedPaymentStatus(closedStatusButton);
     return;
   }
 
@@ -3831,9 +3832,8 @@ async function updatePaymentStatus(button) {
     return;
   }
 
-  state.paymentStatuses[key] = nextStatus;
   const paymentAuditInfo = buildPaymentAuditInfo(settlement, previousStatus, nextStatus);
-  addAuditEntry({
+  const auditEntry = makeAuditEntry({
     type: nextStatus === "requested" ? "payment_requested" : nextStatus === "paid" ? "payment_marked_paid" : "payment_reopened",
     entityType: "payment",
     entityId: key,
@@ -3841,8 +3841,21 @@ async function updatePaymentStatus(button) {
     detail: paymentAuditInfo.detail,
     metadata: paymentAuditInfo.metadata
   });
+  const backendApplied = await applyBackendPaymentAction({
+    action: "payment_status",
+    scope: "current",
+    paymentKey: key,
+    previousStatus,
+    nextStatus,
+    auditEntry
+  });
+  if (!backendApplied) {
+    state.paymentStatuses[key] = nextStatus;
+    auditLogDirty = true;
+    state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
+    saveState();
+  }
   if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
-  saveState();
   pendingSettlementRequestKeys.delete(key);
   render();
 
@@ -3889,7 +3902,7 @@ async function sendPaymentReminder(button) {
   });
 
   const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
-  addAuditEntry({
+  const auditEntry = makeAuditEntry({
     type: "payment_reminder_sent",
     entityType: "payment",
     entityId: key,
@@ -3897,7 +3910,17 @@ async function sendPaymentReminder(button) {
     detail: auditInfo.detail,
     metadata: auditInfo.metadata
   });
-  saveState();
+  const backendApplied = await applyBackendPaymentAction({
+    action: "payment_reminder",
+    scope: "current",
+    paymentKey: key,
+    auditEntry
+  });
+  if (!backendApplied) {
+    auditLogDirty = true;
+    state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
+    saveState();
+  }
 
   pendingSettlementRequestKeys.delete(key);
   render();
@@ -3926,22 +3949,30 @@ async function updateClosedPaymentStatus(button) {
 
   button.disabled = true;
   button.textContent = "Marking paid...";
-  settlement.status = "paid";
 
   const paymentAuditInfo = buildPaymentAuditInfo(settlement, previousStatus, "paid");
-  period.auditLog = auditLog.normalizeAuditEntries([
-    makeAuditEntry({
-      type: "payment_marked_paid",
-      entityType: "payment",
-      entityId: settlementKeyForPeriod(settlement, period.id),
-      summary: paymentAuditInfo.summary,
-      detail: `${paymentAuditInfo.detail} · Closed period payment status updated after settlement close`,
-      metadata: paymentAuditInfo.metadata
-    }),
-    ...(period.auditLog || [])
-  ]);
-
-  saveState();
+  const auditEntry = makeAuditEntry({
+    type: "payment_marked_paid",
+    entityType: "payment",
+    entityId: settlementKeyForPeriod(settlement, period.id),
+    summary: paymentAuditInfo.summary,
+    detail: `${paymentAuditInfo.detail} · Closed period payment status updated after settlement close`,
+    metadata: paymentAuditInfo.metadata
+  });
+  const backendApplied = await applyBackendPaymentAction({
+    action: "payment_status",
+    scope: "closed",
+    periodId: period.id,
+    settlementIndex: index,
+    previousStatus,
+    nextStatus: "paid",
+    auditEntry
+  });
+  if (!backendApplied) {
+    settlement.status = "paid";
+    period.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(period.auditLog || [])]);
+    saveState();
+  }
   render();
   showAppMessage(`Closed-period payment to ${settlement.to} marked paid.`);
 }
@@ -6049,6 +6080,40 @@ function writeLocalState() {
 
 function makeClientId() {
   return dataStore.makeClientId();
+}
+
+async function applyBackendPaymentAction(payload) {
+  // Phase 2A: in server-backed/local mode, payment status changes and payment
+  // reminder audit entries are applied by server.py in one state mutation.
+  // Supabase mode still uses the existing table/RLS path until the same action
+  // contract is implemented as Supabase RPCs.
+  if (supabaseClient) return false;
+  try {
+    // A payment action may happen immediately after creating trips/fuel. Flush the
+    // current browser state to server.py first, then cancel any older debounced
+    // saves so they cannot overwrite the server-authoritative payment result.
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    await saveRemoteState();
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+
+    const response = await fetch(paymentActionUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Payment action failed (${response.status})`);
+    const result = await response.json();
+    if (result?.state) {
+      state = normalizeState(result.state);
+      writeLocalState();
+    }
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    setSyncStatus("Shared");
+    return true;
+  } catch (error) {
+    console.warn("Backend payment action failed; using client fallback", error);
+    return false;
+  }
 }
 
 function normalizeTripEntries(trips) {
