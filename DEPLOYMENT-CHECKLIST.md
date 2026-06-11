@@ -8,7 +8,7 @@ npm run validate
 npm run test:e2e
 ```
 
-The Playwright suite includes both persistence smoke tests and a payment-request locking smoke test. Treat either failure as a blocker before deployment.
+The Playwright suite includes persistence, payment-request locking, period-aware audit, build-info, and permission UX smoke tests. Treat any failure as a blocker before deployment.
 
 After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-deploy only after the CI run is green.
 
@@ -213,5 +213,5 @@ Payment audit entries now include clearer summaries and before/after status deta
 ### Permission UX smoke check
 
 - Sign in as a normal member and open another member's trip/fuel entry in History.
-- Confirm edit/delete controls are absent and a permission note explains who can change the entry.
+- Confirm edit/delete controls are absent and a permission note explains who can change the entry. This is also covered by `npm run test:e2e`.
 - Try a payment action for the wrong side of a settlement and confirm the app explains who must request, reopen, or mark it paid.

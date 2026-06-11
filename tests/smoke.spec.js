@@ -25,6 +25,120 @@ async function chooseFirstSelectOption(select) {
 }
 
 
+
+function makeSeededPermissionState() {
+  return {
+    currency: "DKK",
+    members: ["Christian", "Emilie"],
+    memberProfiles: {
+      Christian: { email: "christian@example.com", role: "admin", mobilepayPhone: "" },
+      Emilie: { email: "emilie@example.com", role: "member", mobilepayPhone: "" }
+    },
+    trips: [
+      {
+        id: "permission-trip-1",
+        driver: "Christian",
+        date: "2026-06-10",
+        startKm: 1000,
+        endKm: 1042,
+        participants: ["Christian", "Emilie"],
+        note: "Christian-owned permission smoke trip"
+      }
+    ],
+    fuel: [
+      {
+        id: "permission-fuel-1",
+        payer: "Christian",
+        date: "2026-06-10",
+        amount: 321.45,
+        liters: 20,
+        pricePerLiter: 16.0725,
+        odometer: 1042,
+        station: "Permission Smoke Station",
+        fullTank: true
+      }
+    ],
+    paymentStatuses: {},
+    auditLog: [],
+    currentPeriodId: "permission-period-1",
+    closedPeriods: [],
+    lastOdometer: 1042,
+    fuelType: "diesel",
+    fuelConsumption: 5.3,
+    fuelFallbackPrice: 14.5,
+    fuelWarningThreshold: 70,
+    carSettingsVersion: 2
+  };
+}
+
+async function openLocalAppAsEmilieWithChristianEntries(page) {
+  const seededState = makeSeededPermissionState();
+  const session = {
+    access_token: "test-token",
+    user: { email: "emilie@example.com" }
+  };
+
+  await page.route("**/supabase-config.js", (route) => route.fulfill({
+    contentType: "application/javascript",
+    body: "window.CAR_SHARE_SUPABASE = { enabled: true, url: 'https://test.supabase.local', anonKey: 'test-anon-key', ledgerId: 'test-ledger' };"
+  }));
+
+  await page.route("**/@supabase/supabase-js@2", (route) => route.fulfill({
+    contentType: "application/javascript",
+    body: "window.supabase = window.__TEST_SUPABASE__;"
+  }));
+
+  await page.addInitScript(({ seededState, session }) => {
+    class QueryMock {
+      constructor(table) {
+        this.table = table;
+      }
+      select() { return this; }
+      eq() { return this; }
+      is() { return this; }
+      order() { return this; }
+      limit() { return this; }
+      in() { return this; }
+      insert() { return Promise.resolve({ data: null, error: null }); }
+      update() { return this; }
+      upsert() { return Promise.resolve({ data: null, error: null }); }
+      delete() { return Promise.resolve({ data: null, error: null }); }
+      maybeSingle() {
+        if (this.table === "settlement_periods") return Promise.resolve({ data: null, error: null });
+        return Promise.resolve({ data: null, error: null });
+      }
+      single() {
+        if (this.table === "car_share_ledgers") {
+          return Promise.resolve({ data: { state: seededState, updated_at: "2026-06-11T00:00:00.000Z" }, error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      }
+      then(resolve) {
+        return Promise.resolve({ data: [], error: null }).then(resolve);
+      }
+    }
+
+    window.__TEST_SUPABASE__ = {
+      createClient() {
+        return {
+          auth: {
+            getSession: () => Promise.resolve({ data: { session }, error: null }),
+            onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+            signOut: () => Promise.resolve({ error: null })
+          },
+          from: (table) => new QueryMock(table),
+          channel: () => ({ on() { return this; }, subscribe() { return this; } }),
+          removeChannel: () => Promise.resolve()
+        };
+      }
+    };
+  }, { seededState, session });
+
+  await page.goto("/");
+  await expect(page.locator("#tripList")).toContainText("Christian-owned permission smoke trip");
+  await expect(page.locator("#fuelList")).toContainText("Permission Smoke Station");
+}
+
 async function requestAllOpenPayments(page) {
   // The settlement UI re-renders after each status change, so do not iterate
   // through a stale locator index list. Keep clicking the first currently
@@ -140,6 +254,19 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#periodList")).toContainText("Settlement closed");
   await expect(page.locator("[data-archive-csv]")).toHaveCount(1);
   await expect(page.locator("[data-archive-audit-csv]")).toHaveCount(1);
+});
+
+
+test("non-admin members see clear permission messages for entries owned by someone else", async ({ page }) => {
+  await openLocalAppAsEmilieWithChristianEntries(page);
+
+  await expect(page.locator("#currentUser")).toHaveValue("Emilie");
+  await expect(page.locator("#tripList")).toContainText("Only Christian, the trip creator, or an admin can edit or delete this trip. You are signed in as Emilie.");
+  await expect(page.locator("#fuelList")).toContainText("Only Christian, the fuel payer/creator, or an admin can edit or delete this fuel log. You are signed in as Emilie.");
+  await expect(page.locator('[data-edit="trips:permission-trip-1"]')).toHaveCount(0);
+  await expect(page.locator('[data-delete="trips:permission-trip-1"]')).toHaveCount(0);
+  await expect(page.locator('[data-edit="fuel:permission-fuel-1"]')).toHaveCount(0);
+  await expect(page.locator('[data-delete="fuel:permission-fuel-1"]')).toHaveCount(0);
 });
 
 test("critical runtime modules are loaded before app.js", async ({ page }) => {

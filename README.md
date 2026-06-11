@@ -394,7 +394,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-The first smoke test disables Supabase with a local test config, creates a trip, creates a fuel log, refreshes, and verifies both entries remain visible.
+The smoke tests cover local persistence, runtime module loading, build info visibility, payment-request locking, period-aware audit history, and permission notes for non-admin members viewing entries owned by someone else.
 
 
 

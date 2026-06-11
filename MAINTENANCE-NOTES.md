@@ -232,4 +232,4 @@ Payment audit entries now include clearer summaries and before/after status deta
 
 ## Permission UX messages
 
-The app now shows clearer messages when users are blocked from editing or deleting another member's trip/fuel log, or from changing a payment status they do not own. Non-editable History cards also show a small permission note so members understand why edit/delete controls are missing.
+The app now shows clearer messages when users are blocked from editing or deleting another member's trip/fuel log, or from changing a payment status they do not own. Non-editable History cards also show a small permission note so members understand why edit/delete controls are missing. The Playwright suite includes a Supabase-authenticated non-admin smoke test that verifies these notes appear and edit/delete controls are hidden for entries owned by another member.
