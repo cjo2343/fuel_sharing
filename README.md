@@ -475,3 +475,10 @@ Fuel price anomaly bounds are configurable in Admin → Group settings as low/hi
 ### Configurable fuel-price warnings
 
 Admins can tune the low/high DKK/L warning range in Group settings. These warnings help catch amount/liter typos without blocking valid fuel logs.
+
+### Member and role management UX
+
+Admin member management now shows clearer role/access descriptions for each member row. Role changes that promote a member to admin or demote an admin now require confirmation, protected admin rows explain why they are locked, and save/add/deactivate messages include the affected member and role.
+
+Manual check: Admin -> Member management, verify Member/Admin descriptions, try promoting/demoting a test member, and confirm at least one active admin remains protected.
+

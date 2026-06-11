@@ -4784,6 +4784,34 @@ function renderSystemHealth(ledger) {
 
 
 
+
+function memberRoleLabel(role) {
+  return role === "admin" ? "Admin" : "Member";
+}
+
+function memberRoleDescription(role) {
+  return role === "admin"
+    ? "Can manage members, settings, diagnostics, exports, and admin tools."
+    : "Can use the ledger, create allowed trips/fuel logs, and manage their own payments.";
+}
+
+function describeManagedMember(member) {
+  const name = member?.name || "This member";
+  const email = member?.email ? ` · ${member.email}` : "";
+  const status = member?.is_active ? "Active" : "Inactive";
+  return `${name}${email} · ${memberRoleLabel(member?.role)} · ${status}`;
+}
+
+function confirmManagedMemberRoleChange(existingMember, nextRole) {
+  const currentRole = existingMember?.role === "admin" ? "admin" : "member";
+  if (currentRole === nextRole) return true;
+  const name = existingMember?.name || "this member";
+  const message = nextRole === "admin"
+    ? `Promote ${name} to admin? Admins can manage members, settings, diagnostics, exports, and reset tools.`
+    : `Change ${name} from admin to member? They will lose access to member management, settings, diagnostics, exports, and reset tools.`;
+  return confirm(message);
+}
+
 function renderMemberManagementPanel() {
   if (!els.memberManagementPanel) return;
   const canManage = canManageSettings();
@@ -4802,7 +4830,7 @@ function renderMemberManagementPanel() {
       ? "Loading members..."
       : memberManagementStatus.error
         ? `Could not load members: ${memberManagementStatus.error}`
-        : "Active members can use the app. Admins can manage settings, diagnostics, and data tools.";
+        : "Active members can use the app. Admins can manage members, settings, diagnostics, exports, and reset tools. Keep at least one active admin.";
   }
 
   if (!els.memberManagementList) return;
@@ -4819,7 +4847,7 @@ function renderMemberManagementPanel() {
       <span>Name</span>
       <span>Email</span>
       <span>MobilePay</span>
-      <span>Role</span>
+      <span>Role / access</span>
       <span>Status</span>
       <span>Actions</span>
     </div>
@@ -4833,20 +4861,40 @@ function renderManagedMemberRow(member, activeAdminCount, currentEmail) {
   const statusText = member.is_active ? "Active" : "Inactive";
   const statusClass = member.is_active ? "status-ok" : "status-warning";
   const disableDanger = isSelf || isLastAdmin;
+  const role = member.role === "admin" ? "admin" : "member";
+  const roleLabel = memberRoleLabel(role);
+  const roleDescription = memberRoleDescription(role);
   const dangerTitle = isSelf
     ? "You cannot deactivate or demote yourself here. Add another admin first."
     : isLastAdmin
-      ? "At least one active admin is required."
+      ? "At least one active admin is required. Add or promote another admin first."
       : "";
+  const rowNote = isSelf
+    ? "You are signed in as this member. Another admin must change your role or deactivate you."
+    : isLastAdmin
+      ? "Protected because this is the only active admin."
+      : roleDescription;
   return `
     <div class="member-management-row ${member.is_active ? "" : "inactive"}" data-member-id="${escapeHtml(member.id)}">
-      <input class="member-row-name" type="text" value="${escapeHtml(member.name || "")}" />
-      <input class="member-row-email" type="email" value="${escapeHtml(member.email || "")}" placeholder="login email" />
-      <input class="member-row-mobilepay" type="tel" value="${escapeHtml(formatPhoneDisplay(member.mobilepay_phone || ""))}" placeholder="MobilePay phone" />
-      <select class="member-row-role" ${disableDanger ? "data-protect-admin=\"true\"" : ""}>
-        <option value="member" ${member.role === "admin" ? "" : "selected"}>Member</option>
-        <option value="admin" ${member.role === "admin" ? "selected" : ""}>Admin</option>
-      </select>
+      <div class="member-field-stack">
+        <input class="member-row-name" type="text" value="${escapeHtml(member.name || "")}" aria-label="Member name" />
+        <small>${escapeHtml(member.is_active ? "Visible in the app" : "Inactive member")}</small>
+      </div>
+      <div class="member-field-stack">
+        <input class="member-row-email" type="email" value="${escapeHtml(member.email || "")}" placeholder="login email" aria-label="Login email" />
+        <small>Must match the email used to sign in.</small>
+      </div>
+      <div class="member-field-stack">
+        <input class="member-row-mobilepay" type="tel" value="${escapeHtml(formatPhoneDisplay(member.mobilepay_phone || ""))}" placeholder="MobilePay phone" aria-label="MobilePay phone" />
+        <small>Used for payment links when available.</small>
+      </div>
+      <div class="member-field-stack">
+        <select class="member-row-role" ${disableDanger ? "data-protect-admin=\"true\"" : ""} aria-label="Role for ${escapeHtml(member.name || "member")}">
+          <option value="member" ${role === "admin" ? "" : "selected"}>Member</option>
+          <option value="admin" ${role === "admin" ? "selected" : ""}>Admin</option>
+        </select>
+        <small><strong>${escapeHtml(roleLabel)}:</strong> ${escapeHtml(rowNote)}</small>
+      </div>
       <span class="status-pill ${statusClass}">${statusText}</span>
       <div class="button-row compact-actions">
         <button class="subtle-button" type="button" data-member-action="save">Save</button>
@@ -4920,6 +4968,7 @@ async function saveManagedMember(row) {
   }
   const existing = (memberManagementStatus.rows || []).find((member) => member.id === payload.id);
   if (!protectAgainstAdminLockout(payload, existing, existing?.is_active !== false)) return;
+  if (!confirmManagedMemberRoleChange(existing, payload.role)) return;
 
   const { error } = await supabaseClient
     .from("ledger_members")
@@ -4935,13 +4984,13 @@ async function saveManagedMember(row) {
     alert(`Could not save member: ${error.message || error}`);
     return;
   }
-  await afterMemberManagementChange("Member saved.");
+  await afterMemberManagementChange(`${payload.name} saved as ${memberRoleLabel(payload.role)}.`);
 }
 
 async function setManagedMemberActive(row, isActive) {
   const payload = getManagedMemberPayloadFromRow(row);
   const existing = (memberManagementStatus.rows || []).find((member) => member.id === payload.id);
-  if (!isActive && !confirm(`Deactivate ${existing?.name || "this member"}? They will no longer be able to access the app.`)) return;
+  if (!isActive && !confirm(`Deactivate ${describeManagedMember(existing)}? They will no longer be able to access the app.`)) return;
   if (!protectAgainstAdminLockout(payload, existing, isActive)) return;
 
   const { error } = await supabaseClient
@@ -4952,7 +5001,7 @@ async function setManagedMemberActive(row, isActive) {
     alert(`Could not update member: ${error.message || error}`);
     return;
   }
-  await afterMemberManagementChange(isActive ? "Member reactivated." : "Member deactivated.");
+  await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
 }
 
 async function addManagedMember() {
@@ -4989,7 +5038,7 @@ async function addManagedMember() {
   if (els.newMemberEmail) els.newMemberEmail.value = "";
   if (els.newMemberMobilePayPhone) els.newMemberMobilePayPhone.value = "";
   if (els.newMemberRole) els.newMemberRole.value = "member";
-  await afterMemberManagementChange("Member added.");
+  await afterMemberManagementChange(`${name} added as ${memberRoleLabel(role)}.`);
 }
 
 async function afterMemberManagementChange(message) {

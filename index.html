@@ -452,7 +452,7 @@
             </div>
             <button id="refreshMembers" class="subtle-button" type="button">Refresh members</button>
           </div>
-          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL.</p>
+          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL. Admins can manage settings and maintenance tools; members can use the ledger and manage their own allowed activity.</p>
 
           <form id="memberManagementForm" class="member-management-form">
             <label>
@@ -470,8 +470,8 @@
             <label>
               Role
               <select id="newMemberRole">
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
+                <option value="member">Member - use ledger</option>
+                <option value="admin">Admin - manage app</option>
               </select>
             </label>
             <button class="primary-button" type="submit">Add member</button>

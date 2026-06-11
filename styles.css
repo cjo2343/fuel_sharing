@@ -1936,6 +1936,21 @@ body.auth-locked #authPanel .text-button {
   min-width: 0;
 }
 
+.member-field-stack {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.member-field-stack small {
+  color: var(--muted-text);
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.member-field-stack strong {
+  color: var(--text-color);
+}
+
 .status-pill {
   display: inline-flex;
   width: fit-content;

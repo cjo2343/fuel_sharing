@@ -264,3 +264,10 @@ npm run validate
 ### Configurable fuel-price warning range
 
 Admins can adjust the low/high DKK/L anomaly range in Group settings. Keep Playwright and manual checks focused on warnings being non-blocking.
+
+### Member and role management UX
+
+Admin member management now shows clearer role/access descriptions for each member row. Role changes that promote a member to admin or demote an admin now require confirmation, protected admin rows explain why they are locked, and save/add/deactivate messages include the affected member and role.
+
+Manual check: Admin -> Member management, verify Member/Admin descriptions, try promoting/demoting a test member, and confirm at least one active admin remains protected.
+
