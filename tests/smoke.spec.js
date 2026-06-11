@@ -158,10 +158,17 @@ test("critical runtime modules are loaded before app.js", async ({ page }) => {
 });
 
 
-test("build info panel reports app version and expected service worker cache", async ({ page }) => {
+test("build info is visible to all users in About and admin panels", async ({ page }) => {
   await openLocalApp(page);
   await page.evaluate(() => window.FuelBuildInfo?.refreshBuildInfo?.());
-  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.1");
-  await expect(page.locator("#buildInfoPanel")).toContainText("version-info-panel");
-  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v18");
+
+  await page.locator('[data-view-tab="about"]').click();
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.2");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("public-about-version-panel");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v19");
+
+  await page.locator('[data-view-tab="admin"]').click();
+  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.2");
+  await expect(page.locator("#buildInfoPanel")).toContainText("public-about-version-panel");
+  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v19");
 });

@@ -207,3 +207,4 @@ The Playwright suite now includes a regression test for period-aware audit behav
 ## Version/build info panel
 
 `build-info.js` exposes `window.FuelBuildInfo` and renders the Admin -> Version & update status panel. Update `BUILD_INFO.version`, `BUILD_INFO.buildLabel`, `BUILD_INFO.updatedAt`, and the expected service-worker cache whenever shipping a user-visible deployment. Keep `service-worker.js` `CACHE_NAME` in sync with `BUILD_INFO.expectedServiceWorkerCache`.
+\n- Added a user-visible About tab with read-only app version and PWA cache status so non-admin members can report their running build.

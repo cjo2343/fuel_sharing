@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.11.1",
-    buildLabel: "version-info-panel",
-    updatedAt: "2026-06-11T00:00:00+02:00",
-    expectedServiceWorkerCache: "fuel-ledger-v18"
+    version: "2026.06.11.2",
+    buildLabel: "public-about-version-panel",
+    updatedAt: "2026-06-11T00:15:00+02:00",
+    expectedServiceWorkerCache: "fuel-ledger-v19"
   });
 
   function formatDateTime(value) {
@@ -35,8 +35,7 @@
     });
   }
 
-  function renderBuildInfo(serviceWorkerInfo = null) {
-    const target = document.querySelector("#buildInfoPanel");
+  function renderBuildInfoPanel(target, serviceWorkerInfo = null) {
     if (!target) return;
     const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Not reported yet";
     const cacheMatches = serviceWorkerInfo?.cacheName
@@ -78,6 +77,12 @@
         </article>
       </div>
     `;
+  }
+
+  function renderBuildInfo(serviceWorkerInfo = null) {
+    document.querySelectorAll("#buildInfoPanel, #aboutBuildInfoPanel").forEach((target) => {
+      renderBuildInfoPanel(target, serviceWorkerInfo);
+    });
   }
 
   async function refreshBuildInfo() {

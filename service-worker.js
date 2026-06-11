@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v18";
+const CACHE_NAME = "fuel-ledger-v19";
 const BUILD_LABEL = "version-info-panel";
 const BUILD_UPDATED_AT = "2026-06-11T00:00:00+02:00";
 const CORE_ASSETS = [

@@ -180,3 +180,4 @@ The automated Playwright suite verifies that current-period audit entries clear 
 ## PWA version check
 
 After deployment, open Admin -> Version & update status and verify the app version/build label and service-worker cache match the expected release. On phones/home-screen installs, fully close and reopen the app if the service-worker cache is stale.
+\n- Added a user-visible About tab with read-only app version and PWA cache status so non-admin members can report their running build.
