@@ -442,3 +442,8 @@ History -> Closed periods now includes search, payment-status filtering, sorting
 ### Completed-period CSV exports
 
 Closed period archive cards can export a period summary CSV and a frozen change-log CSV. The summary CSV includes period totals, people, final settlements, trips, and fuel logs. The change-log CSV includes the audit entries that were frozen when the period was closed.
+
+
+### CSV export download behavior
+
+Completed-period CSV downloads keep their temporary Blob URLs alive briefly and use ASCII-safe filenames so Safari and installed PWA windows can complete downloads reliably.

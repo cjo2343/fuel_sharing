@@ -4241,16 +4241,44 @@ function memberHasLedgerData(member) {
 }
 
 
+function sanitizeDownloadFilename(filename) {
+  const safeName = String(filename || "fuel-ledger-download.txt")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return safeName || "fuel-ledger-download.txt";
+}
+
 function downloadTextFile(filename, content, type = "text/plain") {
+  const safeFilename = sanitizeDownloadFilename(filename);
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = safeFilename;
+  link.rel = "noopener";
+  link.style.position = "fixed";
+  link.style.left = "-9999px";
+  link.style.top = "-9999px";
   document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+
+  try {
+    link.click();
+    showAppMessage?.(`Download started: ${safeFilename}`);
+  } catch (error) {
+    console.warn("Download click failed", error);
+    window.open(url, "_blank", "noopener");
+    showAppMessage?.("Download opened in a new tab. Use Share or Save if needed.", "warning");
+  }
+
+  // Safari/iOS PWA downloads can fail if the Blob URL is revoked immediately.
+  // Keep the temporary URL alive briefly so the browser has time to finish starting the transfer.
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 10000);
 }
 
 function setDataToolsMessage(message) {

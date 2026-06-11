@@ -195,3 +195,13 @@ After deploying archive/history changes:
 ## Completed-period CSV export check
 
 After deploying the completed-period CSV export patch, open History -> Closed periods, expand a completed period, and verify the card shows Download report, Export CSV, and Export change log CSV. Download both CSV files once from a non-production test period or a safe archived period.
+
+### CSV download smoke test
+
+After deploying CSV export changes, test at least one completed period in Safari/PWA:
+
+1. Open History -> Closed periods.
+2. Click Export CSV.
+3. Click Export change log CSV.
+4. Confirm files finish downloading and do not remain as `.download` placeholders.
+5. If testing a home-screen PWA, also verify About -> App version shows the expected cache.

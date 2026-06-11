@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v21";
-const BUILD_LABEL = "completed-period-csv-export";
-const BUILD_UPDATED_AT = "2026-06-11T00:50:00+02:00";
+const CACHE_NAME = "fuel-ledger-v22";
+const BUILD_LABEL = "safari-csv-download-hotfix";
+const BUILD_UPDATED_AT = "2026-06-11T12:20:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

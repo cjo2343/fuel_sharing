@@ -216,3 +216,7 @@ The History archive now has search/filter/sort controls for `state.closedPeriods
 ## Completed-period CSV exports
 
 Completed period cards now include two CSV exports: a summary CSV covering period totals, people, settlements, trips, and fuel logs, and a separate change-log CSV for the frozen audit entries saved with that period. The export buttons are intentionally attached to completed periods only so current/open settlement data is not mistaken for finalized archive data.
+
+### Safari/PWA download stability
+
+Completed-period CSV export uses a delayed Blob URL cleanup so Safari and installed PWA windows have time to start downloads before the temporary object URL is revoked. Filenames are normalized to ASCII-safe names to reduce platform-specific download issues.
