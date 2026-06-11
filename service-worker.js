@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v22";
+const CACHE_NAME = "fuel-ledger-v23";
 const BUILD_LABEL = "safari-csv-download-hotfix";
 const BUILD_UPDATED_AT = "2026-06-11T12:20:00+02:00";
 const CORE_ASSETS = [

@@ -194,7 +194,7 @@ After deploying archive/history changes:
 
 ## Completed-period CSV export check
 
-After deploying the completed-period CSV export patch, open History -> Closed periods, expand a completed period, and verify the card shows Download report, Export CSV, and Export change log CSV. Download both CSV files once from a non-production test period or a safe archived period.
+After deploying the completed-period CSV export patch, open History -> Closed periods, expand a completed period, and verify the card shows Export CSV and Export change log CSV. The old Markdown Download report action should no longer appear. Export both CSV files once from a non-production test period or a safe archived period.
 
 ### CSV download smoke test
 
@@ -203,5 +203,5 @@ After deploying CSV export changes, test at least one completed period in Safari
 1. Open History -> Closed periods.
 2. Click Export CSV.
 3. Click Export change log CSV.
-4. Confirm files finish downloading and do not remain as `.download` placeholders.
+4. In Chrome, confirm files download. In Safari or a home-screen PWA, confirm the in-app CSV export panel appears and Copy CSV works.
 5. If testing a home-screen PWA, also verify About -> App version shows the expected cache.

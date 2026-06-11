@@ -1144,11 +1144,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const archiveReportButton = event.target.closest("[data-archive-report]");
-  if (archiveReportButton) {
-    downloadClosedPeriodReport(archiveReportButton.dataset.archiveReport);
-    return;
-  }
 
   const archiveCsvButton = event.target.closest("[data-archive-csv]");
   if (archiveCsvButton) {
@@ -3919,8 +3914,7 @@ function downloadClosedPeriodCsv(periodId) {
   }
 
   const rows = buildClosedPeriodCsvRows(period);
-  downloadTextFile(`${closedPeriodFileStem(period)}-summary.csv`, toCsv(rows), "text/csv;charset=utf-8");
-  showAppMessage("Completed-period CSV downloaded.");
+  exportCsvTextFile(`${closedPeriodFileStem(period)}-summary.csv`, toCsv(rows));
 }
 
 function downloadClosedPeriodAuditCsv(periodId) {
@@ -3931,8 +3925,7 @@ function downloadClosedPeriodAuditCsv(periodId) {
   }
 
   const rows = buildClosedPeriodAuditCsvRows(period);
-  downloadTextFile(`${closedPeriodFileStem(period)}-change-log.csv`, toCsv(rows), "text/csv;charset=utf-8");
-  showAppMessage("Completed-period change-log CSV downloaded.");
+  exportCsvTextFile(`${closedPeriodFileStem(period)}-change-log.csv`, toCsv(rows));
 }
 
 function buildClosedPeriodCsvRows(period) {
@@ -4240,6 +4233,89 @@ function memberHasLedgerData(member) {
   return inCurrentTrips || inCurrentFuel || inPayments || inClosedPeriods;
 }
 
+
+
+function shouldUseCsvFallbackPanel() {
+  const userAgent = String(navigator.userAgent || "");
+  const vendor = String(navigator.vendor || "");
+  const platform = String(navigator.platform || "");
+  const isIosLike = /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isSafari = /Safari/.test(userAgent) && /Apple/.test(vendor) && !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|Edg\//.test(userAgent);
+  const isStandalonePwa = Boolean(window.navigator.standalone) || window.matchMedia?.("(display-mode: standalone)")?.matches;
+  return isSafari || isIosLike || isStandalonePwa;
+}
+
+function exportCsvTextFile(filename, csvText) {
+  const safeFilename = sanitizeDownloadFilename(filename);
+  if (shouldUseCsvFallbackPanel()) {
+    showCsvExportPanel(safeFilename, csvText);
+    return;
+  }
+  downloadTextFile(safeFilename, csvText, "text/csv;charset=utf-8");
+}
+
+function showCsvExportPanel(filename, csvText) {
+  const safeFilename = sanitizeDownloadFilename(filename);
+  document.querySelector(".csv-export-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "csv-export-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "CSV export");
+  overlay.innerHTML = `
+    <div class="csv-export-dialog">
+      <header>
+        <div>
+          <h3>CSV export ready</h3>
+          <p>Safari and home-screen PWAs can block direct CSV downloads. Copy the CSV, or try the download button below.</p>
+        </div>
+        <button class="subtle-button compact-button" type="button" data-csv-export-close>Close</button>
+      </header>
+      <label class="csv-export-filename">
+        <span>Filename</span>
+        <input type="text" readonly value="${escapeHtml(safeFilename)}">
+      </label>
+      <textarea class="csv-export-text" readonly spellcheck="false"></textarea>
+      <div class="button-row compact-actions">
+        <button class="primary-button compact-button" type="button" data-csv-export-copy>Copy CSV</button>
+        <button class="subtle-button compact-button" type="button" data-csv-export-download>Try download</button>
+      </div>
+    </div>
+  `;
+
+  const close = () => overlay.remove();
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay || event.target.closest("[data-csv-export-close]")) {
+      close();
+    }
+  });
+  overlay.querySelector(".csv-export-text").value = csvText;
+  overlay.querySelector("[data-csv-export-copy]").addEventListener("click", async () => {
+    const textarea = overlay.querySelector(".csv-export-text");
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(csvText);
+      } else {
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+      }
+      showAppMessage?.("CSV copied to clipboard.");
+    } catch (error) {
+      console.warn("CSV copy failed", error);
+      textarea.focus();
+      textarea.select();
+      showAppMessage?.("Copy failed. Select the CSV text and copy manually.", "warning");
+    }
+  });
+  overlay.querySelector("[data-csv-export-download]").addEventListener("click", () => {
+    downloadTextFile(safeFilename, csvText, "text/csv;charset=utf-8");
+  });
+
+  document.body.append(overlay);
+  showAppMessage?.("CSV export is ready. Copy it or try downloading.");
+}
 
 function sanitizeDownloadFilename(filename) {
   const safeName = String(filename || "fuel-ledger-download.txt")
@@ -5120,7 +5196,6 @@ function renderClosedPeriodCard(period) {
       </summary>
 
       <div class="archive-actions button-row compact-actions">
-        <button class="subtle-button compact-button" type="button" data-archive-report="${escapeHtml(period.id)}">Download report</button>
         <button class="subtle-button compact-button" type="button" data-archive-csv="${escapeHtml(period.id)}">Export CSV</button>
         <button class="subtle-button compact-button" type="button" data-archive-audit-csv="${escapeHtml(period.id)}">Export change log CSV</button>
       </div>

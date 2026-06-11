@@ -447,3 +447,8 @@ Closed period archive cards can export a period summary CSV and a frozen change-
 ### CSV export download behavior
 
 Completed-period CSV downloads keep their temporary Blob URLs alive briefly and use ASCII-safe filenames so Safari and installed PWA windows can complete downloads reliably.
+
+
+### Safari CSV fallback
+
+Completed-period exports now keep only CSV actions. Safari/iOS/home-screen PWAs use an in-app CSV export panel with Copy CSV and Try download instead of relying only on direct Blob downloads. The old Markdown Download report action was removed.

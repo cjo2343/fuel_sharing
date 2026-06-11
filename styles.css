@@ -2736,3 +2736,58 @@ body.auth-locked #authPanel .text-button {
     width: 100%;
   }
 }
+
+/* Safari/PWA CSV export fallback */
+.csv-export-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(7, 20, 17, 0.45);
+}
+
+.csv-export-dialog {
+  width: min(940px, 96vw);
+  max-height: 92vh;
+  display: grid;
+  gap: 1rem;
+  overflow: auto;
+  padding: 1.2rem;
+  border-radius: 1.2rem;
+  background: var(--card);
+  box-shadow: 0 24px 70px rgba(28, 49, 44, 0.26);
+}
+
+.csv-export-dialog header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.csv-export-dialog h3,
+.csv-export-dialog p {
+  margin: 0;
+}
+
+.csv-export-filename {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+}
+
+.csv-export-text {
+  min-height: 18rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+@media (max-width: 640px) {
+  .csv-export-dialog header {
+    display: grid;
+  }
+}

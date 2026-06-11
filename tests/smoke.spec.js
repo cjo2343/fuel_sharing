@@ -173,11 +173,11 @@ test("build info is visible to all users in About and admin panels", async ({ pa
 
   await page.locator('[data-view-tab="about"]').click();
   await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.4");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("completed-period-csv-export");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v21");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("safari-csv-fallback-panel");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v23");
 
   await page.locator('[data-view-tab="admin"]').click();
   await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.4");
-  await expect(page.locator("#buildInfoPanel")).toContainText("completed-period-csv-export");
-  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v21");
+  await expect(page.locator("#buildInfoPanel")).toContainText("safari-csv-fallback-panel");
+  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v23");
 });

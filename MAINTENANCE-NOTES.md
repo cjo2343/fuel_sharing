@@ -220,3 +220,8 @@ Completed period cards now include two CSV exports: a summary CSV covering perio
 ### Safari/PWA download stability
 
 Completed-period CSV export uses a delayed Blob URL cleanup so Safari and installed PWA windows have time to start downloads before the temporary object URL is revoked. Filenames are normalized to ASCII-safe names to reduce platform-specific download issues.
+
+
+### Safari CSV fallback
+
+Completed-period exports now keep only CSV actions. Safari/iOS/home-screen PWAs use an in-app CSV export panel with Copy CSV and Try download instead of relying only on direct Blob downloads. The old Markdown Download report action was removed.
