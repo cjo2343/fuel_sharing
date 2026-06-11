@@ -520,6 +520,32 @@
               <h2 id="periodsHeading">Closed periods</h2>
             </div>
           </div>
+          <div class="archive-toolbar" aria-label="Completed period search and filters">
+            <label>
+              <span>Search archive</span>
+              <input id="periodSearch" type="search" placeholder="Person, note, station, payment…" autocomplete="off" />
+            </label>
+            <label>
+              <span>Payment status</span>
+              <select id="periodStatusFilter">
+                <option value="all">All statuses</option>
+                <option value="open">Open at close</option>
+                <option value="requested">Requested</option>
+                <option value="paid">Paid</option>
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select id="periodSort">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="fuel-desc">Fuel total high to low</option>
+                <option value="trips-desc">Most trips first</option>
+              </select>
+            </label>
+            <button id="clearPeriodFilters" class="subtle-button compact-button" type="button">Clear</button>
+          </div>
+          <p id="periodArchiveSummary" class="section-note archive-summary" aria-live="polite"></p>
           <div id="periodList" class="period-list"></div>
         </section>
       </main>

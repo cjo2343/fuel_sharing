@@ -93,6 +93,11 @@ let state = loadState();
 let currentUser = localStorage.getItem(userKey) || "";
 let currentSession = null;
 let loginCooldownTimer;
+const closedPeriodFilters = {
+  query: "",
+  status: "all",
+  sort: "newest"
+};
 let editingTripId = null;
 let editingFuelId = null;
 let supabaseStateChannel = null;
@@ -205,6 +210,11 @@ const els = {
   tripList: document.querySelector("#tripList"),
   fuelList: document.querySelector("#fuelList"),
   closePeriod: document.querySelector("#closePeriod"),
+  periodSearch: document.querySelector("#periodSearch"),
+  periodStatusFilter: document.querySelector("#periodStatusFilter"),
+  periodSort: document.querySelector("#periodSort"),
+  clearPeriodFilters: document.querySelector("#clearPeriodFilters"),
+  periodArchiveSummary: document.querySelector("#periodArchiveSummary"),
   periodList: document.querySelector("#periodList"),
   resetPeriod: document.querySelector("#resetPeriod"),
   resetData: document.querySelector("#resetData"),
@@ -1078,6 +1088,39 @@ if (els.cancelFuelEdit) {
 els.closePeriod.addEventListener("click", () => {
   closeCurrentPeriod();
 });
+
+if (els.periodSearch) {
+  els.periodSearch.addEventListener("input", () => {
+    closedPeriodFilters.query = els.periodSearch.value.trim().toLowerCase();
+    renderClosedPeriods();
+  });
+}
+
+if (els.periodStatusFilter) {
+  els.periodStatusFilter.addEventListener("change", () => {
+    closedPeriodFilters.status = els.periodStatusFilter.value || "all";
+    renderClosedPeriods();
+  });
+}
+
+if (els.periodSort) {
+  els.periodSort.addEventListener("change", () => {
+    closedPeriodFilters.sort = els.periodSort.value || "newest";
+    renderClosedPeriods();
+  });
+}
+
+if (els.clearPeriodFilters) {
+  els.clearPeriodFilters.addEventListener("click", () => {
+    closedPeriodFilters.query = "";
+    closedPeriodFilters.status = "all";
+    closedPeriodFilters.sort = "newest";
+    if (els.periodSearch) els.periodSearch.value = "";
+    if (els.periodStatusFilter) els.periodStatusFilter.value = "all";
+    if (els.periodSort) els.periodSort.value = "newest";
+    renderClosedPeriods();
+  });
+}
 
 document.addEventListener("click", async (event) => {
   const statusButton = event.target.closest("[data-payment-status]");
@@ -4740,14 +4783,93 @@ function healthLevelLabel(level) {
 }
 
 function renderClosedPeriods() {
+  if (!els.periodList) return;
+  const periods = getFilteredClosedPeriods();
+  renderClosedPeriodArchiveSummary(periods);
+
   if (state.closedPeriods.length === 0) {
     els.periodList.replaceChildren(emptyNode("No closed periods yet."));
     return;
   }
 
-  els.periodList.innerHTML = state.closedPeriods
+  if (periods.length === 0) {
+    els.periodList.replaceChildren(emptyNode("No closed periods match the current search or filter."));
+    return;
+  }
+
+  els.periodList.innerHTML = periods
     .map((period) => renderClosedPeriodCard(period))
     .join("");
+}
+
+function getFilteredClosedPeriods() {
+  const query = String(closedPeriodFilters.query || "").trim().toLowerCase();
+  const statusFilter = closedPeriodFilters.status || "all";
+  const periods = [...state.closedPeriods].filter((period) => {
+    if (statusFilter !== "all" && !closedPeriodHasSettlementStatus(period, statusFilter)) return false;
+    if (!query) return true;
+    return closedPeriodSearchText(period).includes(query);
+  });
+
+  periods.sort((a, b) => {
+    if (closedPeriodFilters.sort === "oldest") {
+      return closedPeriodTimestamp(a) - closedPeriodTimestamp(b);
+    }
+    if (closedPeriodFilters.sort === "fuel-desc") {
+      return closedPeriodFuelTotal(b) - closedPeriodFuelTotal(a);
+    }
+    if (closedPeriodFilters.sort === "trips-desc") {
+      return closedPeriodTripCount(b) - closedPeriodTripCount(a);
+    }
+    return closedPeriodTimestamp(b) - closedPeriodTimestamp(a);
+  });
+
+  return periods;
+}
+
+function renderClosedPeriodArchiveSummary(periods) {
+  if (!els.periodArchiveSummary) return;
+  const total = state.closedPeriods.length;
+  const visible = periods.length;
+  const fuelTotal = periods.reduce((sum, period) => sum + closedPeriodFuelTotal(period), 0);
+  const tripCount = periods.reduce((sum, period) => sum + closedPeriodTripCount(period), 0);
+  const paymentCount = periods.reduce((sum, period) => sum + (Array.isArray(period.settlements) ? period.settlements.length : 0), 0);
+  const currency = periods[0]?.currency || state.currency;
+  els.periodArchiveSummary.textContent = total === 0
+    ? "No completed settlement periods yet."
+    : `Showing ${visible} of ${total} completed period${total === 1 ? "" : "s"} · ${tripCount} trip${tripCount === 1 ? "" : "s"} · ${formatMoneyFor(fuelTotal, currency)} fuel · ${paymentCount} payment${paymentCount === 1 ? "" : "s"}`;
+}
+
+function closedPeriodTimestamp(period) {
+  const value = Date.parse(period.closedAt || period.createdAt || "");
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function closedPeriodFuelTotal(period) {
+  const fuel = Array.isArray(period.fuel) ? period.fuel : [];
+  return Number(period.totalPaid || fuel.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+}
+
+function closedPeriodTripCount(period) {
+  return Array.isArray(period.trips) ? period.trips.length : 0;
+}
+
+function closedPeriodHasSettlementStatus(period, status) {
+  return (Array.isArray(period.settlements) ? period.settlements : []).some((settlement) => normalizePaymentStatus(settlement.status) === status);
+}
+
+function closedPeriodSearchText(period) {
+  const parts = [
+    period.label,
+    period.closedAt,
+    period.currency,
+    ...(Array.isArray(period.people) ? period.people.map((person) => person.name || person.person || "") : []),
+    ...(Array.isArray(period.trips) ? period.trips.flatMap((trip) => [trip.driver, trip.note, ...(Array.isArray(trip.participants) ? trip.participants : [])]) : []),
+    ...(Array.isArray(period.fuel) ? period.fuel.flatMap((fuel) => [fuel.payer, fuel.station, fuel.note]) : []),
+    ...(Array.isArray(period.settlements) ? period.settlements.flatMap((settlement) => [settlement.from, settlement.to, settlement.status]) : []),
+    ...auditLog.normalizeAuditEntries(period.auditLog).flatMap((entry) => [entry.type, entry.summary, entry.actor, entry.detail])
+  ];
+  return parts.filter(Boolean).join(" ").toLowerCase();
 }
 
 function renderClosedPeriodCard(period) {

@@ -122,7 +122,14 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await page.locator("#closePeriod").evaluate((button) => button.click());
 
   await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");
+  await page.locator('[data-view-tab="history"]').click();
   await expect(page.locator("#periodList")).toContainText("Change log");
+  await expect(page.locator("#periodArchiveSummary")).toContainText("Showing");
+  await page.locator("#periodSearch").fill("Audit archive smoke trip");
+  await expect(page.locator("#periodList")).toContainText("Audit archive smoke trip");
+  await page.locator("#periodSearch").fill("no-matching-period");
+  await expect(page.locator("#periodList")).toContainText("No closed periods match");
+  await page.locator("#clearPeriodFilters").click();
   await expect(page.locator("#periodList")).toContainText("Trip created");
   await expect(page.locator("#periodList")).toContainText("Fuel log created");
   await expect(page.locator("#periodList")).toContainText("Payment requested");
@@ -163,12 +170,12 @@ test("build info is visible to all users in About and admin panels", async ({ pa
   await page.evaluate(() => window.FuelBuildInfo?.refreshBuildInfo?.());
 
   await page.locator('[data-view-tab="about"]').click();
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.2");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("public-about-version-panel");
-  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v19");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("2026.06.11.3");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("completed-period-archive-search");
+  await expect(page.locator("#aboutBuildInfoPanel")).toContainText("fuel-ledger-v20");
 
   await page.locator('[data-view-tab="admin"]').click();
-  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.2");
-  await expect(page.locator("#buildInfoPanel")).toContainText("public-about-version-panel");
-  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v19");
+  await expect(page.locator("#buildInfoPanel")).toContainText("2026.06.11.3");
+  await expect(page.locator("#buildInfoPanel")).toContainText("completed-period-archive-search");
+  await expect(page.locator("#buildInfoPanel")).toContainText("fuel-ledger-v20");
 });

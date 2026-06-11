@@ -181,3 +181,13 @@ The automated Playwright suite verifies that current-period audit entries clear 
 
 After deployment, open Admin -> Version & update status and verify the app version/build label and service-worker cache match the expected release. On phones/home-screen installs, fully close and reopen the app if the service-worker cache is stale.
 \n- Added a user-visible About tab with read-only app version and PWA cache status so non-admin members can report their running build.
+
+## Completed-period archive smoke check
+
+After deploying archive/history changes:
+
+1. Close at least one test settlement period.
+2. Open History -> Closed periods.
+3. Search for a trip note, station, or member from the closed period.
+4. Confirm the archive summary and results update.
+5. Clear filters and confirm the completed period card shows its frozen Change log.

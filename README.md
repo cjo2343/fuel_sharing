@@ -434,3 +434,7 @@ The browser smoke-test suite also covers the period-aware audit rule: resetting 
 
 Admins can open **Admin -> Version & update status** to confirm the deployed app version, build label, expected service-worker cache, and whether the current browser/PWA page is controlled by the service worker. This is useful when a home-screen install appears stale after a deployment.
 \n- Added a user-visible About tab with read-only app version and PWA cache status so non-admin members can report their running build.
+
+### Completed-period archive search
+
+History -> Closed periods now includes search, payment-status filtering, sorting, and a live archive summary. Use it to find archived settlement periods by member, note, station, payment status, or audit-log text. Closed period cards still keep their frozen Change log, trips, fuel logs, activity-by-person, and final-payment details.

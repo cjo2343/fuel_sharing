@@ -2696,3 +2696,43 @@ body.auth-locked #authPanel .text-button {
   color: var(--muted);
   font-weight: 700;
 }
+
+/* Completed-period archive search/filter controls */
+.archive-toolbar {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(160px, 0.8fr) minmax(180px, 0.8fr) auto;
+  align-items: end;
+  margin: 1rem 0 0.75rem;
+}
+
+.archive-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 800;
+  color: var(--green-dark);
+}
+
+.archive-toolbar label span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.archive-toolbar input,
+.archive-toolbar select {
+  width: 100%;
+}
+
+.archive-summary {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 760px) {
+  .archive-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .archive-toolbar .compact-button {
+    width: 100%;
+  }
+}
