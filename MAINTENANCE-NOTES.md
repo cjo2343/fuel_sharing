@@ -297,3 +297,8 @@ Payment status clicks are now awaited in the shared click handler, and the Playw
 
 
 - Backend payment action state sync: payment actions now flush current local state to `server.py` and cancel stale debounced saves before applying server-authoritative payment status/audit updates.
+
+### Closed-period payment action polish
+- Closed completed-period cards now show unpaid requested payments as dedicated payment cards.
+- The `Mark paid` action is shown directly inside the closed-period payment row when the signed-in user is allowed to use it.
+- Marking paid after close remains status-only: it does not reopen or recalculate the settlement, and it writes to the closed period change log.

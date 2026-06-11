@@ -5768,14 +5768,33 @@ function renderPeriodSettlements(period) {
           (settlement, index) => {
             const status = normalizePaymentStatus(settlement.status);
             const canMarkPaid = status === "requested" && canMarkSettlementPaid(settlement);
+            const amountText = formatMoneyFor(settlement.amount, period.currency || state.currency);
+            const paymentText = `${settlement.from} pays ${settlement.to}`;
+            const statusNote = status === "paid"
+              ? `Paid after settlement close. Amounts remain frozen.`
+              : status === "requested"
+                ? `Waiting for ${settlement.from} to pay. Closing freezes the amount, but this payment can still be marked paid here.`
+                : `Not requested when this period was closed.`;
             return `
-            <div>
-              <span>${escapeHtml(settlement.from)} pays ${escapeHtml(settlement.to)}</span>
-              <b>${formatMoneyFor(settlement.amount, period.currency || state.currency)}</b>
-              <span class="status-chip ${status}">${statusLabel(status)}</span>
-              ${canMarkPaid ? `<button class="subtle-button compact-button" type="button" data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid">Mark paid</button>` : ""}
-              ${status === "requested" && !canMarkPaid ? `<span class="request-note">Waiting for ${escapeHtml(settlement.from)} to pay.</span>` : ""}
-            </div>
+            <article class="archive-payment-card ${status}">
+              <div class="archive-payment-main">
+                <div>
+                  <strong>${escapeHtml(paymentText)}</strong>
+                  <p>${escapeHtml(statusNote)}</p>
+                </div>
+                <div class="archive-payment-amount">
+                  <b>${amountText}</b>
+                  <span class="status-chip ${status}">${statusLabel(status)}</span>
+                </div>
+              </div>
+              ${canMarkPaid ? `
+                <div class="archive-payment-action-row">
+                  <button class="subtle-button compact-button" type="button" data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid">Mark paid</button>
+                  <span class="request-note">Updates only this payment status and the closed-period change log.</span>
+                </div>
+              ` : ""}
+              ${status === "requested" && !canMarkPaid ? `<p class="request-note">Only ${escapeHtml(settlement.from)}, ${escapeHtml(settlement.to)}, or an admin can mark this closed-period payment paid.</p>` : ""}
+            </article>
           `;
           }
         )

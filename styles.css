@@ -2812,3 +2812,59 @@ body.auth-locked #authPanel .text-button {
   margin-top: 0.5rem;
   padding-left: 0.65rem;
 }
+
+.archive-payment-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  margin: 10px 0;
+}
+
+.archive-payment-card.requested {
+  border-color: rgba(45, 87, 161, 0.2);
+  background: rgba(45, 87, 161, 0.06);
+}
+
+.archive-payment-card.paid {
+  border-color: rgba(28, 115, 72, 0.2);
+  background: rgba(28, 115, 72, 0.06);
+}
+
+.archive-payment-main,
+.archive-payment-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.archive-payment-main p,
+.archive-payment-action-row .request-note {
+  margin: 4px 0 0;
+}
+
+.archive-payment-amount {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.archive-payment-action-row {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+@media (max-width: 760px) {
+  .archive-payment-main,
+  .archive-payment-action-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .archive-payment-amount {
+    white-space: normal;
+  }
+}

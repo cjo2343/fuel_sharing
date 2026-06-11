@@ -287,3 +287,8 @@ Payment status clicks are now awaited in the shared click handler, and the Playw
 
 
 - Backend payment action state sync: payment actions now flush current local state to `server.py` and cancel stale debounced saves before applying server-authoritative payment status/audit updates.
+
+### Closed-period paid-status check
+- After closing a period with a requested payment, open History -> Closed periods.
+- Confirm the unpaid payment clearly shows `Mark paid` and explains that it only updates payment status/change log.
+- Mark it paid and confirm the closed-period change log records the update.

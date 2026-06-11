@@ -340,6 +340,12 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#periodList")).toContainText("Payment requested");
   await expect(page.locator("#periodList")).toContainText(/Status: Not requested .* Requested/);
   await expect(page.locator("#periodList")).toContainText("Settlement closed");
+  const closedPeriodCard = page.locator(".archived-period-card").first();
+  await closedPeriodCard.evaluate((card) => {
+    if (card instanceof HTMLDetailsElement) card.open = true;
+  });
+  await expect(closedPeriodCard.locator('[data-closed-payment-status="paid"]').first()).toBeVisible();
+  await expect(closedPeriodCard).toContainText("Updates only this payment status and the closed-period change log.");
   await expect(page.locator("[data-archive-csv]")).toHaveCount(1);
   await expect(page.locator("[data-archive-audit-csv]")).toHaveCount(1);
 });

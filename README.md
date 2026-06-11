@@ -503,3 +503,7 @@ Payment status clicks are now awaited in the shared click handler, and the Playw
 
 
 - Backend payment action state sync: payment actions now flush current local state to `server.py` and cancel stale debounced saves before applying server-authoritative payment status/audit updates.
+
+
+### Closed-period payment status
+Closed settlement amounts stay frozen, but requested payments can still be marked paid directly from the completed-period card. This updates only the payment status and the closed-period change log; it does not reopen or recalculate the settlement.
