@@ -275,3 +275,7 @@ Manual check: Admin -> Member management, verify Member/Admin descriptions, try 
 ## Playwright state isolation
 
 The browser smoke tests run against `server.py` with `FUEL_LEDGER_DATA_FILE=.playwright-ledger-data.json`. The test suite now resets `/api/state` before each test, so trips, fuel logs, payment statuses, audit entries, and closed periods from one smoke test cannot leak into another.
+
+## Payment reminders
+
+Requested payments now include a **Send reminder** action for the payment requester/admin. The reminder is always recorded in the current period audit log. When the payer has an active push subscription, the server also sends a mobile/PWA notification; otherwise the app shows a non-fatal message explaining that the reminder was recorded but no active notification subscription was reached.

@@ -149,28 +149,28 @@
     }
   }
 
-  async function sendSettlementPush({
+  async function sendPaymentPush({
     supabaseClient,
     sendPushUrl,
     settlement,
     getMemberProfile,
     formatMoney,
-    settlementKey
+    settlementKey,
+    title,
+    body,
+    tagSuffix = ""
   }) {
-    if (!supabaseClient || !settlement) return;
+    if (!supabaseClient || !settlement) return { attempted: false, sent: 0, failed: 0, reason: "cloud-disabled" };
 
     const { data: sessionData } = await supabaseClient.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) return;
+    if (!accessToken) return { attempted: false, sent: 0, failed: 0, reason: "signed-out" };
 
     const targetEmail = getMemberProfile(settlement.from).email;
-    if (!targetEmail) return;
-
-    const title = "Fuel Ledger payment request";
-    const body = `${settlement.to} requested ${formatMoney(settlement.amount)} from you for shared car fuel.`;
+    if (!targetEmail) return { attempted: false, sent: 0, failed: 0, reason: "missing-target-email" };
 
     try {
-      await fetch(sendPushUrl, {
+      const response = await fetch(sendPushUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -181,12 +181,44 @@
           title,
           body,
           url: `${window.location.origin}/`,
-          tag: settlementKey(settlement)
+          tag: `${settlementKey(settlement)}${tagSuffix}`
         })
       });
+
+      if (!response.ok) {
+        return { attempted: true, sent: 0, failed: 1, reason: await response.text() };
+      }
+
+      const result = await response.json().catch(() => ({}));
+      return {
+        attempted: true,
+        sent: Number(result.sent || 0),
+        failed: Number(result.failed || 0),
+        reason: ""
+      };
     } catch (error) {
       console.warn("Push notification failed", error);
+      return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
     }
+  }
+
+  async function sendSettlementPush(options) {
+    const { settlement, formatMoney } = options;
+    return sendPaymentPush({
+      ...options,
+      title: "Fuel Ledger payment request",
+      body: `${settlement.to} requested ${formatMoney(settlement.amount)} from you for shared car fuel.`
+    });
+  }
+
+  async function sendPaymentReminderPush(options) {
+    const { settlement, formatMoney } = options;
+    return sendPaymentPush({
+      ...options,
+      title: "Fuel Ledger payment reminder",
+      body: `${settlement.to} reminded you to pay ${formatMoney(settlement.amount)} for shared car fuel.`,
+      tagSuffix: ":reminder"
+    });
   }
 
   window.FuelNotifications = {
@@ -194,6 +226,7 @@
     refreshPushState,
     updatePwaUi,
     enablePushNotifications,
-    sendSettlementPush
+    sendSettlementPush,
+    sendPaymentReminderPush
   };
 }());

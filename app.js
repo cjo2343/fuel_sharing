@@ -1198,6 +1198,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const reminderButton = event.target.closest("[data-payment-reminder]");
+  if (reminderButton) {
+    sendPaymentReminder(reminderButton);
+    return;
+  }
+
   const copyButton = event.target.closest("[data-copy]");
   if (copyButton) {
     copySettlement(copyButton);
@@ -1332,6 +1338,35 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
       nextStatus: normalizePaymentStatus(nextStatus),
       previousStatusLabel: previousLabel,
       nextStatusLabel: nextLabel
+    }
+  };
+}
+
+function buildPaymentReminderAuditInfo(settlement, pushResult = {}) {
+  const from = settlement?.from || "Someone";
+  const to = settlement?.to || "someone";
+  const amount = Number(settlement?.amount || 0);
+  const currency = settlement?.currency || state.currency || "DKK";
+  const amountText = formatMoneyFor(amount, currency);
+  const sent = Number(pushResult.sent || 0);
+  const failed = Number(pushResult.failed || 0);
+  const deliveryText = sent > 0
+    ? `Mobile notification sent to ${sent} device${sent === 1 ? "" : "s"}`
+    : pushResult.attempted
+      ? "No active mobile notification subscription was reached"
+      : "Reminder recorded in the app; mobile notification was not available";
+  return {
+    summary: `${to} reminded ${from} · ${amountText}`,
+    detail: `${from} pays ${to} · ${amountText} · ${deliveryText}`,
+    metadata: {
+      from,
+      to,
+      amount,
+      currency,
+      reminderSent: sent,
+      reminderFailed: failed,
+      reminderAttempted: Boolean(pushResult.attempted),
+      reminderReason: pushResult.reason || ""
     }
   };
 }
@@ -3048,6 +3083,7 @@ function renderSettlements(ledger) {
             requestControls += `<span class="request-note">Waiting for ${escapeHtml(item.from)} to pay.</span>`;
           }
           if (canRequest) {
+            requestControls += `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-reminder="true" ${pending ? "disabled" : ""}>Send reminder</button>`;
             requestControls += `<button class="text-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="open" ${pending ? "disabled" : ""}>${pending ? "Reopening..." : "Reopen"}</button>`;
           }
         } else if (status === "paid") {
@@ -3812,6 +3848,52 @@ async function updatePaymentStatus(button) {
   // Requesting or marking a payment must never close the period automatically.
   // A period can contain requested/paid payments while the admin reviews it.
   // Closing is an explicit admin-only action via the Close period button.
+}
+
+async function sendPaymentReminder(button) {
+  const key = button.dataset.paymentKey;
+  if (pendingSettlementRequestKeys.has(key)) return;
+
+  const ledger = calculateLedger();
+  const settlement = ledger.settlements.find((item) => settlementKey(item) === key);
+  const status = normalizePaymentStatus(state.paymentStatuses[key]);
+
+  if (!settlement || status !== "requested" || (!canManageSettlementRequest(settlement) && !canManageSettings())) {
+    showPermissionBlocked(describePaymentPermissionMessage(settlement, "requested"));
+    render();
+    return;
+  }
+
+  pendingSettlementRequestKeys.add(key);
+  const originalText = button.textContent || "Send reminder";
+  button.disabled = true;
+  button.textContent = "Sending...";
+
+  const pushResult = await sendPaymentReminderPush(settlement).catch((error) => {
+    console.warn("Payment reminder notification failed", error);
+    return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
+  });
+
+  const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
+  addAuditEntry({
+    type: "payment_reminder_sent",
+    entityType: "payment",
+    entityId: key,
+    summary: auditInfo.summary,
+    detail: auditInfo.detail,
+    metadata: auditInfo.metadata
+  });
+  saveState();
+
+  pendingSettlementRequestKeys.delete(key);
+  render();
+
+  if (pushResult.sent > 0) {
+    showAppMessage(`Reminder sent to ${settlement.from}.`);
+  } else {
+    showAppMessage(`Reminder recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
+  }
+  button.textContent = originalText;
 }
 
 async function copySettlement(button) {
@@ -5987,6 +6069,17 @@ async function enablePushNotifications() {
 
 async function sendSettlementPush(settlement) {
   return notifications.sendSettlementPush({
+    supabaseClient,
+    sendPushUrl,
+    settlement,
+    getMemberProfile,
+    formatMoney,
+    settlementKey
+  });
+}
+
+async function sendPaymentReminderPush(settlement) {
+  return notifications.sendPaymentReminderPush({
     supabaseClient,
     sendPushUrl,
     settlement,

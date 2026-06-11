@@ -259,3 +259,13 @@ Manual check: Admin -> Member management, verify Member/Admin descriptions, try 
 ### Playwright state isolation
 
 Before committing test changes, run `npm run test:e2e`. The suite should reset its isolated `.playwright-ledger-data.json` state automatically before each test. If local state ever looks suspicious, remove it manually with `rm -f .playwright-ledger-data.json` and rerun the tests.
+
+## Payment reminder smoke check
+
+After deploying the payment-reminders build:
+
+1. Request a payment.
+2. Click **Send reminder** on the requested payment.
+3. Confirm History -> Change log shows **Payment reminder sent**.
+4. On a device with notifications enabled for the payer, confirm a mobile/PWA notification is received.
+5. On devices without notification subscriptions, confirm the app explains that the reminder was recorded but no active subscription was found.

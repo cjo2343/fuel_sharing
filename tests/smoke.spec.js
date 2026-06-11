@@ -278,6 +278,12 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   await expect(page.locator("#auditLog")).toContainText("Payment requested");
   await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
 
+  const reminderButton = page.locator('button[data-payment-reminder="true"]').first();
+  await expect(reminderButton).toHaveCount(1);
+  await reminderButton.evaluate((button) => button.click());
+  await expect(page.locator("#auditLog")).toContainText("Payment reminder sent");
+  await expect(page.locator("#auditLog")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification/i);
+
   const reopenButton = page.locator('button[data-payment-status="open"]').first();
   await expect(reopenButton).toHaveCount(1);
   await expect(page.locator("#startKm")).toBeDisabled();
