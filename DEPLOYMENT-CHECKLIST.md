@@ -191,3 +191,7 @@ After deploying archive/history changes:
 3. Search for a trip note, station, or member from the closed period.
 4. Confirm the archive summary and results update.
 5. Clear filters and confirm the completed period card shows its frozen Change log.
+
+## Completed-period CSV export check
+
+After deploying the completed-period CSV export patch, open History -> Closed periods, expand a completed period, and verify the card shows Download report, Export CSV, and Export change log CSV. Download both CSV files once from a non-production test period or a safe archived period.

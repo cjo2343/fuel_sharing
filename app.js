@@ -1150,6 +1150,18 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const archiveCsvButton = event.target.closest("[data-archive-csv]");
+  if (archiveCsvButton) {
+    downloadClosedPeriodCsv(archiveCsvButton.dataset.archiveCsv);
+    return;
+  }
+
+  const archiveAuditCsvButton = event.target.closest("[data-archive-audit-csv]");
+  if (archiveAuditCsvButton) {
+    downloadClosedPeriodAuditCsv(archiveAuditCsvButton.dataset.archiveAuditCsv);
+    return;
+  }
+
   const reviewPeriodButton = event.target.closest("[data-review-period]");
   if (reviewPeriodButton) {
     showHistoryForPeriodReview();
@@ -3878,16 +3890,195 @@ function downloadCurrentPeriodReport() {
 }
 
 
+function findClosedPeriod(periodId) {
+  return state.closedPeriods.find((item) => item.id === periodId);
+}
+
+function closedPeriodFileStem(period) {
+  const closedDate = String(period.closedAt || localDateString()).slice(0, 10);
+  const idPart = String(period.id || "period").slice(0, 8);
+  return `fuel-ledger-closed-period-${closedDate}-${idPart}`;
+}
+
 function downloadClosedPeriodReport(periodId) {
-  const period = state.closedPeriods.find((item) => item.id === periodId);
+  const period = findClosedPeriod(periodId);
   if (!period) {
     alert("Could not find that closed period.");
     return;
   }
 
   const lines = buildClosedPeriodReportLines(period);
-  const closedDate = String(period.closedAt || localDateString()).slice(0, 10);
-  downloadTextFile(`fuel-ledger-closed-period-${closedDate}-${period.id.slice(0, 8)}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+  downloadTextFile(`${closedPeriodFileStem(period)}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+}
+
+function downloadClosedPeriodCsv(periodId) {
+  const period = findClosedPeriod(periodId);
+  if (!period) {
+    alert("Could not find that closed period.");
+    return;
+  }
+
+  const rows = buildClosedPeriodCsvRows(period);
+  downloadTextFile(`${closedPeriodFileStem(period)}-summary.csv`, toCsv(rows), "text/csv;charset=utf-8");
+  showAppMessage("Completed-period CSV downloaded.");
+}
+
+function downloadClosedPeriodAuditCsv(periodId) {
+  const period = findClosedPeriod(periodId);
+  if (!period) {
+    alert("Could not find that closed period.");
+    return;
+  }
+
+  const rows = buildClosedPeriodAuditCsvRows(period);
+  downloadTextFile(`${closedPeriodFileStem(period)}-change-log.csv`, toCsv(rows), "text/csv;charset=utf-8");
+  showAppMessage("Completed-period change-log CSV downloaded.");
+}
+
+function buildClosedPeriodCsvRows(period) {
+  const currency = period.currency || state.currency;
+  const trips = Array.isArray(period.trips) ? period.trips : [];
+  const fuel = Array.isArray(period.fuel) ? period.fuel : [];
+  const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+  const people = Array.isArray(period.people) ? period.people : [];
+  const rows = [[
+    "section",
+    "period_label",
+    "closed_at",
+    "currency",
+    "date",
+    "person",
+    "from",
+    "to",
+    "status",
+    "amount",
+    "km",
+    "liters",
+    "rate",
+    "description",
+    "note"
+  ]];
+
+  rows.push([
+    "period_summary",
+    period.label || "Closed period",
+    period.closedAt || "",
+    currency,
+    "",
+    "",
+    "",
+    "",
+    "",
+    Number(period.totalPaid || 0),
+    Number(period.totalKm || 0),
+    fuel.reduce((sum, item) => sum + Number(item.liters || 0), 0),
+    Number(period.fuelRate || 0),
+    `${trips.length} trip${trips.length === 1 ? "" : "s"}; ${fuel.length} fuel log${fuel.length === 1 ? "" : "s"}; ${settlements.length} final payment${settlements.length === 1 ? "" : "s"}`,
+    ""
+  ]);
+
+  for (const person of people) {
+    rows.push([
+      "person",
+      period.label || "Closed period",
+      period.closedAt || "",
+      currency,
+      "",
+      person.name || "",
+      "",
+      "",
+      "",
+      Number(person.fuelPaid || 0),
+      Number(person.km || 0),
+      "",
+      "",
+      `Fuel share ${formatMoneyFor(person.fuelShare || 0, currency)}`,
+      ""
+    ]);
+  }
+
+  for (const settlement of settlements) {
+    rows.push([
+      "settlement",
+      period.label || "Closed period",
+      period.closedAt || "",
+      currency,
+      "",
+      "",
+      settlement.from || "",
+      settlement.to || "",
+      normalizePaymentStatus(settlement.status),
+      Number(settlement.amount || 0),
+      "",
+      "",
+      "",
+      `${settlement.from || "Someone"} pays ${settlement.to || "someone"}`,
+      ""
+    ]);
+  }
+
+  for (const trip of trips) {
+    const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+    rows.push([
+      "trip",
+      period.label || "Closed period",
+      period.closedAt || "",
+      currency,
+      trip.date || "",
+      trip.driver || "",
+      "",
+      "",
+      "",
+      "",
+      round(km),
+      "",
+      "",
+      `Participants: ${getTripParticipants(trip).join("; ")}`,
+      trip.note || ""
+    ]);
+  }
+
+  for (const item of fuel) {
+    const amount = Number(item.amount || 0);
+    const liters = Number(item.liters || 0);
+    rows.push([
+      "fuel",
+      period.label || "Closed period",
+      period.closedAt || "",
+      currency,
+      item.date || "",
+      item.payer || "",
+      "",
+      "",
+      "",
+      amount,
+      item.odometer || "",
+      liters || "",
+      liters > 0 ? roundMoney(amount / liters) : "",
+      item.station || "",
+      item.note || ""
+    ]);
+  }
+
+  return rows;
+}
+
+function buildClosedPeriodAuditCsvRows(period) {
+  const entries = auditLog.normalizeAuditEntries(period.auditLog);
+  return [
+    ["period_label", "closed_at", "created_at", "action", "summary", "actor", "detail", "entity_type", "entity_id"],
+    ...entries.map((entry) => [
+      period.label || "Closed period",
+      period.closedAt || "",
+      entry.createdAt || "",
+      auditLog.actionLabel(entry.type),
+      entry.summary || "",
+      entry.actor || "",
+      entry.detail || "",
+      entry.entityType || "",
+      entry.entityId || ""
+    ])
+  ];
 }
 
 function buildClosedPeriodReportLines(period) {
@@ -4902,6 +5093,8 @@ function renderClosedPeriodCard(period) {
 
       <div class="archive-actions button-row compact-actions">
         <button class="subtle-button compact-button" type="button" data-archive-report="${escapeHtml(period.id)}">Download report</button>
+        <button class="subtle-button compact-button" type="button" data-archive-csv="${escapeHtml(period.id)}">Export CSV</button>
+        <button class="subtle-button compact-button" type="button" data-archive-audit-csv="${escapeHtml(period.id)}">Export change log CSV</button>
       </div>
 
       <div class="period-stats archive-period-stats">

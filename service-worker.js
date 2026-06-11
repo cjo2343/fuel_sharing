@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v20";
-const BUILD_LABEL = "completed-period-archive-search";
-const BUILD_UPDATED_AT = "2026-06-11T00:35:00+02:00";
+const CACHE_NAME = "fuel-ledger-v21";
+const BUILD_LABEL = "completed-period-csv-export";
+const BUILD_UPDATED_AT = "2026-06-11T00:50:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

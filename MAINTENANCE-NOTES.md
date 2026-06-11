@@ -212,3 +212,7 @@ The Playwright suite now includes a regression test for period-aware audit behav
 ## Completed-period archive search
 
 The History archive now has search/filter/sort controls for `state.closedPeriods`. Filtering is client-side and uses period labels, members, trips, fuel logs, settlements, and frozen audit-log text. Keep the Playwright period-aware audit test updated when changing the closed-period card markup or archive controls.
+
+## Completed-period CSV exports
+
+Completed period cards now include two CSV exports: a summary CSV covering period totals, people, settlements, trips, and fuel logs, and a separate change-log CSV for the frozen audit entries saved with that period. The export buttons are intentionally attached to completed periods only so current/open settlement data is not mistaken for finalized archive data.

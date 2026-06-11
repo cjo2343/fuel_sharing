@@ -438,3 +438,7 @@ Admins can open **Admin -> Version & update status** to confirm the deployed app
 ### Completed-period archive search
 
 History -> Closed periods now includes search, payment-status filtering, sorting, and a live archive summary. Use it to find archived settlement periods by member, note, station, payment status, or audit-log text. Closed period cards still keep their frozen Change log, trips, fuel logs, activity-by-person, and final-payment details.
+
+### Completed-period CSV exports
+
+Closed period archive cards can export a period summary CSV and a frozen change-log CSV. The summary CSV includes period totals, people, final settlements, trips, and fuel logs. The change-log CSV includes the audit entries that were frozen when the period was closed.
