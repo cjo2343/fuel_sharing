@@ -3855,3 +3855,97 @@ body.auth-locked #authPanel .text-button {
   outline: 3px solid rgba(47, 133, 100, 0.45);
   box-shadow: 0 0 0 6px rgba(47, 133, 100, 0.12);
 }
+
+/* Settlement/payment polish for action-focused cards */
+.settlement-kicker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.settlement-kicker .status-chip {
+  margin-left: 0;
+}
+
+.settlement-route {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 860;
+  line-height: 1.25;
+}
+
+.settlement-person {
+  background: rgba(30, 85, 66, 0.08);
+  border-radius: 999px;
+  color: var(--ink) !important;
+  display: inline-block;
+  max-width: min(100%, 260px);
+  overflow: hidden;
+  padding: 4px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settlement-route-action {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settlement-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.settlement-action-buttons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.settlement-action-buttons .request-note {
+  max-width: 260px;
+  text-align: right;
+}
+
+.highlight-pulse {
+  animation: highlightPulseStrong 1.35s ease-in-out 0s 3;
+  border-color: rgba(245, 158, 11, 0.9) !important;
+  outline: 5px solid rgba(245, 158, 11, 0.72) !important;
+  box-shadow: 0 0 0 10px rgba(245, 158, 11, 0.2), 0 18px 40px rgba(146, 64, 14, 0.2) !important;
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes highlightPulseStrong {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@media (max-width: 760px) {
+  .settlement-card {
+    grid-template-columns: 1fr;
+  }
+  .settlement-actions,
+  .settlement-action-buttons {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  .settlement-action-buttons .request-note {
+    max-width: none;
+    text-align: left;
+  }
+}

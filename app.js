@@ -3643,6 +3643,8 @@ function renderSettlements(ledger) {
         const fromPerson = ledger.people[item.from];
         const toPerson = ledger.people[item.to];
         const message = `${item.from} pays ${item.to} ${formatMoney(item.amount)} for shared car fuel`;
+        const paymentRef = createPaymentRef({ scope: "current", key, from: item.from, to: item.to, amount: item.amount });
+        const normalizedPaymentRef = normalizePaymentRefValue(paymentRef);
         const canRequest = canManageSettlementRequest(item);
         const canMarkPaid = canMarkSettlementPaid(item);
         const pending = pendingSettlementRequestKeys.has(key);
@@ -3676,27 +3678,32 @@ function renderSettlements(ledger) {
         }
 
         return `
-        <article class="settlement-card ${status === "requested" ? "is-requested" : ""} ${status === "paid" ? "is-paid" : ""}">
+        <article class="settlement-card ${status === "requested" ? "is-requested" : ""} ${status === "paid" ? "is-paid" : ""}" data-payment-ref="${escapeHtml(normalizedPaymentRef)}">
           <div class="settlement-main">
-            <div>
-              <strong>${escapeHtml(item.from)}</strong>
-              <span> pays </span>
-              <strong>${escapeHtml(item.to)}</strong>
+            <div class="settlement-kicker">
+              <span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span>
               <span class="status-chip ${status}">${statusLabel(status)}</span>
             </div>
+            <div class="settlement-route" aria-label="${escapeHtml(message)}">
+              <span class="settlement-person">${escapeHtml(item.from)}</span>
+              <span class="settlement-route-action">pays</span>
+              <span class="settlement-person">${escapeHtml(item.to)}</span>
+            </div>
             <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} km distance share at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
-            <details class="settlement-details">
-              <summary>Why this payment?</summary>
-              ${renderSettlementMathDetails(item, ledger)}
-            </details>
-            <details class="settlement-details">
-              <summary>Fuel payments included</summary>
-              ${renderFuelPaymentList(ledger.fuelPayments)}
-            </details>
+            <div class="settlement-detail-row">
+              <details class="settlement-details">
+                <summary>Why this payment?</summary>
+                ${renderSettlementMathDetails(item, ledger)}
+              </details>
+              <details class="settlement-details">
+                <summary>Fuel payments included</summary>
+                ${renderFuelPaymentList(ledger.fuelPayments)}
+              </details>
+            </div>
           </div>
           <div class="settlement-actions">
             <strong>${formatMoney(item.amount)}</strong>
-            ${requestControls}
+            <div class="settlement-action-buttons">${requestControls}</div>
           </div>
         </article>
       `;
@@ -5865,7 +5872,7 @@ function scrollToPendingLogRef(logRef) {
   if (!card) return false;
   card.scrollIntoView({ behavior: "smooth", block: "center" });
   card.classList.add("highlight-pulse");
-  window.setTimeout(() => card.classList.remove("highlight-pulse"), 1800);
+  window.setTimeout(() => card.classList.remove("highlight-pulse"), 4200);
   return true;
 }
 
@@ -5924,7 +5931,7 @@ function scrollToPaymentRef(paymentRef) {
   if (!card) return false;
   card.scrollIntoView({ behavior: "smooth", block: "center" });
   card.classList.add("highlight-pulse");
-  window.setTimeout(() => card.classList.remove("highlight-pulse"), 1800);
+  window.setTimeout(() => card.classList.remove("highlight-pulse"), 4200);
   return true;
 }
 
