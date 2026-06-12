@@ -149,24 +149,21 @@
     }
   }
 
-  async function sendPaymentPush({
+  async function sendPushNotification({
     supabaseClient,
     sendPushUrl,
-    settlement,
-    getMemberProfile,
-    formatMoney,
-    settlementKey,
+    targetEmail,
     title,
     body,
-    tagSuffix = ""
+    url = `${window.location.origin}/`,
+    tag = "fuel-ledger"
   }) {
-    if (!supabaseClient || !settlement) return { attempted: false, sent: 0, failed: 0, reason: "cloud-disabled" };
+    if (!supabaseClient) return { attempted: false, sent: 0, failed: 0, reason: "cloud-disabled" };
 
     const { data: sessionData } = await supabaseClient.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
     if (!accessToken) return { attempted: false, sent: 0, failed: 0, reason: "signed-out" };
 
-    const targetEmail = getMemberProfile(settlement.from).email;
     if (!targetEmail) return { attempted: false, sent: 0, failed: 0, reason: "missing-target-email" };
 
     try {
@@ -180,8 +177,8 @@
           targetEmail,
           title,
           body,
-          url: `${window.location.origin}/`,
-          tag: `${settlementKey(settlement)}${tagSuffix}`
+          url,
+          tag
         })
       });
 
@@ -200,6 +197,21 @@
       console.warn("Push notification failed", error);
       return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
     }
+  }
+
+  async function sendPaymentPush({
+    settlement,
+    getMemberProfile,
+    settlementKey,
+    tagSuffix = "",
+    ...options
+  }) {
+    if (!settlement) return { attempted: false, sent: 0, failed: 0, reason: "missing-settlement" };
+    return sendPushNotification({
+      ...options,
+      targetEmail: getMemberProfile(settlement.from).email,
+      tag: `${settlementKey(settlement)}${tagSuffix}`
+    });
   }
 
   async function sendSettlementPush(options) {
@@ -226,6 +238,7 @@
     refreshPushState,
     updatePwaUi,
     enablePushNotifications,
+    sendPushNotification,
     sendSettlementPush,
     sendPaymentReminderPush
   };

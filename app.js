@@ -153,7 +153,8 @@ const defaults = {
   paymentReminderAfterDays: 3,
   paymentReminderRepeatDays: 3,
   paymentReminderMaxCount: 3,
-  carSettingsVersion: 2
+  carSettingsVersion: 2,
+  updatedAt: ""
 };
 
 let state = loadState();
@@ -202,6 +203,8 @@ let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 const viewStorageKey = "fuel-ledger-active-view";
 let activeView = localStorage.getItem(viewStorageKey) || "log";
+const bookingCalendarViewStorageKey = "fuel-ledger-booking-calendar-view";
+let bookingCalendarView = localStorage.getItem(bookingCalendarViewStorageKey) || "list";
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -422,6 +425,7 @@ if (els.bookingForm) {
     if (!normalizedBookingSaved) return;
 
     const previousBooking = editingBookingId ? state.bookings.find((booking) => booking.id === editingBookingId) : null;
+    const isNewBooking = !editingBookingId;
     if (editingBookingId) {
       state.bookings = state.bookings.map((booking) => booking.id === editingBookingId ? bookingPayload : booking);
     } else {
@@ -442,6 +446,7 @@ if (els.bookingForm) {
     saveState();
     updateEditUi();
     render();
+    if (isNewBooking) sendBookingPush(bookingPayload).catch((error) => console.warn("Booking push notification failed", error));
     showAppMessage(previousBooking ? "Booking updated." : "Car booked.");
   });
 }
@@ -1358,6 +1363,17 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const bookingCalendarViewButton = event.target.closest("[data-booking-calendar-view]");
+  if (bookingCalendarViewButton) {
+    setBookingCalendarView(bookingCalendarViewButton.dataset.bookingCalendarView);
+    return;
+  }
+
+  const convertBookingButton = event.target.closest("[data-convert-booking-to-trip]");
+  if (convertBookingButton) {
+    startTripFromBooking(convertBookingButton.dataset.convertBookingToTrip);
+    return;
+  }
 
   const viewArchiveButton = event.target.closest("[data-view-closed-period]");
   if (viewArchiveButton) {
@@ -5310,6 +5326,7 @@ function updateEditUi() {
 function renderBookings() {
   if (!els.bookingCalendar) return;
   renderBookingConflictNotice(null);
+  renderBookingCalendarViewControls();
 
   const bookings = [...state.bookings].sort((a, b) => String(a.start).localeCompare(String(b.start)));
   if (bookings.length === 0) {
@@ -5324,12 +5341,68 @@ function renderBookings() {
   const upcomingBookings = bookings.filter((booking) => bookingStartMs(booking) >= now && !todayBookings.some((item) => item.id === booking.id));
   const pastBookings = bookings.filter((booking) => bookingEndMs(booking) < now && !todayBookings.some((item) => item.id === booking.id)).slice(-8).reverse();
 
-  els.bookingCalendar.className = "booking-calendar";
+  els.bookingCalendar.className = `booking-calendar ${escapeHtml(bookingCalendarView)}-view`;
+  if (bookingCalendarView === "week") {
+    els.bookingCalendar.innerHTML = renderBookingDayGrid(bookings, 7);
+    return;
+  }
+
+  if (bookingCalendarView === "month") {
+    els.bookingCalendar.innerHTML = renderBookingDayGrid(bookings, 30);
+    return;
+  }
+
   els.bookingCalendar.innerHTML = `
     ${renderBookingGroup("Today", todayBookings, "No booking today.")}
     ${renderBookingGroup("Upcoming", upcomingBookings, "No upcoming bookings.")}
     ${renderBookingGroup("Past", pastBookings, "No past bookings.")}
   `;
+}
+
+function setBookingCalendarView(view) {
+  bookingCalendarView = ["list", "week", "month"].includes(view) ? view : "list";
+  localStorage.setItem(bookingCalendarViewStorageKey, bookingCalendarView);
+  renderBookings();
+}
+
+function renderBookingCalendarViewControls() {
+  document.querySelectorAll("[data-booking-calendar-view]").forEach((button) => {
+    const active = button.dataset.bookingCalendarView === bookingCalendarView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function renderBookingDayGrid(bookings, days) {
+  const start = new Date(localDateString());
+  const dayBuckets = Array.from({ length: days }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const key = localDateString(date);
+    const items = bookings.filter((booking) => bookingTouchesDate(booking, key));
+    return { date, key, items };
+  });
+
+  return `
+    <div class="booking-day-grid" data-booking-grid="${days === 7 ? "week" : "month"}">
+      ${dayBuckets.map(({ date, key, items }) => `
+        <section class="booking-day-column ${key === localDateString() ? "today" : ""}" aria-label="${escapeHtml(formatBookingDayHeading(date))}">
+          <h3><span>${escapeHtml(formatBookingDayHeading(date))}</span><small>${items.length || "Free"}</small></h3>
+          <div class="booking-card-list compact-booking-list">
+            ${items.length ? items.map(renderBookingCard).join("") : `<p class="empty-state compact-empty">Free</p>`}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+  `;
+}
+
+function bookingTouchesDate(booking, dateKey) {
+  return String(booking.start).slice(0, 10) <= dateKey && String(booking.end).slice(0, 10) >= dateKey;
+}
+
+function formatBookingDayHeading(date) {
+  return date.toLocaleDateString("en-DK", { weekday: "short", day: "2-digit", month: "short" });
 }
 
 function renderBookingGroup(title, bookings, emptyText) {
@@ -5345,11 +5418,16 @@ function renderBookingGroup(title, bookings, emptyText) {
 
 function renderBookingCard(booking) {
   const status = getBookingStatus(booking);
+  const actionButtons = [
+    canCreateTripFromBooking(booking) ? `<button class="subtle-button compact-button" type="button" data-convert-booking-to-trip="${escapeHtml(booking.id)}">Log trip</button>` : "",
+    canManageBookingEntry(booking) ? `<button class="subtle-button compact-button" type="button" data-edit="bookings:${escapeHtml(booking.id)}">Edit</button>` : "",
+    canManageBookingEntry(booking) ? `<button class="text-button compact-button" type="button" data-delete="bookings:${escapeHtml(booking.id)}">Delete</button>` : ""
+  ].filter(Boolean).join("");
   return `
     <article class="entry-card booking-card ${escapeHtml(status)}">
       <header>
         <strong>${escapeHtml(booking.member)}</strong>
-        ${canManageBookingEntry(booking) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="bookings:${escapeHtml(booking.id)}">Edit</button><button class="text-button compact-button" type="button" data-delete="bookings:${escapeHtml(booking.id)}">Delete</button></div>` : ""}
+        <div class="entry-actions">${actionButtons}</div>
       </header>
       ${!canManageBookingEntry(booking) ? renderPermissionNote(describeBookingPermissionMessage(booking, "edit or delete")) : ""}
       <p>${escapeHtml(formatBookingRange(booking))} <span class="category-chip">${escapeHtml(statusLabelForBooking(status))}</span></p>
@@ -5367,6 +5445,40 @@ function renderBookingConflictNotice(conflict) {
   }
   els.bookingConflictNotice.classList.remove("hidden");
   els.bookingConflictNotice.textContent = `Conflicts with ${conflict.member}'s booking: ${formatBookingRange(conflict)}.`;
+}
+
+function startTripFromBooking(id) {
+  const booking = state.bookings.find((item) => item.id === id);
+  if (!booking) return;
+  if (!canCreateTripFromBooking(booking)) {
+    alert("Only the booked driver can turn this booking into a trip log.");
+    return;
+  }
+
+  editingTripId = null;
+  renderPeopleSelectors();
+  if (getMemberNames().includes(booking.member)) els.tripDriver.value = booking.member;
+  const bookingStart = parseBookingDate(booking.start);
+  if (bookingStart) els.tripDate.value = localDateString(bookingStart);
+  syncStartOdometerDefault();
+  els.endKm.value = "";
+  els.tripNote.value = booking.purpose ? `Booking: ${booking.purpose}` : "Booking";
+  for (const input of els.tripParticipants.querySelectorAll("input")) {
+    input.checked = input.value === booking.member;
+  }
+  updateEditUi();
+  setActiveView("log");
+  setTimeout(() => {
+    els.tripForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    els.endKm.focus();
+  }, 0);
+  showAppMessage("Trip form filled from booking. Add the end odometer when you park.");
+}
+
+function canCreateTripFromBooking(booking) {
+  if (!booking) return false;
+  if (!supabaseClient) return true;
+  return getCurrentMemberProfile()?.name === booking.member;
 }
 
 function validateBookingInput(booking, editingId = null) {
@@ -6102,6 +6214,29 @@ function buildSystemHealthChecks(ledger) {
     message: pushSubscriptionHint
   });
 
+  const bookingDiagnostics = getBookingDiagnostics();
+  checks.push({
+    level: bookingDiagnostics.invalid.length ? "issue" : "ok",
+    title: "Booking date integrity",
+    message: bookingDiagnostics.invalid.length
+      ? `${bookingDiagnostics.invalid.length} booking${bookingDiagnostics.invalid.length === 1 ? "" : "s"} have missing or invalid start/end times.`
+      : "All booking start/end times can be read."
+  });
+  checks.push({
+    level: bookingDiagnostics.overlaps.length ? "issue" : "ok",
+    title: "Booking overlaps",
+    message: bookingDiagnostics.overlaps.length
+      ? `${bookingDiagnostics.overlaps.length} overlapping booking pair${bookingDiagnostics.overlaps.length === 1 ? "" : "s"} found locally.`
+      : "No overlapping bookings found in the local booking list."
+  });
+  checks.push({
+    level: bookingDiagnostics.upcoming ? "ok" : "warning",
+    title: "Upcoming car bookings",
+    message: bookingDiagnostics.upcoming
+      ? `${bookingDiagnostics.upcoming} upcoming or active booking${bookingDiagnostics.upcoming === 1 ? "" : "s"} are visible.`
+      : "No upcoming bookings are currently visible."
+  });
+
   if (normalizedTableStatus.details && normalizedTableStatus.details.length) {
     normalizedTableStatus.details.forEach((detail) => checks.push(detail));
   } else {
@@ -6121,6 +6256,25 @@ function buildSystemHealthChecks(ledger) {
   });
 
   return checks;
+}
+
+function getBookingDiagnostics() {
+  const bookings = Array.isArray(state.bookings) ? state.bookings : [];
+  const invalid = bookings.filter((booking) => !Number.isFinite(bookingStartMs(booking)) || !Number.isFinite(bookingEndMs(booking)) || bookingEndMs(booking) <= bookingStartMs(booking));
+  const validBookings = bookings.filter((booking) => !invalid.includes(booking));
+  const overlaps = [];
+  validBookings.forEach((booking, index) => {
+    validBookings.slice(index + 1).forEach((other) => {
+      if (bookingStartMs(booking) < bookingEndMs(other) && bookingEndMs(booking) > bookingStartMs(other)) {
+        overlaps.push([booking, other]);
+      }
+    });
+  });
+  return {
+    invalid,
+    overlaps,
+    upcoming: bookings.filter((booking) => bookingEndMs(booking) >= Date.now()).length
+  };
 }
 
 function healthLevelLabel(level) {
@@ -6789,11 +6943,17 @@ function loadState() {
 }
 
 function saveState() {
+  state.updatedAt = new Date().toISOString();
   dataStore.saveLocalState({ storageKey, state, afterSave: queueRemoteSave });
 }
 
 function writeLocalState() {
   dataStore.writeLocalState({ storageKey, state });
+}
+
+function stateUpdatedMs(candidate) {
+  const updated = Date.parse(candidate?.updatedAt || "");
+  return Number.isFinite(updated) ? updated : 0;
 }
 
 function makeClientId() {
@@ -6900,7 +7060,8 @@ function normalizeState(saved) {
     paymentReminderAfterDays: Math.max(0, Number(saved.paymentReminderAfterDays ?? defaults.paymentReminderAfterDays)),
     paymentReminderRepeatDays: Math.max(1, Number(saved.paymentReminderRepeatDays || defaults.paymentReminderRepeatDays)),
     paymentReminderMaxCount: Math.max(1, Number(saved.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount)),
-    carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion
+    carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion,
+    updatedAt: saved.updatedAt || ""
   };
 }
 
@@ -7041,6 +7202,31 @@ async function sendSettlementPush(settlement) {
     formatMoney,
     settlementKey
   });
+}
+
+async function sendBookingPush(booking) {
+  if (!notifications.sendPushNotification || !supabaseClient || !booking) return { attempted: false, sent: 0, failed: 0, reason: "unavailable" };
+  const loggedInEmail = getLoggedInEmail();
+  const recipients = getMemberNames()
+    .map(getMemberProfile)
+    .filter((profile) => profile.email && profile.email !== loggedInEmail && profile.name !== booking.member);
+
+  const results = await Promise.all(recipients.map((profile) => notifications.sendPushNotification({
+    supabaseClient,
+    sendPushUrl,
+    targetEmail: profile.email,
+    title: "Fuel Ledger car booking",
+    body: `${booking.member} booked the car: ${formatBookingRange(booking)}${booking.purpose ? ` · ${booking.purpose}` : ""}`,
+    url: `${window.location.origin}/`,
+    tag: `booking:${booking.id}:${profile.email}`
+  })));
+
+  return results.reduce((summary, result) => ({
+    attempted: summary.attempted || result.attempted,
+    sent: summary.sent + Number(result.sent || 0),
+    failed: summary.failed + Number(result.failed || 0),
+    reason: result.reason || summary.reason
+  }), { attempted: false, sent: 0, failed: 0, reason: "" });
 }
 
 async function sendPaymentReminderPush(settlement) {
@@ -8055,7 +8241,10 @@ async function loadRemoteState() {
     if (!response.ok) throw new Error("State request failed");
     const remoteState = normalizeState(await response.json());
     const localState = loadState();
-    state = !hasLedgerData(remoteState) && hasLedgerData(localState) ? localState : remoteState;
+    const localHasData = hasLedgerData(localState);
+    const remoteHasData = hasLedgerData(remoteState);
+    const localIsNewer = localHasData && stateUpdatedMs(localState) > stateUpdatedMs(remoteState);
+    state = (!remoteHasData && localHasData) || localIsNewer ? localState : remoteState;
     state.lastOdometer = getLatestOdometer();
     writeLocalState();
     setDefaultDates();

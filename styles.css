@@ -451,6 +451,19 @@ button:not(:disabled):active {
   gap: 16px;
 }
 
+.booking-view-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.booking-view-controls .active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
 .booking-group {
   display: grid;
   gap: 10px;
@@ -479,6 +492,61 @@ button:not(:disabled):active {
 .booking-card.past {
   border-left-color: var(--line);
   opacity: 0.78;
+}
+
+.booking-day-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
+.booking-day-grid[data-booking-grid="month"] {
+  grid-auto-columns: minmax(180px, 0.72fr);
+}
+
+.booking-day-column {
+  min-height: 220px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fbfdfc;
+  padding: 12px;
+  scroll-snap-align: start;
+}
+
+.booking-day-column.today {
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px rgba(47, 125, 99, 0.18);
+}
+
+.booking-day-column h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.booking-day-column h3 small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.compact-booking-list {
+  gap: 8px;
+}
+
+.compact-booking-list .entry-card {
+  padding: 11px;
 }
 
 .booking-conflict-notice {

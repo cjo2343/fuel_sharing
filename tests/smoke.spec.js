@@ -288,6 +288,19 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   await page.locator('[data-view-tab="book"]').click();
   await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup");
 
+  await page.locator('[data-booking-calendar-view="week"]').click();
+  await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup");
+  await page.locator('[data-booking-calendar-view="month"]').click();
+  await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup");
+  await page.locator(`[data-convert-booking-to-trip="${bookingId}"]`).click();
+  await expect(page.locator('[data-view="log"]#tripLogPanel')).toBeVisible();
+  await expect(page.locator("#tripDriver")).toHaveValue("Christian");
+  await expect(page.locator("#tripDate")).toHaveValue("2026-06-12");
+  await expect(page.locator("#tripNote")).toHaveValue("Booking: Airport pickup");
+  await expect(page.locator('#tripParticipants input[value="Christian"]')).toBeChecked();
+
+  await page.locator('[data-view-tab="book"]').click();
+  await page.locator('[data-booking-calendar-view="list"]').click();
   await page.locator("#bookingStart").fill("2026-06-12T10:30");
   await page.locator("#bookingEnd").fill("2026-06-12T12:00");
   await page.locator("#bookingPurpose").fill("Overlapping booking");

@@ -375,7 +375,7 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 
 ## 2026-06-12 - Stable closed payment reminder identity
 
-- Version `2026.06.12.20` / cache `fuel-ledger-v57` / build `booking-table-security`.
+- Version `2026.06.12.21` / cache `fuel-ledger-v58` / build `booking-calendar-actions`.
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
