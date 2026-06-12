@@ -310,3 +310,7 @@ Closed-period final payment cards use a stacked layout with payer/receiver, amou
 ### Unpaid payments view
 
 Added a Payments tab with an unpaid payments dashboard. It collects requested-but-unpaid payments from the current settlement and closed periods, highlights what the current user owes, and allows eligible users to mark closed-period payments paid without reopening or recalculating the settlement.
+
+### Closed payment card layout
+
+The `closed-payment-card-layout` build keeps the closed-period payment behavior unchanged but improves the card layout so payer/receiver text, amount/status, action buttons, and explanatory notes do not squeeze into narrow columns on desktop or mobile.
