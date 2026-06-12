@@ -170,6 +170,7 @@ const expandedClosedPeriodIds = new Set();
 let editingTripId = null;
 let editingFuelId = null;
 let editingBookingId = null;
+let pendingTripBookingContext = null;
 let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
 let deferredInstallPrompt = null;
@@ -440,8 +441,11 @@ if (els.bookingForm) {
       return;
     }
 
+    const bookingId = editingBookingId || crypto.randomUUID();
+    const existingBooking = editingBookingId ? state.bookings.find((booking) => booking.id === editingBookingId) : null;
     const bookingPayload = {
-      id: editingBookingId || crypto.randomUUID(),
+      id: bookingId,
+      logRef: existingBooking?.logRef || createLogRef(bookingId),
       member: els.bookingMember.value,
       start: normalizeBookingDateTime(els.bookingStart.value),
       end: normalizeBookingDateTime(els.bookingEnd.value),
@@ -522,8 +526,14 @@ els.tripForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const tripId = editingTripId || crypto.randomUUID();
+  const existingTrip = editingTripId ? state.trips.find((trip) => trip.id === editingTripId) : null;
   const tripPayload = {
-    id: editingTripId || crypto.randomUUID(),
+    id: tripId,
+    logRef: existingTrip?.logRef || pendingTripBookingContext?.logRef || createLogRef(tripId),
+    sourceBookingId: existingTrip?.sourceBookingId || pendingTripBookingContext?.bookingId || null,
+    bookingStart: existingTrip?.bookingStart || pendingTripBookingContext?.bookingStart || null,
+    bookingEnd: existingTrip?.bookingEnd || pendingTripBookingContext?.bookingEnd || null,
     driver: els.tripDriver.value,
     participants,
     date: els.tripDate.value,
@@ -551,11 +561,12 @@ els.tripForm.addEventListener("submit", async (event) => {
     type: wasEditingTrip ? "trip_updated" : "trip_created",
     entityType: "trip",
     entityId: tripPayload.id,
-    summary: `${tripPayload.driver} · ${formatNumber(tripPayload.endKm - tripPayload.startKm)} km`,
-    detail: wasEditingTrip ? describeTripAuditChanges(previousTrip, tripPayload) : (tripPayload.date || "")
+    summary: `${formatLogRef(tripPayload)} · ${tripPayload.driver} · ${formatNumber(tripPayload.endKm - tripPayload.startKm)} km`,
+    detail: wasEditingTrip ? describeTripAuditChanges(previousTrip, tripPayload) : getTripPeriodLabel(tripPayload)
   });
 
   saveState();
+  pendingTripBookingContext = null;
   els.tripForm.reset();
   setDefaultDates();
   updateEditUi();
@@ -5300,6 +5311,7 @@ function startTripEdit(id) {
   showLogViewForEditing();
   editingFuelId = null;
   editingBookingId = null;
+  pendingTripBookingContext = null;
   editingTripId = id;
   renderPeopleSelectors();
   els.tripDriver.value = trip.driver;
@@ -5324,6 +5336,7 @@ function startBookingEdit(id) {
   showBookViewForEditing();
   editingTripId = null;
   editingFuelId = null;
+  pendingTripBookingContext = null;
   editingBookingId = id;
   renderPeopleSelectors();
   els.bookingMember.value = booking.member;
@@ -5343,6 +5356,7 @@ function startFuelEdit(id) {
   showLogViewForEditing();
   editingTripId = null;
   editingBookingId = null;
+  pendingTripBookingContext = null;
   editingFuelId = id;
   renderPeopleSelectors();
   els.fuelPayer.value = fuel.payer;
@@ -5382,6 +5396,14 @@ function startTripFromBooking(id) {
   }
 
   editingTripId = null;
+  editingFuelId = null;
+  editingBookingId = null;
+  pendingTripBookingContext = {
+    bookingId: booking.id,
+    logRef: booking.logRef || createLogRef(booking.id),
+    bookingStart: booking.start || null,
+    bookingEnd: booking.end || null
+  };
   renderPeopleSelectors();
   if (getMemberNames().includes(booking.member)) els.tripDriver.value = booking.member;
   const bookingStart = parseBookingDate(booking.start);
@@ -5453,6 +5475,38 @@ function renderCategorizedTrips(trips) {
     .join("");
 }
 
+
+function createLogRef(id = crypto.randomUUID()) {
+  const compact = String(id || crypto.randomUUID()).replace(/[^a-z0-9]/gi, "").toUpperCase();
+  return `#${(compact || "LOG000").slice(0, 6)}`;
+}
+
+function formatLogRef(entry) {
+  return entry?.logRef || createLogRef(entry?.id || "");
+}
+
+function formatDateTimeShort(value) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("en-DK", { day: "2-digit", month: "short" }) + ` ${parsed.toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function getTripPeriodLabel(trip) {
+  const start = trip?.bookingStart;
+  const end = trip?.bookingEnd;
+  const startDate = start ? localDateString(new Date(start)) : "";
+  const endDate = end ? localDateString(new Date(end)) : "";
+  if (start && end && startDate && endDate) {
+    if (startDate === endDate) {
+      const startTime = new Date(start).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit" });
+      const endTime = new Date(end).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit" });
+      return `${formatDate(startDate)} · ${startTime}-${endTime}`;
+    }
+    return `${formatDateTimeShort(start)} – ${formatDateTimeShort(end)}`;
+  }
+  return trip?.date ? formatDate(trip.date) : "Date unknown";
+}
+
 function renderTripEntryCard(trip, ledger = null) {
   const km = round(Number(trip.endKm || 0) - Number(trip.startKm || 0));
   const participants = getTripParticipants(trip);
@@ -5466,7 +5520,7 @@ function renderTripEntryCard(trip, ledger = null) {
       </header>
       ${!canManageTripEntry(trip) ? renderPermissionNote(describeTripPermissionMessage(trip, "edit or delete")) : ""}
       <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km <span class="category-chip">${escapeHtml(category)}</span></p>
-      <p class="entry-meta">${formatDate(trip.date)} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
+      <p class="entry-meta"><strong>${escapeHtml(formatLogRef(trip))}</strong> · ${escapeHtml(getTripPeriodLabel(trip))} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
       <p class="entry-meta">Split between ${participants.map(escapeHtml).join(", ")}</p>
       ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
       ${renderEntryReviewSignal(reviewSignal)}
@@ -7816,6 +7870,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     const participants = participantNamesByTripId[trip.id]?.length ? [...new Set(participantNamesByTripId[trip.id])] : (driver ? [driver] : []);
     return {
       id: trip.legacy_id || trip.id,
+      logRef: createLogRef(trip.legacy_id || trip.id),
       driver,
       date: normalizedDate(trip.trip_date),
       startKm: round(Number(trip.start_km || 0)),
