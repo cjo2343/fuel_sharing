@@ -3527,3 +3527,81 @@ body.auth-locked #authPanel .text-button {
 .compact-panel-header {
   margin-bottom: 0;
 }
+
+.booking-trip-active .panel-header {
+  margin-bottom: 12px;
+}
+
+.booking-log-context {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(47, 125, 99, 0.22);
+  border-radius: 22px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, rgba(237, 247, 242, 0.96), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 12px 32px rgba(14, 53, 41, 0.08);
+}
+
+.booking-log-context-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.booking-log-context-header .eyebrow {
+  margin-bottom: 4px;
+}
+
+.booking-log-context-header h3 {
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  letter-spacing: -0.04em;
+}
+
+.booking-log-context .status-pill {
+  background: var(--green-soft);
+  color: var(--green-dark);
+  white-space: nowrap;
+}
+
+.booking-log-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.booking-log-summary div {
+  border: 1px solid rgba(31, 90, 73, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+}
+
+.booking-log-summary dt {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.booking-log-summary dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.booking-log-context .section-note {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .booking-log-summary {
+    grid-template-columns: 1fr;
+  }
+}

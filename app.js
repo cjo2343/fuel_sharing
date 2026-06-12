@@ -5378,6 +5378,7 @@ function startTripEdit(id) {
   editingBookingId = null;
   pendingTripBookingContext = null;
   editingTripId = id;
+  syncTripDateBounds();
   renderPeopleSelectors();
   els.tripDriver.value = trip.driver;
   els.tripDate.value = trip.date;
@@ -5417,6 +5418,7 @@ function renderTripBookingContext() {
   if (!els.tripBookingContext) return;
   const context = getActiveTripLogContext();
   els.tripBookingContext.classList.toggle("hidden", !context);
+  els.tripLogPanel?.classList.toggle("booking-trip-active", Boolean(context));
   if (!context) {
     els.tripBookingContext.replaceChildren();
     return;
@@ -5426,13 +5428,21 @@ function renderTripBookingContext() {
     bookingStart: context.bookingStart,
     bookingEnd: context.bookingEnd
   });
-  const purpose = context.purpose ? `<p class="entry-meta">${escapeHtml(context.purpose)}</p>` : "";
+  const purpose = context.purpose ? `<span>${escapeHtml(context.purpose)}</span>` : `<span>No purpose added</span>`;
   els.tripBookingContext.innerHTML = `
-    <p class="eyebrow">Booking log</p>
-    <h3>${escapeHtml(formatLogRef(context))}</h3>
-    <p><strong>${escapeHtml(context.member || els.tripDriver?.value || "Driver")}</strong> · ${escapeHtml(period)}</p>
-    ${purpose}
-    <p class="section-note">This trip was filled from a booking. Enter the final odometer to complete the trip log.</p>
+    <div class="booking-log-context-header">
+      <div>
+        <p class="eyebrow">Booking log</p>
+        <h3>${escapeHtml(formatLogRef(context))}</h3>
+      </div>
+      <span class="status-pill">Ready to complete</span>
+    </div>
+    <dl class="booking-log-summary">
+      <div><dt>Driver</dt><dd>${escapeHtml(context.member || els.tripDriver?.value || "Driver")}</dd></div>
+      <div><dt>Period</dt><dd>${escapeHtml(period)}</dd></div>
+      <div><dt>Purpose</dt><dd>${purpose}</dd></div>
+    </dl>
+    <p class="section-note">Enter the final odometer. The trip date is set to the booking end date.</p>
   `;
 }
 
@@ -5445,6 +5455,7 @@ function startBookingEdit(id) {
   editingFuelId = null;
   pendingTripBookingContext = null;
   editingBookingId = id;
+  syncTripDateBounds();
   renderPeopleSelectors();
   els.bookingMember.value = booking.member;
   els.bookingStart.value = booking.start;
@@ -5465,6 +5476,7 @@ function startFuelEdit(id) {
   editingBookingId = null;
   pendingTripBookingContext = null;
   editingFuelId = id;
+  syncTripDateBounds();
   renderPeopleSelectors();
   els.fuelPayer.value = fuel.payer;
   els.fuelDate.value = fuel.date;
@@ -5515,8 +5527,11 @@ function startTripFromBooking(id) {
   };
   renderPeopleSelectors();
   if (getMemberNames().includes(booking.member)) els.tripDriver.value = booking.member;
+  const bookingEnd = parseBookingDate(booking.end);
   const bookingStart = parseBookingDate(booking.start);
-  if (bookingStart) els.tripDate.value = localDateString(bookingStart);
+  if (bookingEnd) els.tripDate.value = localDateString(bookingEnd);
+  else if (bookingStart) els.tripDate.value = localDateString(bookingStart);
+  syncTripDateBounds();
   syncStartOdometerDefault();
   els.endKm.value = "";
   els.tripNote.value = booking.purpose ? `Booking: ${booking.purpose}` : "Booking";
@@ -6651,14 +6666,27 @@ function renderClosedPeriodFuel(fuel, currency) {
     .join("");
 }
 
+function getTripDateLimitForActiveContext() {
+  const context = getActiveTripLogContext();
+  const bookingEnd = context?.bookingEnd ? parseBookingDate(context.bookingEnd) : null;
+  return bookingEnd ? localDateString(bookingEnd) : localDateString();
+}
+
+function syncTripDateBounds() {
+  if (!els.tripDate) return;
+  els.tripDate.max = getTripDateLimitForActiveContext();
+}
+
 function setDefaultDates() {
   const today = localDateString();
-  els.tripDate.max = today;
+  syncTripDateBounds();
   els.fuelDate.max = today;
   if (!pendingTripBookingContext && !editingTripId) {
     els.tripDate.value = today;
   } else if (!els.tripDate.value) {
-    els.tripDate.value = today;
+    const context = getActiveTripLogContext();
+    const bookingEnd = context?.bookingEnd ? parseBookingDate(context.bookingEnd) : null;
+    els.tripDate.value = bookingEnd ? localDateString(bookingEnd) : today;
   }
   if (!editingFuelId) {
     els.fuelDate.value = today;
