@@ -395,7 +395,7 @@ els.tripDriver.addEventListener("change", () => {
 });
 
 if (els.bookingForm) {
-  els.bookingForm.addEventListener("submit", (event) => {
+  els.bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!canUseAppAsMember()) {
       alert("Your email is not assigned to a member yet. Ask an admin to add it.");
@@ -417,6 +417,9 @@ if (els.bookingForm) {
       renderBookingConflictNotice(validation.conflict || null);
       return;
     }
+
+    const normalizedBookingSaved = await saveBookingToNormalizedTablesFirst(bookingPayload);
+    if (!normalizedBookingSaved) return;
 
     const previousBooking = editingBookingId ? state.bookings.find((booking) => booking.id === editingBookingId) : null;
     if (editingBookingId) {
@@ -1331,6 +1334,30 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const bookingDayButton = event.target.closest("[data-booking-day]");
+  if (bookingDayButton) {
+    setBookingQuickDate(Number(bookingDayButton.dataset.bookingDay || 0));
+    return;
+  }
+
+  const bookingWeekendButton = event.target.closest("[data-booking-weekend]");
+  if (bookingWeekendButton) {
+    setBookingQuickWeekend();
+    return;
+  }
+
+  const bookingDurationButton = event.target.closest("[data-booking-duration-hours]");
+  if (bookingDurationButton) {
+    setBookingDuration(Number(bookingDurationButton.dataset.bookingDurationHours || 2));
+    return;
+  }
+
+  const bookingAllDayButton = event.target.closest("[data-booking-all-day]");
+  if (bookingAllDayButton) {
+    setBookingAllDay();
+    return;
+  }
+
 
   const viewArchiveButton = event.target.closest("[data-view-closed-period]");
   if (viewArchiveButton) {
@@ -1399,9 +1426,9 @@ document.addEventListener("click", async (event) => {
 
   if (type !== "bookings") {
     if (!assertCurrentPeriodAllowsMoneyChanges(type === "trips" ? "delete trip logs" : "delete fuel logs")) return;
-    const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
-    if (!normalizedDeleteSaved) return;
   }
+  const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
+  if (!normalizedDeleteSaved) return;
   state[type] = state[type].filter((entry) => entry.id !== id);
   addAuditEntry({
     type: type === "trips" ? "trip_deleted" : type === "bookings" ? "booking_deleted" : "fuel_deleted",
@@ -5395,6 +5422,22 @@ function normalizeBookingDateTime(value) {
   return String(value || "").slice(0, 16);
 }
 
+function bookingDateTimeToIso(value) {
+  const date = new Date(String(value || ""));
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function isBookingOverlapError(error) {
+  const message = String(error?.message || error?.details || error || "").toLowerCase();
+  return error?.code === "23P01" || message.includes("already booked") || message.includes("overlap");
+}
+
+function isMissingBookingTableError(error) {
+  const message = String(error?.message || error?.details || error || "").toLowerCase();
+  return message.includes("car_bookings") && (error?.code === "42P01" || message.includes("does not exist") || message.includes("not found"));
+}
+
 function toDateTimeLocalInputValue(date) {
   const local = new Date(date);
   local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
@@ -6492,6 +6535,66 @@ function setDefaultBookingTimes() {
   if (!els.bookingEnd.value) els.bookingEnd.value = toDateTimeLocalInputValue(end);
 }
 
+function setBookingQuickDate(daysFromToday) {
+  if (!els.bookingStart || !els.bookingEnd) return;
+  const start = parseBookingDate(els.bookingStart.value) || new Date();
+  const end = parseBookingDate(els.bookingEnd.value) || new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const target = new Date();
+  target.setDate(target.getDate() + Math.max(0, Number(daysFromToday) || 0));
+  const durationMs = Math.max(30 * 60 * 1000, end.getTime() - start.getTime());
+  start.setFullYear(target.getFullYear(), target.getMonth(), target.getDate());
+  const nextEnd = new Date(start.getTime() + durationMs);
+  els.bookingStart.value = toDateTimeLocalInputValue(start);
+  els.bookingEnd.value = toDateTimeLocalInputValue(nextEnd);
+  renderBookingConflictNotice(findBookingConflictFromForm());
+}
+
+function setBookingQuickWeekend() {
+  if (!els.bookingStart || !els.bookingEnd) return;
+  const start = parseBookingDate(els.bookingStart.value) || new Date();
+  const today = new Date();
+  const day = today.getDay();
+  const daysUntilSaturday = (6 - day + 7) % 7 || 7;
+  const saturday = new Date(today);
+  saturday.setDate(today.getDate() + daysUntilSaturday);
+  start.setFullYear(saturday.getFullYear(), saturday.getMonth(), saturday.getDate());
+  start.setHours(9, 0, 0, 0);
+  els.bookingStart.value = toDateTimeLocalInputValue(start);
+  els.bookingEnd.value = toDateTimeLocalInputValue(new Date(start.getTime() + 4 * 60 * 60 * 1000));
+  renderBookingConflictNotice(findBookingConflictFromForm());
+}
+
+function setBookingDuration(hours) {
+  if (!els.bookingStart || !els.bookingEnd) return;
+  const start = parseBookingDate(els.bookingStart.value) || new Date();
+  const durationHours = Math.max(0.5, Number(hours) || 2);
+  els.bookingStart.value = toDateTimeLocalInputValue(start);
+  els.bookingEnd.value = toDateTimeLocalInputValue(new Date(start.getTime() + durationHours * 60 * 60 * 1000));
+  renderBookingConflictNotice(findBookingConflictFromForm());
+}
+
+function setBookingAllDay() {
+  if (!els.bookingStart || !els.bookingEnd) return;
+  const start = parseBookingDate(els.bookingStart.value) || new Date();
+  start.setHours(8, 0, 0, 0);
+  const end = new Date(start);
+  end.setHours(22, 0, 0, 0);
+  els.bookingStart.value = toDateTimeLocalInputValue(start);
+  els.bookingEnd.value = toDateTimeLocalInputValue(end);
+  renderBookingConflictNotice(findBookingConflictFromForm());
+}
+
+function findBookingConflictFromForm() {
+  if (!els.bookingMember || !els.bookingStart || !els.bookingEnd) return null;
+  const candidate = {
+    id: editingBookingId || "__draft__",
+    member: els.bookingMember.value,
+    start: normalizeBookingDateTime(els.bookingStart.value),
+    end: normalizeBookingDateTime(els.bookingEnd.value)
+  };
+  return validateBookingInput(candidate, editingBookingId).conflict || null;
+}
+
 function getSelectedParticipants() {
   return Array.from(els.tripParticipants.querySelectorAll("input:checked")).map((input) => input.value);
 }
@@ -7152,6 +7255,59 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   }
 }
 
+async function saveBookingToNormalizedTablesFirst(booking) {
+  if (!supabaseClient || !currentSession) return true;
+  try {
+    setSyncStatus("Saving");
+    const context = await getNormalizedWriteContext();
+    if (!context) return true;
+    const payload = {
+      legacy_id: booking.id,
+      ledger_id: context.ledgerId,
+      member_id: context.memberIdsByName[booking.member] || null,
+      start_at: bookingDateTimeToIso(booking.start),
+      end_at: bookingDateTimeToIso(booking.end),
+      purpose: booking.purpose || null,
+      created_by_member_id: context.currentMemberId,
+      deleted_at: null,
+      updated_at: new Date().toISOString()
+    };
+
+    const bookingResult = await supabaseClient
+      .from("car_bookings")
+      .upsert(payload, { onConflict: "ledger_id,legacy_id" });
+    if (bookingResult.error) throw bookingResult.error;
+
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: "Table-primary write saved the booking to normalized tables. JSON will be updated as backup."
+    };
+    return true;
+  } catch (error) {
+    console.warn("Table-primary booking write failed", error);
+    if (isMissingBookingTableError(error)) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: "Booking table is not installed yet. Saving booking to JSON backup until supabase-schema.sql has been run."
+      };
+      return true;
+    }
+    const message = isBookingOverlapError(error)
+      ? "The car is already booked for that time. Refresh the calendar and choose another slot."
+      : `Could not save booking to normalized tables, so JSON was not changed: ${error.message || error}`;
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message
+    };
+    alert(message);
+    render();
+    return false;
+  }
+}
+
 async function pruneStaleSettlementRequests(context) {
   if (!supabaseClient || !context?.openPeriodId) return;
   const currentPairIds = new Set(
@@ -7255,7 +7411,7 @@ async function softDeleteNormalizedEntryFirst(type, id) {
   try {
     const context = await getNormalizedWriteContext();
     if (!context) return true;
-    const table = type === "trips" ? "trips" : type === "fuel" ? "fuel_payments" : null;
+    const table = type === "trips" ? "trips" : type === "fuel" ? "fuel_payments" : type === "bookings" ? "car_bookings" : null;
     if (!table) return true;
     const result = await supabaseClient
       .from(table)
@@ -7271,6 +7427,14 @@ async function softDeleteNormalizedEntryFirst(type, id) {
     return true;
   } catch (error) {
     console.warn("Table-primary delete failed", error);
+    if (type === "bookings" && isMissingBookingTableError(error)) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: "Booking table is not installed yet. Deleting booking from JSON backup only."
+      };
+      return true;
+    }
     normalizedTableStatus = {
       checked: true,
       ok: false,
@@ -7339,7 +7503,7 @@ async function syncNormalizedTablesFromJson() {
 
     const membersResult = await supabaseClient
       .from("ledger_members")
-      .select("id,name")
+      .select("id,name,email")
       .eq("ledger_id", ledgerId)
       .eq("is_active", true);
     if (membersResult.error) throw membersResult.error;
@@ -7492,10 +7656,46 @@ async function syncNormalizedTablesFromJson() {
       if (deleted.error) throw deleted.error;
     }
 
+    const bookingPayloads = state.bookings.map((booking) => ({
+      legacy_id: booking.id,
+      ledger_id: ledgerId,
+      member_id: memberIdsByName[booking.member] || null,
+      start_at: bookingDateTimeToIso(booking.start),
+      end_at: bookingDateTimeToIso(booking.end),
+      purpose: booking.purpose || null,
+      created_by_member_id: currentMemberId,
+      deleted_at: null,
+      updated_at: new Date().toISOString()
+    })).filter((booking) => booking.legacy_id && booking.member_id && booking.start_at && booking.end_at);
+
+    if (bookingPayloads.length) {
+      const upsertBookings = await supabaseClient
+        .from("car_bookings")
+        .upsert(bookingPayloads, { onConflict: "ledger_id,legacy_id" });
+      if (upsertBookings.error) throw upsertBookings.error;
+    }
+
+    const existingBookingsResult = await supabaseClient
+      .from("car_bookings")
+      .select("id,legacy_id")
+      .eq("ledger_id", ledgerId)
+      .is("deleted_at", null);
+    if (existingBookingsResult.error) throw existingBookingsResult.error;
+
+    const activeBookingIds = new Set(state.bookings.map((booking) => booking.id));
+    const bookingsToSoftDelete = (existingBookingsResult.data || []).filter((booking) => booking.legacy_id && !activeBookingIds.has(booking.legacy_id));
+    for (const booking of bookingsToSoftDelete) {
+      const deleted = await supabaseClient
+        .from("car_bookings")
+        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", booking.id);
+      if (deleted.error) throw deleted.error;
+    }
+
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.fuel.length} fuel logs).`
+      message: `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.bookings.length} bookings, ${state.fuel.length} fuel logs).`
     };
   } catch (error) {
     console.warn("Normalized table dual-write failed", error);
@@ -7517,16 +7717,17 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
-  const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult] = await Promise.all([
+  const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledgers").select("*").eq("id", ledgerId).maybeSingle(),
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
     supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
     supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
     supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true }),
+    supabaseClient.from("car_bookings").select("id,legacy_id,member_id,start_at,end_at,purpose,deleted_at,created_by_member_id,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("start_at", { ascending: true }),
     supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status").eq("ledger_id", ledgerId)
   ]);
 
-  const firstError = [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, requestsResult].find((result) => result.error)?.error;
+  const firstError = [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult].find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
   const ledger = ledgerResult.data;
@@ -7534,6 +7735,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   const periods = periodsResult.data || [];
   const tableTrips = tripsResult.data || [];
   const tableFuel = fuelResult.data || [];
+  const tableBookings = bookingsResult.data || [];
   const tableRequests = requestsResult.data || [];
   const openPeriod = periods.find((period) => period.status === "open") || null;
 
@@ -7574,7 +7776,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   // Safety fallback: if normalized tables are empty but the JSON mirror still has
   // active rows, keep using JSON instead of showing an empty settlement period.
   // This protects users from partial/failed dual-write deployments.
-  if (activeTrips.length === 0 && activeFuel.length === 0 && ((jsonFallbackState.trips || []).length || (jsonFallbackState.fuel || []).length)) {
+  if (activeTrips.length === 0 && activeFuel.length === 0 && tableBookings.length === 0 && ((jsonFallbackState.trips || []).length || (jsonFallbackState.fuel || []).length || (jsonFallbackState.bookings || []).length)) {
     return null;
   }
 
@@ -7621,6 +7823,15 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     };
   });
 
+  const bookings = tableBookings.map((item) => ({
+    id: item.legacy_id || item.id,
+    member: memberById[item.member_id]?.name || memberNames[0] || "",
+    start: toDateTimeLocalInputValue(item.start_at),
+    end: toDateTimeLocalInputValue(item.end_at),
+    purpose: item.purpose || "",
+    createdBy: memberById[item.created_by_member_id]?.name || ""
+  }));
+
   const closedPeriodSnapshotsFromTables = periods
     .filter((period) => period.status === "closed" && period.snapshot_json)
     .map((period) => period.snapshot_json);
@@ -7654,6 +7865,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     members: memberNames,
     memberProfiles,
     trips,
+    bookings,
     fuel,
     currentPeriodId: openPeriod.id,
     paymentStatuses: paymentStatusesFromTables,
@@ -7709,20 +7921,22 @@ async function checkNormalizedTablesAgainstCurrentState() {
   if (!(await hasFreshSupabaseSession())) return;
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const [membersResult, tripsResult, fuelResult, periodsResult, requestsResult] = await Promise.all([
+  const [membersResult, tripsResult, fuelResult, bookingsResult, periodsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId),
     supabaseClient.from("trips").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("fuel_payments").select("id,period_id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
+    supabaseClient.from("car_bookings").select("id,deleted_at").eq("ledger_id", ledgerId).is("deleted_at", null),
     supabaseClient.from("settlement_periods").select("id,status").eq("ledger_id", ledgerId),
     supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,currency,status,paid_at").eq("ledger_id", ledgerId)
   ]);
 
-  const firstError = [membersResult, tripsResult, fuelResult, periodsResult, requestsResult].find((result) => result.error)?.error;
+  const firstError = [membersResult, tripsResult, fuelResult, bookingsResult, periodsResult, requestsResult].find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
   const tableMembers = membersResult.data || [];
   const tableTrips = tripsResult.data || [];
   const tableFuel = fuelResult.data || [];
+  const tableBookings = bookingsResult.data || [];
   const tablePeriods = periodsResult.data || [];
   const tableRequests = requestsResult.data || [];
   const activeMembers = tableMembers.filter((member) => member.is_active !== false);
@@ -7743,6 +7957,10 @@ async function checkNormalizedTablesAgainstCurrentState() {
 
   if (activeTableFuel.length !== state.fuel.length) {
     mismatchParts.push(`fuel logs ${activeTableFuel.length} in the open table period vs ${state.fuel.length} in app`);
+  }
+
+  if (tableBookings.length !== state.bookings.length) {
+    mismatchParts.push(`bookings ${tableBookings.length} in the table vs ${state.bookings.length} in app`);
   }
 
   const openPeriods = tablePeriods.filter((period) => period.status === "open").length;
@@ -7789,6 +8007,11 @@ async function checkNormalizedTablesAgainstCurrentState() {
       level: activeTableFuel.length === state.fuel.length ? "ok" : "warning",
       title: "Normalized fuel logs",
       message: `${activeTableFuel.length} open-period table fuel log${activeTableFuel.length === 1 ? "" : "s"}; ${state.fuel.length} visible requested/paid in the app.`
+    },
+    {
+      level: tableBookings.length === state.bookings.length ? "ok" : "warning",
+      title: "Normalized bookings",
+      message: `${tableBookings.length} table booking${tableBookings.length === 1 ? "" : "s"}; ${state.bookings.length} visible in the app.`
     },
     {
       level: openPeriods === 1 ? "ok" : "warning",
@@ -7897,7 +8120,7 @@ async function loadSupabaseState() {
         normalizedTableStatus = {
           checked: true,
           ok: true,
-          message: `Reading from normalized tables first; trips/fuel write to tables first (${normalizedState.members.length} members, ${normalizedState.trips.length} trips, ${normalizedState.fuel.length} fuel logs). JSON remains available as fallback.`
+          message: `Reading from normalized tables first; trips/bookings/fuel write to tables first (${normalizedState.members.length} members, ${normalizedState.trips.length} trips, ${normalizedState.bookings.length} bookings, ${normalizedState.fuel.length} fuel logs). JSON remains available as fallback.`
         };
       }
     } catch (tableError) {

@@ -265,12 +265,14 @@ test("fuel logs require liters and configured DKK/L range", async ({ page }) => 
   await expect(page.locator("#fuelList")).toContainText(/15[,.]00 DKK\/L/);
 });
 
-test("create car booking and reject overlapping booking", async ({ page }) => {
+test("create, edit, persist, delete booking and reject overlapping booking", async ({ page }) => {
   await openLocalApp(page);
 
   await page.locator('[data-view-tab="book"]').click();
   await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill("2026-06-12T09:00");
+  await page.locator('[data-booking-duration-hours="4"]').click();
+  await expect(page.locator("#bookingEnd")).toHaveValue("2026-06-12T13:00");
   await page.locator("#bookingEnd").fill("2026-06-12T11:00");
   await page.locator("#bookingPurpose").fill("Airport pickup");
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
@@ -280,6 +282,11 @@ test("create car booking and reject overlapping booking", async ({ page }) => {
 
   const afterBooking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
   expect(afterBooking.bookings).toHaveLength(1);
+  const bookingId = afterBooking.bookings[0].id;
+
+  await page.reload();
+  await page.locator('[data-view-tab="book"]').click();
+  await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup");
 
   await page.locator("#bookingStart").fill("2026-06-12T10:30");
   await page.locator("#bookingEnd").fill("2026-06-12T12:00");
@@ -293,6 +300,25 @@ test("create car booking and reject overlapping booking", async ({ page }) => {
   await expect(page.locator("#bookingConflictNotice")).toContainText("Conflicts with");
   const afterOverlap = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
   expect(afterOverlap.bookings).toHaveLength(1);
+
+  const editButton = page.locator(`[data-edit="bookings:${bookingId}"]`);
+  await expect(editButton).toHaveCount(1);
+  await editButton.click();
+  await page.locator("#bookingPurpose").fill("Airport pickup updated");
+  await page.locator("#bookingEnd").fill("2026-06-12T11:30");
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup updated");
+
+  await page.reload();
+  await page.locator('[data-view-tab="book"]').click();
+  await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup updated");
+
+  const deleteButton = page.locator(`[data-delete="bookings:${bookingId}"]`);
+  await expect(deleteButton).toHaveCount(1);
+  await deleteButton.click();
+  await expect(page.locator("#bookingCalendar")).not.toContainText("Airport pickup updated");
+  const afterDelete = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+  expect(afterDelete.bookings).toHaveLength(0);
 });
 
 test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {

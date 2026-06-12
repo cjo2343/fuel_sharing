@@ -106,6 +106,21 @@
               End
               <input id="bookingEnd" type="datetime-local" required />
             </label>
+            <div class="booking-quick-actions wide" aria-label="Quick booking choices">
+              <div>
+                <span>When</span>
+                <button class="subtle-button compact-button" type="button" data-booking-day="0">Today</button>
+                <button class="subtle-button compact-button" type="button" data-booking-day="1">Tomorrow</button>
+                <button class="subtle-button compact-button" type="button" data-booking-weekend="true">Weekend</button>
+              </div>
+              <div>
+                <span>Length</span>
+                <button class="subtle-button compact-button" type="button" data-booking-duration-hours="1">+1h</button>
+                <button class="subtle-button compact-button" type="button" data-booking-duration-hours="2">+2h</button>
+                <button class="subtle-button compact-button" type="button" data-booking-duration-hours="4">+4h</button>
+                <button class="subtle-button compact-button" type="button" data-booking-all-day="true">All day</button>
+              </div>
+            </div>
             <label class="wide">
               Purpose
               <input id="bookingPurpose" type="text" maxlength="90" placeholder="Optional" />

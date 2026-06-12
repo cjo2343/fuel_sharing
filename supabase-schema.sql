@@ -110,6 +110,26 @@ create table if not exists public.fuel_payments (
   unique (ledger_id, legacy_id)
 );
 
+create table if not exists public.car_bookings (
+  id uuid primary key default gen_random_uuid(),
+  legacy_id text,
+  ledger_id text not null references public.ledgers(id) on delete cascade,
+  member_id uuid references public.ledger_members(id) on delete set null,
+  start_at timestamptz not null,
+  end_at timestamptz not null,
+  purpose text,
+  created_by_member_id uuid references public.ledger_members(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  check (end_at > start_at),
+  unique (ledger_id, legacy_id)
+);
+
+create index if not exists car_bookings_ledger_start_idx
+on public.car_bookings (ledger_id, start_at)
+where deleted_at is null;
+
 create table if not exists public.settlement_requests (
   id uuid primary key default gen_random_uuid(),
   ledger_id text not null references public.ledgers(id) on delete cascade,
@@ -169,6 +189,7 @@ values (
       "Marie": { "email": "", "role": "member" }
     },
     "trips": [],
+    "bookings": [],
     "fuel": [],
     "paymentStatuses": {},
     "closedPeriods": [],
@@ -281,6 +302,59 @@ as $$
   );
 $$;
 
+create or replace function public.can_manage_car_booking(p_booking_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.car_bookings cb
+    where cb.id = p_booking_id
+      and public.is_ledger_member(cb.ledger_id)
+      and (
+        public.is_ledger_admin(cb.ledger_id)
+        or cb.created_by_member_id = public.current_ledger_member_id(cb.ledger_id)
+        or cb.member_id = public.current_ledger_member_id(cb.ledger_id)
+      )
+  );
+$$;
+
+create or replace function public.prevent_overlapping_car_bookings()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.deleted_at is not null then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+    from public.car_bookings existing
+    where existing.ledger_id = new.ledger_id
+      and existing.deleted_at is null
+      and existing.id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid)
+      and new.start_at < existing.end_at
+      and new.end_at > existing.start_at
+  ) then
+    raise exception 'The car is already booked for that time.' using errcode = '23P01';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_overlapping_car_bookings_trigger on public.car_bookings;
+create trigger prevent_overlapping_car_bookings_trigger
+before insert or update of ledger_id, start_at, end_at, deleted_at
+on public.car_bookings
+for each row execute function public.prevent_overlapping_car_bookings();
+
 
 create or replace function public.is_ledger_bootstrap_open(p_ledger_id text)
 returns boolean
@@ -330,6 +404,7 @@ begin
 
   delete from public.trips where ledger_id = target_ledger_id;
   delete from public.fuel_payments where ledger_id = target_ledger_id;
+  delete from public.car_bookings where ledger_id = target_ledger_id;
   delete from public.settlement_periods where ledger_id = target_ledger_id;
 
   insert into public.settlement_periods (ledger_id, status, label)
@@ -343,6 +418,7 @@ begin
   reset_state := coalesce(existing_state, '{}'::jsonb)
     || jsonb_build_object(
       'trips', '[]'::jsonb,
+      'bookings', '[]'::jsonb,
       'fuel', '[]'::jsonb,
       'paymentStatuses', '{}'::jsonb,
       'closedPeriods', '[]'::jsonb,
@@ -373,6 +449,7 @@ alter table public.settlement_periods enable row level security;
 alter table public.trips enable row level security;
 alter table public.trip_participants enable row level security;
 alter table public.fuel_payments enable row level security;
+alter table public.car_bookings enable row level security;
 alter table public.settlement_requests enable row level security;
 alter table public.push_subscriptions enable row level security;
 
@@ -421,6 +498,9 @@ drop policy if exists "Ledger members can insert fuel payments" on public.fuel_p
 drop policy if exists "Ledger members can update fuel payments" on public.fuel_payments;
 drop policy if exists "Fuel creators payers and admins can insert fuel payments" on public.fuel_payments;
 drop policy if exists "Fuel creators payers and admins can update fuel payments" on public.fuel_payments;
+drop policy if exists "Ledger members can read car bookings" on public.car_bookings;
+drop policy if exists "Booking creators members and admins can insert car bookings" on public.car_bookings;
+drop policy if exists "Booking creators members and admins can update car bookings" on public.car_bookings;
 drop policy if exists "Ledger members can read settlement requests" on public.settlement_requests;
 drop policy if exists "Ledger members can insert settlement requests" on public.settlement_requests;
 drop policy if exists "Ledger members can update settlement requests" on public.settlement_requests;
@@ -458,6 +538,10 @@ create policy "Trip managers can delete trip participants" on public.trip_partic
 create policy "Ledger members can read fuel payments" on public.fuel_payments for select to authenticated using (public.is_ledger_member(ledger_id));
 create policy "Fuel creators payers and admins can insert fuel payments" on public.fuel_payments for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or payer_member_id = public.current_ledger_member_id(ledger_id)));
 create policy "Fuel creators payers and admins can update fuel payments" on public.fuel_payments for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or payer_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or payer_member_id = public.current_ledger_member_id(ledger_id)));
+
+create policy "Ledger members can read car bookings" on public.car_bookings for select to authenticated using (public.is_ledger_member(ledger_id));
+create policy "Booking creators members and admins can insert car bookings" on public.car_bookings for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or member_id = public.current_ledger_member_id(ledger_id)));
+create policy "Booking creators members and admins can update car bookings" on public.car_bookings for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id) or member_id = public.current_ledger_member_id(ledger_id)));
 
 create policy "Ledger members can read settlement requests" on public.settlement_requests for select to authenticated using (public.is_ledger_member(ledger_id));
 create policy "Settlement parties and admins can insert settlement requests" on public.settlement_requests for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id)));
