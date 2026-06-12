@@ -2850,6 +2850,63 @@ body.auth-locked #authPanel .text-button {
 }
 
 
+
+.booking-activity-card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.booking-activity-header {
+  align-items: flex-start;
+}
+
+.booking-activity-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.35rem;
+}
+
+.booking-activity-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.booking-activity-details div {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.7rem 0.8rem;
+  background: var(--soft);
+}
+
+.booking-activity-details dt {
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.booking-activity-details dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.booking-activity-linked {
+  margin: 0;
+  color: var(--green);
+  font-weight: 800;
+}
+
+.booking-activity-linked.muted {
+  color: var(--muted);
+}
+
 /* Audit/change log */
 .audit-log-panel {
   margin-top: 1.5rem;

@@ -493,8 +493,9 @@ if (els.bookingForm) {
       type: editingBookingId ? "booking_updated" : "booking_created",
       entityType: "booking",
       entityId: bookingPayload.id,
-      summary: `${bookingPayload.member} · ${formatBookingRange(bookingPayload)}`,
-      detail: editingBookingId ? describeBookingAuditChanges(previousBooking, bookingPayload) : (bookingPayload.purpose || "")
+      summary: `${formatLogRef(bookingPayload)} · ${bookingPayload.member} · ${formatBookingRange(bookingPayload)}`,
+      detail: editingBookingId ? describeBookingAuditChanges(previousBooking, bookingPayload) : (bookingPayload.purpose || ""),
+      metadata: buildBookingAuditMetadata(bookingPayload)
     });
 
     editingBookingId = null;
@@ -1633,9 +1634,10 @@ document.addEventListener("click", async (event) => {
     summary: type === "trips"
       ? `${entry?.driver || "Trip"} · ${entry ? formatNumber(Number(entry.endKm || 0) - Number(entry.startKm || 0)) : ""} km`
       : type === "bookings"
-        ? `${entry?.member || "Booking"} · ${entry ? formatBookingRange(entry) : ""}`
+        ? `${entry ? formatLogRef(entry) : ""} · ${entry?.member || "Booking"} · ${entry ? formatBookingRange(entry) : ""}`
         : `${entry?.payer || "Fuel log"} · ${entry ? formatMoney(entry.amount) : ""}`,
-    detail: type === "bookings" ? (entry?.purpose || "") : (entry?.date || "")
+    detail: type === "bookings" ? (entry?.purpose || "") : (entry?.date || ""),
+    metadata: type === "bookings" && entry ? buildBookingAuditMetadata(entry) : {}
   });
   if (type === "trips") state.lastOdometer = getLatestOdometer();
   if (editingTripId === id) editingTripId = null;
@@ -2020,6 +2022,7 @@ function getBookingActivityEntries(entries = state.auditLog) {
 }
 
 function renderAuditEntryCard(entry) {
+  if (isBookingAuditEntry(entry)) return renderBookingActivityEntryCard(entry);
   const createdAt = new Date(entry.createdAt);
   const dateText = Number.isNaN(createdAt.getTime())
     ? entry.createdAt
@@ -2034,6 +2037,101 @@ function renderAuditEntryCard(entry) {
         <span class="entry-meta">${escapeHtml(dateText)}</span>
       </header>
       <p class="entry-meta">By ${escapeHtml(entry.actor)}${entry.detail ? ` · ${escapeHtml(entry.detail)}` : ""}</p>
+    </article>
+  `;
+}
+
+function buildBookingAuditMetadata(booking) {
+  if (!booking) return {};
+  const startMs = bookingStartMs(booking);
+  const endMs = bookingEndMs(booking);
+  const durationHours = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
+    ? Math.round(((endMs - startMs) / 36_000) ) / 100
+    : 0;
+  return {
+    logRef: booking.logRef || createLogRef(booking.id),
+    member: booking.member || "",
+    start: booking.start || "",
+    end: booking.end || "",
+    period: formatBookingRange(booking),
+    durationHours,
+    purpose: booking.purpose || "",
+    createdBy: booking.createdBy || ""
+  };
+}
+
+function getBookingActivityContext(entry) {
+  const metadata = entry.metadata && typeof entry.metadata === "object" ? entry.metadata : {};
+  const booking = (state.bookings || []).find((item) => item.id === entry.entityId) || null;
+  const logRef = metadata.logRef || booking?.logRef || createLogRef(entry.entityId || metadata.start || entry.id);
+  const member = booking?.member || metadata.member || parseBookingActivitySummaryPart(entry.summary, 1) || "Driver";
+  const period = booking ? formatBookingRange(booking) : metadata.period || parseBookingActivitySummaryPart(entry.summary, 2) || entry.summary || "Period unknown";
+  const purpose = booking?.purpose || metadata.purpose || entry.detail || "No purpose added";
+  const start = booking?.start || metadata.start || "";
+  const end = booking?.end || metadata.end || "";
+  const durationHours = booking ? getBookingDurationHours(booking) : Number(metadata.durationHours || 0);
+  const relatedTrip = findTripForBooking(entry.entityId);
+  const relatedFuel = relatedTrip ? findFullTankFuelForTrip(relatedTrip) || findFuelForTrip(relatedTrip.id) : null;
+  return { logRef, member, period, purpose, start, end, durationHours, relatedTrip, relatedFuel };
+}
+
+function parseBookingActivitySummaryPart(summary, index) {
+  const parts = String(summary || "").split(" · ").map((part) => part.trim()).filter(Boolean);
+  return parts[index] || "";
+}
+
+function getBookingDurationHours(booking) {
+  const startMs = bookingStartMs(booking);
+  const endMs = bookingEndMs(booking);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0;
+  return Math.round(((endMs - startMs) / 36_000)) / 100;
+}
+
+function formatDurationHours(hours) {
+  if (!Number.isFinite(hours) || hours <= 0) return "—";
+  if (hours < 24) return `${formatNumber(hours)} h`;
+  const days = Math.floor(hours / 24);
+  const rest = Math.round((hours % 24) * 10) / 10;
+  return rest ? `${days} d ${formatNumber(rest)} h` : `${days} d`;
+}
+
+function renderBookingActivityEntryCard(entry) {
+  const createdAt = new Date(entry.createdAt);
+  const dateText = Number.isNaN(createdAt.getTime())
+    ? entry.createdAt
+    : `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  const context = getBookingActivityContext(entry);
+  const status = entry.type === "booking_deleted"
+    ? "Cancelled"
+    : context.relatedTrip
+      ? (context.relatedFuel ? "Trip + fuel logged" : "Trip logged")
+      : "Booked";
+  const tripRef = context.relatedTrip ? formatLogRef(context.relatedTrip) : "";
+  const fuelRef = context.relatedFuel ? formatLogRef(context.relatedFuel) : "";
+  const lifecycle = context.relatedTrip
+    ? `<p class="booking-activity-linked">Linked: trip ${escapeHtml(tripRef)}${fuelRef ? ` · fuel ${escapeHtml(fuelRef)}` : ""}</p>`
+    : `<p class="booking-activity-linked muted">No trip logged yet.</p>`;
+  return `
+    <article class="entry-card audit-entry-card booking-activity-card" data-booking-ref="${escapeHtml(normalizeLogRefValue(context.logRef))}">
+      <header class="booking-activity-header">
+        <div>
+          <div class="booking-activity-kicker">
+            <span class="log-ref">${escapeHtml(context.logRef)}</span>
+            <span class="status-chip ${context.relatedTrip ? "paid" : "requested"}">${escapeHtml(status)}</span>
+          </div>
+          <strong>${escapeHtml(auditLog.actionLabel(entry.type))}</strong>
+          <p>${escapeHtml(context.member)} · ${escapeHtml(context.period)}</p>
+        </div>
+        <span class="entry-meta">${escapeHtml(dateText)}</span>
+      </header>
+      <dl class="booking-activity-details">
+        <div><dt>Driver</dt><dd>${escapeHtml(context.member)}</dd></div>
+        <div><dt>Duration</dt><dd>${escapeHtml(formatDurationHours(context.durationHours))}</dd></div>
+        <div><dt>Purpose</dt><dd>${escapeHtml(context.purpose)}</dd></div>
+        <div><dt>Changed by</dt><dd>${escapeHtml(entry.actor)}</dd></div>
+      </dl>
+      ${entry.detail && entry.type === "booking_updated" ? `<p class="entry-meta">Changes: ${escapeHtml(entry.detail)}</p>` : ""}
+      ${lifecycle}
     </article>
   `;
 }
