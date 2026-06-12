@@ -379,3 +379,8 @@ Set `REMINDER_DATA_SOURCE=local` only when intentionally testing against the loc
 - Legacy closed-period payments with status `requested` and no `requestedAt` are now still eligible for scheduled reminders by inferring the request time from the closed period timestamp.
 - Future closed periods preserve current payment reminder metadata (`requestedAt`, `lastReminderAt`, `reminderCount`, and original `paymentKey`) when the period is archived.
 - `/api/run-reminders` diagnostics include `inferredRequestedAt: true` for legacy closed payments that use the fallback timestamp.
+
+### Reminder notification deduplication
+
+Build `dedupe-reminder-notifications` keeps scheduled backend reminders as the single automatic notification sender for Supabase production ledgers. The app-open automatic reminder scan now remains a local JSON fallback, which prevents duplicate mobile/browser notifications when a cron run and an open app inspect the same requested unpaid payment. Backend reminder copy now matches the in-app reminder wording.
+

@@ -227,7 +227,7 @@
               <input id="paymentRemindersEnabled" type="checkbox" />
               <span>
                 <strong>Automatic payment reminders</strong>
-                <small>Automatically remind people about requested payments that are still unpaid. The scheduled backend job can run this even when nobody opens the app.</small>
+                <small>Automatically remind people about requested payments that are still unpaid. In Supabase production, scheduled backend reminders handle delivery even when nobody opens the app; app-open reminders are kept as a local fallback.</small>
               </span>
             </label>
             <label>

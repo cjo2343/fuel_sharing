@@ -603,3 +603,8 @@ The JSON response should include:
   "dataSource": { "ledgerId": "main-car" }
 }
 ```
+
+### Reminder notification deduplication
+
+Build `dedupe-reminder-notifications` keeps scheduled backend reminders as the single automatic notification sender for Supabase production ledgers. The app-open automatic reminder scan now remains a local JSON fallback, which prevents duplicate mobile/browser notifications when a cron run and an open app inspect the same requested unpaid payment. Backend reminder copy now matches the in-app reminder wording.
+

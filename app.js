@@ -4252,6 +4252,15 @@ async function runAutomaticPaymentReminders() {
   const settings = getPaymentReminderSettings();
   if (!settings.enabled) return;
 
+  // Supabase production reminders are handled by the scheduled backend job.
+  // Keeping app-open automatic reminders active at the same time can deliver
+  // duplicate push notifications when a cron/manual curl run and an open app
+  // inspect the same stale payment state. Local JSON mode keeps this fallback.
+  if (supabaseClient) {
+    console.info("Automatic app-open payment reminders skipped; scheduled backend reminders handle Supabase ledgers.");
+    return;
+  }
+
   const now = Date.now();
   let sentOrRecorded = 0;
   let changed = false;

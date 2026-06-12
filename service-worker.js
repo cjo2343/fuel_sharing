@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v51";
+const CACHE_NAME = "fuel-ledger-v52";
 const BUILD_LABEL = "closed-period-reminder-timestamps";
 const BUILD_UPDATED_AT = "2026-06-12T14:10:00+02:00";
 const CORE_ASSETS = [

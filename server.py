@@ -454,7 +454,7 @@ def send_backend_payment_reminder_push(state, settlement):
 
     amount_text = format_backend_money(settlement.get("amount"), settlement.get("currency") or state.get("currency") or "DKK")
     title = "Fuel Ledger payment reminder"
-    body = f"Reminder: {settlement.get('from', 'Someone')} pays {settlement.get('to', 'someone')} · {amount_text}"
+    body = f"{settlement.get('to', 'Someone')} reminded you to pay {amount_text} for shared car fuel."
     sent = 0
     failed = 0
     for row in subscriptions:
