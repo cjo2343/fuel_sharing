@@ -42,7 +42,7 @@
       }
 
       if (view === "month") {
-        els.bookingCalendar.innerHTML = renderBookingDayGrid(bookings, 30);
+        els.bookingCalendar.innerHTML = renderBookingMonthGrid(bookings);
         return;
       }
 
@@ -88,6 +88,81 @@
               </div>
             </section>
           `).join("")}
+        </div>
+      `;
+    }
+
+    function renderBookingMonthGrid(bookings) {
+      const todayKey = localDateString();
+      const monthAnchor = new Date(todayKey);
+      monthAnchor.setDate(1);
+      const month = monthAnchor.getMonth();
+      const year = monthAnchor.getFullYear();
+      const monthTitle = monthAnchor.toLocaleDateString("en-DK", { month: "long", year: "numeric" });
+      const firstWeekday = (monthAnchor.getDay() + 6) % 7;
+      const gridStart = new Date(monthAnchor);
+      gridStart.setDate(monthAnchor.getDate() - firstWeekday);
+      const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      const dayBuckets = Array.from({ length: 42 }, (_, index) => {
+        const date = new Date(gridStart);
+        date.setDate(gridStart.getDate() + index);
+        const key = localDateString(date);
+        const items = bookings.filter((booking) => bookingTouchesDate(booking, key));
+        return { date, key, items, outsideMonth: date.getMonth() !== month };
+      });
+
+      return `
+        <section class="booking-month" aria-label="${escapeHtml(monthTitle)} bookings">
+          <header class="booking-month-header">
+            <h3>${escapeHtml(monthTitle)}</h3>
+            <p class="section-note compact-note">Use Book to pre-fill the booking form for that date.</p>
+          </header>
+          <div class="booking-month-weekdays" aria-hidden="true">
+            ${weekdayLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
+          </div>
+          <div class="booking-month-grid">
+            ${dayBuckets.map(({ date, key, items, outsideMonth }) => renderBookingMonthDay(date, key, items, outsideMonth, key === todayKey, year, month)).join("")}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderBookingMonthDay(date, key, items, outsideMonth, isToday, year, month) {
+      const status = items.length ? "booked" : "free";
+      const label = date.toLocaleDateString("en-DK", { weekday: "long", day: "2-digit", month: "long" });
+      const bookingText = items.length ? `${items.length} booking${items.length === 1 ? "" : "s"}` : "Free";
+      const actionLabel = items.length ? "Book another time" : "Book";
+      return `
+        <article class="booking-month-day ${status}${outsideMonth ? " outside-month" : ""}${isToday ? " today" : ""}" aria-label="${escapeHtml(`${label}: ${bookingText}`)}">
+          <header>
+            <strong>${escapeHtml(date.toLocaleDateString("en-DK", { day: "2-digit" }))}</strong>
+            <small>${escapeHtml(bookingText)}</small>
+          </header>
+          <div class="booking-month-day-body">
+            ${items.length ? items.slice(0, 2).map((booking) => renderBookingMonthChip(booking, key)).join("") : `<p class="empty-state compact-empty">Free</p>`}
+            ${items.length > 2 ? `<p class="section-note compact-note">+${items.length - 2} more</p>` : ""}
+          </div>
+          ${!outsideMonth || (date.getFullYear() === year && date.getMonth() === month) ? `<button class="subtle-button compact-button booking-month-book-button" type="button" data-book-from-calendar="${escapeHtml(key)}">${escapeHtml(actionLabel)}</button>` : ""}
+        </article>
+      `;
+    }
+
+    function renderBookingMonthChip(booking, dateKey) {
+      const start = parseBookingDate(booking.start);
+      const end = parseBookingDate(booking.end);
+      const time = start && end
+        ? `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}-${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        : "Time missing";
+      const isFinalBookingDay = String(booking.end || "").slice(0, 10) === dateKey;
+      const logTripButton = isFinalBookingDay && canCreateTripFromBooking(booking)
+        ? `<button class="subtle-button compact-button booking-month-log-button" type="button" data-convert-booking-to-trip="${escapeHtml(booking.id)}">Log trip</button>`
+        : "";
+      return `
+        <div class="booking-month-chip ${escapeHtml(getBookingStatus(booking))}">
+          <strong>${escapeHtml(booking.member || "Booked")}</strong>
+          <span>${escapeHtml(time)}</span>
+          ${booking.purpose ? `<span class="booking-month-chip-purpose">${escapeHtml(booking.purpose)}</span>` : ""}
+          ${logTripButton}
         </div>
       `;
     }

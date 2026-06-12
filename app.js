@@ -495,6 +495,13 @@ if (els.bookingForm) {
 
 
 document.addEventListener("click", (event) => {
+  const bookFromCalendar = event.target.closest("[data-book-from-calendar]");
+  if (bookFromCalendar) {
+    event.preventDefault();
+    startBookingFromCalendarDate(bookFromCalendar.dataset.bookFromCalendar);
+    return;
+  }
+
   const dateHint = event.target.closest("[data-booking-date-hint]");
   if (!dateHint) return;
   event.preventDefault();
@@ -6520,6 +6527,14 @@ function setBookingDateHint(dateKey) {
   els.bookingStart.value = toDateTimeLocalInputValue(start);
   els.bookingEnd.value = toDateTimeLocalInputValue(nextEnd);
   updateBookingAvailabilityPreview();
+}
+
+function startBookingFromCalendarDate(dateKey) {
+  setBookingDateHint(dateKey);
+  if (els.bookingPurpose && !els.bookingPurpose.value) els.bookingPurpose.focus();
+  const panel = document.querySelector("#bookingPanel");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  showAppMessage("Booking form pre-filled from calendar. Adjust the time if needed, then add the booking.", "success");
 }
 
 function setBookingQuickDate(daysFromToday) {
