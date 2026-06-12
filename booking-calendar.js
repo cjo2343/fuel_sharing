@@ -131,6 +131,39 @@
       `;
     }
 
+
+    function renderBookingDateHints(days = 21) {
+      if (!els.bookingDateHints) return;
+      const start = new Date(localDateString());
+      const selectedStart = String(els.bookingStart?.value || "").slice(0, 10);
+      const selectedEnd = String(els.bookingEnd?.value || "").slice(0, 10);
+      const hintDays = Array.from({ length: days }, (_, index) => {
+        const date = new Date(start);
+        date.setDate(start.getDate() + index);
+        const key = localDateString(date);
+        const items = getState().bookings.filter((booking) => bookingTouchesDate(booking, key));
+        const status = items.length ? "booked" : "free";
+        const selected = key === selectedStart || key === selectedEnd || (selectedStart && selectedEnd && key > selectedStart && key < selectedEnd);
+        const label = items.length
+          ? `${formatBookingDayHeading(date)}: ${items.length} booking${items.length === 1 ? "" : "s"}`
+          : `${formatBookingDayHeading(date)}: free`;
+        return `
+          <button class="booking-date-hint ${status}${selected ? " selected" : ""}" type="button" data-booking-date-hint="${escapeHtml(key)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+            <span>${escapeHtml(date.toLocaleDateString("en-DK", { weekday: "short" }))}</span>
+            <strong>${escapeHtml(date.toLocaleDateString("en-DK", { day: "2-digit" }))}</strong>
+          </button>
+        `;
+      });
+      els.bookingDateHints.innerHTML = `
+        <div class="booking-date-hint-header">
+          <span>Date availability</span>
+          <small><span class="availability-dot free"></span> Free <span class="availability-dot booked"></span> Booked</small>
+        </div>
+        <div class="booking-date-hint-list">${hintDays.join("")}</div>
+        <p class="section-note compact-note">Native date pickers cannot be colored reliably across browsers, so this overview shows taken dates before you open the picker.</p>
+      `;
+    }
+
     function renderBookingConflictNotice(conflict, candidate = null) {
       if (!els.bookingConflictNotice) return;
       if (!conflict) {
@@ -143,7 +176,7 @@
     }
 
     function renderBookingConflictMessage(conflict, candidate = null) {
-      const nextSlot = candidate ? findNextAvailableSlot(candidate, conflict.id) : null;
+      const nextSlot = candidate ? findNextAvailableSlot(candidate) : null;
       const purpose = conflict.purpose ? ` · ${escapeHtml(conflict.purpose)}` : "";
       return `
         <strong>Conflicts with ${escapeHtml(conflict.member)}'s booking.</strong>
@@ -153,6 +186,7 @@
     }
 
     function renderBookingAvailabilityPreview(candidate, editingId = null) {
+      renderBookingDateHints();
       if (!els.bookingAvailabilityPreview) {
         renderBookingConflictNotice(candidate ? findBookingConflict(candidate, editingId) : null, candidate);
         return;
@@ -224,7 +258,7 @@
       }) || null;
     }
 
-    function findNextAvailableSlot(candidate, ignoreBookingId = null) {
+    function findNextAvailableSlot(candidate, editingId = null) {
       const candidateStart = Date.parse(candidate?.start || "");
       const candidateEnd = Date.parse(candidate?.end || "");
       if (!Number.isFinite(candidateStart) || !Number.isFinite(candidateEnd) || candidateEnd <= candidateStart) return null;
@@ -232,20 +266,29 @@
       const duration = candidateEnd - candidateStart;
       let nextStart = candidateStart;
       const sortedBookings = [...getState().bookings]
-        .filter((booking) => booking.id !== ignoreBookingId && booking.id !== candidate.id)
+        .filter((booking) => booking.id !== editingId && booking.id !== candidate.id)
         .sort((a, b) => bookingStartMs(a) - bookingStartMs(b));
 
-      for (const booking of sortedBookings) {
-        const bookingStart = bookingStartMs(booking);
-        const bookingEnd = bookingEndMs(booking);
-        if (!Number.isFinite(bookingStart) || !Number.isFinite(bookingEnd)) continue;
+      let moved = false;
+      let changed = true;
+      while (changed) {
+        changed = false;
         const nextEnd = nextStart + duration;
-        if (nextEnd <= bookingStart) break;
-        if (nextStart < bookingEnd && nextEnd > bookingStart) {
-          nextStart = bookingEnd;
+        for (const booking of sortedBookings) {
+          const bookingStart = bookingStartMs(booking);
+          const bookingEnd = bookingEndMs(booking);
+          if (!Number.isFinite(bookingStart) || !Number.isFinite(bookingEnd)) continue;
+          if (bookingStart >= nextEnd) break;
+          if (nextStart < bookingEnd && nextEnd > bookingStart) {
+            nextStart = bookingEnd;
+            moved = true;
+            changed = true;
+            break;
+          }
         }
       }
 
+      if (!moved) return null;
       return {
         ...candidate,
         start: toDateTimeLocalInputValue(new Date(nextStart)),

@@ -273,6 +273,7 @@ const els = {
   bookingCalendar: document.querySelector("#bookingCalendar"),
   bookingConflictNotice: document.querySelector("#bookingConflictNotice"),
   bookingAvailabilityPreview: document.querySelector("#bookingAvailabilityPreview"),
+  bookingDateHints: document.querySelector("#bookingDateHints"),
   fuelForm: document.querySelector("#fuelForm"),
   fuelSubmit: document.querySelector("#fuelSubmit"),
   cancelFuelEdit: document.querySelector("#cancelFuelEdit"),
@@ -490,6 +491,14 @@ if (els.bookingForm) {
   if (!input) return;
   input.addEventListener("input", updateBookingAvailabilityPreview);
   input.addEventListener("change", updateBookingAvailabilityPreview);
+});
+
+
+document.addEventListener("click", (event) => {
+  const dateHint = event.target.closest("[data-booking-date-hint]");
+  if (!dateHint) return;
+  event.preventDefault();
+  setBookingDateHint(dateHint.dataset.bookingDateHint);
 });
 
 els.tripForm.addEventListener("submit", async (event) => {
@@ -6496,6 +6505,21 @@ function setDefaultBookingTimes() {
   const end = new Date(now.getTime() + 2 * 60 * 60 * 1000);
   if (!els.bookingStart.value) els.bookingStart.value = toDateTimeLocalInputValue(now);
   if (!els.bookingEnd.value) els.bookingEnd.value = toDateTimeLocalInputValue(end);
+}
+
+
+function setBookingDateHint(dateKey) {
+  if (!els.bookingStart || !els.bookingEnd || !dateKey) return;
+  const start = parseBookingDate(els.bookingStart.value) || new Date();
+  const end = parseBookingDate(els.bookingEnd.value) || new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const durationMs = Math.max(30 * 60 * 1000, end.getTime() - start.getTime());
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  if (!year || !month || !day) return;
+  start.setFullYear(year, month - 1, day);
+  const nextEnd = new Date(start.getTime() + durationMs);
+  els.bookingStart.value = toDateTimeLocalInputValue(start);
+  els.bookingEnd.value = toDateTimeLocalInputValue(nextEnd);
+  updateBookingAvailabilityPreview();
 }
 
 function setBookingQuickDate(daysFromToday) {
