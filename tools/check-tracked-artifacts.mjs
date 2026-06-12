@@ -34,7 +34,7 @@ const forbiddenTrackedPaths = [
 
 function getTrackedFiles() {
   try {
-    return execFileSync("git", ["ls-files"], { encoding: "utf8" })
+    return execFileSync("git", ["ls-files"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
