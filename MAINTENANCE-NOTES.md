@@ -346,3 +346,8 @@ Operational notes:
 - `npm run reminders:run` records due reminders.
 - Hosted schedulers should call `POST /api/run-reminders` with `REMINDER_CRON_SECRET` configured.
 - The browser app-open reminder remains as a fallback, and max-count/repeat settings prevent duplicate reminder spam.
+
+
+### Reminder backend diagnostics
+
+Build `reminder-backend-diagnostics` adds detailed `/api/run-reminders` output so cron tests can explain why `dueCount` is zero. The response now includes scanned current/closed payment counts, requested payment counts, due counts, skip reasons, and sample rows with `dueAt`, `lastReminderAt`, and `reminderCount`. This helps distinguish backend scheduled reminders from browser/app-open notifications.

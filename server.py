@@ -382,8 +382,11 @@ def payment_reminder_due_info(entries, payment_key, settings, now_ts=None):
         return {"due": False, "reason": "max-reminders"}
     last_reminder_at = max([audit_entry_timestamp(entry) for entry in reminder_entries] or [0])
     due_at = last_reminder_at + settings["repeatDays"] * 86400 if last_reminder_at else requested_at + settings["afterDays"] * 86400
+    is_due = now_ts >= due_at
+    reason = "due" if is_due else ("repeat-window" if last_reminder_at else "waiting-after-request")
     return {
-        "due": now_ts >= due_at,
+        "due": is_due,
+        "reason": reason,
         "requestedAt": requested_at,
         "lastReminderAt": last_reminder_at,
         "reminderCount": len(reminder_entries),
@@ -502,21 +505,72 @@ def current_settlement_from_audit_or_key(state, payment_key):
     }
 
 
+def iso_from_timestamp(value):
+    try:
+        if not value:
+            return ""
+        return datetime.fromtimestamp(float(value), timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return ""
+
+
+def add_reminder_skip(diagnostics, reason):
+    key = str(reason or "unknown")
+    diagnostics["skippedReasons"][key] = diagnostics["skippedReasons"].get(key, 0) + 1
+
+
+def add_reminder_sample(diagnostics, sample):
+    if len(diagnostics["samples"]) < 20:
+        diagnostics["samples"].append(sample)
+
+
 def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
     settings = reminder_settings(state)
     now_ts = now_ts or time.time()
     due_items = []
     changed = False
+    diagnostics = {
+        "settings": settings,
+        "now": iso_from_timestamp(now_ts),
+        "scannedCurrentPayments": 0,
+        "scannedClosedPayments": 0,
+        "requestedCurrentPayments": 0,
+        "requestedClosedPayments": 0,
+        "dueCurrentPayments": 0,
+        "dueClosedPayments": 0,
+        "skippedReasons": {},
+        "samples": [],
+    }
 
-    if settings.get("enabled"):
+    if not settings.get("enabled"):
+        add_reminder_skip(diagnostics, "disabled")
+    else:
         statuses = state.get("paymentStatuses") if isinstance(state.get("paymentStatuses"), dict) else {}
         for payment_key, status in list(statuses.items()):
-            if normalize_payment_status(status) != "requested":
+            diagnostics["scannedCurrentPayments"] += 1
+            normalized_status = normalize_payment_status(status)
+            if normalized_status != "requested":
+                add_reminder_skip(diagnostics, f"current-{normalized_status or 'open'}")
                 continue
+            diagnostics["requestedCurrentPayments"] += 1
             due = payment_reminder_due_info(state.get("auditLog"), payment_key, settings, now_ts)
-            if not due.get("due"):
-                continue
             settlement = current_settlement_from_audit_or_key(state, payment_key)
+            add_reminder_sample(diagnostics, {
+                "scope": "current",
+                "paymentKey": payment_key,
+                "status": normalized_status,
+                "reason": due.get("reason"),
+                "dueAt": iso_from_timestamp(due.get("dueAt")),
+                "requestedAt": iso_from_timestamp(due.get("requestedAt")),
+                "lastReminderAt": iso_from_timestamp(due.get("lastReminderAt")),
+                "reminderCount": due.get("reminderCount") or 0,
+                "from": settlement.get("from"),
+                "to": settlement.get("to"),
+            })
+            if not due.get("due"):
+                add_reminder_skip(diagnostics, due.get("reason"))
+                continue
+            diagnostics["dueCurrentPayments"] += 1
             due_items.append({"scope": "current", "paymentKey": payment_key, "settlement": settlement})
             if not dry_run:
                 state["auditLog"] = prepend_audit(state.get("auditLog"), build_backend_reminder_audit_entry(state, payment_key, settlement, due))
@@ -526,18 +580,54 @@ def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
             settlements = period.get("settlements") if isinstance(period.get("settlements"), list) else []
             period_id = str(period.get("id") or "")
             for index, settlement in enumerate(settlements):
-                if normalize_payment_status(settlement.get("status")) != "requested":
+                diagnostics["scannedClosedPayments"] += 1
+                normalized_status = normalize_payment_status(settlement.get("status"))
+                if normalized_status != "requested":
+                    add_reminder_skip(diagnostics, f"closed-{normalized_status or 'open'}")
                     continue
+                diagnostics["requestedClosedPayments"] += 1
                 payment_key = f"{period_id}:{settlement.get('from')}->{settlement.get('to')}:{settlement.get('currency') or state.get('currency') or 'DKK'}"
                 due = payment_reminder_due_info(period.get("auditLog"), payment_key, settings, now_ts)
+                add_reminder_sample(diagnostics, {
+                    "scope": "closed",
+                    "periodId": period_id,
+                    "settlementIndex": index,
+                    "paymentKey": payment_key,
+                    "status": normalized_status,
+                    "reason": due.get("reason"),
+                    "dueAt": iso_from_timestamp(due.get("dueAt")),
+                    "requestedAt": iso_from_timestamp(due.get("requestedAt")),
+                    "lastReminderAt": iso_from_timestamp(due.get("lastReminderAt")),
+                    "reminderCount": due.get("reminderCount") or 0,
+                    "from": settlement.get("from"),
+                    "to": settlement.get("to"),
+                })
                 if not due.get("due"):
+                    add_reminder_skip(diagnostics, due.get("reason"))
                     continue
+                diagnostics["dueClosedPayments"] += 1
                 due_items.append({"scope": "closed", "periodId": period_id, "settlementIndex": index, "paymentKey": payment_key, "settlement": settlement})
                 if not dry_run:
                     period["auditLog"] = prepend_audit(period.get("auditLog"), build_backend_reminder_audit_entry(state, payment_key, settlement, due, scope="closed", period_id=period_id))
                     changed = True
 
-    return {"ok": True, "enabled": settings.get("enabled"), "dueCount": len(due_items), "changed": changed, "dryRun": dry_run, "due": due_items[:50]}
+    if not dry_run:
+        state["lastReminderJobRun"] = {
+            "createdAt": iso_from_timestamp(now_ts),
+            "dueCount": len(due_items),
+            "changed": changed,
+            "diagnostics": diagnostics,
+        }
+
+    return {
+        "ok": True,
+        "enabled": settings.get("enabled"),
+        "dueCount": len(due_items),
+        "changed": changed,
+        "dryRun": dry_run,
+        "due": due_items[:50],
+        "diagnostics": diagnostics,
+    }
 
 
 def reminder_job_authorized(handler):

@@ -328,3 +328,8 @@ Before closing a period, verify that all settlement payments have been requested
 - Configure a daily cron/scheduler request to `POST /api/run-reminders` with header `X-Reminder-Secret: <secret>`.
 - Confirm `npm run reminders:dry-run` works against the intended data file before enabling the live scheduler.
 - Push notifications require existing `SUPABASE_URL`, service role/anon key, VAPID keys, and active user push subscriptions; otherwise reminders are still recorded in the audit log.
+
+
+### Reminder backend diagnostics
+
+Build `reminder-backend-diagnostics` adds detailed `/api/run-reminders` output so cron tests can explain why `dueCount` is zero. The response now includes scanned current/closed payment counts, requested payment counts, due counts, skip reasons, and sample rows with `dueAt`, `lastReminderAt`, and `reminderCount`. This helps distinguish backend scheduled reminders from browser/app-open notifications.
