@@ -15,6 +15,7 @@ const CORE_ASSETS = [
   "/notifications.js",
   "/admin-tools.js",
   "/build-info.js",
+  "/booking-calendar.js",
   "/app.js",
   "/manifest.json",
   "/icon-192.png",

@@ -20,6 +20,7 @@ const requiredRuntimeFiles = [
   'notifications.js',
   'admin-tools.js',
   'build-info.js',
+  'booking-calendar.js',
   'app.js'
 ];
 
