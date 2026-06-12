@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 import base64
 import json
+import argparse
 import gzip
+import hmac
 import os
+import sys
 import time
+from datetime import datetime, timezone
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -312,6 +316,241 @@ def prepend_audit(entries, entry):
     return [normalize_audit_entry(entry), *existing][:250]
 
 
+def parse_payment_key(payment_key):
+    """Parse keys like period-id:Marie->Christian:DKK without trusting them for access control."""
+    raw = str(payment_key or "").strip()
+    parts = raw.split(":")
+    if len(parts) < 3 or "->" not in parts[-2]:
+        return {"periodId": "", "from": "", "to": "", "currency": "DKK"}
+    payer, receiver = parts[-2].split("->", 1)
+    return {
+        "periodId": ":".join(parts[:-2]),
+        "from": payer.strip(),
+        "to": receiver.strip(),
+        "currency": parts[-1].strip() or "DKK",
+    }
+
+
+def format_backend_money(amount, currency="DKK"):
+    try:
+        value = float(amount)
+    except (TypeError, ValueError):
+        value = 0
+    return f"{value:.2f} {currency or 'DKK'}"
+
+
+def payment_audit_entries(entries, payment_key, entry_type=None):
+    result = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("entityType") != "payment" or str(entry.get("entityId") or "") != str(payment_key):
+            continue
+        if entry_type and entry.get("type") != entry_type:
+            continue
+        result.append(entry)
+    return result
+
+
+def audit_entry_timestamp(entry):
+    try:
+        value = str(entry.get("createdAt") or "").replace("Z", "+00:00")
+        return datetime.fromisoformat(value).timestamp()
+    except Exception:
+        return 0
+
+
+def reminder_settings(state):
+    return {
+        "enabled": state.get("paymentRemindersEnabled") is not False,
+        "afterDays": max(1, int(state.get("paymentReminderAfterDays") or 3)),
+        "repeatDays": max(1, int(state.get("paymentReminderRepeatDays") or 3)),
+        "maxCount": max(0, int(state.get("paymentReminderMaxCount") if state.get("paymentReminderMaxCount") is not None else 3)),
+    }
+
+
+def payment_reminder_due_info(entries, payment_key, settings, now_ts=None):
+    if not settings.get("enabled"):
+        return {"due": False, "reason": "disabled"}
+    now_ts = now_ts or time.time()
+    requested_entries = payment_audit_entries(entries, payment_key, "payment_requested")
+    requested_at = max([audit_entry_timestamp(entry) for entry in requested_entries] or [0])
+    if not requested_at:
+        return {"due": False, "reason": "missing-request-time"}
+    reminder_entries = payment_audit_entries(entries, payment_key, "payment_reminder_sent")
+    if settings["maxCount"] > 0 and len(reminder_entries) >= settings["maxCount"]:
+        return {"due": False, "reason": "max-reminders"}
+    last_reminder_at = max([audit_entry_timestamp(entry) for entry in reminder_entries] or [0])
+    due_at = last_reminder_at + settings["repeatDays"] * 86400 if last_reminder_at else requested_at + settings["afterDays"] * 86400
+    return {
+        "due": now_ts >= due_at,
+        "requestedAt": requested_at,
+        "lastReminderAt": last_reminder_at,
+        "reminderCount": len(reminder_entries),
+        "dueAt": due_at,
+    }
+
+
+def member_email(state, member_name):
+    profiles = state.get("memberProfiles") if isinstance(state.get("memberProfiles"), dict) else {}
+    profile = profiles.get(str(member_name or ""), {})
+    return str(profile.get("email") or "").strip().lower() if isinstance(profile, dict) else ""
+
+
+def push_unavailable(reason):
+    return {"attempted": False, "sent": 0, "failed": 0, "reason": reason}
+
+
+def send_backend_payment_reminder_push(state, settlement):
+    target_email = member_email(state, settlement.get("from"))
+    if not target_email:
+        return push_unavailable("missing-payer-email")
+    if not webpush:
+        return push_unavailable("pywebpush-not-installed")
+    if not env_value("VAPID_PUBLIC_KEY") or not env_value("VAPID_PRIVATE_KEY"):
+        return push_unavailable("vapid-missing")
+    if not supabase_url() or not supabase_key():
+        return push_unavailable("supabase-missing")
+
+    encoded_email = urllib.parse.quote(target_email, safe="")
+    try:
+        subscriptions = request_json(
+            f"{supabase_url()}/rest/v1/push_subscriptions?user_email=eq.{encoded_email}&select=id,user_email,subscription"
+        ) or []
+    except Exception as error:
+        return {"attempted": True, "sent": 0, "failed": 1, "reason": f"subscription-lookup-failed:{type(error).__name__}"}
+
+    amount_text = format_backend_money(settlement.get("amount"), settlement.get("currency") or state.get("currency") or "DKK")
+    title = "Fuel Ledger payment reminder"
+    body = f"Reminder: {settlement.get('from', 'Someone')} pays {settlement.get('to', 'someone')} · {amount_text}"
+    sent = 0
+    failed = 0
+    for row in subscriptions:
+        subscription = row.get("subscription")
+        if not subscription:
+            continue
+        try:
+            webpush(
+                subscription_info=subscription,
+                data=json.dumps({"title": title, "body": body, "url": "/#payments", "tag": f"fuel-ledger:payment:{settlement.get('from')}:{settlement.get('to')}:reminder"}),
+                vapid_private_key=env_value("VAPID_PRIVATE_KEY"),
+                vapid_claims={"sub": env_value("VAPID_SUBJECT", "mailto:notifications@fuel-ledger.local")},
+            )
+            sent += 1
+        except WebPushException as error:
+            failed += 1
+            status = getattr(getattr(error, "response", None), "status_code", None)
+            if status in (404, 410):
+                row_id = urllib.parse.quote(str(row.get("id", "")), safe="")
+                if row_id:
+                    try:
+                        request_json(f"{supabase_url()}/rest/v1/push_subscriptions?id=eq.{row_id}", method="DELETE")
+                    except Exception:
+                        pass
+        except Exception:
+            failed += 1
+    return {"attempted": True, "sent": sent, "failed": failed, "reason": "" if sent else "no-active-subscription"}
+
+
+def build_backend_reminder_audit_entry(state, payment_key, settlement, due_info, scope="current", period_id=""):
+    currency = settlement.get("currency") or state.get("currency") or "DKK"
+    amount_text = format_backend_money(settlement.get("amount"), currency)
+    push_result = send_backend_payment_reminder_push(state, settlement)
+    sent = int(push_result.get("sent") or 0)
+    if sent > 0:
+        delivery_text = f"Mobile notification sent to {sent} device{'s' if sent != 1 else ''}"
+    elif push_result.get("attempted"):
+        delivery_text = "No active mobile notification subscription was reached"
+    else:
+        delivery_text = "Reminder recorded by scheduled backend job; mobile notification was not available"
+    detail_suffix = "Scheduled backend reminder for closed settlement" if scope == "closed" else "Scheduled backend reminder"
+    metadata = {
+        "from": settlement.get("from") or "Someone",
+        "to": settlement.get("to") or "someone",
+        "amount": float(settlement.get("amount") or 0),
+        "currency": currency,
+        "reminderSent": sent,
+        "reminderFailed": int(push_result.get("failed") or 0),
+        "reminderAttempted": bool(push_result.get("attempted")),
+        "reminderReason": push_result.get("reason") or "",
+        "automatic": True,
+        "backendScheduled": True,
+        "reminderCount": int(due_info.get("reminderCount") or 0) + 1,
+    }
+    if period_id:
+        metadata["periodId"] = period_id
+    return normalize_audit_entry({
+        "actor": "Scheduled reminder job",
+        "type": "payment_reminder_sent",
+        "entityType": "payment",
+        "entityId": payment_key,
+        "summary": f"{settlement.get('to') or 'Someone'} reminded {settlement.get('from') or 'someone'} · {amount_text}",
+        "detail": f"{settlement.get('from') or 'Someone'} pays {settlement.get('to') or 'someone'} · {amount_text} · {delivery_text} · {detail_suffix}",
+        "metadata": metadata,
+    })
+
+
+def current_settlement_from_audit_or_key(state, payment_key):
+    requested_entries = payment_audit_entries(state.get("auditLog"), payment_key, "payment_requested")
+    metadata = requested_entries[0].get("metadata", {}) if requested_entries else {}
+    parsed = parse_payment_key(payment_key)
+    return {
+        "from": metadata.get("from") or parsed.get("from") or "Someone",
+        "to": metadata.get("to") or parsed.get("to") or "someone",
+        "amount": metadata.get("amount") or 0,
+        "currency": metadata.get("currency") or parsed.get("currency") or state.get("currency") or "DKK",
+    }
+
+
+def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
+    settings = reminder_settings(state)
+    now_ts = now_ts or time.time()
+    due_items = []
+    changed = False
+
+    if settings.get("enabled"):
+        statuses = state.get("paymentStatuses") if isinstance(state.get("paymentStatuses"), dict) else {}
+        for payment_key, status in list(statuses.items()):
+            if normalize_payment_status(status) != "requested":
+                continue
+            due = payment_reminder_due_info(state.get("auditLog"), payment_key, settings, now_ts)
+            if not due.get("due"):
+                continue
+            settlement = current_settlement_from_audit_or_key(state, payment_key)
+            due_items.append({"scope": "current", "paymentKey": payment_key, "settlement": settlement})
+            if not dry_run:
+                state["auditLog"] = prepend_audit(state.get("auditLog"), build_backend_reminder_audit_entry(state, payment_key, settlement, due))
+                changed = True
+
+        for period in state.get("closedPeriods", []) or []:
+            settlements = period.get("settlements") if isinstance(period.get("settlements"), list) else []
+            period_id = str(period.get("id") or "")
+            for index, settlement in enumerate(settlements):
+                if normalize_payment_status(settlement.get("status")) != "requested":
+                    continue
+                payment_key = f"{period_id}:{settlement.get('from')}->{settlement.get('to')}:{settlement.get('currency') or state.get('currency') or 'DKK'}"
+                due = payment_reminder_due_info(period.get("auditLog"), payment_key, settings, now_ts)
+                if not due.get("due"):
+                    continue
+                due_items.append({"scope": "closed", "periodId": period_id, "settlementIndex": index, "paymentKey": payment_key, "settlement": settlement})
+                if not dry_run:
+                    period["auditLog"] = prepend_audit(period.get("auditLog"), build_backend_reminder_audit_entry(state, payment_key, settlement, due, scope="closed", period_id=period_id))
+                    changed = True
+
+    return {"ok": True, "enabled": settings.get("enabled"), "dueCount": len(due_items), "changed": changed, "dryRun": dry_run, "due": due_items[:50]}
+
+
+def reminder_job_authorized(handler):
+    secret = env_value("REMINDER_CRON_SECRET")
+    if not secret:
+        return True
+    provided = handler.headers.get("X-Reminder-Secret", "")
+    auth = handler.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        provided = provided or auth.split(" ", 1)[1].strip()
+    return hmac.compare_digest(provided, secret)
+
+
 def apply_payment_action_to_state(state, payload):
     action = str(payload.get("action") or "").strip()
     scope = str(payload.get("scope") or "current").strip()
@@ -420,6 +659,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/payment-action":
             self.apply_payment_action()
+            return
+        if self.path == "/api/run-reminders":
+            self.run_reminders()
             return
         if self.path == "/api/push-subscriptions":
             self.save_push_subscription()
@@ -561,6 +803,27 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_json({"ok": True, "sent": sent, "failed": failed})
 
+    def run_reminders(self):
+        if not reminder_job_authorized(self):
+            self.send_error(401, "Invalid reminder cron secret")
+            return
+        try:
+            payload = read_request_body(self)
+        except (ValueError, json.JSONDecodeError):
+            self.send_error(400, "Invalid JSON")
+            return
+        dry_run = bool(payload.get("dryRun")) if isinstance(payload, dict) else False
+        try:
+            state = read_state()
+            result = run_scheduled_payment_reminders(state, dry_run=dry_run)
+            if result.get("changed"):
+                write_state(state)
+                result["state"] = read_state()
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+        self.send_json(result)
+
     def send_json(self, payload):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
@@ -573,9 +836,29 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
 
-if __name__ == "__main__":
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Fuel Ledger local server and scheduled reminder runner")
+    parser.add_argument("--run-reminders", action="store_true", help="Run the scheduled backend payment reminder scan once and exit")
+    parser.add_argument("--dry-run-reminders", action="store_true", help="Show due reminders without writing audit entries")
+    args = parser.parse_args(argv)
+
+    if args.run_reminders or args.dry_run_reminders:
+        state = read_state()
+        result = run_scheduled_payment_reminders(state, dry_run=args.dry_run_reminders)
+        if result.get("changed"):
+            write_state(state)
+        print(json.dumps({key: value for key, value in result.items() if key != "due"}, ensure_ascii=False, indent=2))
+        if result.get("due"):
+            print(json.dumps(result["due"], ensure_ascii=False, indent=2))
+        return 0
+
     port = int(os.environ.get("PORT", "4175"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"Car Share Ledger running at http://localhost:{port}/")
     print("Shared data file:", DATA_FILE)
     server.serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

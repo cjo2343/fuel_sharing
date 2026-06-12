@@ -321,3 +321,10 @@ After deployment, open **History → Closed periods**, mark a requested closed-p
 ## Request-before-close check
 
 Before closing a period, verify that all settlement payments have been requested. The close button stays disabled while any calculated settlement payment is still open, but requested payments may remain unpaid after close.
+
+## Scheduled backend reminders
+
+- Set `REMINDER_CRON_SECRET` in Render/server environment before exposing the cron endpoint.
+- Configure a daily cron/scheduler request to `POST /api/run-reminders` with header `X-Reminder-Secret: <secret>`.
+- Confirm `npm run reminders:dry-run` works against the intended data file before enabling the live scheduler.
+- Push notifications require existing `SUPABASE_URL`, service role/anon key, VAPID keys, and active user push subscriptions; otherwise reminders are still recorded in the audit log.

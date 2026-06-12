@@ -336,3 +336,13 @@ Before closing a period, verify that all settlement payments have been requested
 ## Member-scoped history
 
 Normal members now see only closed periods that involve them through a trip, fuel log, or final payment. Admin users continue to see the full closed-period archive.
+
+### Scheduled backend reminders
+
+Phase 2B adds a server-side reminder runner for server-backed deployments. The runner checks requested-but-unpaid payments in both the current period and closed periods, uses existing audit entries to calculate due dates, records scheduled reminder audit entries, and attempts push delivery when VAPID/Supabase push subscription configuration is available.
+
+Operational notes:
+- `npm run reminders:dry-run` previews due reminders.
+- `npm run reminders:run` records due reminders.
+- Hosted schedulers should call `POST /api/run-reminders` with `REMINDER_CRON_SECRET` configured.
+- The browser app-open reminder remains as a fallback, and max-count/repeat settings prevent duplicate reminder spam.

@@ -533,3 +533,21 @@ Closed settlement amounts stay frozen, but payment status can change after close
 ### Request-before-close settlement rule
 
 Closing a settlement period now requires every calculated final payment to be requested first. Payments do not need to be marked paid before close; requested-but-unpaid payments remain visible in Payments and can be marked paid after the period is archived.
+
+### Scheduled backend payment reminders
+
+Build `scheduled-backend-reminders` adds a Phase 2B backend reminder runner. App-open reminders still run as a fallback, but the server can now scan requested-but-unpaid current and closed-period payments without a browser session and write `payment_reminder_sent` audit entries when a reminder is due.
+
+Run once locally:
+
+```bash
+npm run reminders:run
+```
+
+Preview without writing audit entries:
+
+```bash
+npm run reminders:dry-run
+```
+
+For a hosted cron, call `POST /api/run-reminders`. Set `REMINDER_CRON_SECRET` in the server environment and send the same value as `X-Reminder-Secret` or `Authorization: Bearer ...` from the scheduler. The job respects the existing Admin reminder settings: enabled/disabled, first reminder delay, repeat interval, and maximum reminder count.
