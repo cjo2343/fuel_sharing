@@ -3681,3 +3681,42 @@ body.auth-locked #authPanel .text-button {
     flex-direction: column;
   }
 }
+
+.payment-section-tabs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.payment-section-tabs .active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.unpaid-summary-card {
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.unpaid-summary-card:hover,
+.unpaid-summary-card:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.payment-card-kicker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.payment-ref {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+}

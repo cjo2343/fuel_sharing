@@ -209,6 +209,8 @@ const bookingCalendarViewStorageKey = "fuel-ledger-booking-calendar-view";
 let bookingCalendarView = localStorage.getItem(bookingCalendarViewStorageKey) || "list";
 const historySectionStorageKey = "fuel-ledger-history-section";
 let activeHistorySection = localStorage.getItem(historySectionStorageKey) || "booking";
+const paymentSectionStorageKey = "fuel-ledger-payment-section";
+let activePaymentSection = localStorage.getItem(paymentSectionStorageKey) || "all";
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -219,6 +221,7 @@ const els = {
   viewSections: Array.from(document.querySelectorAll("[data-view]")),
   historySectionTabs: Array.from(document.querySelectorAll("[data-history-section-tab]")),
   historySections: Array.from(document.querySelectorAll("[data-history-section]")),
+  paymentSectionTabs: Array.from(document.querySelectorAll("[data-payment-section-tab]")),
   authPanel: document.querySelector("#authPanel"),
   loginForm: document.querySelector("#loginForm"),
   otpForm: document.querySelector("#otpForm"),
@@ -869,6 +872,12 @@ els.historySectionTabs.forEach((button) => {
   });
 });
 
+els.paymentSectionTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    setActivePaymentSection(button.dataset.paymentSectionTab || "all");
+  });
+});
+
 function setActiveHistorySection(section) {
   activeHistorySection = ["booking", "settlement", "archive"].includes(section) ? section : "booking";
   localStorage.setItem(historySectionStorageKey, activeHistorySection);
@@ -886,6 +895,25 @@ function renderHistorySections() {
   });
   els.historySections.forEach((sectionPanel) => {
     sectionPanel.classList.toggle("hidden", sectionPanel.dataset.historySection !== activeHistorySection);
+  });
+}
+
+
+function setActivePaymentSection(section) {
+  activePaymentSection = ["owe", "owed", "all"].includes(section) ? section : "all";
+  localStorage.setItem(paymentSectionStorageKey, activePaymentSection);
+  renderPaymentSectionTabs();
+  renderUnpaidPayments();
+}
+
+function renderPaymentSectionTabs() {
+  const allowedSections = new Set(["owe", "owed", "all"]);
+  if (!allowedSections.has(activePaymentSection)) activePaymentSection = "all";
+  els.paymentSectionTabs.forEach((button) => {
+    const section = button.dataset.paymentSectionTab || "all";
+    const isActive = section === activePaymentSection;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
   });
 }
 
@@ -1640,6 +1668,7 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
   const amount = Number(settlement?.amount || 0);
   const currency = settlement?.currency || state.currency || "DKK";
   const amountText = formatMoneyFor(amount, currency);
+  const paymentRef = createPaymentRef({ scope: "current", key: settlementKey(settlement || {}), from, to, amount });
   const previousLabel = statusLabel(previousStatus);
   const nextLabel = statusLabel(nextStatus);
   const routeText = `${from} → ${to}`;
@@ -1648,7 +1677,7 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
     : nextStatus === "requested"
       ? `${routeText} · ${amountText}`
       : `${routeText} · ${amountText}`;
-  const detail = `Status: ${previousLabel} → ${nextLabel} · ${from} pays ${to} · ${amountText}`;
+  const detail = `${paymentRef} · Status: ${previousLabel} → ${nextLabel} · ${from} pays ${to} · ${amountText}`;
   return {
     summary,
     detail,
@@ -1657,6 +1686,7 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
       to,
       amount,
       currency,
+      paymentRef,
       previousStatus: normalizePaymentStatus(previousStatus),
       nextStatus: normalizePaymentStatus(nextStatus),
       previousStatusLabel: previousLabel,
@@ -1767,6 +1797,7 @@ function getUnpaidPaymentItems(ledger = calculateLedger()) {
   });
 
   return [...currentItems, ...closedItems]
+    .map((item) => ({ ...item, paymentRef: createPaymentRef(item) }))
     .filter(isRelevantToCurrentUser)
     .sort((a, b) => {
     if (a.from === currentUser && b.from !== currentUser) return -1;
@@ -1779,25 +1810,51 @@ function getUnpaidPaymentItems(ledger = calculateLedger()) {
 
 function renderUnpaidPayments(ledger = calculateLedger()) {
   if (!els.unpaidPaymentList || !els.unpaidPaymentSummary) return;
+  renderPaymentSectionTabs();
   const items = getUnpaidPaymentItems(ledger);
   const mine = items.filter((item) => item.from === currentUser);
   const owedToMe = items.filter((item) => item.to === currentUser && item.from !== currentUser);
   const totalMine = mine.reduce((sum, item) => sum + item.amount, 0);
   const totalOwedToMe = owedToMe.reduce((sum, item) => sum + item.amount, 0);
   const currency = items[0]?.currency || state.currency;
+  const selectedItems = activePaymentSection === "owed" ? owedToMe : activePaymentSection === "all" ? items : mine;
+  const selectedLabel = activePaymentSection === "owed" ? "owed to you" : activePaymentSection === "all" ? "unpaid payment" : "you owe";
 
   els.unpaidPaymentSummary.innerHTML = `
-    <div class="unpaid-summary-card primary"><span>You owe</span><b>${mine.length} · ${formatMoneyFor(totalMine, currency)}</b></div>
-    <div class="unpaid-summary-card"><span>Owed to you</span><b>${owedToMe.length} · ${formatMoneyFor(totalOwedToMe, currency)}</b></div>
-    <div class="unpaid-summary-card"><span>Total unpaid</span><b>${items.length}</b></div>
+    <button type="button" class="unpaid-summary-card ${activePaymentSection === "owe" ? "primary" : ""}" data-payment-section-tab="owe"><span>You owe</span><b>${mine.length} · ${formatMoneyFor(totalMine, currency)}</b></button>
+    <button type="button" class="unpaid-summary-card ${activePaymentSection === "owed" ? "primary" : ""}" data-payment-section-tab="owed"><span>Owed to you</span><b>${owedToMe.length} · ${formatMoneyFor(totalOwedToMe, currency)}</b></button>
+    <button type="button" class="unpaid-summary-card ${activePaymentSection === "all" ? "primary" : ""}" data-payment-section-tab="all"><span>Total unpaid</span><b>${items.length}</b></button>
   `;
+  els.unpaidPaymentSummary.querySelectorAll("[data-payment-section-tab]").forEach((button) => {
+    button.addEventListener("click", () => setActivePaymentSection(button.dataset.paymentSectionTab || "all"));
+  });
 
   if (!items.length) {
     els.unpaidPaymentList.replaceChildren(emptyNode("No unpaid requested payments."));
     return;
   }
 
-  els.unpaidPaymentList.innerHTML = items.map((item) => renderUnpaidPaymentCard(item)).join("");
+  if (!selectedItems.length) {
+    els.unpaidPaymentList.replaceChildren(emptyNode(`No ${selectedLabel} items right now.`));
+    return;
+  }
+
+  els.unpaidPaymentList.innerHTML = selectedItems.map((item) => renderUnpaidPaymentCard(item)).join("");
+}
+
+
+function createStableHash(value) {
+  const input = String(value || "payment");
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36).toUpperCase().padStart(6, "0").slice(0, 6);
+}
+
+function createPaymentRef(item) {
+  return `#P${createStableHash(`${item?.scope || "payment"}:${item?.key || ""}:${item?.from || ""}:${item?.to || ""}:${item?.amount || 0}`)}`;
 }
 
 function renderUnpaidPaymentCard(item) {
@@ -1817,12 +1874,13 @@ function renderUnpaidPaymentCard(item) {
     ? `<button class="subtle-button compact-button secondary-link-button" type="button" data-view-closed-period="${escapeHtml(item.periodId)}">View closed period</button>`
     : "";
   const badge = isMine ? "You owe" : isOwedToMe ? "Owed to you" : "Unpaid";
+  const paymentRef = item.paymentRef || createPaymentRef(item);
 
   return `
     <article class="unpaid-payment-card ${isMine ? "is-mine" : ""} ${isOwedToMe ? "is-owed-to-me" : ""}">
       <div class="unpaid-payment-main">
         <div>
-          <span class="status-chip requested">${escapeHtml(badge)}</span>
+          <div class="payment-card-kicker"><span class="status-chip requested">${escapeHtml(badge)}</span><span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span></div>
           <strong>${escapeHtml(item.from)} pays ${escapeHtml(item.to)}</strong>
           <p>${escapeHtml(contextText)}</p>
         </div>
