@@ -6832,23 +6832,36 @@ function renderPeriodSettlements(period) {
             const status = normalizePaymentStatus(settlement.status);
             const canMarkPaid = status === "requested" && canMarkSettlementPaid(settlement);
             const amountText = formatMoneyFor(settlement.amount, period.currency || state.currency);
-            const paymentText = `${settlement.from} pays ${settlement.to}`;
+            const paymentRef = createPaymentRef({
+              scope: "closed",
+              key: settlementKeyForPeriod(settlement, period.id || "closed"),
+              from: settlement.from,
+              to: settlement.to,
+              amount: settlement.amount
+            });
             const statusNote = status === "paid"
               ? `Paid after settlement close. Amounts remain frozen.`
               : status === "requested"
-                ? `Waiting for ${settlement.from} to pay. Closing freezes the amount, but this payment can still be marked paid here.`
+                ? `Waiting for payment. The settlement amount is frozen, but the status can still be updated here.`
                 : `Not requested when this period was closed.`;
             const permissionNote = `Only ${settlement.from} or an admin can mark this closed-period payment paid.`;
             return `
             <article class="archive-payment-card ${status}">
               <div class="archive-payment-header">
-                <div class="archive-payment-title">
-                  <strong>${escapeHtml(paymentText)}</strong>
+                <div class="archive-payment-main">
+                  <div class="archive-payment-kicker">
+                    <span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span>
+                    <span class="status-chip ${status}">${statusLabel(status)}</span>
+                  </div>
+                  <div class="archive-payment-route" aria-label="${escapeHtml(`${settlement.from} pays ${settlement.to}`)}">
+                    <span class="archive-payment-person">${escapeHtml(settlement.from)}</span>
+                    <span class="archive-payment-direction">pays</span>
+                    <span class="archive-payment-person">${escapeHtml(settlement.to)}</span>
+                  </div>
                   <p>${escapeHtml(statusNote)}</p>
                 </div>
                 <div class="archive-payment-amount">
                   <b>${amountText}</b>
-                  <span class="status-chip ${status}">${statusLabel(status)}</span>
                 </div>
               </div>
               ${canMarkPaid ? `

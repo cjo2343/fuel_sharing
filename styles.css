@@ -3720,3 +3720,64 @@ body.auth-locked #authPanel .text-button {
   color: var(--accent-strong);
   font-size: 0.78rem;
 }
+
+/* Closed period archive cleanup */
+.archive-payment-list {
+  display: grid;
+  gap: 12px;
+}
+
+.archive-payment-card {
+  margin: 0;
+}
+
+.archive-payment-main {
+  min-width: 0;
+}
+
+.archive-payment-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.archive-payment-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.archive-payment-person {
+  background: rgba(30, 85, 66, 0.08);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-block;
+  max-width: min(100%, 280px);
+  overflow: hidden;
+  padding: 4px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-payment-direction {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.archive-payment-amount b {
+  font-size: 1.05rem;
+}
+
+@media (max-width: 760px) {
+  .archive-payment-person {
+    max-width: 100%;
+  }
+}
