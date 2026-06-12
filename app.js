@@ -5743,6 +5743,11 @@ function renderClosedPeriods() {
     return;
   }
 
+  if (getClosedPeriodsVisibleToCurrentUser().length === 0) {
+    els.periodList.replaceChildren(emptyNode("No closed periods involve you yet."));
+    return;
+  }
+
   if (periods.length === 0) {
     els.periodList.replaceChildren(emptyNode("No closed periods match the current search or filter."));
     return;
@@ -5753,10 +5758,52 @@ function renderClosedPeriods() {
     .join("");
 }
 
+function memberNameKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function currentMemberNameForVisibility() {
+  return getCurrentMemberProfile()?.name || currentUser || "";
+}
+
+function tripInvolvesMember(trip, memberName) {
+  const key = memberNameKey(memberName);
+  if (!key || !trip) return false;
+  if (memberNameKey(trip.driver) === key) return true;
+  return getTripParticipants(trip).some((participant) => memberNameKey(participant) === key);
+}
+
+function closedPeriodInvolvesCurrentMember(period) {
+  if (canManageSettings()) return true;
+  const memberName = currentMemberNameForVisibility();
+  const key = memberNameKey(memberName);
+  if (!key || !period) return false;
+
+  const trips = Array.isArray(period.trips) ? period.trips : [];
+  if (trips.some((trip) => tripInvolvesMember(trip, memberName))) return true;
+
+  const fuel = Array.isArray(period.fuel) ? period.fuel : [];
+  if (fuel.some((item) => memberNameKey(item.payer) === key)) return true;
+
+  const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+  if (settlements.some((settlement) => memberNameKey(settlement.from) === key || memberNameKey(settlement.to) === key)) return true;
+
+  const people = Array.isArray(period.people) ? period.people : [];
+  return people.some((person) => {
+    if (memberNameKey(person.name || person.person) !== key) return false;
+    return Number(person.km || 0) > 0 || Number(person.fuelPaid || 0) > 0 || Number(person.fuelShare || 0) > 0;
+  });
+}
+
+function getClosedPeriodsVisibleToCurrentUser() {
+  const periods = Array.isArray(state.closedPeriods) ? state.closedPeriods : [];
+  return periods.filter((period) => closedPeriodInvolvesCurrentMember(period));
+}
+
 function getFilteredClosedPeriods() {
   const query = String(closedPeriodFilters.query || "").trim().toLowerCase();
   const statusFilter = closedPeriodFilters.status || "all";
-  const periods = [...state.closedPeriods].filter((period) => {
+  const periods = getClosedPeriodsVisibleToCurrentUser().filter((period) => {
     if (statusFilter !== "all" && !closedPeriodHasSettlementStatus(period, statusFilter)) return false;
     if (!query) return true;
     return closedPeriodSearchText(period).includes(query);
@@ -5780,7 +5827,7 @@ function getFilteredClosedPeriods() {
 
 function renderClosedPeriodArchiveSummary(periods) {
   if (!els.periodArchiveSummary) return;
-  const total = state.closedPeriods.length;
+  const total = getClosedPeriodsVisibleToCurrentUser().length;
   const visible = periods.length;
   const fuelTotal = periods.reduce((sum, period) => sum + closedPeriodFuelTotal(period), 0);
   const tripCount = periods.reduce((sum, period) => sum + closedPeriodTripCount(period), 0);

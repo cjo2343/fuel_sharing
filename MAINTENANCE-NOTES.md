@@ -332,3 +332,7 @@ Build `closed-payment-history-persistence` keeps closed-period payment status up
 ## Request-before-close check
 
 Before closing a period, verify that all settlement payments have been requested. The close button stays disabled while any calculated settlement payment is still open, but requested payments may remain unpaid after close.
+
+## Member-scoped history
+
+Normal members now see only closed periods that involve them through a trip, fuel log, or final payment. Admin users continue to see the full closed-period archive.
