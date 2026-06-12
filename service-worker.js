@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v72";
-const BUILD_LABEL = "payment-deeplink-routing-fix";
-const BUILD_UPDATED_AT = "2026-06-13T00:25:00+02:00";
+const CACHE_NAME = "fuel-ledger-v73";
+const BUILD_LABEL = "typed-reference-labels";
+const BUILD_UPDATED_AT = "2026-06-13T00:45:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

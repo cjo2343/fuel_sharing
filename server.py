@@ -443,8 +443,18 @@ def create_backend_stable_hash(value):
 
 
 def create_backend_payment_ref(scope, payment_key, settlement):
-    raw = f"{scope or 'payment'}:{payment_key or ''}:{settlement.get('from') or ''}:{settlement.get('to') or ''}:{settlement.get('amount') or 0}"
+    # Keep refs stable when a current payment is archived into a closed period.
+    raw = f"{payment_key or ''}:{settlement.get('from') or ''}:{settlement.get('to') or ''}:{settlement.get('amount') or 0}"
     return f"#P{create_backend_stable_hash(raw)}"
+
+
+def format_backend_payment_ref(payment_ref):
+    compact = str(payment_ref or "").strip().lstrip("#")
+    if compact.upper().startswith("PAY"):
+        compact = compact[3:]
+    elif compact.upper().startswith("P"):
+        compact = compact[1:]
+    return f"pay-{compact}" if compact else "pay-unknown"
 
 
 def make_backend_payment_url(payment_ref, scope="", period_id=""):
@@ -490,8 +500,9 @@ def send_backend_payment_reminder_push(state, settlement, payment_ref="", scope=
 
     amount_text = format_backend_money(settlement.get("amount"), settlement.get("currency") or state.get("currency") or "DKK")
     payment_ref = str(payment_ref or "").strip()
-    title = f"Payment reminder {payment_ref}".strip()
-    body = f"{payment_ref + ' · ' if payment_ref else ''}{settlement.get('to', 'Someone')} reminded you to pay {amount_text} for shared car fuel."
+    display_ref = format_backend_payment_ref(payment_ref)
+    title = f"Payment reminder {display_ref}".strip()
+    body = f"{display_ref + ' · ' if payment_ref else ''}{settlement.get('to', 'Someone')} reminded you to pay {amount_text} for shared car fuel."
     sent = 0
     failed = 0
     for row in subscriptions:
@@ -556,8 +567,8 @@ def build_backend_reminder_audit_entry(state, payment_key, settlement, due_info,
         "type": "payment_reminder_sent",
         "entityType": "payment",
         "entityId": payment_key,
-        "summary": f"{payment_ref} · {settlement.get('to') or 'Someone'} reminded {settlement.get('from') or 'someone'} · {amount_text}",
-        "detail": f"{payment_ref} · {settlement.get('from') or 'Someone'} pays {settlement.get('to') or 'someone'} · {amount_text} · {delivery_text} · {detail_suffix}",
+        "summary": f"{format_backend_payment_ref(payment_ref)} · {settlement.get('to') or 'Someone'} reminded {settlement.get('from') or 'someone'} · {amount_text}",
+        "detail": f"{format_backend_payment_ref(payment_ref)} · {settlement.get('from') or 'Someone'} pays {settlement.get('to') or 'someone'} · {amount_text} · {delivery_text} · {detail_suffix}",
         "metadata": metadata,
     })
 

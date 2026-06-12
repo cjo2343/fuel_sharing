@@ -602,7 +602,7 @@ els.tripForm.addEventListener("submit", async (event) => {
       els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
       els.fuelAmount?.focus();
     }, 0);
-    showAppMessage(`Trip ${formatLogRef(tripPayload)} logged. Add the matching fuel receipt when ready.`);
+    showAppMessage(`Trip ${formatTypedLogRef(tripPayload, "trip")} logged. Add the matching fuel receipt when ready.`);
   } else {
     showSaveMessage("Trip", wasEditingTrip);
   }
@@ -1696,7 +1696,7 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
     : nextStatus === "requested"
       ? `${routeText} · ${amountText}`
       : `${routeText} · ${amountText}`;
-  const detail = `${paymentRef} · Status: ${previousLabel} → ${nextLabel} · ${from} pays ${to} · ${amountText}`;
+  const detail = `${formatPaymentRef(paymentRef)} · Status: ${previousLabel} → ${nextLabel} · ${from} pays ${to} · ${amountText}`;
   return {
     summary,
     detail,
@@ -1729,8 +1729,8 @@ function buildPaymentReminderAuditInfo(settlement, pushResult = {}, paymentRef =
       : "Reminder recorded in the app; mobile notification was not available";
   const refText = normalizePaymentRefValue(paymentRef || pushResult.paymentRef || "");
   return {
-    summary: `${refText ? `${refText} · ` : ""}${to} reminded ${from} · ${amountText}`,
-    detail: `${refText ? `${refText} · ` : ""}${from} pays ${to} · ${amountText} · ${deliveryText}`,
+    summary: `${refText ? `${formatPaymentRef(refText)} · ` : ""}${to} reminded ${from} · ${amountText}`,
+    detail: `${refText ? `${formatPaymentRef(refText)} · ` : ""}${from} pays ${to} · ${amountText} · ${deliveryText}`,
     metadata: {
       paymentRef: refText,
       from,
@@ -1760,8 +1760,8 @@ function buildPaymentCloseNoticeAuditInfo(settlement, pushResult = {}, paymentRe
       : "Close notice recorded in the app; mobile notification was not available";
   const refText = normalizePaymentRefValue(paymentRef || pushResult.paymentRef || "");
   return {
-    summary: `${refText ? `${refText} · ` : ""}${from} still owes ${to} · ${amountText}`,
-    detail: `${refText ? `${refText} · ` : ""}${from} pays ${to} · ${amountText} · Settlement closed while payment was still requested · ${deliveryText}`,
+    summary: `Payment ${refText ? formatPaymentRef(refText) : "pay-unknown"} · ${from} still owes ${to} · ${amountText}`,
+    detail: `Payment ${refText ? formatPaymentRef(refText) : "pay-unknown"} · ${from} pays ${to} · ${amountText} · Settlement closed while payment was still requested · ${deliveryText}`,
     metadata: {
       paymentRef: refText,
       from,
@@ -1941,13 +1941,36 @@ function createStableHash(value) {
 }
 
 function createPaymentRef(item) {
-  return `#P${createStableHash(`${item?.scope || "payment"}:${item?.key || ""}:${item?.from || ""}:${item?.to || ""}:${item?.amount || 0}`)}`;
+  // Payment refs should remain stable when an open settlement payment is later
+  // archived into a closed period. Do not include the scope in the hash.
+  return `#P${createStableHash(`${item?.key || ""}:${item?.from || ""}:${item?.to || ""}:${item?.amount || 0}`)}`;
+}
+
+function compactTypedRefValue(value, prefixes = []) {
+  let compact = String(value || "").trim().replace(/^#+/, "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const sortedPrefixes = [...prefixes].sort((a, b) => b.length - a.length);
+  for (const prefix of sortedPrefixes) {
+    if (compact.startsWith(prefix)) {
+      compact = compact.slice(prefix.length);
+      break;
+    }
+  }
+  return compact;
 }
 
 function normalizePaymentRefValue(value) {
-  const compact = String(value || "").trim().replace(/^#+/, "").replace(/[^a-z0-9]/gi, "").toUpperCase();
-  if (!compact) return "";
-  return compact.startsWith("P") ? `#${compact}` : `#P${compact}`;
+  const compact = compactTypedRefValue(value, ["PAY", "P"]);
+  return compact ? `#P${compact}` : "";
+}
+
+function formatPaymentRef(value) {
+  const compact = normalizePaymentRefValue(value).replace(/^#P/, "");
+  return compact ? `pay-${compact}` : "pay-unknown";
+}
+
+function formatSettlementRef(value) {
+  const compact = compactTypedRefValue(value, ["SET", "S", "P", "PAY"]);
+  return compact ? `set-${compact}` : "set-unknown";
 }
 
 function paymentRefEquals(itemOrRef, rawRef) {
@@ -2015,19 +2038,19 @@ function renderPaymentEvidenceDetails(payment, options = {}) {
   const tripItems = payerTrips.slice(0, 8).map((trip) => {
     const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
     const booking = findBookingForTrip(trip);
-    const bookingText = booking ? ` · booking ${escapeHtml(formatLogRef(booking))}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}` : "";
-    return `<li><span>${escapeHtml(formatLogRef(trip))} · ${escapeHtml(getTripPeriodLabel(trip))}${bookingText}</span><b>${formatNumber(km)} km</b></li>`;
+    const bookingText = booking ? ` · booking ${escapeHtml(formatTypedLogRef(booking, "booking"))}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}` : "";
+    return `<li><span>${escapeHtml(formatTypedLogRef(trip, "trip"))} · ${escapeHtml(getTripPeriodLabel(trip))}${bookingText}</span><b>${formatNumber(km)} km</b></li>`;
   }).join("");
   const hiddenTrips = Math.max(0, payerTrips.length - 8);
   const fuelItems = payeeFuel.slice(0, 8).map((fuel) => {
     const linked = fuel.sourceTripId || fuel.sourceBookingId ? " · linked" : "";
     const liters = Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : "";
-    return `<li><span>${escapeHtml(formatLogRef(fuel))} · ${escapeHtml(formatDate(fuel.date))}${linked}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}</span><b>${formatMoneyFor(fuel.amount || 0, currency)}${liters}</b></li>`;
+    return `<li><span>${escapeHtml(formatTypedLogRef(fuel, "fuel"))} · ${escapeHtml(formatDate(fuel.date))}${linked}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}</span><b>${formatMoneyFor(fuel.amount || 0, currency)}${liters}</b></li>`;
   }).join("");
   const hiddenFuel = Math.max(0, payeeFuel.length - 8);
   const bookingRefs = [...new Map(relatedBookings.map((booking) => [booking.id || booking.logRef || booking.start, booking])).values()]
     .slice(0, 6)
-    .map((booking) => `<span class="log-ref">${escapeHtml(formatLogRef(booking))}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}</span>`)
+    .map((booking) => `<span class="log-ref">${escapeHtml(formatTypedLogRef(booking, "booking"))}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}</span>`)
     .join("");
   return `
     <div class="payment-evidence">
@@ -2073,7 +2096,7 @@ function renderUnpaidPaymentCard(item) {
     <article class="unpaid-payment-card ${isMine ? "is-mine" : ""} ${isOwedToMe ? "is-owed-to-me" : ""}" data-payment-ref="${escapeHtml(normalizePaymentRefValue(paymentRef))}">
       <div class="unpaid-payment-main">
         <div>
-          <div class="payment-card-kicker"><span class="status-chip requested">${escapeHtml(badge)}</span><span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span></div>
+          <div class="payment-card-kicker"><span class="status-chip requested">${escapeHtml(badge)}</span><span class="log-ref payment-ref">${escapeHtml(formatPaymentRef(paymentRef))}</span></div>
           <strong>${escapeHtml(item.from)} pays ${escapeHtml(item.to)}</strong>
           <p>${escapeHtml(contextText)}</p>
           <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, item.scope === "closed" ? { trips: item.periodTrips || [], fuel: item.periodFuel || [], currency: item.currency || state.currency } : { currency: item.currency || state.currency }))}</p>
@@ -2190,8 +2213,8 @@ function renderBookingActivityEntryCard(entry) {
     : context.relatedTrip
       ? (context.relatedFuel ? "Trip + fuel logged" : "Trip logged")
       : "Booked";
-  const tripRef = context.relatedTrip ? formatLogRef(context.relatedTrip) : "";
-  const fuelRef = context.relatedFuel ? formatLogRef(context.relatedFuel) : "";
+  const tripRef = context.relatedTrip ? formatTypedLogRef(context.relatedTrip, "trip") : "";
+  const fuelRef = context.relatedFuel ? formatTypedLogRef(context.relatedFuel, "fuel") : "";
   const lifecycle = context.relatedTrip
     ? `<p class="booking-activity-linked">Linked: trip ${escapeHtml(tripRef)}${fuelRef ? ` · fuel ${escapeHtml(fuelRef)}` : ""}</p>`
     : `<p class="booking-activity-linked muted">No trip logged yet.</p>`;
@@ -2200,7 +2223,7 @@ function renderBookingActivityEntryCard(entry) {
       <header class="booking-activity-header">
         <div>
           <div class="booking-activity-kicker">
-            <span class="log-ref">${escapeHtml(context.logRef)}</span>
+            <span class="log-ref">${escapeHtml(formatTypedLogRef({ logRef: context.logRef }, "booking"))}</span>
             <span class="status-chip ${context.relatedTrip ? "paid" : "requested"}">${escapeHtml(status)}</span>
           </div>
           <strong>${escapeHtml(auditLog.actionLabel(entry.type))}</strong>
@@ -3938,7 +3961,7 @@ function renderSettlements(ledger) {
         <article class="settlement-card ${status === "requested" ? "is-requested" : ""} ${status === "paid" ? "is-paid" : ""}" data-payment-ref="${escapeHtml(normalizedPaymentRef)}">
           <div class="settlement-main">
             <div class="settlement-kicker">
-              <span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span>
+              <span class="log-ref payment-ref">${escapeHtml(formatPaymentRef(paymentRef))}</span>
               <span class="status-chip ${status}">${statusLabel(status)}</span>
             </div>
             <div class="settlement-route" aria-label="${escapeHtml(message)}">
@@ -4802,9 +4825,9 @@ async function sendPaymentReminder(button) {
   render();
 
   if (pushResult.sent > 0) {
-    showAppMessage(`Reminder ${paymentRef} sent to ${settlement.from}.`);
+    showAppMessage(`Reminder ${formatPaymentRef(paymentRef)} sent to ${settlement.from}.`);
   } else {
-    showAppMessage(`Reminder ${paymentRef} recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
+    showAppMessage(`Reminder ${formatPaymentRef(paymentRef)} recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
   }
   button.textContent = originalText;
 }
@@ -4856,9 +4879,9 @@ async function sendClosedPaymentReminder(button) {
   pendingSettlementRequestKeys.delete(key);
   render();
   if (pushResult.sent > 0) {
-    showAppMessage(`Reminder ${paymentRef} sent to ${settlement.from}.`);
+    showAppMessage(`Reminder ${formatPaymentRef(paymentRef)} sent to ${settlement.from}.`);
   } else {
-    showAppMessage(`Reminder ${paymentRef} recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
+    showAppMessage(`Reminder ${formatPaymentRef(paymentRef)} recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
   }
   button.textContent = originalText;
 }
@@ -5913,7 +5936,7 @@ function renderTripBookingContext() {
     <div class="booking-log-context-header">
       <div>
         <p class="eyebrow">Booking log</p>
-        <h3>${escapeHtml(formatLogRef(context))}</h3>
+        <h3>${escapeHtml(formatTypedLogRef(context, "trip"))}</h3>
       </div>
       <span class="status-pill">Ready to complete</span>
     </div>
@@ -5977,7 +6000,7 @@ function renderFuelTripContext() {
     <div class="booking-log-context-header">
       <div>
         <p class="eyebrow">Fuel for trip</p>
-        <h3>${escapeHtml(formatLogRef(context))}</h3>
+        <h3>${escapeHtml(formatTypedLogRef(context, "fuel"))}</h3>
       </div>
       <span class="status-pill">${escapeHtml(requirement)}</span>
     </div>
@@ -6169,8 +6192,15 @@ function renderPendingLogs() {
 
 
 function normalizeLogRefValue(value) {
-  const compact = String(value || "").trim().replace(/^#+/, "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const compact = compactTypedRefValue(value, ["BOK", "TRP", "FUL", "LOG"]);
   return compact ? `#${compact}` : "";
+}
+
+function formatTypedLogRef(entry, type = "log") {
+  const compact = normalizeLogRefValue(formatLogRef(entry || {})).replace(/^#/, "");
+  const prefixMap = { booking: "bok", trip: "trp", fuel: "ful", log: "log" };
+  const prefix = prefixMap[type] || String(type || "log").toLowerCase();
+  return compact ? `${prefix}-${compact}` : `${prefix}-unknown`;
 }
 
 function logRefEquals(entryOrRef, rawRef) {
@@ -7492,7 +7522,7 @@ function renderPeriodSettlements(period) {
               <div class="archive-payment-header">
                 <div class="archive-payment-main">
                   <div class="archive-payment-kicker">
-                    <span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span>
+                    <span class="log-ref payment-ref">${escapeHtml(formatPaymentRef(paymentRef))}</span>
                     <span class="status-chip ${status}">${statusLabel(status)}</span>
                   </div>
                   <div class="archive-payment-route" aria-label="${escapeHtml(`${settlement.from} pays ${settlement.to}`)}">
@@ -7570,7 +7600,7 @@ function renderClosedPeriodTrips(trips) {
                 <article class="entry-card archive-entry-card archive-log-card">
                   <div class="archive-log-card-head">
                     <strong>${escapeHtml(trip.driver || "Unknown")}</strong>
-                    ${trip.logRef ? `<span class="log-ref">${escapeHtml(trip.logRef)}</span>` : ""}
+                    ${trip.logRef ? `<span class="log-ref">${escapeHtml(formatTypedLogRef(trip, "trip"))}</span>` : ""}
                   </div>
                   <p>${formatNumber(tripKm)} km · ${getTripPeriodLabel(trip)} · ${formatNumber(trip.startKm || 0)} to ${formatNumber(trip.endKm || 0)} km</p>
                   <p class="entry-meta">Split between ${getTripParticipants(trip).map(escapeHtml).join(", ")}</p>
@@ -7606,7 +7636,7 @@ function renderClosedPeriodFuel(fuel, currency) {
                 <article class="entry-card archive-entry-card archive-log-card">
                   <div class="archive-log-card-head">
                     <strong>${escapeHtml(item.payer || "Unknown")}</strong>
-                    ${item.logRef ? `<span class="log-ref">${escapeHtml(item.logRef)}</span>` : ""}
+                    ${item.logRef ? `<span class="log-ref">${escapeHtml(formatTypedLogRef(item, "fuel"))}</span>` : ""}
                   </div>
                   <p>${formatMoneyFor(item.amount || 0, currency)} · ${price}</p>
                   <p class="entry-meta">${formatDate(item.date)}${item.odometer ? ` · ${formatNumber(item.odometer)} km` : ""}${item.station ? ` · ${escapeHtml(item.station)}` : ""}${item.sourceTripId ? " · linked trip fuel" : ""}</p>
@@ -8226,7 +8256,7 @@ async function sendSettlementPush(settlement, metadata = {}) {
     getMemberProfile,
     formatMoney,
     settlementKey,
-    paymentRef,
+    paymentRef: formatPaymentRef(paymentRef),
     paymentUrl: makePaymentDeepLink(paymentRef, { scope: "current" })
   });
 }
@@ -8265,12 +8295,13 @@ async function sendFuelFollowupPush(trip) {
   if (!profile.email) return { attempted: false, sent: 0, failed: 0, reason: "missing-driver-email" };
   const distance = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
   const logRef = formatLogRef(trip);
+  const displayLogRef = formatTypedLogRef(trip, "trip");
   return notifications.sendPushNotification({
     supabaseClient,
     sendPushUrl,
     targetEmail: profile.email,
-    title: `Fuel log needed ${logRef}`,
-    body: `${logRef} · ${formatNumber(distance)} km logged. Add the matching fuel receipt when ready.`,
+    title: `Fuel log needed ${displayLogRef}`,
+    body: `${displayLogRef} · ${formatNumber(distance)} km logged. Add the matching fuel receipt when ready.`,
     url: makeLogDeepLink(logRef),
     tag: `pending-fuel:${trip.id}`
   });
@@ -8285,7 +8316,7 @@ async function sendPaymentReminderPush(settlement, metadata = {}) {
     getMemberProfile,
     formatMoney,
     settlementKey,
-    paymentRef,
+    paymentRef: formatPaymentRef(paymentRef),
     paymentUrl: metadata.url || makePaymentDeepLink(paymentRef, { scope: "current" })
   });
 }
@@ -8301,8 +8332,8 @@ async function sendPaymentCloseNoticePush(settlement, metadata = {}) {
     supabaseClient,
     sendPushUrl,
     targetEmail: profile.email,
-    title: `Settlement closed, payment still unpaid ${paymentRef}`.trim(),
-    body: `${paymentRef} · ${settlement.to} closed the settlement while ${formatMoney(settlement.amount)} is still requested from you.`,
+    title: `Settlement closed, payment still unpaid ${formatPaymentRef(paymentRef)}`.trim(),
+    body: `${formatPaymentRef(paymentRef)} · ${settlement.to} closed the settlement while ${formatMoney(settlement.amount)} is still requested from you.`,
     url: metadata.url || makePaymentDeepLink(paymentRef, { scope: "closed" }),
     tag: `${settlementKey(settlement)}:closed-unpaid:${paymentRef}`
   });
