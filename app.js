@@ -5615,7 +5615,21 @@ function isSameCalendarDayValue(a, b) {
 }
 
 function findTripForBooking(bookingId) {
-  return state.trips.find((trip) => trip.sourceBookingId === bookingId) || null;
+  if (!bookingId) return null;
+  const activeTrip = state.trips.find((trip) => trip.sourceBookingId === bookingId);
+  if (activeTrip) return activeTrip;
+  for (const period of state.closedPeriods || []) {
+    const archivedTrip = (period.trips || []).find((trip) => trip.sourceBookingId === bookingId);
+    if (archivedTrip) {
+      return {
+        ...archivedTrip,
+        archivedPeriodId: period.id,
+        archivedPeriodLabel: period.label,
+        archivedAt: period.closedAt
+      };
+    }
+  }
+  return null;
 }
 
 function findFuelForTrip(tripId) {
