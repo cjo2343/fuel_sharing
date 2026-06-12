@@ -184,6 +184,17 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
   await expect(page.locator("#fuelList")).toContainText("Permission Smoke Station");
 }
 
+
+async function openClosedPeriodCard(card) {
+  await card.evaluate((details) => {
+    if (details instanceof HTMLDetailsElement) {
+      details.open = true;
+      details.dispatchEvent(new Event("toggle", { bubbles: true }));
+    }
+  });
+  await expect(card).not.toHaveAttribute("data-lazy-closed-period", "true");
+}
+
 async function requestAllOpenPayments(page) {
   // The settlement UI re-renders after each status change and payment actions
   // may now round-trip through server.py. Keep clicking the first currently
@@ -330,23 +341,25 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await page.locator('[data-view-tab="history"]').click();
   await expect(page.locator("#periodsHeading")).toContainText("Closed periods");
   await expect(page.locator(".archive-context-note")).toContainText("For unpaid payment follow-up, use the Payments tab.");
-  await expect(page.locator("#periodList")).toContainText("Change log");
   await expect(page.locator("#periodArchiveSummary")).toContainText("Showing");
+  const closedPeriodCard = page.locator(".archived-period-card").first();
+  await expect(closedPeriodCard).toContainText("Open this period to load final payments, trips, fuel logs, exports, and change log details.");
+  await openClosedPeriodCard(closedPeriodCard);
+  await expect(closedPeriodCard).toContainText("Change log");
+  await expect(closedPeriodCard).toContainText("Trip created");
+  await expect(closedPeriodCard).toContainText("Fuel log created");
+  await expect(closedPeriodCard).toContainText("Payment requested");
+  await expect(closedPeriodCard).toContainText(/Status: Not requested .* Requested/);
+  await expect(closedPeriodCard).toContainText("Settlement closed");
+  await expect(closedPeriodCard).toContainText("Updates only this payment status and the closed-period change log.");
+
   await page.locator("#periodSearch").fill("Audit archive smoke trip");
   await expect(page.locator("#periodList")).toContainText("Audit archive smoke trip");
   await page.locator("#periodSearch").fill("no-matching-period");
   await expect(page.locator("#periodList")).toContainText("No closed periods match");
   await page.locator("#clearPeriodFilters").click();
-  await expect(page.locator("#periodList")).toContainText("Trip created");
-  await expect(page.locator("#periodList")).toContainText("Fuel log created");
-  await expect(page.locator("#periodList")).toContainText("Payment requested");
-  await expect(page.locator("#periodList")).toContainText(/Status: Not requested .* Requested/);
-  await expect(page.locator("#periodList")).toContainText("Settlement closed");
-  const closedPeriodCard = page.locator(".archived-period-card").first();
-  await closedPeriodCard.evaluate((card) => {
-    if (card instanceof HTMLDetailsElement) card.open = true;
-  });
-  await expect(closedPeriodCard).toContainText("Updates only this payment status and the closed-period change log.");
+  const resetClosedPeriodCard = page.locator(".archived-period-card").first();
+  await openClosedPeriodCard(resetClosedPeriodCard);
 
   await page.locator('[data-view-tab="payments"]').click();
   await expect(page.locator("#unpaidPaymentSummary")).toContainText("You owe");
@@ -355,9 +368,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#unpaidPaymentList")).toContainText("View closed period");
   await page.locator('[data-view-tab="history"]').click();
   const reopenedClosedPeriodCard = page.locator(".archived-period-card").first();
-  await reopenedClosedPeriodCard.evaluate((card) => {
-    if (card instanceof HTMLDetailsElement) card.open = true;
-  });
+  await openClosedPeriodCard(reopenedClosedPeriodCard);
 
   const closedMarkPaid = reopenedClosedPeriodCard.locator('[data-closed-payment-status="paid"]').first();
   await expect(closedMarkPaid).toBeVisible();
@@ -370,9 +381,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await page.reload();
   await page.locator('[data-view-tab="history"]').click();
   const reloadedClosedPeriodCard = page.locator(".archived-period-card").first();
-  await reloadedClosedPeriodCard.evaluate((card) => {
-    if (card instanceof HTMLDetailsElement) card.open = true;
-  });
+  await openClosedPeriodCard(reloadedClosedPeriodCard);
   const reloadedPaidClosedPaymentCard = reloadedClosedPeriodCard.locator(".archive-payment-card.paid").first();
   await expect(reloadedPaidClosedPaymentCard).toContainText("Paid after settlement close");
   await expect(reloadedPaidClosedPaymentCard.locator('button:has-text("Mark paid"):visible')).toHaveCount(0);

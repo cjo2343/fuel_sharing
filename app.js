@@ -1209,7 +1209,11 @@ document.addEventListener("toggle", (event) => {
   const periodId = card.dataset.periodId;
   if (!periodId) return;
   if (card.open) {
+    const needsDetailsRender = card.dataset.lazyClosedPeriod === "true";
     expandedClosedPeriodIds.add(periodId);
+    if (needsDetailsRender) {
+      renderClosedPeriods();
+    }
   } else {
     expandedClosedPeriodIds.delete(periodId);
   }
@@ -5828,17 +5832,8 @@ function renderClosedPeriodCard(period) {
   const closedDate = period.closedAt ? formatDate(String(period.closedAt).slice(0, 10)) : "Unknown date";
 
   const isExpanded = expandedClosedPeriodIds.has(period.id);
-
-  return `
-    <details class="period-card archived-period-card" data-period-id="${escapeHtml(period.id)}" ${isExpanded ? "open" : ""}>
-      <summary>
-        <div>
-          <strong>${escapeHtml(period.label || "Closed period")}</strong>
-          <p>Closed ${closedDate} · ${trips.length} trip${trips.length === 1 ? "" : "s"} · ${fuel.length} fuel log${fuel.length === 1 ? "" : "s"}</p>
-        </div>
-        <span>${formatMoneyFor(totalFuelPaid, currency)} fuel</span>
-      </summary>
-
+  const lazyAttribute = isExpanded ? "" : ' data-lazy-closed-period="true"';
+  const expandedDetails = isExpanded ? `
       <div class="archive-actions button-row compact-actions">
         <button class="subtle-button compact-button" type="button" data-archive-csv="${escapeHtml(period.id)}">Export CSV</button>
         <button class="subtle-button compact-button" type="button" data-archive-audit-csv="${escapeHtml(period.id)}">Export change log CSV</button>
@@ -5883,6 +5878,20 @@ function renderClosedPeriodCard(period) {
         <summary>Change log (${auditLog.normalizeAuditEntries(period.auditLog).length})</summary>
         ${renderClosedPeriodAuditLog(period)}
       </details>
+  ` : `
+      <p class="entry-meta archive-lazy-note">Open this period to load final payments, trips, fuel logs, exports, and change log details.</p>
+  `;
+
+  return `
+    <details class="period-card archived-period-card" data-period-id="${escapeHtml(period.id)}"${lazyAttribute} ${isExpanded ? "open" : ""}>
+      <summary>
+        <div>
+          <strong>${escapeHtml(period.label || "Closed period")}</strong>
+          <p>Closed ${closedDate} · ${trips.length} trip${trips.length === 1 ? "" : "s"} · ${fuel.length} fuel log${fuel.length === 1 ? "" : "s"}</p>
+        </div>
+        <span>${formatMoneyFor(totalFuelPaid, currency)} fuel</span>
+      </summary>
+      ${expandedDetails}
     </details>
   `;
 }
