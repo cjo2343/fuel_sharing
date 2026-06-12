@@ -1250,6 +1250,24 @@ document.addEventListener("click", async (event) => {
   }
 
 
+  const viewArchiveButton = event.target.closest("[data-view-closed-period]");
+  if (viewArchiveButton) {
+    const periodId = viewArchiveButton.dataset.viewClosedPeriod;
+    if (periodId) {
+      expandedClosedPeriodIds.add(periodId);
+      closedPeriodFilters.query = "";
+      closedPeriodFilters.status = "all";
+      if (els.periodSearch) els.periodSearch.value = "";
+      if (els.periodStatusFilter) els.periodStatusFilter.value = "all";
+      setActiveView("history");
+      setTimeout(() => {
+        const card = document.querySelector(`.archived-period-card[data-period-id="${CSS.escape(periodId)}"]`);
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    }
+    return;
+  }
+
   const archiveCsvButton = event.target.closest("[data-archive-csv]");
   if (archiveCsvButton) {
     downloadClosedPeriodCsv(archiveCsvButton.dataset.archiveCsv);
@@ -1518,6 +1536,9 @@ function renderUnpaidPaymentCard(item) {
   const action = item.canMarkPaid
     ? `<button class="subtle-button compact-button" type="button" ${item.actionAttrs}>Mark paid</button>`
     : `<span class="request-note">Only ${escapeHtml(item.from)} or an admin can mark this paid.</span>`;
+  const archiveLink = item.scope === "closed" && item.periodId
+    ? `<button class="subtle-button compact-button secondary-link-button" type="button" data-view-closed-period="${escapeHtml(item.periodId)}">View closed period</button>`
+    : "";
   const badge = isMine ? "You owe" : isOwedToMe ? "Owed to you" : "Unpaid";
 
   return `
@@ -1535,6 +1556,7 @@ function renderUnpaidPaymentCard(item) {
       </div>
       <div class="unpaid-payment-actions">
         ${action}
+        ${archiveLink}
         <span class="request-note">${escapeHtml(helperText)}</span>
       </div>
     </article>

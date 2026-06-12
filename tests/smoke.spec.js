@@ -328,6 +328,8 @@ test("period-aware audit log clears current history and freezes closed-period hi
 
   await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");
   await page.locator('[data-view-tab="history"]').click();
+  await expect(page.locator("#periodsHeading")).toContainText("Closed periods");
+  await expect(page.locator(".archive-context-note")).toContainText("For unpaid payment follow-up, use the Payments tab.");
   await expect(page.locator("#periodList")).toContainText("Change log");
   await expect(page.locator("#periodArchiveSummary")).toContainText("Showing");
   await page.locator("#periodSearch").fill("Audit archive smoke trip");
@@ -350,6 +352,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#unpaidPaymentSummary")).toContainText("You owe");
   await expect(page.locator("#unpaidPaymentList")).toContainText("pays");
   await expect(page.locator("#unpaidPaymentList")).toContainText("Mark paid");
+  await expect(page.locator("#unpaidPaymentList")).toContainText("View closed period");
   await page.locator('[data-view-tab="history"]').click();
   const reopenedClosedPeriodCard = page.locator(".archived-period-card").first();
   await reopenedClosedPeriodCard.evaluate((card) => {

@@ -308,3 +308,11 @@ After deploying, open Payments and confirm requested unpaid payments from both c
 ### Closed-period payment persistence check
 
 After deployment, open **History → Closed periods**, mark a requested closed-period payment paid, refresh the app, and confirm the same payment still shows as paid. Also check the **Payments** tab to confirm it no longer appears as unpaid.
+
+
+### History archive and Payments UX
+
+- The Payments tab is the primary place for unpaid payment follow-up. It gathers requested-but-unpaid payments from both the current settlement and closed periods.
+- History -> Closed periods is an archive/reference area for completed settlement evidence, audit logs, exports, and dispute checks.
+- Closed-period payment cards can still be inspected from History, but unpaid follow-up should usually start from Payments.
+- Unpaid payment cards for closed periods include a “View closed period” shortcut back to the relevant archive card.

@@ -520,3 +520,11 @@ The Payments tab shows requested payments that are not marked paid yet, includin
 ### Closed-period payment status persistence
 
 Closed settlement amounts stay frozen, but payment status can change after close. The app preserves those post-close status changes across refreshes, including in Supabase/table-primary mode, by merging JSON-mirror payment status/audit updates back into closed-period snapshots when the app loads.
+
+
+### History archive and Payments UX
+
+- The Payments tab is the primary place for unpaid payment follow-up. It gathers requested-but-unpaid payments from both the current settlement and closed periods.
+- History -> Closed periods is an archive/reference area for completed settlement evidence, audit logs, exports, and dispute checks.
+- Closed-period payment cards can still be inspected from History, but unpaid follow-up should usually start from Payments.
+- Unpaid payment cards for closed periods include a “View closed period” shortcut back to the relevant archive card.

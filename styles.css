@@ -3006,3 +3006,18 @@ body.auth-locked #authPanel .text-button {
     text-align: left;
   }
 }
+
+
+/* History archive / Payments relationship notes */
+.archive-context-note {
+  margin-top: 0.35rem;
+  max-width: 56rem;
+}
+
+.secondary-link-button {
+  text-decoration: none;
+}
+
+.unpaid-payment-card .secondary-link-button {
+  white-space: nowrap;
+}
