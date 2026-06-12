@@ -115,7 +115,7 @@
         <section class="booking-month" aria-label="${escapeHtml(monthTitle)} bookings">
           <header class="booking-month-header">
             <h3>${escapeHtml(monthTitle)}</h3>
-            <p class="section-note compact-note">Use Book to pre-fill the booking form for that date.</p>
+            <p class="section-note compact-note">Use the Start and End fields above this calendar to choose a booking range while checking availability.</p>
           </header>
           <div class="booking-month-weekdays" aria-hidden="true">
             ${weekdayLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
@@ -131,7 +131,6 @@
       const status = items.length ? "booked" : "free";
       const label = date.toLocaleDateString("en-DK", { weekday: "long", day: "2-digit", month: "long" });
       const bookingText = items.length ? `${items.length} booking${items.length === 1 ? "" : "s"}` : "Free";
-      const actionLabel = items.length ? "Book another time" : "Book";
       return `
         <article class="booking-month-day ${status}${outsideMonth ? " outside-month" : ""}${isToday ? " today" : ""}" aria-label="${escapeHtml(`${label}: ${bookingText}`)}">
           <header>
@@ -142,7 +141,6 @@
             ${items.length ? items.slice(0, 2).map((booking) => renderBookingMonthChip(booking, key)).join("") : `<p class="empty-state compact-empty">Free</p>`}
             ${items.length > 2 ? `<p class="section-note compact-note">+${items.length - 2} more</p>` : ""}
           </div>
-          ${!outsideMonth || (date.getFullYear() === year && date.getMonth() === month) ? `<button class="subtle-button compact-button booking-month-book-button" type="button" data-book-from-calendar="${escapeHtml(key)}">${escapeHtml(actionLabel)}</button>` : ""}
         </article>
       `;
     }

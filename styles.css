@@ -3409,10 +3409,6 @@ body.auth-locked #authPanel .text-button {
   white-space: nowrap;
 }
 
-.booking-month-book-button {
-  width: 100%;
-  margin-top: auto;
-}
 
 @media (max-width: 860px) {
   .booking-month-weekdays,
@@ -3423,5 +3419,27 @@ body.auth-locked #authPanel .text-button {
 
   .booking-month-day {
     min-height: 140px;
+  }
+}
+
+.calendar-range-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: start;
+  margin: 12px 0 14px;
+}
+
+.calendar-range-picker .booking-date-hints {
+  grid-column: 1 / -1;
+}
+
+.calendar-range-picker label {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .calendar-range-picker {
+    grid-template-columns: 1fr;
   }
 }

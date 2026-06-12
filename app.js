@@ -495,13 +495,6 @@ if (els.bookingForm) {
 
 
 document.addEventListener("click", (event) => {
-  const bookFromCalendar = event.target.closest("[data-book-from-calendar]");
-  if (bookFromCalendar) {
-    event.preventDefault();
-    startBookingFromCalendarDate(bookFromCalendar.dataset.bookFromCalendar);
-    return;
-  }
-
   const dateHint = event.target.closest("[data-booking-date-hint]");
   if (!dateHint) return;
   event.preventDefault();

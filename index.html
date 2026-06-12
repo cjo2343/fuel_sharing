@@ -98,14 +98,6 @@
               Driver
               <select id="bookingMember" required></select>
             </label>
-            <label>
-              Start
-              <input id="bookingStart" type="datetime-local" required />
-            </label>
-            <label>
-              End
-              <input id="bookingEnd" type="datetime-local" required />
-            </label>
             <div class="booking-quick-actions wide" aria-label="Quick booking choices">
               <div>
                 <span>When</span>
@@ -126,7 +118,6 @@
               <input id="bookingPurpose" type="text" maxlength="90" placeholder="Optional" />
             </label>
             <div id="bookingAvailabilityPreview" class="booking-availability-preview empty-state wide" aria-live="polite">Choose a time to check availability.</div>
-            <div id="bookingDateHints" class="booking-date-hints wide" aria-label="Booked date overview"></div>
             <button id="bookingSubmit" class="action-button wide" type="submit">Add booking</button>
             <button id="cancelBookingEdit" class="subtle-button wide hidden" type="button">Cancel editing booking</button>
           </form>
@@ -172,6 +163,17 @@
               <button class="subtle-button compact-button" type="button" data-booking-calendar-view="week">Week</button>
               <button class="subtle-button compact-button" type="button" data-booking-calendar-view="month">Month</button>
             </div>
+          </div>
+          <div class="calendar-range-picker" aria-label="Choose booking dates from the calendar">
+            <label>
+              Start
+              <input id="bookingStart" form="bookingForm" type="datetime-local" required />
+            </label>
+            <label>
+              End
+              <input id="bookingEnd" form="bookingForm" type="datetime-local" required />
+            </label>
+            <div id="bookingDateHints" class="booking-date-hints" aria-label="Booked date overview"></div>
           </div>
           <div id="bookingConflictNotice" class="booking-conflict-notice hidden" aria-live="polite"></div>
           <div id="bookingCalendar" class="booking-calendar empty-state">No bookings yet.</div>
