@@ -661,15 +661,20 @@ def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
     }
 
 
-def reminder_job_authorized(handler):
+def reminder_job_auth_error(handler):
     secret = env_value("REMINDER_CRON_SECRET")
     if not secret:
-        return True
+        return 503, "Reminder cron secret is not configured"
+
     provided = handler.headers.get("X-Reminder-Secret", "")
     auth = handler.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         provided = provided or auth.split(" ", 1)[1].strip()
-    return hmac.compare_digest(provided, secret)
+
+    if not provided or not hmac.compare_digest(provided, secret):
+        return 401, "Invalid reminder cron secret"
+
+    return None
 
 
 def reminder_ledger_id():
@@ -1021,8 +1026,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"ok": True, "sent": sent, "failed": failed})
 
     def run_reminders(self):
-        if not reminder_job_authorized(self):
-            self.send_error(401, "Invalid reminder cron secret")
+        auth_error = reminder_job_auth_error(self)
+        if auth_error:
+            status, message = auth_error
+            self.send_error(status, message)
             return
         try:
             payload = read_request_body(self)

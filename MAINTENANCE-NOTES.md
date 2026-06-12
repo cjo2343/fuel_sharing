@@ -384,3 +384,16 @@ Set `REMINDER_DATA_SOURCE=local` only when intentionally testing against the loc
 
 Build `dedupe-reminder-notifications` keeps scheduled backend reminders as the single automatic notification sender for Supabase production ledgers. The app-open automatic reminder scan now remains a local JSON fallback, which prevents duplicate mobile/browser notifications when a cron run and an open app inspect the same requested unpaid payment. Backend reminder copy now matches the in-app reminder wording.
 
+
+
+### Secure scheduled reminder endpoint
+
+The `/api/run-reminders` endpoint now fails closed. `REMINDER_CRON_SECRET` must be configured for HTTP cron calls. If it is missing, the endpoint returns `503 Service Unavailable`; if the header/token is missing or wrong, it returns `401 Unauthorized`. Local CLI runs such as `npm run reminders:dry-run` continue to work without the HTTP secret.
+
+Required production headers for cron calls:
+
+```txt
+X-Reminder-Secret: <same value as REMINDER_CRON_SECRET>
+```
+
+Never commit the cron secret or Supabase service role key. Store them only in Render and the cron provider.

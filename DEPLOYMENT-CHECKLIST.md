@@ -358,3 +358,16 @@ For build `supabase-reminder-rpc`:
 ### Closed-period reminder timestamp check
 
 After deploying `closed-period-reminder-timestamps`, run `/api/run-reminders` once and check diagnostics. Legacy requested closed-period payments should no longer be skipped only as `missing-request-time` when the period has a usable closed timestamp.
+
+
+### Secure scheduled reminder endpoint
+
+The `/api/run-reminders` endpoint now fails closed. `REMINDER_CRON_SECRET` must be configured for HTTP cron calls. If it is missing, the endpoint returns `503 Service Unavailable`; if the header/token is missing or wrong, it returns `401 Unauthorized`. Local CLI runs such as `npm run reminders:dry-run` continue to work without the HTTP secret.
+
+Required production headers for cron calls:
+
+```txt
+X-Reminder-Secret: <same value as REMINDER_CRON_SECRET>
+```
+
+Never commit the cron secret or Supabase service role key. Store them only in Render and the cron provider.
