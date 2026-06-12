@@ -1765,7 +1765,7 @@ function buildPaymentCloseNoticeAuditInfo(settlement, pushResult = {}, paymentRe
   };
 }
 
-async function buildSettlementClosedUnpaidNoticeEntries(ledger) {
+async function buildSettlementClosedUnpaidNoticeEntries(ledger, period) {
   const requestedPayments = (ledger?.settlements || [])
     .map((settlement) => ({ settlement, key: settlementKey(settlement) }))
     .filter(({ key }) => normalizePaymentStatus(state.paymentStatuses[key]) === "requested");
@@ -1774,8 +1774,9 @@ async function buildSettlementClosedUnpaidNoticeEntries(ledger) {
 
   const entries = [];
   for (const { settlement, key } of requestedPayments) {
-    const paymentRef = createPaymentRef({ scope: "current", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
-    const pushResult = await sendPaymentCloseNoticePush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => {
+    const closedKey = settlementKeyForPeriod({ ...settlement, paymentKey: key }, period?.id || "closed");
+    const paymentRef = createPaymentRef({ scope: "closed", key: closedKey, from: settlement.from, to: settlement.to, amount: settlement.amount });
+    const pushResult = await sendPaymentCloseNoticePush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef, { scope: "closed", periodId: period?.id || "" }) }).catch((error) => {
       console.warn("Settlement-close unpaid payment notification failed", error);
       return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
     });
@@ -1940,10 +1941,15 @@ function paymentRefEquals(itemOrRef, rawRef) {
   return normalizePaymentRefValue(left) === normalizePaymentRefValue(rawRef);
 }
 
-function makePaymentDeepLink(paymentRef) {
+function makePaymentDeepLink(paymentRef, options = {}) {
   const compact = normalizePaymentRefValue(paymentRef).replace(/^#/, "");
   const path = `${window.location.origin}${window.location.pathname}`;
-  return compact ? `${path}#payment=${encodeURIComponent(compact)}` : path;
+  if (!compact) return path;
+  const params = new URLSearchParams();
+  params.set("payment", compact);
+  if (options.scope) params.set("scope", options.scope);
+  if (options.periodId) params.set("period", options.periodId);
+  return `${path}#${params.toString()}`;
 }
 
 function renderUnpaidPaymentCard(item) {
@@ -3835,7 +3841,7 @@ async function closeCurrentPeriod(options = {}) {
     summary: `${period.label} · ${formatMoney(period.totalCost)}`,
     detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
   });
-  const unpaidCloseNoticeEntries = await buildSettlementClosedUnpaidNoticeEntries(ledger);
+  const unpaidCloseNoticeEntries = await buildSettlementClosedUnpaidNoticeEntries(ledger, period);
   period.auditLog = auditLog.normalizeAuditEntries([
     ...unpaidCloseNoticeEntries,
     closeAuditEntry,
@@ -4559,7 +4565,7 @@ async function sendPaymentReminder(button) {
   button.textContent = "Sending...";
 
   const paymentRef = createPaymentRef({ scope: "current", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
-  const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => {
+  const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef, { scope: "current" }) }).catch((error) => {
     console.warn("Payment reminder notification failed", error);
     return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
   });
@@ -4613,7 +4619,7 @@ async function sendClosedPaymentReminder(button) {
   button.textContent = "Sending...";
 
   const paymentRef = createPaymentRef({ scope: "closed", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
-  const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => {
+  const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef, { scope: "closed", periodId: period?.id || "" }) }).catch((error) => {
     console.warn("Closed payment reminder notification failed", error);
     return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
   });
@@ -4796,7 +4802,7 @@ async function runAutomaticPaymentReminders() {
     const due = getPaymentReminderDueInfo(state.auditLog, key, settings, now);
     if (!due.due) continue;
     const paymentRef = createPaymentRef({ scope: "current", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
-    const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
+    const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef, { scope: "current" }) }).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
     const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult, paymentRef);
     addAuditEntry({
       type: "payment_reminder_sent",
@@ -4819,7 +4825,7 @@ async function runAutomaticPaymentReminders() {
       const due = getPaymentReminderDueInfo(period.auditLog, key, settings, now, fallbackRequestedAt);
       if (!due.due) continue;
       const paymentRef = createPaymentRef({ scope: "closed", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
-      const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
+      const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef, { scope: "closed", periodId: period?.id || "" }) }).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
       const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult, paymentRef);
       period.auditLog = auditLog.normalizeAuditEntries([
         makeAuditEntry({
@@ -6004,13 +6010,32 @@ function handlePaymentDeepLink(options = {}) {
   if (!rawRef) return false;
   const normalizedRef = normalizePaymentRefValue(rawRef);
   const item = findPaymentItemByRef(normalizedRef);
-  setActivePaymentSection("all");
-  setActiveView("payments");
-  window.setTimeout(() => {
-    if (!scrollToPaymentRef(normalizedRef)) {
-      els.unpaidPaymentList?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, 0);
+
+  if (item?.scope === "closed") {
+    setActiveHistorySection("archive");
+    setActiveView("history");
+    window.setTimeout(() => {
+      if (!scrollToPaymentRef(normalizedRef)) {
+        document.querySelector("#closedPeriods")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  } else if (item?.scope === "current") {
+    setActiveView("settlement");
+    window.setTimeout(() => {
+      if (!scrollToPaymentRef(normalizedRef)) {
+        els.settlements?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  } else {
+    setActivePaymentSection("all");
+    setActiveView("payments");
+    window.setTimeout(() => {
+      if (!scrollToPaymentRef(normalizedRef)) {
+        els.unpaidPaymentList?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  }
+
   if (!options.silent && !item) {
     showAppMessage(`Could not find unpaid payment ${normalizedRef}. It may already be paid, archived differently, or not synced on this device yet.`, "info", { timeoutMs: 7000 });
   }
@@ -7902,7 +7927,7 @@ async function sendSettlementPush(settlement, metadata = {}) {
     formatMoney,
     settlementKey,
     paymentRef,
-    paymentUrl: makePaymentDeepLink(paymentRef)
+    paymentUrl: makePaymentDeepLink(paymentRef, { scope: "current" })
   });
 }
 
@@ -7961,7 +7986,7 @@ async function sendPaymentReminderPush(settlement, metadata = {}) {
     formatMoney,
     settlementKey,
     paymentRef,
-    paymentUrl: metadata.url || makePaymentDeepLink(paymentRef)
+    paymentUrl: metadata.url || makePaymentDeepLink(paymentRef, { scope: "current" })
   });
 }
 
@@ -7978,7 +8003,7 @@ async function sendPaymentCloseNoticePush(settlement, metadata = {}) {
     targetEmail: profile.email,
     title: `Settlement closed, payment still unpaid ${paymentRef}`.trim(),
     body: `${paymentRef} · ${settlement.to} closed the settlement while ${formatMoney(settlement.amount)} is still requested from you.`,
-    url: metadata.url || makePaymentDeepLink(paymentRef),
+    url: metadata.url || makePaymentDeepLink(paymentRef, { scope: "closed" }),
     tag: `${settlementKey(settlement)}:closed-unpaid:${paymentRef}`
   });
 }

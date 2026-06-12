@@ -424,6 +424,41 @@ def payment_reminder_due_info(entries, payment_key, settings, now_ts=None, fallb
     }
 
 
+def create_backend_stable_hash(value):
+    text = str(value or "payment")
+    hash_value = 2166136261
+    for char in text:
+        hash_value ^= ord(char)
+        hash_value = (hash_value * 16777619) & 0xFFFFFFFF
+    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if hash_value == 0:
+        encoded = "0"
+    else:
+        encoded = ""
+        current = hash_value
+        while current:
+            current, remainder = divmod(current, 36)
+            encoded = alphabet[remainder] + encoded
+    return encoded.rjust(6, "0")[:6]
+
+
+def create_backend_payment_ref(scope, payment_key, settlement):
+    raw = f"{scope or 'payment'}:{payment_key or ''}:{settlement.get('from') or ''}:{settlement.get('to') or ''}:{settlement.get('amount') or 0}"
+    return f"#P{create_backend_stable_hash(raw)}"
+
+
+def make_backend_payment_url(payment_ref, scope="", period_id=""):
+    compact = str(payment_ref or "").strip().lstrip("#")
+    if not compact:
+        return "/"
+    params = {"payment": compact}
+    if scope:
+        params["scope"] = scope
+    if period_id:
+        params["period"] = period_id
+    return "/#" + urllib.parse.urlencode(params)
+
+
 def member_email(state, member_name):
     profiles = state.get("memberProfiles") if isinstance(state.get("memberProfiles"), dict) else {}
     profile = profiles.get(str(member_name or ""), {})
@@ -434,7 +469,7 @@ def push_unavailable(reason):
     return {"attempted": False, "sent": 0, "failed": 0, "reason": reason}
 
 
-def send_backend_payment_reminder_push(state, settlement):
+def send_backend_payment_reminder_push(state, settlement, payment_ref="", scope="current", period_id=""):
     target_email = member_email(state, settlement.get("from"))
     if not target_email:
         return push_unavailable("missing-payer-email")
@@ -454,8 +489,9 @@ def send_backend_payment_reminder_push(state, settlement):
         return {"attempted": True, "sent": 0, "failed": 1, "reason": f"subscription-lookup-failed:{type(error).__name__}"}
 
     amount_text = format_backend_money(settlement.get("amount"), settlement.get("currency") or state.get("currency") or "DKK")
-    title = "Fuel Ledger payment reminder"
-    body = f"{settlement.get('to', 'Someone')} reminded you to pay {amount_text} for shared car fuel."
+    payment_ref = str(payment_ref or "").strip()
+    title = f"Payment reminder {payment_ref}".strip()
+    body = f"{payment_ref + ' · ' if payment_ref else ''}{settlement.get('to', 'Someone')} reminded you to pay {amount_text} for shared car fuel."
     sent = 0
     failed = 0
     for row in subscriptions:
@@ -465,7 +501,7 @@ def send_backend_payment_reminder_push(state, settlement):
         try:
             webpush(
                 subscription_info=subscription,
-                data=json.dumps({"title": title, "body": body, "url": "/#payments", "tag": f"fuel-ledger:payment:{settlement.get('from')}:{settlement.get('to')}:reminder"}),
+                data=json.dumps({"title": title, "body": body, "url": make_backend_payment_url(payment_ref, scope, period_id), "tag": f"fuel-ledger:payment:{settlement.get('from')}:{settlement.get('to')}:{payment_ref}:reminder"}),
                 vapid_private_key=env_value("VAPID_PRIVATE_KEY"),
                 vapid_claims={"sub": env_value("VAPID_SUBJECT", "mailto:notifications@fuel-ledger.local")},
             )
@@ -488,7 +524,8 @@ def send_backend_payment_reminder_push(state, settlement):
 def build_backend_reminder_audit_entry(state, payment_key, settlement, due_info, scope="current", period_id=""):
     currency = settlement.get("currency") or state.get("currency") or "DKK"
     amount_text = format_backend_money(settlement.get("amount"), currency)
-    push_result = send_backend_payment_reminder_push(state, settlement)
+    payment_ref = create_backend_payment_ref(scope, payment_key, settlement)
+    push_result = send_backend_payment_reminder_push(state, settlement, payment_ref, scope, period_id)
     sent = int(push_result.get("sent") or 0)
     if sent > 0:
         delivery_text = f"Mobile notification sent to {sent} device{'s' if sent != 1 else ''}"
@@ -509,6 +546,8 @@ def build_backend_reminder_audit_entry(state, payment_key, settlement, due_info,
         "automatic": True,
         "backendScheduled": True,
         "reminderCount": int(due_info.get("reminderCount") or 0) + 1,
+        "paymentRef": payment_ref,
+        "paymentUrl": make_backend_payment_url(payment_ref, scope, period_id),
     }
     if period_id:
         metadata["periodId"] = period_id
@@ -517,8 +556,8 @@ def build_backend_reminder_audit_entry(state, payment_key, settlement, due_info,
         "type": "payment_reminder_sent",
         "entityType": "payment",
         "entityId": payment_key,
-        "summary": f"{settlement.get('to') or 'Someone'} reminded {settlement.get('from') or 'someone'} · {amount_text}",
-        "detail": f"{settlement.get('from') or 'Someone'} pays {settlement.get('to') or 'someone'} · {amount_text} · {delivery_text} · {detail_suffix}",
+        "summary": f"{payment_ref} · {settlement.get('to') or 'Someone'} reminded {settlement.get('from') or 'someone'} · {amount_text}",
+        "detail": f"{payment_ref} · {settlement.get('from') or 'Someone'} pays {settlement.get('to') or 'someone'} · {amount_text} · {delivery_text} · {detail_suffix}",
         "metadata": metadata,
     })
 
