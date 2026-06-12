@@ -303,3 +303,8 @@ After deploying, open Payments and confirm requested unpaid payments from both c
 
 ### Closed-period payment card check
 - In History → Closed periods, verify the final payment card reads cleanly, amount/status are aligned, and the receiver or payer can mark a requested closed-period payment as paid.
+
+
+### Closed-period payment persistence check
+
+After deployment, open **History → Closed periods**, mark a requested closed-period payment paid, refresh the app, and confirm the same payment still shows as paid. Also check the **Payments** tab to confirm it no longer appears as unpaid.

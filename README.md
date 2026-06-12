@@ -515,3 +515,8 @@ Closed-period final payment cards use a stacked layout with payer/receiver, amou
 ### Unpaid payments dashboard
 
 The Payments tab shows requested payments that are not marked paid yet, including payments from closed settlement periods. This gives members a single place to see what they owe and mark eligible payments as paid without opening each historical settlement.
+
+
+### Closed-period payment status persistence
+
+Closed settlement amounts stay frozen, but payment status can change after close. The app preserves those post-close status changes across refreshes, including in Supabase/table-primary mode, by merging JSON-mirror payment status/audit updates back into closed-period snapshots when the app loads.

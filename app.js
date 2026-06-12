@@ -7144,9 +7144,14 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     };
   });
 
-  const closedPeriodsFromTables = periods
+  const closedPeriodSnapshotsFromTables = periods
     .filter((period) => period.status === "closed" && period.snapshot_json)
     .map((period) => period.snapshot_json);
+
+  const closedPeriodsFromTables = mergeClosedPeriodPaymentState(
+    closedPeriodSnapshotsFromTables,
+    jsonFallbackState.closedPeriods
+  );
 
   const paymentStatusesFromTables = {};
   const activeRequests = tableRequests.filter((request) => normalizePaymentStatus(request.status) !== "cancelled" && (!openPeriod || request.period_id === openPeriod.id));
@@ -7176,6 +7181,49 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     currentPeriodId: openPeriod.id,
     paymentStatuses: paymentStatusesFromTables,
     closedPeriods: closedPeriodsFromTables.length ? closedPeriodsFromTables : jsonFallbackState.closedPeriods
+  });
+}
+
+
+function mergeClosedPeriodPaymentState(tablePeriods, jsonPeriods) {
+  const normalizedTablePeriods = Array.isArray(tablePeriods) ? tablePeriods : [];
+  const normalizedJsonPeriods = Array.isArray(jsonPeriods) ? jsonPeriods : [];
+  if (!normalizedTablePeriods.length) return normalizedJsonPeriods;
+  if (!normalizedJsonPeriods.length) return normalizedTablePeriods;
+
+  const jsonById = new Map(normalizedJsonPeriods
+    .filter((period) => period && period.id)
+    .map((period) => [period.id, period]));
+
+  return normalizedTablePeriods.map((tablePeriod) => {
+    const jsonPeriod = jsonById.get(tablePeriod?.id);
+    if (!jsonPeriod) return tablePeriod;
+
+    const jsonSettlements = Array.isArray(jsonPeriod.settlements) ? jsonPeriod.settlements : [];
+    const jsonSettlementByKey = new Map(jsonSettlements.map((settlement, index) => [
+      settlementKeyForPeriod(settlement, jsonPeriod.id || tablePeriod.id || `closed-${index}`),
+      settlement
+    ]));
+
+    const mergedSettlements = Array.isArray(tablePeriod.settlements)
+      ? tablePeriod.settlements.map((settlement, index) => {
+          const key = settlementKeyForPeriod(settlement, tablePeriod.id || `closed-${index}`);
+          const jsonSettlement = jsonSettlementByKey.get(key) || jsonSettlements[index];
+          if (!jsonSettlement) return settlement;
+          return {
+            ...settlement,
+            status: normalizePaymentStatus(jsonSettlement.status || settlement.status)
+          };
+        })
+      : [];
+
+    return {
+      ...tablePeriod,
+      settlements: mergedSettlements,
+      auditLog: Array.isArray(jsonPeriod.auditLog) && jsonPeriod.auditLog.length
+        ? auditLog.normalizeAuditEntries(jsonPeriod.auditLog)
+        : tablePeriod.auditLog
+    };
   });
 }
 

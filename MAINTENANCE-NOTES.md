@@ -314,3 +314,8 @@ Added a Payments tab with an unpaid payments dashboard. It collects requested-bu
 ### Closed-period payment card permission/layout fix
 - Closed-period payment cards now use a wider, responsive layout so labels such as “Testman 5 pays Christian” do not wrap word-by-word.
 - Closed-period Mark paid permissions now allow the payer, receiver, or an admin to mark a closed settlement payment as paid.
+
+
+### Closed-period payment status persistence
+
+Build `closed-payment-history-persistence` keeps closed-period payment status updates robust in Supabase/table-primary mode. Closed settlement snapshots still come from normalized settlement-period snapshots, but post-close payment status changes and audit entries are stored in the JSON mirror. When loading from normalized tables, the app now merges closed-period payment statuses and frozen audit logs from the JSON mirror back into the table snapshots. This prevents a closed-period payment marked paid from reverting to requested after refresh.
