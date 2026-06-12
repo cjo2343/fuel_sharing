@@ -1733,6 +1733,65 @@ function buildPaymentReminderAuditInfo(settlement, pushResult = {}, paymentRef =
   };
 }
 
+function buildPaymentCloseNoticeAuditInfo(settlement, pushResult = {}, paymentRef = "") {
+  const from = settlement?.from || "Someone";
+  const to = settlement?.to || "someone";
+  const amount = Number(settlement?.amount || 0);
+  const currency = settlement?.currency || state.currency || "DKK";
+  const amountText = formatMoneyFor(amount, currency);
+  const sent = Number(pushResult.sent || 0);
+  const failed = Number(pushResult.failed || 0);
+  const deliveryText = sent > 0
+    ? `Mobile notification sent to ${sent} device${sent === 1 ? "" : "s"}`
+    : pushResult.attempted
+      ? "No active mobile notification subscription was reached"
+      : "Close notice recorded in the app; mobile notification was not available";
+  const refText = normalizePaymentRefValue(paymentRef || pushResult.paymentRef || "");
+  return {
+    summary: `${refText ? `${refText} · ` : ""}${from} still owes ${to} · ${amountText}`,
+    detail: `${refText ? `${refText} · ` : ""}${from} pays ${to} · ${amountText} · Settlement closed while payment was still requested · ${deliveryText}`,
+    metadata: {
+      paymentRef: refText,
+      from,
+      to,
+      amount,
+      currency,
+      closeNoticeSent: sent,
+      closeNoticeFailed: failed,
+      closeNoticeAttempted: Boolean(pushResult.attempted),
+      closeNoticeReason: pushResult.reason || "",
+      closeNotice: true
+    }
+  };
+}
+
+async function buildSettlementClosedUnpaidNoticeEntries(ledger) {
+  const requestedPayments = (ledger?.settlements || [])
+    .map((settlement) => ({ settlement, key: settlementKey(settlement) }))
+    .filter(({ key }) => normalizePaymentStatus(state.paymentStatuses[key]) === "requested");
+
+  if (!requestedPayments.length) return [];
+
+  const entries = [];
+  for (const { settlement, key } of requestedPayments) {
+    const paymentRef = createPaymentRef({ scope: "current", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
+    const pushResult = await sendPaymentCloseNoticePush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => {
+      console.warn("Settlement-close unpaid payment notification failed", error);
+      return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
+    });
+    const auditInfo = buildPaymentCloseNoticeAuditInfo(settlement, pushResult, paymentRef);
+    entries.push(makeAuditEntry({
+      type: "payment_close_notice_sent",
+      entityType: "payment",
+      entityId: key,
+      summary: auditInfo.summary,
+      detail: auditInfo.detail,
+      metadata: auditInfo.metadata
+    }));
+  }
+  return entries;
+}
+
 function makeAuditEntry(options) {
   return auditLog.createEntry({
     actor: currentUser || currentSession?.user?.email || "Unknown",
@@ -3776,7 +3835,12 @@ async function closeCurrentPeriod(options = {}) {
     summary: `${period.label} · ${formatMoney(period.totalCost)}`,
     detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
   });
-  period.auditLog = auditLog.normalizeAuditEntries([closeAuditEntry, ...getSettlementAuditEntries(state.auditLog)]);
+  const unpaidCloseNoticeEntries = await buildSettlementClosedUnpaidNoticeEntries(ledger);
+  period.auditLog = auditLog.normalizeAuditEntries([
+    ...unpaidCloseNoticeEntries,
+    closeAuditEntry,
+    ...getSettlementAuditEntries(state.auditLog)
+  ]);
 
   if (!(await closeNormalizedPeriodFirst(period))) {
     return;
@@ -7898,6 +7962,24 @@ async function sendPaymentReminderPush(settlement, metadata = {}) {
     settlementKey,
     paymentRef,
     paymentUrl: metadata.url || makePaymentDeepLink(paymentRef)
+  });
+}
+
+async function sendPaymentCloseNoticePush(settlement, metadata = {}) {
+  if (!notifications.sendPushNotification || !supabaseClient || !settlement) {
+    return { attempted: false, sent: 0, failed: 0, reason: "unavailable" };
+  }
+  const paymentRef = normalizePaymentRefValue(metadata.paymentRef || createPaymentRef({ scope: "current", key: settlementKey(settlement || {}), from: settlement?.from, to: settlement?.to, amount: settlement?.amount }));
+  const profile = getMemberProfile(settlement.from);
+  if (!profile.email) return { attempted: false, sent: 0, failed: 0, reason: "missing-payer-email" };
+  return notifications.sendPushNotification({
+    supabaseClient,
+    sendPushUrl,
+    targetEmail: profile.email,
+    title: `Settlement closed, payment still unpaid ${paymentRef}`.trim(),
+    body: `${paymentRef} · ${settlement.to} closed the settlement while ${formatMoney(settlement.amount)} is still requested from you.`,
+    url: metadata.url || makePaymentDeepLink(paymentRef),
+    tag: `${settlementKey(settlement)}:closed-unpaid:${paymentRef}`
   });
 }
 

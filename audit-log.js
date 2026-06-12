@@ -53,6 +53,7 @@
       payment_marked_paid: "Payment marked paid",
       payment_reopened: "Payment reopened",
       payment_reminder_sent: "Payment reminder sent",
+      payment_close_notice_sent: "Settlement closed with unpaid payment",
       settlement_closed: "Settlement closed",
       settlement_reopened: "Settlement reopened",
       settlement_reset: "Settlement reset"
