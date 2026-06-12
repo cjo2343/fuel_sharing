@@ -2209,7 +2209,7 @@ function buildFuelIntelligence(ledger) {
   if (fuelLogCount === 0) warnings.push("Add fuel receipts to learn real fuel cost.");
   if (fuelLogCount > 0 && logsWithLiters === 0) warnings.push("Add liters on fuel receipts to learn DKK/L and L/100 km.");
   if (hasHistoricalConsumption && !consumptionLooksRealistic) {
-    warnings.push(`Historical consumption looks unusual: ${formatNumber(stats.litersPer100Km)} L/100 km, so Plan trip uses the car setting (${formatNumber(fallbackConsumption)} L/100 km) instead.`);
+    warnings.push(`Historical consumption looks unusual: ${formatNumber(stats.litersPer100Km)} L/100 km, so the booking estimate uses the car setting (${formatNumber(fallbackConsumption)} L/100 km) instead.`);
   }
   return {
     stats,
@@ -3050,7 +3050,7 @@ function buildSmartPredictions(ledger) {
   const monthlySignal = intel.consumptionLooksRealistic ? getLatestMonthlySignal() : null;
   const historicalQuality = intel.consumptionLooksRealistic && intel.confidence !== "Low" ? "Good" : intel.confidence === "Low" ? "Limited" : "Needs cleanup";
   const planningConfidence = intel.canUseHistoricalForPlanning ? intel.confidence : latestFuelPrice?.price || intel.effectivePrice ? "Medium" : "Low";
-  const planningNote = distance > 0 ? "Using your Plan trip distance." : "Using a 100 km reference because no planned trip distance is entered.";
+  const planningNote = distance > 0 ? "Using your booking estimate distance." : "Using a 100 km reference because no planned booking distance is entered.";
   return { intel, health, planDistance, participants, planEstimate, monthlySignal, historicalQuality, planningConfidence, planningNote };
 }
 
