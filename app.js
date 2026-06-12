@@ -206,6 +206,8 @@ const viewStorageKey = "fuel-ledger-active-view";
 let activeView = localStorage.getItem(viewStorageKey) || "log";
 const bookingCalendarViewStorageKey = "fuel-ledger-booking-calendar-view";
 let bookingCalendarView = localStorage.getItem(bookingCalendarViewStorageKey) || "list";
+const historySectionStorageKey = "fuel-ledger-history-section";
+let activeHistorySection = localStorage.getItem(historySectionStorageKey) || "booking";
 
 const els = {
   totalKm: document.querySelector("#totalKm"),
@@ -214,6 +216,8 @@ const els = {
   totalPaid: document.querySelector("#totalPaid"),
   sectionTabs: Array.from(document.querySelectorAll("[data-view-tab]")),
   viewSections: Array.from(document.querySelectorAll("[data-view]")),
+  historySectionTabs: Array.from(document.querySelectorAll("[data-history-section-tab]")),
+  historySections: Array.from(document.querySelectorAll("[data-history-section]")),
   authPanel: document.querySelector("#authPanel"),
   loginForm: document.querySelector("#loginForm"),
   otpForm: document.querySelector("#otpForm"),
@@ -836,6 +840,32 @@ els.sectionTabs.forEach((button) => {
   });
 });
 
+els.historySectionTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    setActiveHistorySection(button.dataset.historySectionTab || "booking");
+  });
+});
+
+function setActiveHistorySection(section) {
+  activeHistorySection = ["booking", "settlement", "archive"].includes(section) ? section : "booking";
+  localStorage.setItem(historySectionStorageKey, activeHistorySection);
+  renderHistorySections();
+}
+
+function renderHistorySections() {
+  const allowedSections = new Set(["booking", "settlement", "archive"]);
+  if (!allowedSections.has(activeHistorySection)) activeHistorySection = "booking";
+  els.historySectionTabs.forEach((button) => {
+    const section = button.dataset.historySectionTab || "booking";
+    const isActive = section === activeHistorySection;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  els.historySections.forEach((sectionPanel) => {
+    sectionPanel.classList.toggle("hidden", sectionPanel.dataset.historySection !== activeHistorySection);
+  });
+}
+
 function setActiveView(view) {
   const requestedView = view || "log";
   activeView = requestedView === "admin" && !canManageSettings() ? "log" : requestedView;
@@ -845,6 +875,7 @@ function setActiveView(view) {
 
 function renderSectionNavigation() {
   if (activeView === "admin" && !canManageSettings()) activeView = "log";
+  renderHistorySections();
   els.sectionTabs.forEach((button) => {
     const view = button.dataset.viewTab;
     const isAdminTab = view === "admin";
@@ -1448,6 +1479,7 @@ document.addEventListener("click", async (event) => {
       closedPeriodFilters.status = "all";
       if (els.periodSearch) els.periodSearch.value = "";
       if (els.periodStatusFilter) els.periodStatusFilter.value = "all";
+      setActiveHistorySection("archive");
       setActiveView("history");
       setTimeout(() => {
         const card = document.querySelector(`.archived-period-card[data-period-id="${CSS.escape(periodId)}"]`);
@@ -3620,6 +3652,7 @@ async function closeCurrentPeriod(options = {}) {
   state.lastOdometer = getLatestOdometer();
   saveState();
   setDefaultDates();
+  setActiveHistorySection("archive");
   render();
   showAppMessage("Settlement period closed. A fresh period is ready.");
 }

@@ -450,35 +450,86 @@
         </section>
 
 
-        <section class="panel wide-panel" data-view="history" aria-labelledby="historyHeading">
+        <section class="panel wide-panel history-panel" data-view="history" aria-labelledby="historyHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">History</p>
-              <h2 id="historyHeading">Entries</h2>
+              <h2 id="historyHeading">Activity & archives</h2>
             </div>
             <div class="admin-history-actions">
               <button id="resetPeriod" class="danger-button" type="button">Reset current period</button>
               <button id="resetData" class="danger-button" type="button">Reset all</button>
             </div>
           </div>
-          <p class="section-note">To correct a current-period entry, use Edit below. Members can edit their own current trips/fuel logs; admins can edit all current entries. Closed archives stay locked.</p>
-          <div class="history-grid">
-            <div>
-              <h3>Trips</h3>
-              <div id="tripList" class="entry-list"></div>
-            </div>
-            <div>
-              <h3>Fuel</h3>
-              <div id="fuelList" class="entry-list"></div>
-            </div>
+          <p class="section-note">Switch between booking activity, current settlement audit, and closed settlement archives without leaving History.</p>
+          <div class="history-section-tabs" role="tablist" aria-label="History sections">
+            <button class="subtle-button compact-button active" type="button" data-history-section-tab="booking" role="tab" aria-controls="bookingHistorySection">Booking activity</button>
+            <button class="subtle-button compact-button" type="button" data-history-section-tab="settlement" role="tab" aria-controls="settlementHistorySection">Settlement audit</button>
+            <button class="subtle-button compact-button" type="button" data-history-section-tab="archive" role="tab" aria-controls="archiveHistorySection">Closed periods</button>
           </div>
-          <div class="audit-log-panel">
-            <h3>Change log</h3>
-            <p class="section-note">Important money-related changes are recorded locally and mirrored with the ledger backup so members can review who changed what.</p>
-            <div id="auditLog" class="audit-log-list"></div>
-          </div>
-        </section>
 
+          <section id="bookingHistorySection" class="history-section" data-history-section="booking" role="tabpanel" aria-labelledby="bookingHistoryTab">
+            <h3>Booking activity</h3>
+            <p class="section-note">Calendar changes live here separately from settlement history. When a booking becomes a trip or fuel log, it appears in the settlement history with the same log reference.</p>
+            <div id="bookingActivityLog" class="audit-log-list"></div>
+          </section>
+
+          <section id="settlementHistorySection" class="history-section hidden" data-history-section="settlement" role="tabpanel">
+            <p class="section-note">To correct a current-period entry, use Edit below. Members can edit their own current trips/fuel logs; admins can edit all current entries. Closed archives stay locked.</p>
+            <div class="history-grid">
+              <div>
+                <h3>Trips</h3>
+                <div id="tripList" class="entry-list"></div>
+              </div>
+              <div>
+                <h3>Fuel</h3>
+                <div id="fuelList" class="entry-list"></div>
+              </div>
+            </div>
+            <div class="audit-log-panel">
+              <h3>Settlement change log</h3>
+              <p class="section-note">Important money-related changes are recorded locally and mirrored with the ledger backup so members can review who changed what.</p>
+              <div id="auditLog" class="audit-log-list"></div>
+            </div>
+          </section>
+
+          <section id="archiveHistorySection" class="history-section hidden" data-history-section="archive" role="tabpanel">
+            <div class="panel-header compact-panel-header">
+              <div>
+                <p class="eyebrow">Archive</p>
+                <h3 id="periodsHeading">Closed periods</h3>
+                <p class="section-note archive-context-note">Archive and evidence for completed settlements. For unpaid payment follow-up, use the Payments tab.</p>
+              </div>
+            </div>
+            <div class="archive-toolbar" aria-label="Completed period search and filters">
+              <label>
+                <span>Search archive</span>
+                <input id="periodSearch" type="search" placeholder="Person, note, station, payment…" autocomplete="off" />
+              </label>
+              <label>
+                <span>Payment status</span>
+                <select id="periodStatusFilter">
+                  <option value="all">All statuses</option>
+                  <option value="open">Open at close</option>
+                  <option value="requested">Requested</option>
+                  <option value="paid">Paid</option>
+                </select>
+              </label>
+              <label>
+                <span>Sort</span>
+                <select id="periodSort">
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="fuel-desc">Fuel total high to low</option>
+                  <option value="trips-desc">Most trips first</option>
+                </select>
+              </label>
+              <button id="clearPeriodFilters" class="subtle-button compact-button" type="button">Clear</button>
+            </div>
+            <p id="periodArchiveSummary" class="section-note archive-summary" aria-live="polite"></p>
+            <div id="periodList" class="period-list"></div>
+          </section>
+        </section>
 
         <section class="panel wide-panel build-info-panel" data-view="about" aria-labelledby="aboutBuildInfoHeading">
           <div class="panel-header">
@@ -623,42 +674,6 @@
           <div id="databaseDiagnosticsList" class="database-diagnostics-list"></div>
         </section>
 
-        <section class="panel wide-panel" data-view="history" aria-labelledby="periodsHeading">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Archive</p>
-              <h2 id="periodsHeading">Closed periods</h2>
-              <p class="section-note archive-context-note">Archive and evidence for completed settlements. For unpaid payment follow-up, use the Payments tab.</p>
-            </div>
-          </div>
-          <div class="archive-toolbar" aria-label="Completed period search and filters">
-            <label>
-              <span>Search archive</span>
-              <input id="periodSearch" type="search" placeholder="Person, note, station, payment…" autocomplete="off" />
-            </label>
-            <label>
-              <span>Payment status</span>
-              <select id="periodStatusFilter">
-                <option value="all">All statuses</option>
-                <option value="open">Open at close</option>
-                <option value="requested">Requested</option>
-                <option value="paid">Paid</option>
-              </select>
-            </label>
-            <label>
-              <span>Sort</span>
-              <select id="periodSort">
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="fuel-desc">Fuel total high to low</option>
-                <option value="trips-desc">Most trips first</option>
-              </select>
-            </label>
-            <button id="clearPeriodFilters" class="subtle-button compact-button" type="button">Clear</button>
-          </div>
-          <p id="periodArchiveSummary" class="section-note archive-summary" aria-live="polite"></p>
-          <div id="periodList" class="period-list"></div>
-        </section>
       </main>
     </div>
 

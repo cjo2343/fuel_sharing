@@ -3500,3 +3500,30 @@ body.auth-locked #authPanel .text-button {
 .booking-log-context p {
   margin: 0.25rem 0;
 }
+
+/* Compact History sections */
+.history-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 18px;
+}
+
+.history-section-tabs .active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.history-section {
+  display: grid;
+  gap: 14px;
+}
+
+.history-section h3 {
+  margin: 0;
+}
+
+.compact-panel-header {
+  margin-bottom: 0;
+}
