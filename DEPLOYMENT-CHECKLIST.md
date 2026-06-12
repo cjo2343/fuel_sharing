@@ -316,3 +316,8 @@ After deployment, open **History → Closed periods**, mark a requested closed-p
 - History -> Closed periods is an archive/reference area for completed settlement evidence, audit logs, exports, and dispute checks.
 - Closed-period payment cards can still be inspected from History, but unpaid follow-up should usually start from Payments.
 - Unpaid payment cards for closed periods include a “View closed period” shortcut back to the relevant archive card.
+
+
+## Request-before-close check
+
+Before closing a period, verify that all settlement payments have been requested. The close button stays disabled while any calculated settlement payment is still open, but requested payments may remain unpaid after close.

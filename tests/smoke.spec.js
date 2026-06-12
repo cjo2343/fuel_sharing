@@ -330,6 +330,9 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await createBasicTripAndFuel(page, { note: "Audit archive smoke trip", fuelAmount: "222.22" });
   await expect(page.locator("#auditLog")).toContainText("Trip created");
   await expect(page.locator("#auditLog")).toContainText("Fuel log created");
+  await expect(page.locator("#settlementWarning")).toContainText("Request all settlement payments before closing this period.");
+  await expect(page.locator("#closePeriod")).toBeDisabled();
+  await expect(page.locator("#closePeriod")).toHaveAttribute("title", /Request all settlement payments before closing this period/);
 
   await requestAllOpenPayments(page);
   await expect(page.locator("#auditLog")).toContainText("Payment requested");

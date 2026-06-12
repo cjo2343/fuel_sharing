@@ -528,3 +528,8 @@ Closed settlement amounts stay frozen, but payment status can change after close
 - History -> Closed periods is an archive/reference area for completed settlement evidence, audit logs, exports, and dispute checks.
 - Closed-period payment cards can still be inspected from History, but unpaid follow-up should usually start from Payments.
 - Unpaid payment cards for closed periods include a “View closed period” shortcut back to the relevant archive card.
+
+
+### Request-before-close settlement rule
+
+Closing a settlement period now requires every calculated final payment to be requested first. Payments do not need to be marked paid before close; requested-but-unpaid payments remain visible in Payments and can be marked paid after the period is archived.

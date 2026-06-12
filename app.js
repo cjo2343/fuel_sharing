@@ -3205,7 +3205,7 @@ function renderSettlements(ledger) {
   const settlementProgress = getSettlementProgress(ledger);
   els.closePeriod.classList.toggle("hidden", !isAdminView);
   els.closePeriod.disabled = !isAdminView || (state.trips.length === 0 && state.fuel.length === 0) || settlementProgress.openCount > 0;
-  els.closePeriod.title = settlementProgress.openCount > 0 ? "Request all open final payments before closing this period." : "Close this settlement period and start a fresh one for new trips/fuel.";
+  els.closePeriod.title = settlementProgress.openCount > 0 ? "Request all settlement payments before closing this period." : "Close this settlement period and start a fresh one for new trips/fuel.";
 
   renderSettlementWarning(ledger);
   renderPeriodBreakdown(ledger);
@@ -3312,7 +3312,7 @@ async function closeCurrentPeriod(options = {}) {
   const ledger = calculateLedger();
   const settlementProgress = getSettlementProgress(ledger);
   if (settlementProgress.openCount > 0 && !options.allowOpenPayments) {
-    alert(`${settlementProgress.openCount} final payment${settlementProgress.openCount === 1 ? " is" : "s are"} still open. Request all final payments before closing this period.`);
+    alert(`Request all settlement payments before closing this period. ${settlementProgress.openCount} payment${settlementProgress.openCount === 1 ? " is" : "s are"} still not requested.`);
     return;
   }
 
@@ -3419,10 +3419,20 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
 
 function renderSettlementWarning(ledger) {
   const warnings = getFuelValidationWarnings(ledger);
+  const settlementProgress = getSettlementProgress(ledger);
+  const messages = [];
+
+  if (settlementProgress.openCount > 0) {
+    messages.push(`Request all settlement payments before closing this period. ${settlementProgress.openCount} payment${settlementProgress.openCount === 1 ? " is" : "s are"} still not requested.`);
+  }
 
   if (warnings.length > 0) {
+    messages.push(`Settlement check: ${warnings[0]}`);
+  }
+
+  if (messages.length > 0) {
     els.settlementWarning.classList.remove("hidden");
-    els.settlementWarning.textContent = `Settlement check: ${warnings[0]}`;
+    els.settlementWarning.textContent = messages.join(" ");
     return;
   }
 

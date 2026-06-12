@@ -42,3 +42,8 @@ order by is_active desc, role, name;
 ## Known remaining limitation
 
 `car_share_ledgers` is still a compatibility JSON state table. It is broader than the normalized table RLS because the current app still relies on it for shared state/backups. The safest long-term hardening step is to complete the move to normalized-table-primary reads/writes and then restrict or retire broad JSON updates.
+
+
+### Request-before-close settlement rule
+
+Closing a settlement period now requires every calculated final payment to be requested first. Payments do not need to be marked paid before close; requested-but-unpaid payments remain visible in Payments and can be marked paid after the period is archived.
