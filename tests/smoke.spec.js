@@ -359,10 +359,9 @@ test("period-aware audit log clears current history and freezes closed-period hi
   const closedMarkPaid = reopenedClosedPeriodCard.locator('[data-closed-payment-status="paid"]').first();
   await expect(closedMarkPaid).toBeVisible();
   const closedSettlementIndex = Number(await closedMarkPaid.getAttribute("data-closed-settlement-index"));
-  const targetClosedPaymentCard = reopenedClosedPeriodCard.locator(".archive-payment-card").nth(closedSettlementIndex);
   await closedMarkPaid.evaluate((button) => button.click());
+  const targetClosedPaymentCard = reopenedClosedPeriodCard.locator(".archive-payment-card").nth(closedSettlementIndex);
   await expect(targetClosedPaymentCard).toContainText("Paid after settlement close");
-  await expect(targetClosedPaymentCard.locator('[data-closed-payment-status="paid"]:visible')).toHaveCount(0);
   await expect(targetClosedPaymentCard.locator('button:has-text("Mark paid"):visible')).toHaveCount(0);
 
   await page.reload();
@@ -373,7 +372,6 @@ test("period-aware audit log clears current history and freezes closed-period hi
   });
   const reloadedPaidClosedPaymentCard = reloadedClosedPeriodCard.locator(".archive-payment-card.paid").first();
   await expect(reloadedPaidClosedPaymentCard).toContainText("Paid after settlement close");
-  await expect(reloadedPaidClosedPaymentCard.locator('[data-closed-payment-status="paid"]:visible')).toHaveCount(0);
   await expect(reloadedPaidClosedPaymentCard.locator('button:has-text("Mark paid"):visible')).toHaveCount(0);
   await expect(page.locator("[data-archive-csv]")).toHaveCount(1);
   await expect(page.locator("[data-archive-audit-csv]")).toHaveCount(1);

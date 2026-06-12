@@ -301,6 +301,5 @@ Closed-period final payment cards use a stacked layout with payer/receiver, amou
 
 After deploying, open Payments and confirm requested unpaid payments from both current and closed settlements appear there. Marking a closed-period payment paid should remove the visible Mark paid action, show the paid status, and persist after refresh.
 
-### Closed payment card layout check
-
-After deploying `closed-payment-card-layout`, open a completed period with an unpaid payment and verify the final-payment card is readable on desktop and mobile: the payer/receiver line should not wrap word-by-word, the amount/status should be grouped, and the `Mark paid` action should sit on a separate row.
+### Closed-period payment card check
+- In History → Closed periods, verify the final payment card reads cleanly, amount/status are aligned, and the receiver or payer can mark a requested closed-period payment as paid.

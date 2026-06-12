@@ -5911,6 +5911,7 @@ function renderPeriodSettlements(period) {
               : status === "requested"
                 ? `Waiting for ${settlement.from} to pay. Closing freezes the amount, but this payment can still be marked paid here.`
                 : `Not requested when this period was closed.`;
+            const permissionNote = `Only ${settlement.from}, ${settlement.to}, or an admin can mark this closed-period payment paid.`;
             return `
             <article class="archive-payment-card ${status}">
               <div class="archive-payment-header">
@@ -5929,7 +5930,7 @@ function renderPeriodSettlements(period) {
                   <span class="request-note">Updates only this payment status and the closed-period change log.</span>
                 </div>
               ` : ""}
-              ${status === "requested" && !canMarkPaid ? `<p class="request-note">Only ${escapeHtml(settlement.from)}, ${escapeHtml(settlement.to)}, or an admin can mark this closed-period payment paid.</p>` : ""}
+              ${status === "requested" && !canMarkPaid ? `<p class="request-note archive-payment-permission-note">${escapeHtml(permissionNote)}</p>` : ""}
             </article>
           `;
           }
@@ -6115,9 +6116,12 @@ function canManageSettlementRequest(settlement) {
 }
 
 function canMarkSettlementPaid(settlement) {
+  if (!settlement) return false;
   if (!supabaseClient) return true;
   const profile = getCurrentMemberProfile();
-  return Boolean(profile && settlement?.from === profile.name);
+  if (!profile) return false;
+  if (profile.role === "admin") return true;
+  return settlement.from === profile.name || settlement.to === profile.name;
 }
 
 function noMemberEmailsConfigured() {
