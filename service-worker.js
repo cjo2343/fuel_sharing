@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v47";
+const CACHE_NAME = "fuel-ledger-v48";
 const BUILD_LABEL = "scheduled-backend-reminders";
 const BUILD_UPDATED_AT = "2026-06-12T13:05:00+02:00";
 const CORE_ASSETS = [

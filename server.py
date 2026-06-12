@@ -363,9 +363,9 @@ def audit_entry_timestamp(entry):
 def reminder_settings(state):
     return {
         "enabled": state.get("paymentRemindersEnabled") is not False,
-        "afterDays": max(1, int(state.get("paymentReminderAfterDays") or 3)),
+        "afterDays": max(0, int(state.get("paymentReminderAfterDays") if state.get("paymentReminderAfterDays") is not None else 3)),
         "repeatDays": max(1, int(state.get("paymentReminderRepeatDays") or 3)),
-        "maxCount": max(0, int(state.get("paymentReminderMaxCount") if state.get("paymentReminderMaxCount") is not None else 3)),
+        "maxCount": max(1, int(state.get("paymentReminderMaxCount") if state.get("paymentReminderMaxCount") is not None else 3)),
     }
 
 

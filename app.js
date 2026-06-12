@@ -751,6 +751,13 @@ els.settingsForm.addEventListener("submit", (event) => {
   state.fuelPriceWarningMinDkkPerLiter = round(minFuelPriceWarning);
   state.fuelPriceWarningMaxDkkPerLiter = round(maxFuelPriceWarning);
   state.fuelWarningThreshold = Math.min(100, Math.max(1, Number(els.fuelWarningThreshold?.value) || defaults.fuelWarningThreshold));
+  state.paymentRemindersEnabled = Boolean(els.paymentRemindersEnabled?.checked);
+  const reminderAfterValue = Number(els.paymentReminderAfterDays?.value);
+  const reminderRepeatValue = Number(els.paymentReminderRepeatDays?.value);
+  const reminderMaxValue = Number(els.paymentReminderMaxCount?.value);
+  state.paymentReminderAfterDays = Math.min(90, Math.max(0, Number.isFinite(reminderAfterValue) ? reminderAfterValue : defaults.paymentReminderAfterDays));
+  state.paymentReminderRepeatDays = Math.min(90, Math.max(1, Number.isFinite(reminderRepeatValue) ? reminderRepeatValue : defaults.paymentReminderRepeatDays));
+  state.paymentReminderMaxCount = Math.min(20, Math.max(1, Number.isFinite(reminderMaxValue) ? reminderMaxValue : defaults.paymentReminderMaxCount));
   state.members = [...new Set(members)];
   state.memberProfiles = Object.fromEntries(
     parsed.map((member, index) => [
@@ -1829,6 +1836,10 @@ function renderSettings() {
   if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.value = fuelPriceRange.minDkkPerLiter;
   if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.value = fuelPriceRange.maxDkkPerLiter;
   if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
+  if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.checked = state.paymentRemindersEnabled !== false;
+  if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.value = Number.isFinite(Number(state.paymentReminderAfterDays)) ? Number(state.paymentReminderAfterDays) : defaults.paymentReminderAfterDays;
+  if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.value = Math.max(1, Number(state.paymentReminderRepeatDays) || defaults.paymentReminderRepeatDays);
+  if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.value = Math.max(1, Number(state.paymentReminderMaxCount) || defaults.paymentReminderMaxCount);
   els.members.value = state.members
     .map((name) => {
       const profile = getMemberProfile(name);
@@ -1845,6 +1856,10 @@ function renderSettings() {
   if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.disabled = !canManage;
   if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.disabled = !canManage;
   if (els.fuelWarningThreshold) els.fuelWarningThreshold.disabled = !canManage;
+  if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.disabled = !canManage;
+  if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.disabled = !canManage;
+  if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.disabled = !canManage;
+  if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.disabled = !canManage;
   els.members.disabled = !canManage;
   els.settingsForm.querySelector("button").disabled = !canManage;
 }
@@ -4154,9 +4169,9 @@ async function updateClosedPaymentStatus(button) {
 function getPaymentReminderSettings() {
   return {
     enabled: state.paymentRemindersEnabled !== false,
-    afterDays: Math.max(1, Number(state.paymentReminderAfterDays || defaults.paymentReminderAfterDays)),
+    afterDays: Math.max(0, Number(state.paymentReminderAfterDays ?? defaults.paymentReminderAfterDays)),
     repeatDays: Math.max(1, Number(state.paymentReminderRepeatDays || defaults.paymentReminderRepeatDays)),
-    maxCount: Math.max(0, Number(state.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount))
+    maxCount: Math.max(1, Number(state.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount))
   };
 }
 
@@ -6412,6 +6427,10 @@ function normalizeState(saved) {
     fuelPriceWarningMinDkkPerLiter: getFuelPriceWarningRange(saved).minDkkPerLiter,
     fuelPriceWarningMaxDkkPerLiter: getFuelPriceWarningRange(saved).maxDkkPerLiter,
     fuelWarningThreshold: Number(saved.fuelWarningThreshold) || defaults.fuelWarningThreshold,
+    paymentRemindersEnabled: saved.paymentRemindersEnabled !== false,
+    paymentReminderAfterDays: Math.max(0, Number(saved.paymentReminderAfterDays ?? defaults.paymentReminderAfterDays)),
+    paymentReminderRepeatDays: Math.max(1, Number(saved.paymentReminderRepeatDays || defaults.paymentReminderRepeatDays)),
+    paymentReminderMaxCount: Math.max(1, Number(saved.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount)),
     carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion
   };
 }
