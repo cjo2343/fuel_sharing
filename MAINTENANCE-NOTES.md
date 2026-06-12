@@ -351,3 +351,10 @@ Operational notes:
 ### Reminder backend diagnostics
 
 Build `reminder-backend-diagnostics` adds detailed `/api/run-reminders` output so cron tests can explain why `dueCount` is zero. The response now includes scanned current/closed payment counts, requested payment counts, due counts, skip reasons, and sample rows with `dueAt`, `lastReminderAt`, and `reminderCount`. This helps distinguish backend scheduled reminders from browser/app-open notifications.
+
+## 2026-06-12 - Cache version alignment
+
+- Updated build info to version `2026.06.12.12` with build label `cache-version-alignment`.
+- Aligned the expected service worker cache with the active service worker cache: `fuel-ledger-v49`.
+- This fixes the version panel showing a false cache mismatch after the reminder backend diagnostics build.
+
