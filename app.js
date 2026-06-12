@@ -1424,6 +1424,8 @@ function clearCurrentAuditLog() {
 
 
 function getUnpaidPaymentItems(ledger = calculateLedger()) {
+  const isAdmin = canManageSettings();
+  const isRelevantToCurrentUser = (item) => isAdmin || item.from === currentUser || item.to === currentUser;
   const currentItems = (Array.isArray(ledger.settlements) ? ledger.settlements : [])
     .map((settlement) => {
       const key = settlementKey(settlement);
@@ -1469,7 +1471,9 @@ function getUnpaidPaymentItems(ledger = calculateLedger()) {
     }).filter(Boolean);
   });
 
-  return [...currentItems, ...closedItems].sort((a, b) => {
+  return [...currentItems, ...closedItems]
+    .filter(isRelevantToCurrentUser)
+    .sort((a, b) => {
     if (a.from === currentUser && b.from !== currentUser) return -1;
     if (b.from === currentUser && a.from !== currentUser) return 1;
     if (a.to === currentUser && b.to !== currentUser) return -1;
@@ -1513,7 +1517,7 @@ function renderUnpaidPaymentCard(item) {
     : "This marks the current requested payment as paid.";
   const action = item.canMarkPaid
     ? `<button class="subtle-button compact-button" type="button" ${item.actionAttrs}>Mark paid</button>`
-    : `<span class="request-note">Only ${escapeHtml(item.from)}, ${escapeHtml(item.to)}, or an admin can mark this paid.</span>`;
+    : `<span class="request-note">Only ${escapeHtml(item.from)} or an admin can mark this paid.</span>`;
   const badge = isMine ? "You owe" : isOwedToMe ? "Owed to you" : "Unpaid";
 
   return `
@@ -5911,7 +5915,7 @@ function renderPeriodSettlements(period) {
               : status === "requested"
                 ? `Waiting for ${settlement.from} to pay. Closing freezes the amount, but this payment can still be marked paid here.`
                 : `Not requested when this period was closed.`;
-            const permissionNote = `Only ${settlement.from}, ${settlement.to}, or an admin can mark this closed-period payment paid.`;
+            const permissionNote = `Only ${settlement.from} or an admin can mark this closed-period payment paid.`;
             return `
             <article class="archive-payment-card ${status}">
               <div class="archive-payment-header">
@@ -6121,7 +6125,7 @@ function canMarkSettlementPaid(settlement) {
   const profile = getCurrentMemberProfile();
   if (!profile) return false;
   if (profile.role === "admin") return true;
-  return settlement.from === profile.name || settlement.to === profile.name;
+  return settlement.from === profile.name;
 }
 
 function noMemberEmailsConfigured() {
