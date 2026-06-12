@@ -3781,3 +3781,72 @@ body.auth-locked #authPanel .text-button {
     max-width: 100%;
   }
 }
+
+/* Closed period archive readability polish */
+.archive-payment-kicker .status-chip {
+  margin-left: 0;
+}
+
+.archive-payment-card {
+  overflow: hidden;
+}
+
+.archive-payment-header {
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+}
+
+.archive-payment-main p {
+  max-width: 68ch;
+}
+
+.archive-payment-amount {
+  align-self: start;
+  justify-self: end;
+}
+
+.archive-payment-action-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.archive-payment-action-row .request-note {
+  justify-self: end;
+  max-width: 34ch;
+  text-align: right;
+}
+
+.archive-log-card {
+  display: grid;
+  gap: 6px;
+}
+
+.archive-log-card-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.archive-log-card-head .log-ref {
+  font-size: 0.78rem;
+}
+
+.archive-subsection > summary {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.archive-subsection[open] > summary {
+  margin-bottom: 10px;
+}
+
+@media (max-width: 760px) {
+  .archive-payment-action-row .request-note {
+    justify-self: start;
+    max-width: none;
+    text-align: left;
+  }
+}

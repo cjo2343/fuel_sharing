@@ -6934,9 +6934,12 @@ function renderClosedPeriodTrips(trips) {
             ${items.map((trip) => {
               const tripKm = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
               return `
-                <article class="entry-card archive-entry-card">
-                  <strong>${escapeHtml(trip.driver || "Unknown")}</strong>
-                  <p>${formatNumber(tripKm)} km · ${formatDate(trip.date)} · ${formatNumber(trip.startKm || 0)} to ${formatNumber(trip.endKm || 0)} km</p>
+                <article class="entry-card archive-entry-card archive-log-card">
+                  <div class="archive-log-card-head">
+                    <strong>${escapeHtml(trip.driver || "Unknown")}</strong>
+                    ${trip.logRef ? `<span class="log-ref">${escapeHtml(trip.logRef)}</span>` : ""}
+                  </div>
+                  <p>${formatNumber(tripKm)} km · ${getTripPeriodLabel(trip)} · ${formatNumber(trip.startKm || 0)} to ${formatNumber(trip.endKm || 0)} km</p>
                   <p class="entry-meta">Split between ${getTripParticipants(trip).map(escapeHtml).join(", ")}</p>
                   ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
                 </article>
@@ -6967,10 +6970,13 @@ function renderClosedPeriodFuel(fuel, currency) {
               const itemLiters = Number(item.liters || 0);
               const price = itemLiters > 0 ? `${formatNumber(itemLiters)} L · ${formatMoneyFor(Number(item.amount || 0) / itemLiters, currency)}/L` : "No liters logged";
               return `
-                <article class="entry-card archive-entry-card">
-                  <strong>${escapeHtml(item.payer || "Unknown")}</strong>
+                <article class="entry-card archive-entry-card archive-log-card">
+                  <div class="archive-log-card-head">
+                    <strong>${escapeHtml(item.payer || "Unknown")}</strong>
+                    ${item.logRef ? `<span class="log-ref">${escapeHtml(item.logRef)}</span>` : ""}
+                  </div>
                   <p>${formatMoneyFor(item.amount || 0, currency)} · ${price}</p>
-                  <p class="entry-meta">${formatDate(item.date)}${item.odometer ? ` · ${formatNumber(item.odometer)} km` : ""}${item.station ? ` · ${escapeHtml(item.station)}` : ""}</p>
+                  <p class="entry-meta">${formatDate(item.date)}${item.odometer ? ` · ${formatNumber(item.odometer)} km` : ""}${item.station ? ` · ${escapeHtml(item.station)}` : ""}${item.sourceTripId ? " · linked trip fuel" : ""}</p>
                 </article>
               `;
             }).join("")}
