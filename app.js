@@ -5838,6 +5838,34 @@ function findFuelForTrip(tripId) {
   return state.fuel.find((fuel) => fuel.sourceTripId === tripId) || null;
 }
 
+function findFullTankFuelForTrip(trip) {
+  if (!trip?.id) return null;
+  const ref = normalizeLogRefValue(trip.logRef || createLogRef(trip.id));
+  return (state.fuel || []).find((fuel) => {
+    if (!fuel?.fullTank) return false;
+    if (fuel.sourceTripId === trip.id) return true;
+    if (ref && normalizeLogRefValue(fuel.logRef) === ref) return true;
+    return false;
+  }) || null;
+}
+
+function findBookingForTrip(trip) {
+  if (!trip) return null;
+  if (trip.sourceBookingId) {
+    const byId = state.bookings.find((booking) => booking.id === trip.sourceBookingId);
+    if (byId) return byId;
+  }
+  const notePurpose = String(trip.note || "").replace(/^Booking:\s*/i, "").trim().toLowerCase();
+  if (!notePurpose) return null;
+  const tripDate = normalizedDate(trip.date);
+  return (state.bookings || []).find((booking) => {
+    if (booking.member && trip.driver && booking.member !== trip.driver) return false;
+    if (String(booking.purpose || "").trim().toLowerCase() !== notePurpose) return false;
+    const bookingEnd = parseBookingDate(booking.end);
+    return bookingEnd && localDateString(bookingEnd) === tripDate;
+  }) || null;
+}
+
 function isTripFromMultiDayBooking(trip, booking = null) {
   if (!trip && !booking) return false;
   const start = trip?.bookingStart || booking?.start || null;
@@ -5847,11 +5875,15 @@ function isTripFromMultiDayBooking(trip, booking = null) {
 
 function getMissingRequiredFuelTasksForCurrentPeriod() {
   return (state.trips || [])
-    .filter((trip) => trip?.sourceBookingId && isTripFromMultiDayBooking(trip, state.bookings.find((booking) => booking.id === trip.sourceBookingId)))
-    .filter((trip) => !findFuelForTrip(trip.id))
     .map((trip) => ({
       trip,
-      booking: state.bookings.find((booking) => booking.id === trip.sourceBookingId) || null,
+      booking: findBookingForTrip(trip)
+    }))
+    .filter(({ trip, booking }) => Boolean(booking) && isTripFromMultiDayBooking(trip, booking))
+    .filter(({ trip }) => !findFullTankFuelForTrip(trip))
+    .map(({ trip, booking }) => ({
+      trip,
+      booking,
       logRef: trip.logRef || createLogRef(trip.id),
       distanceKm: Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0))
     }));
@@ -8791,6 +8823,8 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   const activeTrips = tableTrips.filter((trip) => !openPeriod || !trip.period_id || trip.period_id === openPeriod.id);
   const activeFuel = tableFuel.filter((fuel) => !openPeriod || !fuel.period_id || fuel.period_id === openPeriod.id);
+  const fallbackTripsById = Object.fromEntries((jsonFallbackState.trips || []).map((trip) => [trip.id, trip]));
+  const fallbackFuelById = Object.fromEntries((jsonFallbackState.fuel || []).map((fuel) => [fuel.id, fuel]));
 
   // Safety fallback: if normalized tables are empty but the JSON mirror still has
   // active rows, keep using JSON instead of showing an empty settlement period.
@@ -8802,15 +8836,20 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   const trips = activeTrips.map((trip) => {
     const driver = memberById[trip.driver_member_id]?.name || memberNames[0] || "";
     const participants = participantNamesByTripId[trip.id]?.length ? [...new Set(participantNamesByTripId[trip.id])] : (driver ? [driver] : []);
+    const legacyId = trip.legacy_id || trip.id;
+    const fallbackTrip = fallbackTripsById[legacyId] || {};
     return {
-      id: trip.legacy_id || trip.id,
-      logRef: createLogRef(trip.legacy_id || trip.id),
+      id: legacyId,
+      logRef: fallbackTrip.logRef || createLogRef(legacyId),
+      sourceBookingId: fallbackTrip.sourceBookingId || null,
+      bookingStart: fallbackTrip.bookingStart || null,
+      bookingEnd: fallbackTrip.bookingEnd || null,
       driver,
       date: normalizedDate(trip.trip_date),
       startKm: round(Number(trip.start_km || 0)),
       endKm: round(Number(trip.end_km || 0)),
       participants,
-      note: trip.note || ""
+      note: trip.note || fallbackTrip.note || ""
     };
   });
 
@@ -8821,8 +8860,15 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     const stationName = item.station_name || "";
     const hasUserLocation = Number.isFinite(Number(item.user_lat)) && Number.isFinite(Number(item.user_lng));
     const hasStationLocation = Number.isFinite(Number(item.station_lat)) && Number.isFinite(Number(item.station_lng));
+    const legacyId = item.legacy_id || item.id;
+    const fallbackFuel = fallbackFuelById[legacyId] || {};
     return {
-      id: item.legacy_id || item.id,
+      id: legacyId,
+      logRef: fallbackFuel.logRef || createLogRef(legacyId),
+      sourceTripId: fallbackFuel.sourceTripId || null,
+      sourceBookingId: fallbackFuel.sourceBookingId || null,
+      bookingStart: fallbackFuel.bookingStart || null,
+      bookingEnd: fallbackFuel.bookingEnd || null,
       payer,
       date: normalizedDate(item.payment_date),
       amount,
@@ -8839,7 +8885,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
             longitude: Number(item.station_lng)
           }
         : null,
-      fullTank: Boolean(item.full_tank)
+      fullTank: Boolean(item.full_tank || fallbackFuel.fullTank)
     };
   });
 
