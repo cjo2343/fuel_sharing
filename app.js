@@ -272,6 +272,7 @@ const els = {
   cancelBookingEdit: document.querySelector("#cancelBookingEdit"),
   bookingCalendar: document.querySelector("#bookingCalendar"),
   bookingConflictNotice: document.querySelector("#bookingConflictNotice"),
+  bookingAvailabilityPreview: document.querySelector("#bookingAvailabilityPreview"),
   fuelForm: document.querySelector("#fuelForm"),
   fuelSubmit: document.querySelector("#fuelSubmit"),
   cancelFuelEdit: document.querySelector("#cancelFuelEdit"),
@@ -363,6 +364,7 @@ const bookingCalendarController = window.FuelBookingCalendar.createBookingCalend
 const renderBookings = bookingCalendarController.renderBookings;
 const setBookingCalendarView = bookingCalendarController.setBookingCalendarView;
 const renderBookingConflictNotice = bookingCalendarController.renderBookingConflictNotice;
+const renderBookingAvailabilityPreview = bookingCalendarController.renderBookingAvailabilityPreview;
 const validateBookingInput = bookingCalendarController.validateBookingInput;
 const findBookingConflict = bookingCalendarController.findBookingConflict;
 const bookingStartMs = bookingCalendarController.bookingStartMs;
@@ -449,7 +451,7 @@ if (els.bookingForm) {
     const validation = validateBookingInput(bookingPayload, editingBookingId);
     if (!validation.ok) {
       alert(validation.message);
-      renderBookingConflictNotice(validation.conflict || null);
+      renderBookingAvailabilityPreview(bookingPayload, editingBookingId);
       return;
     }
 
@@ -475,6 +477,7 @@ if (els.bookingForm) {
     editingBookingId = null;
     els.bookingForm.reset();
     setDefaultBookingTimes();
+    updateBookingAvailabilityPreview();
     saveState();
     updateEditUi();
     render();
@@ -482,6 +485,12 @@ if (els.bookingForm) {
     showAppMessage(previousBooking ? "Booking updated." : "Car booked.");
   });
 }
+
+[els.bookingMember, els.bookingStart, els.bookingEnd].forEach((input) => {
+  if (!input) return;
+  input.addEventListener("input", updateBookingAvailabilityPreview);
+  input.addEventListener("change", updateBookingAvailabilityPreview);
+});
 
 els.tripForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -6500,7 +6509,7 @@ function setBookingQuickDate(daysFromToday) {
   const nextEnd = new Date(start.getTime() + durationMs);
   els.bookingStart.value = toDateTimeLocalInputValue(start);
   els.bookingEnd.value = toDateTimeLocalInputValue(nextEnd);
-  renderBookingConflictNotice(findBookingConflictFromForm());
+  updateBookingAvailabilityPreview();
 }
 
 function setBookingQuickWeekend() {
@@ -6515,7 +6524,7 @@ function setBookingQuickWeekend() {
   start.setHours(9, 0, 0, 0);
   els.bookingStart.value = toDateTimeLocalInputValue(start);
   els.bookingEnd.value = toDateTimeLocalInputValue(new Date(start.getTime() + 4 * 60 * 60 * 1000));
-  renderBookingConflictNotice(findBookingConflictFromForm());
+  updateBookingAvailabilityPreview();
 }
 
 function setBookingDuration(hours) {
@@ -6524,7 +6533,7 @@ function setBookingDuration(hours) {
   const durationHours = Math.max(0.5, Number(hours) || 2);
   els.bookingStart.value = toDateTimeLocalInputValue(start);
   els.bookingEnd.value = toDateTimeLocalInputValue(new Date(start.getTime() + durationHours * 60 * 60 * 1000));
-  renderBookingConflictNotice(findBookingConflictFromForm());
+  updateBookingAvailabilityPreview();
 }
 
 function setBookingAllDay() {
@@ -6535,18 +6544,22 @@ function setBookingAllDay() {
   end.setHours(22, 0, 0, 0);
   els.bookingStart.value = toDateTimeLocalInputValue(start);
   els.bookingEnd.value = toDateTimeLocalInputValue(end);
-  renderBookingConflictNotice(findBookingConflictFromForm());
+  updateBookingAvailabilityPreview();
 }
 
-function findBookingConflictFromForm() {
+function getBookingDraftFromForm() {
   if (!els.bookingMember || !els.bookingStart || !els.bookingEnd) return null;
-  const candidate = {
+  return {
     id: editingBookingId || "__draft__",
     member: els.bookingMember.value,
     start: normalizeBookingDateTime(els.bookingStart.value),
-    end: normalizeBookingDateTime(els.bookingEnd.value)
+    end: normalizeBookingDateTime(els.bookingEnd.value),
+    purpose: els.bookingPurpose?.value?.trim() || ""
   };
-  return validateBookingInput(candidate, editingBookingId).conflict || null;
+}
+
+function updateBookingAvailabilityPreview() {
+  renderBookingAvailabilityPreview(getBookingDraftFromForm(), editingBookingId);
 }
 
 function getSelectedParticipants() {

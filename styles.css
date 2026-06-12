@@ -549,13 +549,33 @@ button:not(:disabled):active {
   padding: 11px;
 }
 
-.booking-conflict-notice {
+.booking-conflict-notice,
+.booking-availability-preview {
   border: 1px solid var(--red);
   border-radius: var(--radius-sm);
   background: var(--red-soft);
   color: var(--red);
   padding: 12px 14px;
   font-weight: 780;
+}
+
+.booking-conflict-notice span,
+.booking-availability-preview span {
+  display: block;
+  margin-top: 4px;
+  font-weight: 650;
+}
+
+.booking-availability-preview.available {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.booking-availability-preview.invalid {
+  border-color: rgba(22, 32, 31, 0.14);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
 }
 
 .compact-empty {

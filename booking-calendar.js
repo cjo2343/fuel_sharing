@@ -131,7 +131,7 @@
       `;
     }
 
-    function renderBookingConflictNotice(conflict) {
+    function renderBookingConflictNotice(conflict, candidate = null) {
       if (!els.bookingConflictNotice) return;
       if (!conflict) {
         els.bookingConflictNotice.classList.add("hidden");
@@ -139,7 +139,61 @@
         return;
       }
       els.bookingConflictNotice.classList.remove("hidden");
-      els.bookingConflictNotice.textContent = `Conflicts with ${conflict.member}'s booking: ${formatBookingRange(conflict)}.`;
+      els.bookingConflictNotice.innerHTML = renderBookingConflictMessage(conflict, candidate);
+    }
+
+    function renderBookingConflictMessage(conflict, candidate = null) {
+      const nextSlot = candidate ? findNextAvailableSlot(candidate, conflict.id) : null;
+      const purpose = conflict.purpose ? ` · ${escapeHtml(conflict.purpose)}` : "";
+      return `
+        <strong>Conflicts with ${escapeHtml(conflict.member)}'s booking.</strong>
+        <span>${escapeHtml(formatBookingRange(conflict))}${purpose}</span>
+        ${nextSlot ? `<span>Same length looks free from ${escapeHtml(formatBookingRange(nextSlot))}.</span>` : ""}
+      `;
+    }
+
+    function renderBookingAvailabilityPreview(candidate, editingId = null) {
+      if (!els.bookingAvailabilityPreview) {
+        renderBookingConflictNotice(candidate ? findBookingConflict(candidate, editingId) : null, candidate);
+        return;
+      }
+
+      const preview = els.bookingAvailabilityPreview;
+      const startMs = Date.parse(candidate?.start || "");
+      const endMs = Date.parse(candidate?.end || "");
+      preview.classList.remove("available", "conflict", "invalid");
+      els.bookingStart?.removeAttribute("aria-invalid");
+      els.bookingEnd?.removeAttribute("aria-invalid");
+
+      if (!candidate || !Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+        renderBookingConflictNotice(null);
+        preview.classList.add("invalid");
+        preview.textContent = "Choose a valid start and end time to check availability.";
+        return;
+      }
+
+      if (endMs <= startMs) {
+        renderBookingConflictNotice(null);
+        preview.classList.add("invalid");
+        preview.textContent = "End time must be after the start time.";
+        els.bookingStart?.setAttribute("aria-invalid", "true");
+        els.bookingEnd?.setAttribute("aria-invalid", "true");
+        return;
+      }
+
+      const conflict = findBookingConflict(candidate, editingId);
+      if (conflict) {
+        renderBookingConflictNotice(conflict, candidate);
+        preview.classList.add("conflict");
+        preview.innerHTML = renderBookingConflictMessage(conflict, candidate);
+        els.bookingStart?.setAttribute("aria-invalid", "true");
+        els.bookingEnd?.setAttribute("aria-invalid", "true");
+        return;
+      }
+
+      renderBookingConflictNotice(null);
+      preview.classList.add("available");
+      preview.textContent = `Available: ${formatBookingRange(candidate)}.`;
     }
 
     function validateBookingInput(booking, editingId = null) {
@@ -170,6 +224,35 @@
       }) || null;
     }
 
+    function findNextAvailableSlot(candidate, ignoreBookingId = null) {
+      const candidateStart = Date.parse(candidate?.start || "");
+      const candidateEnd = Date.parse(candidate?.end || "");
+      if (!Number.isFinite(candidateStart) || !Number.isFinite(candidateEnd) || candidateEnd <= candidateStart) return null;
+
+      const duration = candidateEnd - candidateStart;
+      let nextStart = candidateStart;
+      const sortedBookings = [...getState().bookings]
+        .filter((booking) => booking.id !== ignoreBookingId && booking.id !== candidate.id)
+        .sort((a, b) => bookingStartMs(a) - bookingStartMs(b));
+
+      for (const booking of sortedBookings) {
+        const bookingStart = bookingStartMs(booking);
+        const bookingEnd = bookingEndMs(booking);
+        if (!Number.isFinite(bookingStart) || !Number.isFinite(bookingEnd)) continue;
+        const nextEnd = nextStart + duration;
+        if (nextEnd <= bookingStart) break;
+        if (nextStart < bookingEnd && nextEnd > bookingStart) {
+          nextStart = bookingEnd;
+        }
+      }
+
+      return {
+        ...candidate,
+        start: toDateTimeLocalInputValue(new Date(nextStart)),
+        end: toDateTimeLocalInputValue(new Date(nextStart + duration))
+      };
+    }
+
     function describeBookingPermissionMessage(booking, action) {
       const actor = describeCurrentActor();
       if (!booking) return `This booking no longer exists. Refresh and try again.`;
@@ -180,6 +263,7 @@
       renderBookings,
       setBookingCalendarView,
       renderBookingConflictNotice,
+      renderBookingAvailabilityPreview,
       validateBookingInput,
       findBookingConflict,
       getBookingStatus,
