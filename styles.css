@@ -3483,3 +3483,20 @@ body.auth-locked #authPanel .text-button {
 .booking-activity-list {
   margin-top: 0.75rem;
 }
+
+.booking-log-context {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--border);
+  border-radius: 18px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--soft);
+}
+
+.booking-log-context h3 {
+  margin: 0.2rem 0 0.4rem;
+}
+
+.booking-log-context p {
+  margin: 0.25rem 0;
+}

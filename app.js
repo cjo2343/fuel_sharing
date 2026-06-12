@@ -252,6 +252,7 @@ const els = {
   fuelFullTank: document.querySelector("#fuelFullTank"),
   periodEntryLock: document.querySelector("#periodEntryLock"),
   tripLogPanel: document.querySelector("#tripLogPanel"),
+  tripBookingContext: document.querySelector("#tripBookingContext"),
   fuelLogPanel: document.querySelector("#fuelLogPanel"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
@@ -1285,6 +1286,7 @@ async function runGeneratedRapidSaveTest() {
 if (els.cancelTripEdit) {
   els.cancelTripEdit.addEventListener("click", () => {
     editingTripId = null;
+    pendingTripBookingContext = null;
     els.tripForm.reset();
     setDefaultDates();
     updateEditUi();
@@ -1826,6 +1828,7 @@ function render() {
   renderPeopleSelectors();
   renderTripEstimatorParticipants();
   syncStartOdometerDefault();
+  renderTripBookingContext();
   const ledger = calculateLedger();
   renderSettleActionBadge(ledger);
   renderSummary(ledger);
@@ -5358,6 +5361,48 @@ function startTripEdit(id) {
   els.startKm.focus();
 }
 
+
+function getActiveTripLogContext() {
+  if (pendingTripBookingContext) return pendingTripBookingContext;
+  if (editingTripId) {
+    const trip = state.trips.find((entry) => entry.id === editingTripId);
+    if (trip?.sourceBookingId || trip?.bookingStart || trip?.bookingEnd || trip?.logRef) {
+      return {
+        bookingId: trip.sourceBookingId || "",
+        logRef: trip.logRef || createLogRef(trip.id),
+        bookingStart: trip.bookingStart || null,
+        bookingEnd: trip.bookingEnd || null,
+        member: trip.driver || "",
+        purpose: String(trip.note || "").replace(/^Booking:\s*/i, "")
+      };
+    }
+  }
+  return null;
+}
+
+function renderTripBookingContext() {
+  if (!els.tripBookingContext) return;
+  const context = getActiveTripLogContext();
+  els.tripBookingContext.classList.toggle("hidden", !context);
+  if (!context) {
+    els.tripBookingContext.replaceChildren();
+    return;
+  }
+  const period = getTripPeriodLabel({
+    date: els.tripDate?.value || "",
+    bookingStart: context.bookingStart,
+    bookingEnd: context.bookingEnd
+  });
+  const purpose = context.purpose ? `<p class="entry-meta">${escapeHtml(context.purpose)}</p>` : "";
+  els.tripBookingContext.innerHTML = `
+    <p class="eyebrow">Booking log</p>
+    <h3>${escapeHtml(formatLogRef(context))}</h3>
+    <p><strong>${escapeHtml(context.member || els.tripDriver?.value || "Driver")}</strong> · ${escapeHtml(period)}</p>
+    ${purpose}
+    <p class="section-note">This trip was filled from a booking. Enter the final odometer to complete the trip log.</p>
+  `;
+}
+
 function startBookingEdit(id) {
   const booking = state.bookings.find((entry) => entry.id === id);
   if (!booking) return;
@@ -5431,7 +5476,9 @@ function startTripFromBooking(id) {
     bookingId: booking.id,
     logRef: booking.logRef || createLogRef(booking.id),
     bookingStart: booking.start || null,
-    bookingEnd: booking.end || null
+    bookingEnd: booking.end || null,
+    member: booking.member || "",
+    purpose: booking.purpose || ""
   };
   renderPeopleSelectors();
   if (getMemberNames().includes(booking.member)) els.tripDriver.value = booking.member;
@@ -5440,6 +5487,7 @@ function startTripFromBooking(id) {
   syncStartOdometerDefault();
   els.endKm.value = "";
   els.tripNote.value = booking.purpose ? `Booking: ${booking.purpose}` : "Booking";
+  renderTripBookingContext();
   for (const input of els.tripParticipants.querySelectorAll("input")) {
     input.checked = input.value === booking.member;
   }
@@ -6574,8 +6622,16 @@ function setDefaultDates() {
   const today = localDateString();
   els.tripDate.max = today;
   els.fuelDate.max = today;
-  els.tripDate.value = today;
-  els.fuelDate.value = today;
+  if (!pendingTripBookingContext && !editingTripId) {
+    els.tripDate.value = today;
+  } else if (!els.tripDate.value) {
+    els.tripDate.value = today;
+  }
+  if (!editingFuelId) {
+    els.fuelDate.value = today;
+  } else if (!els.fuelDate.value) {
+    els.fuelDate.value = today;
+  }
   setDefaultBookingTimes();
   syncStartOdometerDefault();
 }

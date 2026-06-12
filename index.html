@@ -179,11 +179,6 @@
           </div>
           <div id="bookingConflictNotice" class="booking-conflict-notice hidden" aria-live="polite"></div>
           <div id="bookingCalendar" class="booking-calendar empty-state">No bookings yet.</div>
-          <div class="booking-activity-panel">
-            <h3>Booking activity</h3>
-            <p class="section-note">Calendar changes live here separately from settlement history. When a booking becomes a trip or fuel log, it appears in the settlement history with the same log reference.</p>
-            <div id="bookingActivityLog" class="audit-log-list booking-activity-list"></div>
-          </div>
         </section>
 
         <section id="tripLogPanel" class="panel primary-panel" data-view="log" aria-labelledby="tripHeading">
@@ -193,6 +188,8 @@
               <h2 id="tripHeading">Log distance</h2>
             </div>
           </div>
+
+          <div id="tripBookingContext" class="booking-log-context hidden" aria-live="polite"></div>
 
           <form id="tripForm" class="form-grid">
             <label>
@@ -476,8 +473,8 @@
             </div>
           </div>
           <div class="audit-log-panel">
-            <h3>Settlement change log</h3>
-            <p class="section-note">Trips, fuel logs, payments, and settlement changes are recorded here. Booking-only activity is kept with the calendar.</p>
+            <h3>Change log</h3>
+            <p class="section-note">Important money-related changes are recorded locally and mirrored with the ledger backup so members can review who changed what.</p>
             <div id="auditLog" class="audit-log-list"></div>
           </div>
         </section>
