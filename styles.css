@@ -3949,3 +3949,13 @@ body.auth-locked #authPanel .text-button {
     text-align: left;
   }
 }
+
+.fuel-trip-context.is-required {
+  border-color: rgba(184, 115, 51, 0.42);
+  background: linear-gradient(135deg, rgba(255, 248, 235, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.fuel-trip-context.is-required .status-pill {
+  background: rgba(184, 115, 51, 0.16);
+  color: #7a4b1d;
+}

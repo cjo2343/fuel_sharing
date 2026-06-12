@@ -662,6 +662,16 @@ els.fuelForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (pendingFuelTripContext?.requiredFuel && !fullTank) {
+    const message = "Multi-day booking fuel logs must confirm the tank was filled to full.";
+    alert(message);
+    showAppMessage(message, "error");
+    const details = document.querySelector("#fuelDetails");
+    if (details) details.open = true;
+    els.fuelFullTank?.focus();
+    return;
+  }
+
   const normalizedLiters = round(liters);
   const fuelPayload = {
     id: editingFuelId || crypto.randomUUID(),
@@ -3794,6 +3804,15 @@ async function closeCurrentPeriod(options = {}) {
     return;
   }
 
+  const missingRequiredFuel = getMissingRequiredFuelTasksForCurrentPeriod();
+  if (missingRequiredFuel.length > 0 && !options.skipRequiredBookingFuel) {
+    alert(buildMissingRequiredFuelMessage(missingRequiredFuel, "close this period"));
+    setActiveView("log");
+    render();
+    window.setTimeout(() => els.pendingLogsPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    return;
+  }
+
   if (!options.skipFuelValidation && isFuelEstimateWarningActive(ledger)) {
     if (!confirm(buildFuelValidationMessage(ledger, "close this period anyway"))) return;
   }
@@ -3911,7 +3930,12 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
 function renderSettlementWarning(ledger) {
   const warnings = getFuelValidationWarnings(ledger);
   const settlementProgress = getSettlementProgress(ledger);
+  const missingRequiredFuel = getMissingRequiredFuelTasksForCurrentPeriod();
   const messages = [];
+
+  if (missingRequiredFuel.length > 0) {
+    messages.push(`${missingRequiredFuel.length} multi-day booking trip${missingRequiredFuel.length === 1 ? " needs" : "s need"} a linked full-tank fuel log before this period can be closed.`);
+  }
 
   if (settlementProgress.openCount > 0) {
     messages.push(`Request all settlement payments before closing this period. ${settlementProgress.openCount} payment${settlementProgress.openCount === 1 ? " is" : "s are"} still not requested.`);
@@ -5721,6 +5745,7 @@ function renderTripBookingContext() {
 
 function buildFuelContextFromTrip(trip) {
   if (!trip) return null;
+  const booking = trip.sourceBookingId ? state.bookings.find((entry) => entry.id === trip.sourceBookingId) : null;
   return {
     tripId: trip.id,
     bookingId: trip.sourceBookingId || null,
@@ -5730,6 +5755,7 @@ function buildFuelContextFromTrip(trip) {
     member: trip.driver || "",
     purpose: String(trip.note || "").replace(/^Booking:\s*/i, ""),
     distanceKm: round(Number(trip.endKm || 0) - Number(trip.startKm || 0)),
+    requiredFuel: isTripFromMultiDayBooking(trip, booking),
     date: trip.date || "",
     odometer: trip.endKm || ""
   };
@@ -5751,6 +5777,7 @@ function renderFuelTripContext() {
   if (!els.fuelTripContext) return;
   const context = pendingFuelTripContext;
   els.fuelTripContext.classList.toggle("hidden", !context);
+  els.fuelTripContext.classList.toggle("is-required", Boolean(context?.requiredFuel));
   els.fuelLogPanel?.classList.toggle("linked-fuel-active", Boolean(context));
   if (!context) {
     els.fuelTripContext.replaceChildren();
@@ -5762,13 +5789,14 @@ function renderFuelTripContext() {
     bookingEnd: context.bookingEnd
   });
   const purpose = context.purpose ? escapeHtml(context.purpose) : "No purpose added";
+  const requirement = context.requiredFuel ? "Required for multi-day booking" : "Suggested for this trip";
   els.fuelTripContext.innerHTML = `
     <div class="booking-log-context-header">
       <div>
         <p class="eyebrow">Fuel for trip</p>
         <h3>${escapeHtml(formatLogRef(context))}</h3>
       </div>
-      <span class="status-pill">Receipt needed</span>
+      <span class="status-pill">${escapeHtml(requirement)}</span>
     </div>
     <dl class="booking-log-summary">
       <div><dt>Driver</dt><dd>${escapeHtml(context.member || "Driver")}</dd></div>
@@ -5776,7 +5804,7 @@ function renderFuelTripContext() {
       <div><dt>Distance</dt><dd>${escapeHtml(formatNumber(context.distanceKm || 0))} km</dd></div>
       <div><dt>Purpose</dt><dd>${purpose}</dd></div>
     </dl>
-    <p class="section-note">Add the refuel receipt for this booking. Paid by, date and odometer are prefilled from the trip.</p>
+    <p class="section-note">${context.requiredFuel ? "Add the full-tank refuel receipt before closing this settlement period. Paid by, date and odometer are prefilled from the trip." : "Add the refuel receipt for this booking if fuel was bought. Paid by, date and odometer are prefilled from the trip."}</p>
   `;
 }
 
@@ -5810,6 +5838,43 @@ function findFuelForTrip(tripId) {
   return state.fuel.find((fuel) => fuel.sourceTripId === tripId) || null;
 }
 
+function isTripFromMultiDayBooking(trip, booking = null) {
+  if (!trip && !booking) return false;
+  const start = trip?.bookingStart || booking?.start || null;
+  const end = trip?.bookingEnd || booking?.end || null;
+  return Boolean(start && end && !isSameCalendarDayValue(start, end));
+}
+
+function getMissingRequiredFuelTasksForCurrentPeriod() {
+  return (state.trips || [])
+    .filter((trip) => trip?.sourceBookingId && isTripFromMultiDayBooking(trip, state.bookings.find((booking) => booking.id === trip.sourceBookingId)))
+    .filter((trip) => !findFuelForTrip(trip.id))
+    .map((trip) => ({
+      trip,
+      booking: state.bookings.find((booking) => booking.id === trip.sourceBookingId) || null,
+      logRef: trip.logRef || createLogRef(trip.id),
+      distanceKm: Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0))
+    }));
+}
+
+function buildMissingRequiredFuelMessage(tasks, actionLabel = "continue") {
+  const list = tasks.slice(0, 5).map((task) => {
+    const purpose = task.booking?.purpose || String(task.trip?.note || "").replace(/^Booking:\s*/i, "") || "booking trip";
+    return `- ${formatLogRef(task)} · ${task.trip?.driver || task.booking?.member || "Driver"} · ${formatNumber(task.distanceKm || 0)} km · ${purpose}`;
+  });
+  const extra = tasks.length > 5 ? [`- …and ${tasks.length - 5} more`] : [];
+  return [
+    "Required fuel log missing",
+    "",
+    "Multi-day booking trips must have a linked fuel receipt before this settlement period can be closed.",
+    "",
+    ...list,
+    ...extra,
+    "",
+    `Add fuel from Pending logs, then ${actionLabel}.`
+  ].join("\n");
+}
+
 function buildPendingLogTasks() {
   const now = Date.now();
   const tasks = [];
@@ -5837,7 +5902,7 @@ function buildPendingLogTasks() {
         booking,
         trip,
         dueAt: trip.bookingEnd || booking.end || trip.date,
-        required: !isSameCalendarDayValue(trip.bookingStart || booking.start, trip.bookingEnd || booking.end),
+        required: isTripFromMultiDayBooking(trip, booking),
         canAct: canManageTripEntry(trip)
       });
     }
