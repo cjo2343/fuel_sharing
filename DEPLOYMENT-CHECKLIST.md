@@ -354,3 +354,7 @@ For build `supabase-reminder-rpc`:
 3. Keep `REMINDER_DATA_SOURCE` unset for automatic Supabase mode. Set `REMINDER_DATA_SOURCE=local` only for local JSON testing.
 4. Deploy, then run the live curl check. Confirm the response shows `backendMode: "supabase"` and non-zero scanned counts when requested/unpaid payments exist in production.
 5. Rotate `REMINDER_CRON_SECRET` if it was pasted into logs, screenshots, or chat.
+
+### Closed-period reminder timestamp check
+
+After deploying `closed-period-reminder-timestamps`, run `/api/run-reminders` once and check diagnostics. Legacy requested closed-period payments should no longer be skipped only as `missing-request-time` when the period has a usable closed timestamp.

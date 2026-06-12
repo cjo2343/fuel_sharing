@@ -373,3 +373,9 @@ Required server env vars for production mode:
 - `REMINDER_CRON_SECRET`
 
 Set `REMINDER_DATA_SOURCE=local` only when intentionally testing against the local JSON file.
+
+## 2026-06-12 — Closed-period reminder timestamps
+
+- Legacy closed-period payments with status `requested` and no `requestedAt` are now still eligible for scheduled reminders by inferring the request time from the closed period timestamp.
+- Future closed periods preserve current payment reminder metadata (`requestedAt`, `lastReminderAt`, `reminderCount`, and original `paymentKey`) when the period is archived.
+- `/api/run-reminders` diagnostics include `inferredRequestedAt: true` for legacy closed payments that use the fallback timestamp.

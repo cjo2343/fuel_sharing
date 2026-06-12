@@ -3355,10 +3355,17 @@ async function closeCurrentPeriod(options = {}) {
       fuelShare: ledger.people[member].tripCost,
       fuelPaid: ledger.people[member].fuelPaid
     })),
-    settlements: ledger.settlements.map((item) => ({
-      ...item,
-      status: normalizePaymentStatus(state.paymentStatuses[settlementKey(item)])
-    })),
+    settlements: ledger.settlements.map((item) => {
+      const key = settlementKey(item);
+      return {
+        ...item,
+        status: normalizePaymentStatus(state.paymentStatuses[key]),
+        requestedAt: getPaymentAuditCreatedAtIso(state.auditLog, key, "payment_requested"),
+        lastReminderAt: getPaymentAuditCreatedAtIso(state.auditLog, key, "payment_reminder_sent"),
+        reminderCount: getPaymentAuditEntries(state.auditLog, key, "payment_reminder_sent").length,
+        paymentKey: key
+      };
+    }),
     trips: structuredClone(state.trips),
     fuel: structuredClone(state.fuel),
     auditLog: []
@@ -4185,10 +4192,39 @@ function getPaymentAuditEntries(entries, paymentKey, type) {
     .filter((entry) => entry.entityType === "payment" && entry.entityId === paymentKey && (!type || entry.type === type));
 }
 
-function getPaymentReminderDueInfo(entries, paymentKey, settings, now = Date.now()) {
+function getPaymentAuditCreatedAtIso(entries, paymentKey, type) {
+  const matches = getPaymentAuditEntries(entries, paymentKey, type);
+  const latest = matches.reduce((latestValue, entry) => Math.max(latestValue, auditEntryTime(entry)), 0);
+  return latest ? new Date(latest).toISOString() : "";
+}
+
+function parseReminderTimestamp(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function getClosedPaymentFallbackRequestedAt(period, settlement) {
+  const settlementFallbacks = [settlement?.requestedAt, settlement?.requested_at, settlement?.paymentRequestedAt];
+  for (const candidate of settlementFallbacks) {
+    const parsed = parseReminderTimestamp(candidate);
+    if (parsed) return parsed;
+  }
+  const periodFallbacks = [period?.closedAt, period?.createdAt, period?.endedAt, period?.endDate, period?.periodEnd, period?.updatedAt];
+  for (const candidate of periodFallbacks) {
+    const parsed = parseReminderTimestamp(candidate);
+    if (parsed) return parsed;
+  }
+  return 0;
+}
+
+function getPaymentReminderDueInfo(entries, paymentKey, settings, now = Date.now(), fallbackRequestedAt = 0) {
   if (!settings.enabled) return { due: false, reason: "disabled" };
   const requestedEntries = getPaymentAuditEntries(entries, paymentKey, "payment_requested");
-  const requestedAt = requestedEntries.reduce((latest, entry) => Math.max(latest, auditEntryTime(entry)), 0);
+  let requestedAt = requestedEntries.reduce((latest, entry) => Math.max(latest, auditEntryTime(entry)), 0);
+  const inferredRequestedAt = !requestedAt && Boolean(fallbackRequestedAt);
+  if (!requestedAt && fallbackRequestedAt) requestedAt = fallbackRequestedAt;
   if (!requestedAt) return { due: false, reason: "missing-request-time" };
 
   const reminderEntries = getPaymentAuditEntries(entries, paymentKey, "payment_reminder_sent");
@@ -4205,6 +4241,7 @@ function getPaymentReminderDueInfo(entries, paymentKey, settings, now = Date.now
   return {
     due: now >= dueAt,
     requestedAt,
+    inferredRequestedAt,
     lastReminderAt,
     reminderCount: reminderEntries.length,
     dueAt
@@ -4244,7 +4281,8 @@ async function runAutomaticPaymentReminders() {
     for (const settlement of settlements) {
       if (normalizePaymentStatus(settlement.status) !== "requested") continue;
       const key = settlementKeyForPeriod(settlement, period.id);
-      const due = getPaymentReminderDueInfo(period.auditLog, key, settings, now);
+      const fallbackRequestedAt = getClosedPaymentFallbackRequestedAt(period, settlement);
+      const due = getPaymentReminderDueInfo(period.auditLog, key, settings, now, fallbackRequestedAt);
       if (!due.due) continue;
       const pushResult = await sendPaymentReminderPush(settlement).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
       const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);

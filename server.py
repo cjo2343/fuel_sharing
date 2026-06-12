@@ -352,12 +352,36 @@ def payment_audit_entries(entries, payment_key, entry_type=None):
     return result
 
 
-def audit_entry_timestamp(entry):
+def parse_timestamp(value):
     try:
-        value = str(entry.get("createdAt") or "").replace("Z", "+00:00")
-        return datetime.fromisoformat(value).timestamp()
+        if not value:
+            return 0
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value).strip()
+        if not text:
+            return 0
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
     except Exception:
         return 0
+
+
+def audit_entry_timestamp(entry):
+    return parse_timestamp(entry.get("createdAt") if isinstance(entry, dict) else None)
+
+
+def closed_payment_fallback_requested_at(period, settlement):
+    if isinstance(settlement, dict):
+        for key in ("requestedAt", "requested_at", "paymentRequestedAt"):
+            parsed = parse_timestamp(settlement.get(key))
+            if parsed:
+                return parsed
+    if isinstance(period, dict):
+        for key in ("closedAt", "createdAt", "endedAt", "endDate", "periodEnd", "updatedAt"):
+            parsed = parse_timestamp(period.get(key))
+            if parsed:
+                return parsed
+    return 0
 
 
 def reminder_settings(state):
@@ -369,12 +393,16 @@ def reminder_settings(state):
     }
 
 
-def payment_reminder_due_info(entries, payment_key, settings, now_ts=None):
+def payment_reminder_due_info(entries, payment_key, settings, now_ts=None, fallback_requested_at=0):
     if not settings.get("enabled"):
         return {"due": False, "reason": "disabled"}
     now_ts = now_ts or time.time()
     requested_entries = payment_audit_entries(entries, payment_key, "payment_requested")
     requested_at = max([audit_entry_timestamp(entry) for entry in requested_entries] or [0])
+    inferred_requested_at = False
+    if not requested_at and fallback_requested_at:
+        requested_at = float(fallback_requested_at)
+        inferred_requested_at = True
     if not requested_at:
         return {"due": False, "reason": "missing-request-time"}
     reminder_entries = payment_audit_entries(entries, payment_key, "payment_reminder_sent")
@@ -388,6 +416,7 @@ def payment_reminder_due_info(entries, payment_key, settings, now_ts=None):
         "due": is_due,
         "reason": reason,
         "requestedAt": requested_at,
+        "inferredRequestedAt": inferred_requested_at,
         "lastReminderAt": last_reminder_at,
         "reminderCount": len(reminder_entries),
         "dueAt": due_at,
@@ -587,7 +616,8 @@ def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
                     continue
                 diagnostics["requestedClosedPayments"] += 1
                 payment_key = f"{period_id}:{settlement.get('from')}->{settlement.get('to')}:{settlement.get('currency') or state.get('currency') or 'DKK'}"
-                due = payment_reminder_due_info(period.get("auditLog"), payment_key, settings, now_ts)
+                fallback_requested_at = closed_payment_fallback_requested_at(period, settlement)
+                due = payment_reminder_due_info(period.get("auditLog"), payment_key, settings, now_ts, fallback_requested_at=fallback_requested_at)
                 add_reminder_sample(diagnostics, {
                     "scope": "closed",
                     "periodId": period_id,
@@ -597,6 +627,7 @@ def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
                     "reason": due.get("reason"),
                     "dueAt": iso_from_timestamp(due.get("dueAt")),
                     "requestedAt": iso_from_timestamp(due.get("requestedAt")),
+                    "inferredRequestedAt": bool(due.get("inferredRequestedAt")),
                     "lastReminderAt": iso_from_timestamp(due.get("lastReminderAt")),
                     "reminderCount": due.get("reminderCount") or 0,
                     "from": settlement.get("from"),
