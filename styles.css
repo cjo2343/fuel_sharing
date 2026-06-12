@@ -3605,3 +3605,27 @@ body.auth-locked #authPanel .text-button {
     grid-template-columns: 1fr;
   }
 }
+
+.fuel-trip-context {
+  margin-top: 12px;
+}
+
+.fuel-trip-context .booking-log-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.linked-fuel-active .panel-header {
+  margin-bottom: 10px;
+}
+
+@media (max-width: 900px) {
+  .fuel-trip-context .booking-log-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .fuel-trip-context .booking-log-summary {
+    grid-template-columns: 1fr;
+  }
+}

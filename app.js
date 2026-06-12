@@ -171,6 +171,7 @@ let editingTripId = null;
 let editingFuelId = null;
 let editingBookingId = null;
 let pendingTripBookingContext = null;
+let pendingFuelTripContext = null;
 let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
 let deferredInstallPrompt = null;
@@ -258,6 +259,7 @@ const els = {
   tripLogPanel: document.querySelector("#tripLogPanel"),
   tripBookingContext: document.querySelector("#tripBookingContext"),
   fuelLogPanel: document.querySelector("#fuelLogPanel"),
+  fuelTripContext: document.querySelector("#fuelTripContext"),
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
@@ -572,12 +574,26 @@ els.tripForm.addEventListener("submit", async (event) => {
   });
 
   saveState();
-  pendingTripBookingContext = null;
+  if (!wasEditingTrip && tripPayload.sourceBookingId) {
+    pendingFuelTripContext = buildFuelContextFromTrip(tripPayload);
+    els.fuelForm?.reset();
+    clearFuelLocation();
+    prefillFuelFromTripContext(pendingFuelTripContext);
+  }
+  clearTripLoggingContext();
   els.tripForm.reset();
   setDefaultDates();
   updateEditUi();
   render();
-  showSaveMessage("Trip", wasEditingTrip);
+  if (!wasEditingTrip && pendingFuelTripContext) {
+    setTimeout(() => {
+      els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      els.fuelAmount?.focus();
+    }, 0);
+    showAppMessage(`Trip ${formatLogRef(tripPayload)} logged. Add the matching fuel receipt when ready.`);
+  } else {
+    showSaveMessage("Trip", wasEditingTrip);
+  }
 });
 
 if (els.useFuelLocation) {
@@ -638,6 +654,11 @@ els.fuelForm.addEventListener("submit", async (event) => {
   const normalizedLiters = round(liters);
   const fuelPayload = {
     id: editingFuelId || crypto.randomUUID(),
+    logRef: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.logRef || pendingFuelTripContext?.logRef || null : pendingFuelTripContext?.logRef || null,
+    sourceTripId: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.sourceTripId || pendingFuelTripContext?.tripId || null : pendingFuelTripContext?.tripId || null,
+    sourceBookingId: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.sourceBookingId || pendingFuelTripContext?.bookingId || null : pendingFuelTripContext?.bookingId || null,
+    bookingStart: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.bookingStart || pendingFuelTripContext?.bookingStart || null : pendingFuelTripContext?.bookingStart || null,
+    bookingEnd: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.bookingEnd || pendingFuelTripContext?.bookingEnd || null : pendingFuelTripContext?.bookingEnd || null,
     payer: els.fuelPayer.value,
     date: els.fuelDate.value,
     amount: roundMoney(amount),
@@ -671,11 +692,12 @@ els.fuelForm.addEventListener("submit", async (event) => {
     type: wasEditingFuel ? "fuel_updated" : "fuel_created",
     entityType: "fuel",
     entityId: fuelPayload.id,
-    summary: `${fuelPayload.payer} · ${formatFuelAmountLitersAndPrice(fuelPayload)}`,
-    detail: wasEditingFuel ? describeFuelAuditChanges(previousFuel, fuelPayload) : `${fuelPayload.date || ""}${fuelPayload.odometer ? ` · ${formatNumber(fuelPayload.odometer)} km` : ""}`
+    summary: `${formatLogRef(fuelPayload)} · ${fuelPayload.payer} · ${formatFuelAmountLitersAndPrice(fuelPayload)}`,
+    detail: wasEditingFuel ? describeFuelAuditChanges(previousFuel, fuelPayload) : `${fuelPayload.sourceTripId ? "Linked trip fuel" : "Fuel log"} · ${fuelPayload.date || ""}${fuelPayload.odometer ? ` · ${formatNumber(fuelPayload.odometer)} km` : ""}`
   });
 
   saveState();
+  clearFuelLoggingContext();
   els.fuelForm.reset();
   clearFuelLocation();
   setDefaultDates();
@@ -961,6 +983,8 @@ els.resetPeriod.addEventListener("click", () => {
   state.fuel = [];
   state.paymentStatuses = {};
   state.lastOdometer = getLatestOdometer();
+  clearTripLoggingContext();
+  clearFuelLoggingContext();
   clearCurrentAuditLog();
   showAppMessage(`${resetPeriodLabel} reset. ${resetTripCount} trip${resetTripCount === 1 ? "" : "s"} and ${resetFuelCount} fuel log${resetFuelCount === 1 ? "" : "s"} removed.`);
   saveState();
@@ -975,6 +999,8 @@ els.resetData.addEventListener("click", () => {
   }
   if (!confirm("Reset all trips, fuel payments, and settings?")) return;
   state = structuredClone(defaults);
+  clearTripLoggingContext();
+  clearFuelLoggingContext();
   saveState();
   setDefaultDates();
   render();
@@ -1317,7 +1343,7 @@ async function runGeneratedRapidSaveTest() {
 if (els.cancelTripEdit) {
   els.cancelTripEdit.addEventListener("click", () => {
     editingTripId = null;
-    pendingTripBookingContext = null;
+    clearTripLoggingContext();
     els.tripForm.reset();
     setDefaultDates();
     updateEditUi();
@@ -5376,7 +5402,7 @@ function startTripEdit(id) {
   showLogViewForEditing();
   editingFuelId = null;
   editingBookingId = null;
-  pendingTripBookingContext = null;
+  clearTripLoggingContext();
   editingTripId = id;
   syncTripDateBounds();
   renderPeopleSelectors();
@@ -5400,7 +5426,8 @@ function getActiveTripLogContext() {
   if (pendingTripBookingContext) return pendingTripBookingContext;
   if (editingTripId) {
     const trip = state.trips.find((entry) => entry.id === editingTripId);
-    if (trip?.sourceBookingId || trip?.bookingStart || trip?.bookingEnd || trip?.logRef) {
+    const isBookingLinkedTrip = Boolean(trip?.sourceBookingId || trip?.bookingStart || trip?.bookingEnd);
+    if (isBookingLinkedTrip) {
       return {
         bookingId: trip.sourceBookingId || "",
         logRef: trip.logRef || createLogRef(trip.id),
@@ -5446,6 +5473,67 @@ function renderTripBookingContext() {
   `;
 }
 
+function buildFuelContextFromTrip(trip) {
+  if (!trip) return null;
+  return {
+    tripId: trip.id,
+    bookingId: trip.sourceBookingId || null,
+    logRef: trip.logRef || createLogRef(trip.id),
+    bookingStart: trip.bookingStart || null,
+    bookingEnd: trip.bookingEnd || null,
+    member: trip.driver || "",
+    purpose: String(trip.note || "").replace(/^Booking:\s*/i, ""),
+    distanceKm: round(Number(trip.endKm || 0) - Number(trip.startKm || 0)),
+    date: trip.date || "",
+    odometer: trip.endKm || ""
+  };
+}
+
+function prefillFuelFromTripContext(context) {
+  if (!context) return;
+  renderPeopleSelectors();
+  if (context.member && getMemberNames().includes(context.member)) els.fuelPayer.value = context.member;
+  syncFuelDateBounds();
+  els.fuelDate.value = context.date || (context.bookingEnd ? localDateString(new Date(context.bookingEnd)) : localDateString());
+  if (els.fuelOdometer) els.fuelOdometer.value = context.odometer || "";
+  const details = document.querySelector("#fuelDetails");
+  if (details) details.open = true;
+  renderFuelTripContext();
+}
+
+function renderFuelTripContext() {
+  if (!els.fuelTripContext) return;
+  const context = pendingFuelTripContext;
+  els.fuelTripContext.classList.toggle("hidden", !context);
+  els.fuelLogPanel?.classList.toggle("linked-fuel-active", Boolean(context));
+  if (!context) {
+    els.fuelTripContext.replaceChildren();
+    return;
+  }
+  const period = getTripPeriodLabel({
+    date: context.date,
+    bookingStart: context.bookingStart,
+    bookingEnd: context.bookingEnd
+  });
+  const purpose = context.purpose ? escapeHtml(context.purpose) : "No purpose added";
+  els.fuelTripContext.innerHTML = `
+    <div class="booking-log-context-header">
+      <div>
+        <p class="eyebrow">Fuel for trip</p>
+        <h3>${escapeHtml(formatLogRef(context))}</h3>
+      </div>
+      <span class="status-pill">Receipt needed</span>
+    </div>
+    <dl class="booking-log-summary">
+      <div><dt>Driver</dt><dd>${escapeHtml(context.member || "Driver")}</dd></div>
+      <div><dt>Period</dt><dd>${escapeHtml(period)}</dd></div>
+      <div><dt>Distance</dt><dd>${escapeHtml(formatNumber(context.distanceKm || 0))} km</dd></div>
+      <div><dt>Purpose</dt><dd>${purpose}</dd></div>
+    </dl>
+    <p class="section-note">Add the refuel receipt for this booking. Paid by, date and odometer are prefilled from the trip.</p>
+  `;
+}
+
 function startBookingEdit(id) {
   const booking = state.bookings.find((entry) => entry.id === id);
   if (!booking) return;
@@ -5453,7 +5541,8 @@ function startBookingEdit(id) {
   showBookViewForEditing();
   editingTripId = null;
   editingFuelId = null;
-  pendingTripBookingContext = null;
+  clearTripLoggingContext();
+  clearFuelLoggingContext();
   editingBookingId = id;
   syncTripDateBounds();
   renderPeopleSelectors();
@@ -5474,7 +5563,8 @@ function startFuelEdit(id) {
   showLogViewForEditing();
   editingTripId = null;
   editingBookingId = null;
-  pendingTripBookingContext = null;
+  clearTripLoggingContext();
+  clearFuelLoggingContext();
   editingFuelId = id;
   syncTripDateBounds();
   renderPeopleSelectors();
@@ -5517,6 +5607,7 @@ function startTripFromBooking(id) {
   editingTripId = null;
   editingFuelId = null;
   editingBookingId = null;
+  clearFuelLoggingContext();
   pendingTripBookingContext = {
     bookingId: booking.id,
     logRef: booking.logRef || createLogRef(booking.id),
@@ -6667,7 +6758,7 @@ function renderClosedPeriodFuel(fuel, currency) {
 }
 
 function getTripDateLimitForActiveContext() {
-  const context = getActiveTripLogContext();
+  const context = pendingTripBookingContext;
   const bookingEnd = context?.bookingEnd ? parseBookingDate(context.bookingEnd) : null;
   return bookingEnd ? localDateString(bookingEnd) : localDateString();
 }
@@ -6677,10 +6768,32 @@ function syncTripDateBounds() {
   els.tripDate.max = getTripDateLimitForActiveContext();
 }
 
+function clearTripLoggingContext() {
+  pendingTripBookingContext = null;
+  syncTripDateBounds();
+  renderTripBookingContext();
+}
+
+function clearFuelLoggingContext() {
+  pendingFuelTripContext = null;
+  syncFuelDateBounds();
+  renderFuelTripContext();
+}
+
+function getFuelDateLimitForActiveContext() {
+  const bookingEnd = pendingFuelTripContext?.bookingEnd ? parseBookingDate(pendingFuelTripContext.bookingEnd) : null;
+  return bookingEnd ? localDateString(bookingEnd) : localDateString();
+}
+
+function syncFuelDateBounds() {
+  if (!els.fuelDate) return;
+  els.fuelDate.max = getFuelDateLimitForActiveContext();
+}
+
 function setDefaultDates() {
   const today = localDateString();
   syncTripDateBounds();
-  els.fuelDate.max = today;
+  syncFuelDateBounds();
   if (!pendingTripBookingContext && !editingTripId) {
     els.tripDate.value = today;
   } else if (!els.tripDate.value) {
@@ -6688,7 +6801,10 @@ function setDefaultDates() {
     const bookingEnd = context?.bookingEnd ? parseBookingDate(context.bookingEnd) : null;
     els.tripDate.value = bookingEnd ? localDateString(bookingEnd) : today;
   }
-  if (!editingFuelId) {
+  if (pendingFuelTripContext) {
+    const bookingEnd = pendingFuelTripContext.bookingEnd ? parseBookingDate(pendingFuelTripContext.bookingEnd) : null;
+    els.fuelDate.value = els.fuelDate.value || pendingFuelTripContext.date || (bookingEnd ? localDateString(bookingEnd) : today);
+  } else if (!editingFuelId) {
     els.fuelDate.value = today;
   } else if (!els.fuelDate.value) {
     els.fuelDate.value = today;
