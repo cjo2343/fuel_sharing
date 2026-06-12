@@ -4016,3 +4016,59 @@ body.auth-locked #authPanel .text-button {
   background: rgba(184, 115, 51, 0.16);
   color: #7a4b1d;
 }
+
+/* Payment source linking */
+.payment-evidence-line {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.payment-evidence {
+  display: grid;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.payment-evidence-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.payment-evidence h4 {
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.payment-evidence-refs {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.payment-evidence-refs strong {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.payment-evidence-list li {
+  align-items: start;
+  gap: 12px;
+}
+
+.archive-payment-evidence {
+  margin-top: 12px;
+}
+
+@media (max-width: 760px) {
+  .payment-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}

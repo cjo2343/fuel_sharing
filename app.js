@@ -1872,6 +1872,8 @@ function getUnpaidPaymentItems(ledger = calculateLedger()) {
         closedAt: period.closedAt,
         periodId: period.id,
         settlementIndex: index,
+        periodTrips: Array.isArray(period.trips) ? period.trips : [],
+        periodFuel: Array.isArray(period.fuel) ? period.fuel : [],
         settlement,
         canMarkPaid: canMarkSettlementPaid(settlement),
         canSendReminder: canManageSettlementRequest(settlement) || isAdmin,
@@ -1964,6 +1966,87 @@ function makePaymentDeepLink(paymentRef, options = {}) {
   return `${path}#${params.toString()}`;
 }
 
+
+function getPaymentEvidenceSources(payment, options = {}) {
+  const trips = Array.isArray(options.trips) ? options.trips : state.trips;
+  const fuel = Array.isArray(options.fuel) ? options.fuel : state.fuel;
+  const payer = payment?.from || "";
+  const payee = payment?.to || "";
+  const payerTrips = trips
+    .filter((trip) => getTripParticipants(trip).includes(payer))
+    .sort(byNewest);
+  const payeeFuel = fuel
+    .filter((item) => item.payer === payee)
+    .sort(byNewest);
+  const relatedBookings = payerTrips
+    .map((trip) => findBookingForTrip(trip))
+    .filter(Boolean);
+  return { payerTrips, payeeFuel, relatedBookings };
+}
+
+function summarizePaymentEvidence(payment, options = {}) {
+  const currency = options.currency || state.currency;
+  const { payerTrips, payeeFuel, relatedBookings } = getPaymentEvidenceSources(payment, options);
+  const tripKm = payerTrips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0)), 0);
+  const fuelTotal = payeeFuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0);
+  const bookingCount = new Set(relatedBookings.map((booking) => booking.id || booking.logRef || booking.start)).size;
+  return {
+    payerTripCount: payerTrips.length,
+    payerTripKm: round(tripKm),
+    payeeFuelCount: payeeFuel.length,
+    payeeFuelTotal: roundMoney(fuelTotal),
+    bookingCount,
+    currency
+  };
+}
+
+function renderPaymentEvidenceSummary(payment, options = {}) {
+  const summary = summarizePaymentEvidence(payment, options);
+  const pieces = [];
+  pieces.push(`${summary.payerTripCount} trip${summary.payerTripCount === 1 ? "" : "s"} for ${escapeHtml(payment.from)} (${formatNumber(summary.payerTripKm)} km)`);
+  pieces.push(`${summary.payeeFuelCount} fuel log${summary.payeeFuelCount === 1 ? "" : "s"} paid by ${escapeHtml(payment.to)} (${formatMoneyFor(summary.payeeFuelTotal, summary.currency)})`);
+  if (summary.bookingCount) pieces.push(`${summary.bookingCount} booking-linked trip${summary.bookingCount === 1 ? "" : "s"}`);
+  return pieces.join(" · ");
+}
+
+function renderPaymentEvidenceDetails(payment, options = {}) {
+  const currency = options.currency || state.currency;
+  const { payerTrips, payeeFuel, relatedBookings } = getPaymentEvidenceSources(payment, options);
+  const tripItems = payerTrips.slice(0, 8).map((trip) => {
+    const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+    const booking = findBookingForTrip(trip);
+    const bookingText = booking ? ` · booking ${escapeHtml(formatLogRef(booking))}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}` : "";
+    return `<li><span>${escapeHtml(formatLogRef(trip))} · ${escapeHtml(getTripPeriodLabel(trip))}${bookingText}</span><b>${formatNumber(km)} km</b></li>`;
+  }).join("");
+  const hiddenTrips = Math.max(0, payerTrips.length - 8);
+  const fuelItems = payeeFuel.slice(0, 8).map((fuel) => {
+    const linked = fuel.sourceTripId || fuel.sourceBookingId ? " · linked" : "";
+    const liters = Number(fuel.liters || 0) > 0 ? ` · ${formatNumber(fuel.liters)} L` : "";
+    return `<li><span>${escapeHtml(formatLogRef(fuel))} · ${escapeHtml(formatDate(fuel.date))}${linked}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}</span><b>${formatMoneyFor(fuel.amount || 0, currency)}${liters}</b></li>`;
+  }).join("");
+  const hiddenFuel = Math.max(0, payeeFuel.length - 8);
+  const bookingRefs = [...new Map(relatedBookings.map((booking) => [booking.id || booking.logRef || booking.start, booking])).values()]
+    .slice(0, 6)
+    .map((booking) => `<span class="log-ref">${escapeHtml(formatLogRef(booking))}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}</span>`)
+    .join("");
+  return `
+    <div class="payment-evidence">
+      <p class="entry-meta">Payment ${escapeHtml(formatMoneyFor(payment.amount || 0, currency))} balances ${escapeHtml(payment.from)}'s trip share against fuel paid by ${escapeHtml(payment.to)}. It is linked to the period evidence below, not to one single receipt.</p>
+      ${bookingRefs ? `<div class="payment-evidence-refs"><strong>Booking links</strong>${bookingRefs}</div>` : ""}
+      <div class="payment-evidence-grid">
+        <section>
+          <h4>Trips counted for ${escapeHtml(payment.from)}</h4>
+          ${tripItems ? `<ul class="included-fuel-list payment-evidence-list">${tripItems}${hiddenTrips ? `<li><span>…and ${hiddenTrips} more trip${hiddenTrips === 1 ? "" : "s"}</span><b></b></li>` : ""}</ul>` : `<p class="entry-meta">No trips for ${escapeHtml(payment.from)} in this period.</p>`}
+        </section>
+        <section>
+          <h4>Fuel paid by ${escapeHtml(payment.to)}</h4>
+          ${fuelItems ? `<ul class="included-fuel-list payment-evidence-list">${fuelItems}${hiddenFuel ? `<li><span>…and ${hiddenFuel} more fuel log${hiddenFuel === 1 ? "" : "s"}</span><b></b></li>` : ""}</ul>` : `<p class="entry-meta">No fuel logs paid by ${escapeHtml(payment.to)} in this period.</p>`}
+        </section>
+      </div>
+    </div>
+  `;
+}
+
 function renderUnpaidPaymentCard(item) {
   const isMine = item.from === currentUser;
   const isOwedToMe = item.to === currentUser && item.from !== currentUser;
@@ -1993,6 +2076,7 @@ function renderUnpaidPaymentCard(item) {
           <div class="payment-card-kicker"><span class="status-chip requested">${escapeHtml(badge)}</span><span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span></div>
           <strong>${escapeHtml(item.from)} pays ${escapeHtml(item.to)}</strong>
           <p>${escapeHtml(contextText)}</p>
+          <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, item.scope === "closed" ? { trips: item.periodTrips || [], fuel: item.periodFuel || [], currency: item.currency || state.currency } : { currency: item.currency || state.currency }))}</p>
         </div>
         <div class="unpaid-payment-amount">
           <b>${amountText}</b>
@@ -3863,14 +3947,15 @@ function renderSettlements(ledger) {
               <span class="settlement-person">${escapeHtml(item.to)}</span>
             </div>
             <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} km distance share at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
+            <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, { trips: state.trips, fuel: state.fuel, currency: state.currency }))}</p>
             <div class="settlement-detail-row">
               <details class="settlement-details">
                 <summary>Why this payment?</summary>
                 ${renderSettlementMathDetails(item, ledger)}
               </details>
               <details class="settlement-details">
-                <summary>Fuel payments included</summary>
-                ${renderFuelPaymentList(ledger.fuelPayments)}
+                <summary>Linked trips & fuel</summary>
+                ${renderPaymentEvidenceDetails(item, { trips: state.trips, fuel: state.fuel, currency: state.currency })}
               </details>
             </div>
           </div>
@@ -7401,11 +7486,16 @@ function renderPeriodSettlements(period) {
                     <span class="archive-payment-person">${escapeHtml(settlement.to)}</span>
                   </div>
                   <p>${escapeHtml(statusNote)}</p>
+                  <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(settlement, { trips: period.trips || [], fuel: period.fuel || [], currency: period.currency || state.currency }))}</p>
                 </div>
                 <div class="archive-payment-amount">
                   <b>${amountText}</b>
                 </div>
               </div>
+              <details class="settlement-details archive-payment-evidence">
+                <summary>Linked trips & fuel evidence</summary>
+                ${renderPaymentEvidenceDetails(settlement, { trips: period.trips || [], fuel: period.fuel || [], currency: period.currency || state.currency })}
+              </details>
               ${canMarkPaid ? `
                 <div class="archive-payment-action-row">
                   <button class="subtle-button compact-button archive-payment-button" type="button" data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid">Mark paid</button>

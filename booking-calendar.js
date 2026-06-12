@@ -69,7 +69,7 @@
     }
 
     function renderBookingDayGrid(bookings, days) {
-      const start = new Date(localDateString());
+      const start = getBookingCalendarAnchorDate(bookings, days);
       const dayBuckets = Array.from({ length: days }, (_, index) => {
         const date = new Date(start);
         date.setDate(start.getDate() + index);
@@ -94,7 +94,7 @@
 
     function renderBookingMonthGrid(bookings) {
       const todayKey = localDateString();
-      const monthAnchor = new Date(todayKey);
+      const monthAnchor = getBookingMonthAnchorDate(bookings);
       monthAnchor.setDate(1);
       const month = monthAnchor.getMonth();
       const year = monthAnchor.getFullYear();
@@ -125,6 +125,87 @@
           </div>
         </section>
       `;
+    }
+
+
+    function getBookingCalendarAnchorDate(bookings, days) {
+      const todayKey = localDateString();
+      const today = new Date(todayKey);
+      const selectedStart = String(els.bookingStart?.value || "").slice(0, 10);
+      if (selectedStart && isDateKey(selectedStart)) {
+        const selectedEnd = new Date(selectedStart);
+        selectedEnd.setDate(selectedEnd.getDate() + Math.max(0, days - 1));
+        const selectedEndKey = localDateString(selectedEnd);
+        const selectedWindowHasBooking = bookings.some((booking) => {
+          const startKey = String(booking.start || "").slice(0, 10);
+          const endKey = String(booking.end || "").slice(0, 10);
+          return startKey <= selectedEndKey && endKey >= selectedStart;
+        });
+        if (bookings.length === 0 || selectedWindowHasBooking) {
+          return new Date(selectedStart);
+        }
+      }
+
+      const visibleEnd = new Date(today);
+      visibleEnd.setDate(today.getDate() + Math.max(0, days - 1));
+      const visibleEndKey = localDateString(visibleEnd);
+      const hasVisibleBooking = bookings.some((booking) => {
+        const startKey = String(booking.start || "").slice(0, 10);
+        const endKey = String(booking.end || "").slice(0, 10);
+        return startKey <= visibleEndKey && endKey >= todayKey;
+      });
+      if (hasVisibleBooking) return today;
+
+      const futureBooking = bookings
+        .filter((booking) => String(booking.end || "").slice(0, 10) >= todayKey)
+        .sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))[0];
+      if (futureBooking && isDateKey(String(futureBooking.start || "").slice(0, 10))) {
+        return new Date(String(futureBooking.start).slice(0, 10));
+      }
+
+      const pastBooking = [...bookings]
+        .filter((booking) => String(booking.start || "").slice(0, 10) < todayKey)
+        .sort((a, b) => String(b.start || "").localeCompare(String(a.start || "")))[0];
+      if (pastBooking && isDateKey(String(pastBooking.start || "").slice(0, 10))) {
+        return new Date(String(pastBooking.start).slice(0, 10));
+      }
+
+      return today;
+    }
+
+    function getBookingMonthAnchorDate(bookings) {
+      const today = new Date(localDateString());
+      const selectedStart = String(els.bookingStart?.value || "").slice(0, 10);
+      if (selectedStart && isDateKey(selectedStart)) {
+        const selectedDate = new Date(selectedStart);
+        const selectedYear = selectedDate.getFullYear();
+        const selectedMonth = selectedDate.getMonth();
+        const selectedMonthHasBooking = bookings.some((booking) => {
+          const start = parseBookingDate(booking.start);
+          const end = parseBookingDate(booking.end);
+          return (start && start.getFullYear() === selectedYear && start.getMonth() === selectedMonth)
+            || (end && end.getFullYear() === selectedYear && end.getMonth() === selectedMonth);
+        });
+        if (bookings.length === 0 || selectedMonthHasBooking) {
+          return selectedDate;
+        }
+      }
+
+      const year = today.getFullYear();
+      const month = today.getMonth();
+      const hasThisMonthBooking = bookings.some((booking) => {
+        const start = parseBookingDate(booking.start);
+        const end = parseBookingDate(booking.end);
+        return (start && start.getFullYear() === year && start.getMonth() === month)
+          || (end && end.getFullYear() === year && end.getMonth() === month);
+      });
+      if (hasThisMonthBooking) return today;
+
+      return getBookingCalendarAnchorDate(bookings, 31);
+    }
+
+    function isDateKey(value) {
+      return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
     }
 
     function renderBookingMonthDay(date, key, items, outsideMonth, isToday, year, month) {
