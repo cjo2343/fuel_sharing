@@ -90,7 +90,7 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Booking</p>
-              <h2 id="bookingHeading">Reserve the car</h2>
+              <h2 id="bookingHeading">Who and shortcuts</h2>
             </div>
           </div>
           <form id="bookingForm" class="form-grid">
@@ -113,13 +113,6 @@
                 <button class="subtle-button compact-button" type="button" data-booking-all-day="true">All day</button>
               </div>
             </div>
-            <label class="wide">
-              Purpose
-              <input id="bookingPurpose" type="text" maxlength="90" placeholder="Optional" />
-            </label>
-            <div id="bookingAvailabilityPreview" class="booking-availability-preview empty-state wide" aria-live="polite">Choose a time to check availability.</div>
-            <button id="bookingSubmit" class="action-button wide" type="submit">Add booking</button>
-            <button id="cancelBookingEdit" class="subtle-button wide hidden" type="button">Cancel editing booking</button>
           </form>
         </section>
 
@@ -173,7 +166,16 @@
               End
               <input id="bookingEnd" form="bookingForm" type="datetime-local" required />
             </label>
+            <label class="wide calendar-purpose-field">
+              Purpose
+              <input id="bookingPurpose" form="bookingForm" type="text" maxlength="90" placeholder="Optional" />
+            </label>
             <div id="bookingDateHints" class="booking-date-hints" aria-label="Booked date overview"></div>
+            <div id="bookingAvailabilityPreview" class="booking-availability-preview empty-state wide" aria-live="polite">Choose a time to check availability.</div>
+            <div class="calendar-booking-actions wide">
+              <button id="bookingSubmit" class="action-button" type="submit" form="bookingForm">Add booking</button>
+              <button id="cancelBookingEdit" class="subtle-button hidden" type="button">Cancel editing booking</button>
+            </div>
           </div>
           <div id="bookingConflictNotice" class="booking-conflict-notice hidden" aria-live="polite"></div>
           <div id="bookingCalendar" class="booking-calendar empty-state">No bookings yet.</div>
