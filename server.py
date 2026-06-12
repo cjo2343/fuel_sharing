@@ -615,7 +615,9 @@ def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
                     add_reminder_skip(diagnostics, f"closed-{normalized_status or 'open'}")
                     continue
                 diagnostics["requestedClosedPayments"] += 1
-                payment_key = f"{period_id}:{settlement.get('from')}->{settlement.get('to')}:{settlement.get('currency') or state.get('currency') or 'DKK'}"
+                stable_payment_key = str(settlement.get("paymentKey") or "").strip()
+                fallback_payment_key = f"{period_id}:{settlement.get('from')}->{settlement.get('to')}:{settlement.get('currency') or state.get('currency') or 'DKK'}"
+                payment_key = stable_payment_key or fallback_payment_key
                 fallback_requested_at = closed_payment_fallback_requested_at(period, settlement)
                 due = payment_reminder_due_info(period.get("auditLog"), payment_key, settings, now_ts, fallback_requested_at=fallback_requested_at)
                 add_reminder_sample(diagnostics, {
@@ -623,6 +625,8 @@ def run_scheduled_payment_reminders(state, now_ts=None, dry_run=False):
                     "periodId": period_id,
                     "settlementIndex": index,
                     "paymentKey": payment_key,
+                    "stablePaymentKeyUsed": bool(stable_payment_key),
+                    "generatedClosedPaymentKey": fallback_payment_key,
                     "status": normalized_status,
                     "reason": due.get("reason"),
                     "dueAt": iso_from_timestamp(due.get("dueAt")),

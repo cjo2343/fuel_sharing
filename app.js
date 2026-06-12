@@ -7818,6 +7818,9 @@ function syncStartOdometerDefault() {
 }
 
 function settlementKeyForPeriod(item, periodId = state.currentPeriodId || "") {
+  // Closed-period payments may carry the original current-period key so reminder
+  // repeat-window metadata survives the transition from open to closed period.
+  if (item && item.paymentKey) return item.paymentKey;
   // Settlement request status is tied to the payer/recipient pair inside one settlement period.
   // Do not include the amount: fuel/trip edits can slightly change the amount, and then
   // a requested payment would appear to reset after refresh even though the database row exists.
