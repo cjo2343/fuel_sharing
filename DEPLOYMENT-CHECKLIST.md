@@ -351,6 +351,7 @@ For build `supabase-reminder-rpc`:
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `SUPABASE_REMINDER_LEDGER_ID=main-car`
    - `REMINDER_CRON_SECRET`
+   - `FUEL_LEDGER_API_SECRET`
 3. Keep `REMINDER_DATA_SOURCE` unset for automatic Supabase mode. Set `REMINDER_DATA_SOURCE=local` only for local JSON testing.
 4. Deploy, then run the live curl check. Confirm the response shows `backendMode: "supabase"` and non-zero scanned counts when requested/unpaid payments exist in production.
 5. Rotate `REMINDER_CRON_SECRET` if it was pasted into logs, screenshots, or chat.
@@ -379,3 +380,7 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
+### Production JSON API protection
+
+Before deploying this build to Render, set `FUEL_LEDGER_API_SECRET` to a separate random value. Render-hosted `/api/state` and `/api/payment-action` now fail closed if this secret is missing, and return `401` unless maintenance requests include `X-Ledger-Api-Secret` or `Authorization: Bearer ...`. Do not expose this secret to frontend JavaScript.
+

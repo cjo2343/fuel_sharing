@@ -611,3 +611,16 @@ $$;
 
 -- Post-run setup check:
 -- select name, email, role, is_active from ledger_members where ledger_id = 'main-car' order by name;
+
+-- Scheduled reminder RPCs must not be executable by normal client roles.
+-- The Render reminder endpoint calls them with the Supabase service-role key.
+revoke all on function public.scheduled_reminder_state(text) from public;
+revoke all on function public.scheduled_reminder_state(text) from anon;
+revoke all on function public.scheduled_reminder_state(text) from authenticated;
+grant execute on function public.scheduled_reminder_state(text) to service_role;
+
+revoke all on function public.save_scheduled_reminder_state(text, jsonb) from public;
+revoke all on function public.save_scheduled_reminder_state(text, jsonb) from anon;
+revoke all on function public.save_scheduled_reminder_state(text, jsonb) from authenticated;
+grant execute on function public.save_scheduled_reminder_state(text, jsonb) to service_role;
+

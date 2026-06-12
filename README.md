@@ -141,9 +141,10 @@ SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
 VAPID_PRIVATE_KEY=YOUR_PRIVATE_VAPID_KEY
 VAPID_SUBJECT=mailto:login@chrjohn.dk
+FUEL_LEDGER_API_SECRET=<separate random secret for /api/state and /api/payment-action>
 ```
 
-Keep `SUPABASE_SERVICE_ROLE_KEY` and `VAPID_PRIVATE_KEY` secret. Do not put them in frontend files.
+Keep `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, and `FUEL_LEDGER_API_SECRET` secret. Do not put them in frontend files. The JSON state API is intended for local/server maintenance fallback only; production Render requests to `/api/state` and `/api/payment-action` fail closed unless this secret is configured and supplied as `X-Ledger-Api-Secret` or `Authorization: Bearer ...`.
 
 You can generate VAPID keys locally with:
 

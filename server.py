@@ -80,6 +80,60 @@ def env_value(name, fallback=""):
     return os.environ.get(name, fallback).strip()
 
 
+
+
+def env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def ledger_api_secret():
+    return env_value("FUEL_LEDGER_API_SECRET") or env_value("LEDGER_API_SECRET")
+
+
+def ledger_api_auth_required():
+    # Local development and Playwright use the JSON API without a secret by default.
+    # Hosted deployments should set FUEL_LEDGER_API_SECRET; Render also enables
+    # protection automatically so a missing secret fails closed instead of exposing
+    # the JSON ledger.
+    return bool(
+        ledger_api_secret()
+        or env_flag("FUEL_LEDGER_REQUIRE_API_AUTH")
+        or env_value("RENDER")
+        or env_value("RENDER_SERVICE_ID")
+    )
+
+
+def bearer_token(header_value):
+    value = (header_value or "").strip()
+    if value.lower().startswith("bearer "):
+        return value[7:].strip()
+    return ""
+
+
+def authorize_ledger_api(handler):
+    if not ledger_api_auth_required():
+        return True
+
+    secret = ledger_api_secret()
+    if not secret:
+        handler.send_error(503, "Ledger API auth is required but FUEL_LEDGER_API_SECRET is not configured")
+        return False
+
+    supplied = (
+        handler.headers.get("X-Ledger-Api-Secret")
+        or bearer_token(handler.headers.get("Authorization"))
+        or ""
+    ).strip()
+    if supplied and hmac.compare_digest(supplied, secret):
+        return True
+
+    handler.send_error(401, "Invalid ledger API secret")
+    return False
+
+
 def supabase_url():
     return env_value("SUPABASE_URL")
 
@@ -897,11 +951,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Ledger-Api-Secret")
         self.end_headers()
 
     def do_GET(self):
         if self.path == "/api/state":
+            if not authorize_ledger_api(self):
+                return
             self.send_json(read_state())
             return
         if self.path.startswith("/api/fuel-price"):
@@ -918,6 +974,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_PUT(self):
         if self.path != "/api/state":
             self.send_error(404)
+            return
+        if not authorize_ledger_api(self):
             return
 
         try:
@@ -949,6 +1007,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_error(404)
 
     def apply_payment_action(self):
+        if not authorize_ledger_api(self):
+            return
         try:
             payload = read_request_body(self)
             if not isinstance(payload, dict):

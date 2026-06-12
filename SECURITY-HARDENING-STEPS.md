@@ -39,6 +39,24 @@ where ledger_id = 'main-car'
 order by is_active desc, role, name;
 ```
 
+## Production JSON API guard
+
+Hosted deployments must configure `FUEL_LEDGER_API_SECRET`. Render automatically enables protection for `/api/state` and `/api/payment-action`; if the secret is missing, those endpoints fail closed with `503 Service Unavailable`. Local development and Playwright remain open by default unless `FUEL_LEDGER_REQUIRE_API_AUTH=1` is set.
+
+For maintenance calls, send either:
+
+```txt
+X-Ledger-Api-Secret: <same value as FUEL_LEDGER_API_SECRET>
+```
+
+or:
+
+```txt
+Authorization: Bearer <same value as FUEL_LEDGER_API_SECRET>
+```
+
+The frontend must not know this secret; production app data should use Supabase/RLS, not the JSON fallback API.
+
 ## Known remaining limitation
 
 `car_share_ledgers` is still a compatibility JSON state table. It is broader than the normalized table RLS because the current app still relies on it for shared state/backups. The safest long-term hardening step is to complete the move to normalized-table-primary reads/writes and then restrict or retire broad JSON updates.
