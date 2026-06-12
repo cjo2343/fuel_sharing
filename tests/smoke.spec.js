@@ -344,8 +344,37 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await closedPeriodCard.evaluate((card) => {
     if (card instanceof HTMLDetailsElement) card.open = true;
   });
-  await expect(closedPeriodCard.locator('[data-closed-payment-status="paid"]').first()).toBeVisible();
   await expect(closedPeriodCard).toContainText("Updates only this payment status and the closed-period change log.");
+
+  await page.locator('[data-view-tab="payments"]').click();
+  await expect(page.locator("#unpaidPaymentSummary")).toContainText("You owe");
+  await expect(page.locator("#unpaidPaymentList")).toContainText("pays");
+  await expect(page.locator("#unpaidPaymentList")).toContainText("Mark paid");
+  await page.locator('[data-view-tab="history"]').click();
+  const reopenedClosedPeriodCard = page.locator(".archived-period-card").first();
+  await reopenedClosedPeriodCard.evaluate((card) => {
+    if (card instanceof HTMLDetailsElement) card.open = true;
+  });
+
+  const closedMarkPaid = reopenedClosedPeriodCard.locator('[data-closed-payment-status="paid"]').first();
+  await expect(closedMarkPaid).toBeVisible();
+  const closedSettlementIndex = Number(await closedMarkPaid.getAttribute("data-closed-settlement-index"));
+  const targetClosedPaymentCard = reopenedClosedPeriodCard.locator(".archive-payment-card").nth(closedSettlementIndex);
+  await closedMarkPaid.evaluate((button) => button.click());
+  await expect(targetClosedPaymentCard).toContainText("Paid after settlement close");
+  await expect(targetClosedPaymentCard.locator('[data-closed-payment-status="paid"]:visible')).toHaveCount(0);
+  await expect(targetClosedPaymentCard.locator('button:has-text("Mark paid"):visible')).toHaveCount(0);
+
+  await page.reload();
+  await page.locator('[data-view-tab="history"]').click();
+  const reloadedClosedPeriodCard = page.locator(".archived-period-card").first();
+  await reloadedClosedPeriodCard.evaluate((card) => {
+    if (card instanceof HTMLDetailsElement) card.open = true;
+  });
+  const reloadedPaidClosedPaymentCard = reloadedClosedPeriodCard.locator(".archive-payment-card.paid").first();
+  await expect(reloadedPaidClosedPaymentCard).toContainText("Paid after settlement close");
+  await expect(reloadedPaidClosedPaymentCard.locator('[data-closed-payment-status="paid"]:visible')).toHaveCount(0);
+  await expect(reloadedPaidClosedPaymentCard.locator('button:has-text("Mark paid"):visible')).toHaveCount(0);
   await expect(page.locator("[data-archive-csv]")).toHaveCount(1);
   await expect(page.locator("[data-archive-audit-csv]")).toHaveCount(1);
 });

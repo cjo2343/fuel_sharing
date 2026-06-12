@@ -292,3 +292,11 @@ Payment status clicks are now awaited in the shared click handler, and the Playw
 - After closing a period with a requested payment, open History -> Closed periods.
 - Confirm the unpaid payment clearly shows `Mark paid` and explains that it only updates payment status/change log.
 - Mark it paid and confirm the closed-period change log records the update.
+
+### Closed-period payment persistence and layout
+
+Closed-period final payment cards use a stacked layout with payer/receiver, amount/status, action, and explanatory text separated for readability. Marking a closed-period payment paid now forces the JSON mirror/remote state to save immediately and keeps the closed-period card expanded after the UI re-renders, so the paid status survives refresh and the user does not lose their place.
+
+### Unpaid payments smoke check
+
+After deploying, open Payments and confirm requested unpaid payments from both current and closed settlements appear there. Marking a closed-period payment paid should remove the visible Mark paid action, show the paid status, and persist after refresh.

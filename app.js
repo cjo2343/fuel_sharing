@@ -164,6 +164,7 @@ const closedPeriodFilters = {
   status: "all",
   sort: "newest"
 };
+const expandedClosedPeriodIds = new Set();
 let editingTripId = null;
 let editingFuelId = null;
 let supabaseStateChannel = null;
@@ -274,6 +275,8 @@ const els = {
   settingsPanel: document.querySelector(".settings-panel"),
   settlementWarning: document.querySelector("#settlementWarning"),
   paymentOverview: document.querySelector("#paymentOverview"),
+  unpaidPaymentSummary: document.querySelector("#unpaidPaymentSummary"),
+  unpaidPaymentList: document.querySelector("#unpaidPaymentList"),
   auditLog: document.querySelector("#auditLog"),
   memberActionPanel: document.querySelector("#memberActionPanel"),
   periodBreakdown: document.querySelector("#periodBreakdown"),
@@ -1200,6 +1203,18 @@ if (els.clearPeriodFilters) {
   });
 }
 
+document.addEventListener("toggle", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".archived-period-card[data-period-id]") : null;
+  if (!card) return;
+  const periodId = card.dataset.periodId;
+  if (!periodId) return;
+  if (card.open) {
+    expandedClosedPeriodIds.add(periodId);
+  } else {
+    expandedClosedPeriodIds.delete(periodId);
+  }
+}, true);
+
 document.addEventListener("click", async (event) => {
   const statusButton = event.target.closest("[data-payment-status]");
   if (statusButton) {
@@ -1407,6 +1422,121 @@ function clearCurrentAuditLog() {
   state.auditLog = [];
 }
 
+
+function getUnpaidPaymentItems(ledger = calculateLedger()) {
+  const currentItems = (Array.isArray(ledger.settlements) ? ledger.settlements : [])
+    .map((settlement) => {
+      const key = settlementKey(settlement);
+      const status = normalizePaymentStatus(state.paymentStatuses[key]);
+      if (status !== "requested") return null;
+      return {
+        scope: "current",
+        key,
+        from: settlement.from,
+        to: settlement.to,
+        amount: Number(settlement.amount || 0),
+        currency: state.currency,
+        status,
+        label: "Current settlement",
+        settlement,
+        canMarkPaid: canMarkSettlementPaid(settlement),
+        actionAttrs: `data-payment-key="${escapeHtml(key)}" data-payment-status="paid"`
+      };
+    })
+    .filter(Boolean);
+
+  const closedItems = (Array.isArray(state.closedPeriods) ? state.closedPeriods : []).flatMap((period) => {
+    const settlements = Array.isArray(period.settlements) ? period.settlements : [];
+    return settlements.map((settlement, index) => {
+      const status = normalizePaymentStatus(settlement.status);
+      if (status !== "requested") return null;
+      return {
+        scope: "closed",
+        key: settlementKeyForPeriod(settlement, period.id || "closed"),
+        from: settlement.from,
+        to: settlement.to,
+        amount: Number(settlement.amount || 0),
+        currency: period.currency || state.currency,
+        status,
+        label: period.label || "Closed period",
+        closedAt: period.closedAt,
+        periodId: period.id,
+        settlementIndex: index,
+        settlement,
+        canMarkPaid: canMarkSettlementPaid(settlement),
+        actionAttrs: `data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid"`
+      };
+    }).filter(Boolean);
+  });
+
+  return [...currentItems, ...closedItems].sort((a, b) => {
+    if (a.from === currentUser && b.from !== currentUser) return -1;
+    if (b.from === currentUser && a.from !== currentUser) return 1;
+    if (a.to === currentUser && b.to !== currentUser) return -1;
+    if (b.to === currentUser && a.to !== currentUser) return 1;
+    return String(b.closedAt || "").localeCompare(String(a.closedAt || ""));
+  });
+}
+
+function renderUnpaidPayments(ledger = calculateLedger()) {
+  if (!els.unpaidPaymentList || !els.unpaidPaymentSummary) return;
+  const items = getUnpaidPaymentItems(ledger);
+  const mine = items.filter((item) => item.from === currentUser);
+  const owedToMe = items.filter((item) => item.to === currentUser && item.from !== currentUser);
+  const totalMine = mine.reduce((sum, item) => sum + item.amount, 0);
+  const totalOwedToMe = owedToMe.reduce((sum, item) => sum + item.amount, 0);
+  const currency = items[0]?.currency || state.currency;
+
+  els.unpaidPaymentSummary.innerHTML = `
+    <div class="unpaid-summary-card primary"><span>You owe</span><b>${mine.length} · ${formatMoneyFor(totalMine, currency)}</b></div>
+    <div class="unpaid-summary-card"><span>Owed to you</span><b>${owedToMe.length} · ${formatMoneyFor(totalOwedToMe, currency)}</b></div>
+    <div class="unpaid-summary-card"><span>Total unpaid</span><b>${items.length}</b></div>
+  `;
+
+  if (!items.length) {
+    els.unpaidPaymentList.replaceChildren(emptyNode("No unpaid requested payments."));
+    return;
+  }
+
+  els.unpaidPaymentList.innerHTML = items.map((item) => renderUnpaidPaymentCard(item)).join("");
+}
+
+function renderUnpaidPaymentCard(item) {
+  const isMine = item.from === currentUser;
+  const isOwedToMe = item.to === currentUser && item.from !== currentUser;
+  const amountText = formatMoneyFor(item.amount, item.currency || state.currency);
+  const contextText = item.scope === "closed"
+    ? `${item.label} · closed ${item.closedAt ? formatDate(String(item.closedAt).slice(0, 10)) : "date unknown"}`
+    : item.label;
+  const helperText = item.scope === "closed"
+    ? "This updates only the closed-period payment status and change log. The settlement amount stays frozen."
+    : "This marks the current requested payment as paid.";
+  const action = item.canMarkPaid
+    ? `<button class="subtle-button compact-button" type="button" ${item.actionAttrs}>Mark paid</button>`
+    : `<span class="request-note">Only ${escapeHtml(item.from)}, ${escapeHtml(item.to)}, or an admin can mark this paid.</span>`;
+  const badge = isMine ? "You owe" : isOwedToMe ? "Owed to you" : "Unpaid";
+
+  return `
+    <article class="unpaid-payment-card ${isMine ? "is-mine" : ""} ${isOwedToMe ? "is-owed-to-me" : ""}">
+      <div class="unpaid-payment-main">
+        <div>
+          <span class="status-chip requested">${escapeHtml(badge)}</span>
+          <strong>${escapeHtml(item.from)} pays ${escapeHtml(item.to)}</strong>
+          <p>${escapeHtml(contextText)}</p>
+        </div>
+        <div class="unpaid-payment-amount">
+          <b>${amountText}</b>
+          <span class="status-chip requested">Requested</span>
+        </div>
+      </div>
+      <div class="unpaid-payment-actions">
+        ${action}
+        <span class="request-note">${escapeHtml(helperText)}</span>
+      </div>
+    </article>
+  `;
+}
+
 function renderAuditLog() {
   if (!els.auditLog) return;
   const entries = auditLog.normalizeAuditEntries(state.auditLog).slice(0, 40);
@@ -1446,6 +1576,7 @@ function render() {
   renderSummary(ledger);
   renderBalances(ledger);
   renderSettlements(ledger);
+  renderUnpaidPayments(ledger);
   renderHistory();
   renderAuditLog();
   renderClosedPeriods();
@@ -3968,10 +4099,13 @@ async function updateClosedPaymentStatus(button) {
     nextStatus: "paid",
     auditEntry
   });
+  expandedClosedPeriodIds.add(period.id);
   if (!backendApplied) {
     settlement.status = "paid";
     period.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(period.auditLog || [])]);
+    auditLogDirty = true;
     saveState();
+    await saveRemoteState();
   }
   render();
   showAppMessage(`Closed-period payment to ${settlement.to} marked paid.`);
@@ -5667,8 +5801,10 @@ function renderClosedPeriodCard(period) {
   const participantKm = Number(period.totalKm || 0);
   const closedDate = period.closedAt ? formatDate(String(period.closedAt).slice(0, 10)) : "Unknown date";
 
+  const isExpanded = expandedClosedPeriodIds.has(period.id);
+
   return `
-    <details class="period-card archived-period-card">
+    <details class="period-card archived-period-card" data-period-id="${escapeHtml(period.id)}" ${isExpanded ? "open" : ""}>
       <summary>
         <div>
           <strong>${escapeHtml(period.label || "Closed period")}</strong>
@@ -5777,8 +5913,8 @@ function renderPeriodSettlements(period) {
                 : `Not requested when this period was closed.`;
             return `
             <article class="archive-payment-card ${status}">
-              <div class="archive-payment-main">
-                <div>
+              <div class="archive-payment-header">
+                <div class="archive-payment-title">
                   <strong>${escapeHtml(paymentText)}</strong>
                   <p>${escapeHtml(statusNote)}</p>
                 </div>
@@ -5789,7 +5925,7 @@ function renderPeriodSettlements(period) {
               </div>
               ${canMarkPaid ? `
                 <div class="archive-payment-action-row">
-                  <button class="subtle-button compact-button" type="button" data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid">Mark paid</button>
+                  <button class="subtle-button compact-button archive-payment-button" type="button" data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid">Mark paid</button>
                   <span class="request-note">Updates only this payment status and the closed-period change log.</span>
                 </div>
               ` : ""}

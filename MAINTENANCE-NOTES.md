@@ -302,3 +302,11 @@ Payment status clicks are now awaited in the shared click handler, and the Playw
 - Closed completed-period cards now show unpaid requested payments as dedicated payment cards.
 - The `Mark paid` action is shown directly inside the closed-period payment row when the signed-in user is allowed to use it.
 - Marking paid after close remains status-only: it does not reopen or recalculate the settlement, and it writes to the closed period change log.
+
+### Closed-period payment persistence and layout
+
+Closed-period final payment cards use a stacked layout with payer/receiver, amount/status, action, and explanatory text separated for readability. Marking a closed-period payment paid now forces the JSON mirror/remote state to save immediately and keeps the closed-period card expanded after the UI re-renders, so the paid status survives refresh and the user does not lose their place.
+
+### Unpaid payments view
+
+Added a Payments tab with an unpaid payments dashboard. It collects requested-but-unpaid payments from the current settlement and closed periods, highlights what the current user owes, and allows eligible users to mark closed-period payments paid without reopening or recalculating the settlement.

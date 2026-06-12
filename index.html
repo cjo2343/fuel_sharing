@@ -32,6 +32,7 @@
       <nav class="section-tabs" aria-label="App sections">
         <button class="section-tab" type="button" data-view-tab="log">Log</button>
         <button class="section-tab" type="button" data-view-tab="settle">Settle</button>
+        <button class="section-tab" type="button" data-view-tab="payments">Payments</button>
         <button class="section-tab" type="button" data-view-tab="history">History</button>
         <button class="section-tab" type="button" data-view-tab="insights">Insights</button>
         <button class="section-tab" type="button" data-view-tab="about">About</button>
@@ -366,6 +367,19 @@
           </div>
           <div id="peopleBalances" class="people-grid"></div>
         </section>
+
+        <section class="panel wide-panel unpaid-payments-panel" data-view="payments" aria-labelledby="unpaidPaymentsHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Payments</p>
+              <h2 id="unpaidPaymentsHeading">Unpaid payments</h2>
+            </div>
+          </div>
+          <p class="section-note">All requested payments that are not marked paid yet, including closed settlements. Closed-period payments can be marked paid here without reopening or recalculating the settlement.</p>
+          <div id="unpaidPaymentSummary" class="unpaid-payment-summary" aria-live="polite"></div>
+          <div id="unpaidPaymentList" class="unpaid-payment-list"></div>
+        </section>
+
 
         <section class="panel wide-panel" data-view="history" aria-labelledby="historyHeading">
           <div class="panel-header">

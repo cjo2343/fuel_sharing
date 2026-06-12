@@ -507,3 +507,11 @@ Payment status clicks are now awaited in the shared click handler, and the Playw
 
 ### Closed-period payment status
 Closed settlement amounts stay frozen, but requested payments can still be marked paid directly from the completed-period card. This updates only the payment status and the closed-period change log; it does not reopen or recalculate the settlement.
+
+### Closed-period payment persistence and layout
+
+Closed-period final payment cards use a stacked layout with payer/receiver, amount/status, action, and explanatory text separated for readability. Marking a closed-period payment paid now forces the JSON mirror/remote state to save immediately and keeps the closed-period card expanded after the UI re-renders, so the paid status survives refresh and the user does not lose their place.
+
+### Unpaid payments dashboard
+
+The Payments tab shows requested payments that are not marked paid yet, including payments from closed settlement periods. This gives members a single place to see what they owe and mark eligible payments as paid without opening each historical settlement.
