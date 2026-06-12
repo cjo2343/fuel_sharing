@@ -6268,6 +6268,16 @@ function readPaymentRefFromUrl() {
   return params.get("payment") || params.get("paymentRef") || params.get("pay") || "";
 }
 
+function readPaymentLinkContextFromUrl() {
+  const rawHash = String(window.location.hash || "").replace(/^#/, "");
+  const params = new URLSearchParams(rawHash);
+  return {
+    payment: params.get("payment") || params.get("paymentRef") || params.get("pay") || "",
+    scope: String(params.get("scope") || "").trim().toLowerCase(),
+    periodId: params.get("period") || params.get("periodId") || ""
+  };
+}
+
 function findPaymentItemByRef(paymentRef) {
   const target = normalizePaymentRefValue(paymentRef);
   if (!target) return null;
@@ -6286,26 +6296,31 @@ function scrollToPaymentRef(paymentRef) {
 }
 
 function handlePaymentDeepLink(options = {}) {
-  const rawRef = readPaymentRefFromUrl();
-  if (!rawRef) return false;
-  const normalizedRef = normalizePaymentRefValue(rawRef);
+  const linkContext = readPaymentLinkContextFromUrl();
+  if (!linkContext.payment) return false;
+  const normalizedRef = normalizePaymentRefValue(linkContext.payment);
   const item = findPaymentItemByRef(normalizedRef);
+  const requestedScope = ["current", "closed"].includes(linkContext.scope) ? linkContext.scope : "";
+  const resolvedScope = item?.scope || requestedScope;
 
-  if (item?.scope === "closed") {
+  if (resolvedScope === "closed") {
+    const periodId = item?.periodId || linkContext.periodId || "";
+    if (periodId) expandedClosedPeriodIds.add(periodId);
     setActiveHistorySection("archive");
     setActiveView("history");
     window.setTimeout(() => {
       if (!scrollToPaymentRef(normalizedRef)) {
-        document.querySelector("#closedPeriods")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const periodCard = periodId ? document.querySelector(`[data-period-id="${cssEscape(periodId)}"]`) : null;
+        (periodCard || document.querySelector("#closedPeriods"))?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-    }, 0);
-  } else if (item?.scope === "current") {
-    setActiveView("settlement");
+    }, 80);
+  } else if (resolvedScope === "current") {
+    setActiveView("settle");
     window.setTimeout(() => {
       if (!scrollToPaymentRef(normalizedRef)) {
         els.settlements?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-    }, 0);
+    }, 80);
   } else {
     setActivePaymentSection("all");
     setActiveView("payments");
@@ -6313,7 +6328,7 @@ function handlePaymentDeepLink(options = {}) {
       if (!scrollToPaymentRef(normalizedRef)) {
         els.unpaidPaymentList?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-    }, 0);
+    }, 80);
   }
 
   if (!options.silent && !item) {
@@ -7473,7 +7488,7 @@ function renderPeriodSettlements(period) {
                 : `Not requested when this period was closed.`;
             const permissionNote = `Only ${settlement.from} or an admin can mark this closed-period payment paid.`;
             return `
-            <article class="archive-payment-card ${status}">
+            <article class="archive-payment-card ${status}" data-payment-ref="${escapeHtml(normalizePaymentRefValue(paymentRef))}">
               <div class="archive-payment-header">
                 <div class="archive-payment-main">
                   <div class="archive-payment-kicker">
