@@ -3850,3 +3850,8 @@ body.auth-locked #authPanel .text-button {
     text-align: left;
   }
 }
+
+.highlight-pulse {
+  outline: 3px solid rgba(47, 133, 100, 0.45);
+  box-shadow: 0 0 0 6px rgba(47, 133, 100, 0.12);
+}

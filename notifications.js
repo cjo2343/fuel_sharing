@@ -204,31 +204,36 @@
     getMemberProfile,
     settlementKey,
     tagSuffix = "",
+    paymentRef = "",
+    paymentUrl = "",
     ...options
   }) {
     if (!settlement) return { attempted: false, sent: 0, failed: 0, reason: "missing-settlement" };
     return sendPushNotification({
       ...options,
       targetEmail: getMemberProfile(settlement.from).email,
-      tag: `${settlementKey(settlement)}${tagSuffix}`
+      url: paymentUrl || options.url || "/",
+      tag: `${settlementKey(settlement)}${tagSuffix}${paymentRef ? `:${paymentRef}` : ""}`
     });
   }
 
   async function sendSettlementPush(options) {
-    const { settlement, formatMoney } = options;
+    const { settlement, formatMoney, paymentRef = "" } = options;
+    const refText = paymentRef ? `${paymentRef} ` : "";
     return sendPaymentPush({
       ...options,
-      title: "Fuel Ledger payment request",
-      body: `${settlement.to} requested ${formatMoney(settlement.amount)} from you for shared car fuel.`
+      title: `Payment requested ${paymentRef}`.trim(),
+      body: `${refText}${settlement.to} requested ${formatMoney(settlement.amount)} from you for shared car fuel.`
     });
   }
 
   async function sendPaymentReminderPush(options) {
-    const { settlement, formatMoney } = options;
+    const { settlement, formatMoney, paymentRef = "" } = options;
+    const refText = paymentRef ? `${paymentRef} ` : "";
     return sendPaymentPush({
       ...options,
-      title: "Fuel Ledger payment reminder",
-      body: `${settlement.to} reminded you to pay ${formatMoney(settlement.amount)} for shared car fuel.`,
+      title: `Payment reminder ${paymentRef}`.trim(),
+      body: `${refText}${settlement.to} reminded you to pay ${formatMoney(settlement.amount)} for shared car fuel.`,
       tagSuffix: ":reminder"
     });
   }

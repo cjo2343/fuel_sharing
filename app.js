@@ -396,9 +396,15 @@ const describeBookingPermissionMessage = bookingCalendarController.describeBooki
 state.lastOdometer = getLatestOdometer();
 setDefaultDates();
 render();
-initializeSync().then(() => runAutomaticPaymentReminders()).catch((error) => console.warn("Automatic payment reminder check failed", error));
+initializeSync()
+  .then(() => {
+    handleStartupDeepLinks({ silent: true });
+    return runAutomaticPaymentReminders();
+  })
+  .catch((error) => console.warn("Automatic payment reminder check failed", error));
 initializePwa();
 refreshFuelPriceEstimate();
+window.addEventListener("hashchange", () => handleStartupDeepLinks());
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -583,6 +589,7 @@ els.tripForm.addEventListener("submit", async (event) => {
     els.fuelForm?.reset();
     clearFuelLocation();
     prefillFuelFromTripContext(pendingFuelTripContext);
+    sendFuelFollowupPush(tripPayload).catch((error) => console.warn("Fuel follow-up notification failed", error));
   }
   clearTripLoggingContext();
   els.tripForm.reset();
@@ -1695,7 +1702,7 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
   };
 }
 
-function buildPaymentReminderAuditInfo(settlement, pushResult = {}) {
+function buildPaymentReminderAuditInfo(settlement, pushResult = {}, paymentRef = "") {
   const from = settlement?.from || "Someone";
   const to = settlement?.to || "someone";
   const amount = Number(settlement?.amount || 0);
@@ -1708,10 +1715,12 @@ function buildPaymentReminderAuditInfo(settlement, pushResult = {}) {
     : pushResult.attempted
       ? "No active mobile notification subscription was reached"
       : "Reminder recorded in the app; mobile notification was not available";
+  const refText = normalizePaymentRefValue(paymentRef || pushResult.paymentRef || "");
   return {
-    summary: `${to} reminded ${from} · ${amountText}`,
-    detail: `${from} pays ${to} · ${amountText} · ${deliveryText}`,
+    summary: `${refText ? `${refText} · ` : ""}${to} reminded ${from} · ${amountText}`,
+    detail: `${refText ? `${refText} · ` : ""}${from} pays ${to} · ${amountText} · ${deliveryText}`,
     metadata: {
+      paymentRef: refText,
       from,
       to,
       amount,
@@ -1767,7 +1776,9 @@ function getUnpaidPaymentItems(ledger = calculateLedger()) {
         label: "Current settlement",
         settlement,
         canMarkPaid: canMarkSettlementPaid(settlement),
-        actionAttrs: `data-payment-key="${escapeHtml(key)}" data-payment-status="paid"`
+        canSendReminder: canManageSettlementRequest(settlement) || isAdmin,
+        actionAttrs: `data-payment-key="${escapeHtml(key)}" data-payment-status="paid"`,
+        reminderAttrs: `data-payment-key="${escapeHtml(key)}" data-payment-reminder="true"`
       };
     })
     .filter(Boolean);
@@ -1791,7 +1802,9 @@ function getUnpaidPaymentItems(ledger = calculateLedger()) {
         settlementIndex: index,
         settlement,
         canMarkPaid: canMarkSettlementPaid(settlement),
-        actionAttrs: `data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid"`
+        canSendReminder: canManageSettlementRequest(settlement) || isAdmin,
+        actionAttrs: `data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-closed-payment-status="paid"`,
+        reminderAttrs: `data-closed-period-id="${escapeHtml(period.id)}" data-closed-settlement-index="${index}" data-payment-reminder="true"`
       };
     }).filter(Boolean);
   });
@@ -1857,6 +1870,23 @@ function createPaymentRef(item) {
   return `#P${createStableHash(`${item?.scope || "payment"}:${item?.key || ""}:${item?.from || ""}:${item?.to || ""}:${item?.amount || 0}`)}`;
 }
 
+function normalizePaymentRefValue(value) {
+  const compact = String(value || "").trim().replace(/^#+/, "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  if (!compact) return "";
+  return compact.startsWith("P") ? `#${compact}` : `#P${compact}`;
+}
+
+function paymentRefEquals(itemOrRef, rawRef) {
+  const left = typeof itemOrRef === "string" ? itemOrRef : (itemOrRef?.paymentRef || createPaymentRef(itemOrRef || {}));
+  return normalizePaymentRefValue(left) === normalizePaymentRefValue(rawRef);
+}
+
+function makePaymentDeepLink(paymentRef) {
+  const compact = normalizePaymentRefValue(paymentRef).replace(/^#/, "");
+  const path = `${window.location.origin}${window.location.pathname}`;
+  return compact ? `${path}#payment=${encodeURIComponent(compact)}` : path;
+}
+
 function renderUnpaidPaymentCard(item) {
   const isMine = item.from === currentUser;
   const isOwedToMe = item.to === currentUser && item.from !== currentUser;
@@ -1875,9 +1905,12 @@ function renderUnpaidPaymentCard(item) {
     : "";
   const badge = isMine ? "You owe" : isOwedToMe ? "Owed to you" : "Unpaid";
   const paymentRef = item.paymentRef || createPaymentRef(item);
+  const reminderAction = item.canSendReminder && item.reminderAttrs
+    ? `<button class="subtle-button compact-button" type="button" ${item.reminderAttrs}>Send reminder</button>`
+    : "";
 
   return `
-    <article class="unpaid-payment-card ${isMine ? "is-mine" : ""} ${isOwedToMe ? "is-owed-to-me" : ""}">
+    <article class="unpaid-payment-card ${isMine ? "is-mine" : ""} ${isOwedToMe ? "is-owed-to-me" : ""}" data-payment-ref="${escapeHtml(normalizePaymentRefValue(paymentRef))}">
       <div class="unpaid-payment-main">
         <div>
           <div class="payment-card-kicker"><span class="status-chip requested">${escapeHtml(badge)}</span><span class="log-ref payment-ref">${escapeHtml(paymentRef)}</span></div>
@@ -1891,6 +1924,7 @@ function renderUnpaidPaymentCard(item) {
       </div>
       <div class="unpaid-payment-actions">
         ${action}
+        ${reminderAction}
         ${archiveLink}
         <span class="request-note">${escapeHtml(helperText)}</span>
       </div>
@@ -4418,7 +4452,7 @@ async function updatePaymentStatus(button) {
   showAppMessage(paymentMessage);
 
   if (nextStatus === "requested") {
-    sendSettlementPush(settlement).catch((error) => {
+    sendSettlementPush(settlement, paymentAuditInfo.metadata).catch((error) => {
       console.warn("Settlement push notification failed", error);
     });
   }
@@ -4429,6 +4463,12 @@ async function updatePaymentStatus(button) {
 }
 
 async function sendPaymentReminder(button) {
+  const isClosedPayment = Boolean(button.dataset.closedPeriodId);
+  if (isClosedPayment) {
+    await sendClosedPaymentReminder(button);
+    return;
+  }
+
   const key = button.dataset.paymentKey;
   if (pendingSettlementRequestKeys.has(key)) return;
 
@@ -4447,12 +4487,13 @@ async function sendPaymentReminder(button) {
   button.disabled = true;
   button.textContent = "Sending...";
 
-  const pushResult = await sendPaymentReminderPush(settlement).catch((error) => {
+  const paymentRef = createPaymentRef({ scope: "current", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
+  const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => {
     console.warn("Payment reminder notification failed", error);
     return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
   });
 
-  const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
+  const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult, paymentRef);
   const auditEntry = makeAuditEntry({
     type: "payment_reminder_sent",
     entityType: "payment",
@@ -4477,9 +4518,63 @@ async function sendPaymentReminder(button) {
   render();
 
   if (pushResult.sent > 0) {
-    showAppMessage(`Reminder sent to ${settlement.from}.`);
+    showAppMessage(`Reminder ${paymentRef} sent to ${settlement.from}.`);
   } else {
-    showAppMessage(`Reminder recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
+    showAppMessage(`Reminder ${paymentRef} recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
+  }
+  button.textContent = originalText;
+}
+
+async function sendClosedPaymentReminder(button) {
+  const period = findClosedPeriod(button.dataset.closedPeriodId);
+  const index = Number(button.dataset.closedSettlementIndex);
+  const settlement = period?.settlements?.[index];
+  const key = settlement && period ? settlementKeyForPeriod(settlement, period.id) : "";
+  if (!period || !settlement || normalizePaymentStatus(settlement.status) !== "requested" || (!canManageSettlementRequest(settlement) && !canManageSettings())) {
+    showPermissionBlocked(describePaymentPermissionMessage(settlement, "requested"));
+    render();
+    return;
+  }
+  if (pendingSettlementRequestKeys.has(key)) return;
+  pendingSettlementRequestKeys.add(key);
+  const originalText = button.textContent || "Send reminder";
+  button.disabled = true;
+  button.textContent = "Sending...";
+
+  const paymentRef = createPaymentRef({ scope: "closed", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
+  const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => {
+    console.warn("Closed payment reminder notification failed", error);
+    return { attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" };
+  });
+  const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult, paymentRef);
+  const auditEntry = makeAuditEntry({
+    type: "payment_reminder_sent",
+    entityType: "payment",
+    entityId: key,
+    summary: auditInfo.summary,
+    detail: `${auditInfo.detail} · Closed period payment reminder`,
+    metadata: { ...auditInfo.metadata, periodId: period.id }
+  });
+  const backendApplied = await applyBackendPaymentAction({
+    action: "payment_reminder",
+    scope: "closed",
+    periodId: period.id,
+    settlementIndex: index,
+    auditEntry
+  });
+  expandedClosedPeriodIds.add(period.id);
+  if (!backendApplied) {
+    period.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(period.auditLog || [])]);
+    auditLogDirty = true;
+    saveState();
+    await saveRemoteState();
+  }
+  pendingSettlementRequestKeys.delete(key);
+  render();
+  if (pushResult.sent > 0) {
+    showAppMessage(`Reminder ${paymentRef} sent to ${settlement.from}.`);
+  } else {
+    showAppMessage(`Reminder ${paymentRef} recorded. ${settlement.from} does not appear to have an active notification subscription yet.`, "warning");
   }
   button.textContent = originalText;
 }
@@ -4629,8 +4724,9 @@ async function runAutomaticPaymentReminders() {
     if (normalizePaymentStatus(state.paymentStatuses[key]) !== "requested") continue;
     const due = getPaymentReminderDueInfo(state.auditLog, key, settings, now);
     if (!due.due) continue;
-    const pushResult = await sendPaymentReminderPush(settlement).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
-    const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
+    const paymentRef = createPaymentRef({ scope: "current", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
+    const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
+    const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult, paymentRef);
     addAuditEntry({
       type: "payment_reminder_sent",
       entityType: "payment",
@@ -4651,8 +4747,9 @@ async function runAutomaticPaymentReminders() {
       const fallbackRequestedAt = getClosedPaymentFallbackRequestedAt(period, settlement);
       const due = getPaymentReminderDueInfo(period.auditLog, key, settings, now, fallbackRequestedAt);
       if (!due.due) continue;
-      const pushResult = await sendPaymentReminderPush(settlement).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
-      const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult);
+      const paymentRef = createPaymentRef({ scope: "closed", key, from: settlement.from, to: settlement.to, amount: settlement.amount });
+      const pushResult = await sendPaymentReminderPush(settlement, { paymentRef, url: makePaymentDeepLink(paymentRef) }).catch((error) => ({ attempted: true, sent: 0, failed: 1, reason: error.message || "send-failed" }));
+      const auditInfo = buildPaymentReminderAuditInfo(settlement, pushResult, paymentRef);
       period.auditLog = auditLog.normalizeAuditEntries([
         makeAuditEntry({
           type: "payment_reminder_sent",
@@ -5696,7 +5793,7 @@ function renderPendingLogs() {
       ? `<button class="action-button compact-button" type="button" data-complete-pending-trip="${escapeHtml(booking.id || "")}" ${task.canAct ? "" : "disabled"}>Complete trip</button>`
       : `<button class="action-button compact-button" type="button" data-add-fuel-for-trip="${escapeHtml(trip?.id || "")}" ${task.canAct ? "" : "disabled"}>Add fuel</button>`;
     return `
-      <article class="pending-log-card ${task.required ? "is-required" : ""}">
+      <article class="pending-log-card ${task.required ? "is-required" : ""}" data-log-ref="${escapeHtml(normalizeLogRefValue(formatLogRef(task)))}" data-pending-log-type="${escapeHtml(task.type)}">
         <div class="pending-log-main">
           <div>
             <p class="eyebrow">${escapeHtml(formatLogRef(task))}</p>
@@ -5711,6 +5808,146 @@ function renderPendingLogs() {
       </article>
     `;
   }).join("");
+}
+
+
+function normalizeLogRefValue(value) {
+  const compact = String(value || "").trim().replace(/^#+/, "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  return compact ? `#${compact}` : "";
+}
+
+function logRefEquals(entryOrRef, rawRef) {
+  const left = typeof entryOrRef === "string" ? entryOrRef : formatLogRef(entryOrRef || {});
+  return normalizeLogRefValue(left) === normalizeLogRefValue(rawRef);
+}
+
+function makeLogDeepLink(logRef) {
+  const compact = normalizeLogRefValue(logRef).replace(/^#/, "");
+  const path = `${window.location.origin}${window.location.pathname}`;
+  return compact ? `${path}#log=${encodeURIComponent(compact)}` : path;
+}
+
+function readLogRefFromUrl() {
+  const rawHash = String(window.location.hash || "").replace(/^#/, "");
+  if (!rawHash) return "";
+  const params = new URLSearchParams(rawHash);
+  return params.get("log") || params.get("pending-log") || params.get("logRef") || "";
+}
+
+function findPendingLogTaskByRef(logRef) {
+  const target = normalizeLogRefValue(logRef);
+  if (!target) return null;
+  return buildPendingLogTasks().find((task) => logRefEquals(task, target)) || null;
+}
+
+function findCurrentLogEntryByRef(logRef) {
+  const target = normalizeLogRefValue(logRef);
+  if (!target) return null;
+  const booking = (state.bookings || []).find((entry) => logRefEquals(entry, target));
+  if (booking) return { type: "booking", entry: booking };
+  const trip = (state.trips || []).find((entry) => logRefEquals(entry, target));
+  if (trip) return { type: "trip", entry: trip };
+  const fuel = (state.fuel || []).find((entry) => logRefEquals(entry, target));
+  if (fuel) return { type: "fuel", entry: fuel };
+  for (const period of state.closedPeriods || []) {
+    const closedTrip = (period.trips || []).find((entry) => logRefEquals(entry, target));
+    if (closedTrip) return { type: "closed-trip", entry: closedTrip, period };
+    const closedFuel = (period.fuel || []).find((entry) => logRefEquals(entry, target));
+    if (closedFuel) return { type: "closed-fuel", entry: closedFuel, period };
+  }
+  return null;
+}
+
+function scrollToPendingLogRef(logRef) {
+  const target = normalizeLogRefValue(logRef);
+  if (!target) return false;
+  const card = Array.from(document.querySelectorAll("[data-log-ref]")).find((entry) => normalizeLogRefValue(entry.dataset.logRef) === target);
+  if (!card) return false;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.add("highlight-pulse");
+  window.setTimeout(() => card.classList.remove("highlight-pulse"), 1800);
+  return true;
+}
+
+function handleLogDeepLink(options = {}) {
+  const logRef = readLogRefFromUrl();
+  if (!logRef) return false;
+  const normalizedRef = normalizeLogRefValue(logRef);
+  const task = findPendingLogTaskByRef(normalizedRef);
+
+  if (task?.type === "trip" && task.booking?.id && task.canAct) {
+    startTripFromBooking(task.booking.id);
+    return true;
+  }
+
+  if (task?.type === "fuel" && task.trip?.id && task.canAct) {
+    startFuelFromTrip(task.trip.id);
+    return true;
+  }
+
+  setActiveView("log");
+  window.setTimeout(() => {
+    if (!scrollToPendingLogRef(normalizedRef)) {
+      els.pendingLogList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, 0);
+
+  if (!options.silent) {
+    const current = findCurrentLogEntryByRef(normalizedRef);
+    const message = task
+      ? `Log ${normalizedRef} is pending, but you do not have permission to complete it on this device.`
+      : current
+        ? `Log ${normalizedRef} is already recorded. Open History to review completed or archived entries.`
+        : `Could not find log ${normalizedRef}. It may have been deleted or is not synced on this device yet.`;
+    showAppMessage(message, task ? "warning" : "info", { timeoutMs: 7000 });
+  }
+  return true;
+}
+
+function readPaymentRefFromUrl() {
+  const rawHash = String(window.location.hash || "").replace(/^#/, "");
+  if (!rawHash) return "";
+  const params = new URLSearchParams(rawHash);
+  return params.get("payment") || params.get("paymentRef") || params.get("pay") || "";
+}
+
+function findPaymentItemByRef(paymentRef) {
+  const target = normalizePaymentRefValue(paymentRef);
+  if (!target) return null;
+  return getUnpaidPaymentItems(calculateLedger()).find((item) => paymentRefEquals(item, target)) || null;
+}
+
+function scrollToPaymentRef(paymentRef) {
+  const target = normalizePaymentRefValue(paymentRef);
+  if (!target) return false;
+  const card = Array.from(document.querySelectorAll("[data-payment-ref]")).find((entry) => normalizePaymentRefValue(entry.dataset.paymentRef) === target);
+  if (!card) return false;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.add("highlight-pulse");
+  window.setTimeout(() => card.classList.remove("highlight-pulse"), 1800);
+  return true;
+}
+
+function handlePaymentDeepLink(options = {}) {
+  const rawRef = readPaymentRefFromUrl();
+  if (!rawRef) return false;
+  const normalizedRef = normalizePaymentRefValue(rawRef);
+  const item = findPaymentItemByRef(normalizedRef);
+  setActivePaymentSection("all");
+  setActiveView("payments");
+  window.setTimeout(() => {
+    if (!scrollToPaymentRef(normalizedRef)) {
+      els.unpaidPaymentList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, 0);
+  if (!options.silent && !item) {
+    showAppMessage(`Could not find unpaid payment ${normalizedRef}. It may already be paid, archived differently, or not synced on this device yet.`, "info", { timeoutMs: 7000 });
+  }
+  return true;
+}
+
+function handleStartupDeepLinks(options = {}) {
+  return handlePaymentDeepLink(options) || handleLogDeepLink(options);
 }
 
 function startFuelFromTrip(id) {
@@ -7584,14 +7821,17 @@ async function enablePushNotifications() {
   updatePwaUi();
 }
 
-async function sendSettlementPush(settlement) {
+async function sendSettlementPush(settlement, metadata = {}) {
+  const paymentRef = normalizePaymentRefValue(metadata.paymentRef || createPaymentRef({ scope: "current", key: settlementKey(settlement || {}), from: settlement?.from, to: settlement?.to, amount: settlement?.amount }));
   return notifications.sendSettlementPush({
     supabaseClient,
     sendPushUrl,
     settlement,
     getMemberProfile,
     formatMoney,
-    settlementKey
+    settlementKey,
+    paymentRef,
+    paymentUrl: makePaymentDeepLink(paymentRef)
   });
 }
 
@@ -7620,14 +7860,37 @@ async function sendBookingPush(booking) {
   }), { attempted: false, sent: 0, failed: 0, reason: "" });
 }
 
-async function sendPaymentReminderPush(settlement) {
+
+async function sendFuelFollowupPush(trip) {
+  if (!notifications.sendPushNotification || !supabaseClient || !trip?.sourceBookingId) {
+    return { attempted: false, sent: 0, failed: 0, reason: "unavailable" };
+  }
+  const profile = getMemberProfile(trip.driver);
+  if (!profile.email) return { attempted: false, sent: 0, failed: 0, reason: "missing-driver-email" };
+  const distance = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
+  const logRef = formatLogRef(trip);
+  return notifications.sendPushNotification({
+    supabaseClient,
+    sendPushUrl,
+    targetEmail: profile.email,
+    title: `Fuel log needed ${logRef}`,
+    body: `${logRef} · ${formatNumber(distance)} km logged. Add the matching fuel receipt when ready.`,
+    url: makeLogDeepLink(logRef),
+    tag: `pending-fuel:${trip.id}`
+  });
+}
+
+async function sendPaymentReminderPush(settlement, metadata = {}) {
+  const paymentRef = normalizePaymentRefValue(metadata.paymentRef || createPaymentRef({ scope: "current", key: settlementKey(settlement || {}), from: settlement?.from, to: settlement?.to, amount: settlement?.amount }));
   return notifications.sendPaymentReminderPush({
     supabaseClient,
     sendPushUrl,
     settlement,
     getMemberProfile,
     formatMoney,
-    settlementKey
+    settlementKey,
+    paymentRef,
+    paymentUrl: metadata.url || makePaymentDeepLink(paymentRef)
   });
 }
 
