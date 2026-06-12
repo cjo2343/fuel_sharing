@@ -272,6 +272,7 @@ const els = {
   bookingSubmit: document.querySelector("#bookingSubmit"),
   cancelBookingEdit: document.querySelector("#cancelBookingEdit"),
   bookingCalendar: document.querySelector("#bookingCalendar"),
+  bookingActivityLog: document.querySelector("#bookingActivityLog"),
   bookingConflictNotice: document.querySelector("#bookingConflictNotice"),
   bookingAvailabilityPreview: document.querySelector("#bookingAvailabilityPreview"),
   bookingDateHints: document.querySelector("#bookingDateHints"),
@@ -1637,8 +1638,10 @@ function addAuditEntry(options) {
 
 function clearCurrentAuditLog() {
   if (!Array.isArray(state.auditLog) || state.auditLog.length === 0) return;
+  const bookingEntries = getBookingActivityEntries(state.auditLog);
+  if (bookingEntries.length === state.auditLog.length) return;
   auditLogDirty = true;
-  state.auditLog = [];
+  state.auditLog = bookingEntries;
 }
 
 
@@ -1764,32 +1767,57 @@ function renderUnpaidPaymentCard(item) {
   `;
 }
 
+function isBookingAuditEntry(entry) {
+  return entry?.entityType === "booking" || String(entry?.type || "").startsWith("booking_");
+}
+
+function getSettlementAuditEntries(entries = state.auditLog) {
+  return auditLog.normalizeAuditEntries(entries).filter((entry) => !isBookingAuditEntry(entry));
+}
+
+function getBookingActivityEntries(entries = state.auditLog) {
+  return auditLog.normalizeAuditEntries(entries).filter(isBookingAuditEntry);
+}
+
+function renderAuditEntryCard(entry) {
+  const createdAt = new Date(entry.createdAt);
+  const dateText = Number.isNaN(createdAt.getTime())
+    ? entry.createdAt
+    : `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `
+    <article class="entry-card audit-entry-card">
+      <header>
+        <div>
+          <strong>${escapeHtml(auditLog.actionLabel(entry.type))}</strong>
+          <p>${escapeHtml(entry.summary)}</p>
+        </div>
+        <span class="entry-meta">${escapeHtml(dateText)}</span>
+      </header>
+      <p class="entry-meta">By ${escapeHtml(entry.actor)}${entry.detail ? ` · ${escapeHtml(entry.detail)}` : ""}</p>
+    </article>
+  `;
+}
+
+function renderBookingActivityLog() {
+  if (!els.bookingActivityLog) return;
+  const entries = getBookingActivityEntries().slice(0, 40);
+  if (!entries.length) {
+    els.bookingActivityLog.innerHTML = `<p class="entry-meta">No booking activity yet.</p>`;
+    return;
+  }
+
+  els.bookingActivityLog.innerHTML = entries.map(renderAuditEntryCard).join("");
+}
+
 function renderAuditLog() {
   if (!els.auditLog) return;
-  const entries = auditLog.normalizeAuditEntries(state.auditLog).slice(0, 40);
+  const entries = getSettlementAuditEntries().slice(0, 40);
   if (!entries.length) {
     els.auditLog.innerHTML = `<p class="entry-meta">No important changes have been recorded yet.</p>`;
     return;
   }
 
-  els.auditLog.innerHTML = entries.map((entry) => {
-    const createdAt = new Date(entry.createdAt);
-    const dateText = Number.isNaN(createdAt.getTime())
-      ? entry.createdAt
-      : `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    return `
-      <article class="entry-card audit-entry-card">
-        <header>
-          <div>
-            <strong>${escapeHtml(auditLog.actionLabel(entry.type))}</strong>
-            <p>${escapeHtml(entry.summary)}</p>
-          </div>
-          <span class="entry-meta">${escapeHtml(dateText)}</span>
-        </header>
-        <p class="entry-meta">By ${escapeHtml(entry.actor)}${entry.detail ? ` · ${escapeHtml(entry.detail)}` : ""}</p>
-      </article>
-    `;
-  }).join("");
+  els.auditLog.innerHTML = entries.map(renderAuditEntryCard).join("");
 }
 
 function render() {
@@ -1807,6 +1835,7 @@ function render() {
   renderBookings();
   renderHistory();
   renderAuditLog();
+  renderBookingActivityLog();
   renderClosedPeriods();
   renderTripEstimate();
   renderFuelIntelligence(ledger);
@@ -3573,7 +3602,7 @@ async function closeCurrentPeriod(options = {}) {
     summary: `${period.label} · ${formatMoney(period.totalCost)}`,
     detail: `${period.trips.length} trip${period.trips.length === 1 ? "" : "s"}, ${period.fuel.length} fuel log${period.fuel.length === 1 ? "" : "s"}`
   });
-  period.auditLog = auditLog.normalizeAuditEntries([closeAuditEntry, ...(state.auditLog || [])]);
+  period.auditLog = auditLog.normalizeAuditEntries([closeAuditEntry, ...getSettlementAuditEntries(state.auditLog)]);
 
   if (!(await closeNormalizedPeriodFirst(period))) {
     return;
@@ -3583,7 +3612,7 @@ async function closeCurrentPeriod(options = {}) {
   state.trips = [];
   state.fuel = [];
   state.paymentStatuses = {};
-  state.auditLog = [];
+  state.auditLog = getBookingActivityEntries(state.auditLog);
   auditLogDirty = true;
   state.lastOdometer = getLatestOdometer();
   saveState();

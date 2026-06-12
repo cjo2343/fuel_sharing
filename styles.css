@@ -3471,3 +3471,15 @@ body.auth-locked #authPanel .text-button {
     width: 100%;
   }
 }
+
+.booking-activity-panel {
+  margin-top: 1.25rem;
+}
+
+.booking-activity-panel h3 {
+  margin-bottom: 0.25rem;
+}
+
+.booking-activity-list {
+  margin-top: 0.75rem;
+}
