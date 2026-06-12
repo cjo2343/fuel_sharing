@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v49";
-const BUILD_LABEL = "scheduled-backend-reminders";
-const BUILD_UPDATED_AT = "2026-06-12T13:05:00+02:00";
+const CACHE_NAME = "fuel-ledger-v50";
+const BUILD_LABEL = "supabase-reminder-rpc";
+const BUILD_UPDATED_AT = "2026-06-12T13:55:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

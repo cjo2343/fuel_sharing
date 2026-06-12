@@ -358,3 +358,18 @@ Build `reminder-backend-diagnostics` adds detailed `/api/run-reminders` output s
 - Aligned the expected service worker cache with the active service worker cache: `fuel-ledger-v49`.
 - This fixes the version panel showing a false cache mismatch after the reminder backend diagnostics build.
 
+
+### Supabase-backed scheduled reminders
+
+Build `supabase-reminder-rpc` changes `/api/run-reminders` from local-server-only state scanning to production Supabase state scanning when service credentials are available. The server calls Supabase RPC helpers to load and save the `car_share_ledgers.state` JSON mirror, runs the existing reminder eligibility logic, records due reminder audit entries, and still attempts push delivery through the existing server-side push subscription path.
+
+The endpoint response now includes `backendMode` and `dataSource`, making it clear whether a cron run used Supabase production state or local `ledger-data.json`.
+
+Required server env vars for production mode:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_REMINDER_LEDGER_ID` (defaults to `main-car`)
+- `REMINDER_CRON_SECRET`
+
+Set `REMINDER_DATA_SOURCE=local` only when intentionally testing against the local JSON file.

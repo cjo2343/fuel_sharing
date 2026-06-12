@@ -472,5 +472,58 @@ create policy "Users can insert own push subscriptions" on public.push_subscript
 create policy "Users can update own push subscriptions" on public.push_subscriptions for update to authenticated using (lower(user_email) = public.current_user_email()) with check (lower(user_email) = public.current_user_email());
 create policy "Users can delete own push subscriptions" on public.push_subscriptions for delete to authenticated using (lower(user_email) = public.current_user_email());
 
+
+-- Scheduled backend reminder helpers.
+-- These RPC functions are called by the Render cron endpoint with the service-role key.
+-- They let the backend process the same Supabase production JSON mirror used by the app,
+-- instead of scanning Render's local ledger-data.json file.
+create or replace function public.scheduled_reminder_state(p_ledger_id text default 'main-car')
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  select jsonb_build_object(
+    'ledger_id', id,
+    'state', state,
+    'updated_at', updated_at
+  ) into result
+  from public.car_share_ledgers
+  where id = p_ledger_id;
+
+  return coalesce(result, jsonb_build_object(
+    'ledger_id', p_ledger_id,
+    'state', null,
+    'updated_at', null
+  ));
+end;
+$$;
+
+create or replace function public.save_scheduled_reminder_state(p_ledger_id text, p_state jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  insert into public.car_share_ledgers (id, state, updated_at)
+  values (p_ledger_id, coalesce(p_state, '{}'::jsonb), now())
+  on conflict (id) do update set
+    state = excluded.state,
+    updated_at = excluded.updated_at
+  returning jsonb_build_object(
+    'ledger_id', id,
+    'updated_at', updated_at
+  ) into result;
+
+  return result;
+end;
+$$;
+
 -- Post-run setup check:
 -- select name, email, role, is_active from ledger_members where ledger_id = 'main-car' order by name;

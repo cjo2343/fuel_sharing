@@ -563,3 +563,43 @@ Build `reminder-backend-diagnostics` adds detailed `/api/run-reminders` output s
 - Aligned the expected service worker cache with the active service worker cache: `fuel-ledger-v49`.
 - This fixes the version panel showing a false cache mismatch after the reminder backend diagnostics build.
 
+
+### Supabase-backed scheduled reminders
+
+Build `supabase-reminder-rpc` makes `/api/run-reminders` use Supabase production state when the server has Supabase service credentials. The endpoint now chooses its data source automatically:
+
+- `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` present: scan/update the Supabase `car_share_ledgers.state` mirror through the scheduled-reminder RPC helpers.
+- Service credentials missing or `REMINDER_DATA_SOURCE=local`: scan the local `ledger-data.json` file for local development and Playwright tests.
+
+Run the latest `supabase-schema.sql` in Supabase SQL Editor before enabling this mode. It adds:
+
+- `public.scheduled_reminder_state(p_ledger_id text)`
+- `public.save_scheduled_reminder_state(p_ledger_id text, p_state jsonb)`
+
+Render environment variables for production reminders:
+
+```txt
+SUPABASE_URL=<your Supabase project URL>
+SUPABASE_SERVICE_ROLE_KEY=<server-only service role key>
+SUPABASE_REMINDER_LEDGER_ID=main-car
+REMINDER_CRON_SECRET=<secret used by cron-job.org>
+```
+
+Never put the service-role key in frontend JavaScript or GitHub. Keep it only in Render/server environment variables.
+
+After deploy, test the live cron endpoint:
+
+```bash
+curl -i -X POST "https://fuel-sharing.onrender.com/api/run-reminders" \
+  -H "X-Reminder-Secret: YOUR_SECRET"
+```
+
+The JSON response should include:
+
+```json
+{
+  "ok": true,
+  "backendMode": "supabase",
+  "dataSource": { "ledgerId": "main-car" }
+}
+```

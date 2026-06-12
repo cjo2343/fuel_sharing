@@ -641,6 +641,102 @@ def reminder_job_authorized(handler):
     return hmac.compare_digest(provided, secret)
 
 
+def reminder_ledger_id():
+    return env_value("SUPABASE_REMINDER_LEDGER_ID", "main-car") or "main-car"
+
+
+def supabase_reminder_mode_enabled():
+    mode = env_value("REMINDER_DATA_SOURCE", "auto").lower()
+    if mode in ("local", "json", "file"):
+        return False
+    # Use the service role key for scheduled jobs because cron is not acting as a
+    # signed-in user and must update reminder audit metadata server-side.
+    return bool(supabase_url() and env_value("SUPABASE_SERVICE_ROLE_KEY"))
+
+
+def call_supabase_rpc(function_name, body=None):
+    return request_json(
+        f"{supabase_url()}/rest/v1/rpc/{function_name}",
+        method="POST",
+        body=body or {},
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+    )
+
+
+def load_supabase_reminder_state():
+    ledger_id = reminder_ledger_id()
+    try:
+        response = call_supabase_rpc("scheduled_reminder_state", {"p_ledger_id": ledger_id})
+        if isinstance(response, dict) and isinstance(response.get("state"), dict):
+            return response["state"], {"ledgerId": ledger_id, "rpc": "scheduled_reminder_state", "updatedAt": response.get("updated_at")}
+    except urllib.error.HTTPError as error:
+        # Older deployments may not have the RPC yet. Fall back to the REST row so
+        # the reminder job can still use Supabase production state after the app
+        # patch is deployed, then surface the RPC setup issue in diagnostics.
+        if error.code not in (404, 400):
+            raise
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/car_share_ledgers?id=eq.{urllib.parse.quote(ledger_id, safe='')}&select=state,updated_at",
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+    ) or []
+    if rows and isinstance(rows[0].get("state"), dict):
+        return rows[0]["state"], {"ledgerId": ledger_id, "rpc": "rest-fallback", "updatedAt": rows[0].get("updated_at")}
+    state = {**DEFAULT_STATE}
+    return state, {"ledgerId": ledger_id, "rpc": "empty-fallback", "updatedAt": ""}
+
+
+def save_supabase_reminder_state(state):
+    ledger_id = reminder_ledger_id()
+    try:
+        return call_supabase_rpc("save_scheduled_reminder_state", {"p_ledger_id": ledger_id, "p_state": state})
+    except urllib.error.HTTPError as error:
+        if error.code not in (404, 400):
+            raise
+    return request_json(
+        f"{supabase_url()}/rest/v1/car_share_ledgers?id=eq.{urllib.parse.quote(ledger_id, safe='')}",
+        method="PATCH",
+        body={"state": state, "updated_at": datetime.now(timezone.utc).isoformat()},
+        prefer="return=representation",
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+    )
+
+
+def run_scheduled_payment_reminders_from_supabase(dry_run=False):
+    state, source = load_supabase_reminder_state()
+    result = run_scheduled_payment_reminders(state, dry_run=dry_run)
+    result["backendMode"] = "supabase"
+    result["dataSource"] = source
+    diagnostics = result.setdefault("diagnostics", {})
+    diagnostics["backendMode"] = "supabase"
+    diagnostics["dataSource"] = source
+    if result.get("changed") and not dry_run:
+        save_supabase_reminder_state(state)
+        result["savedToSupabase"] = True
+    elif not dry_run:
+        result["savedToSupabase"] = False
+    return result
+
+
+def run_scheduled_payment_reminders_from_local_file(dry_run=False):
+    state = read_state()
+    result = run_scheduled_payment_reminders(state, dry_run=dry_run)
+    result["backendMode"] = "local-json"
+    result["dataSource"] = {"file": str(DATA_FILE)}
+    diagnostics = result.setdefault("diagnostics", {})
+    diagnostics["backendMode"] = "local-json"
+    diagnostics["dataSource"] = {"file": str(DATA_FILE)}
+    if result.get("changed"):
+        write_state(state)
+        result["state"] = read_state()
+    return result
+
+
+def run_scheduled_payment_reminders_for_environment(dry_run=False):
+    if supabase_reminder_mode_enabled():
+        return run_scheduled_payment_reminders_from_supabase(dry_run=dry_run)
+    return run_scheduled_payment_reminders_from_local_file(dry_run=dry_run)
+
+
 def apply_payment_action_to_state(state, payload):
     action = str(payload.get("action") or "").strip()
     scope = str(payload.get("scope") or "current").strip()
@@ -904,11 +1000,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         dry_run = bool(payload.get("dryRun")) if isinstance(payload, dict) else False
         try:
-            state = read_state()
-            result = run_scheduled_payment_reminders(state, dry_run=dry_run)
-            if result.get("changed"):
-                write_state(state)
-                result["state"] = read_state()
+            result = run_scheduled_payment_reminders_for_environment(dry_run=dry_run)
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
         except Exception as error:
             self.send_error(500, str(error))
             return
@@ -933,11 +1028,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.run_reminders or args.dry_run_reminders:
-        state = read_state()
-        result = run_scheduled_payment_reminders(state, dry_run=args.dry_run_reminders)
-        if result.get("changed"):
-            write_state(state)
-        print(json.dumps({key: value for key, value in result.items() if key != "due"}, ensure_ascii=False, indent=2))
+        result = run_scheduled_payment_reminders_for_environment(dry_run=args.dry_run_reminders)
+        print(json.dumps({key: value for key, value in result.items() if key not in ("due", "state")}, ensure_ascii=False, indent=2))
         if result.get("due"):
             print(json.dumps(result["due"], ensure_ascii=False, indent=2))
         return 0
