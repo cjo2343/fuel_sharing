@@ -5788,6 +5788,12 @@ function updateEditUi() {
 function startTripFromBooking(id) {
   const booking = state.bookings.find((item) => item.id === id);
   if (!booking) return;
+  const existingTrip = findTripForBooking(booking.id);
+  if (existingTrip) {
+    alert(`This booking has already been logged as trip ${formatLogRef(existingTrip)}.`);
+    render();
+    return;
+  }
   if (!canCreateTripFromBooking(booking)) {
     alert("Only the booked driver can turn this booking into a trip log.");
     return;
@@ -5830,6 +5836,7 @@ function startTripFromBooking(id) {
 
 function canCreateTripFromBooking(booking) {
   if (!booking) return false;
+  if (findTripForBooking(booking.id)) return false;
   if (!supabaseClient) return true;
   return getCurrentMemberProfile()?.name === booking.member;
 }
