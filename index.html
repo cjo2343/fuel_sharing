@@ -31,6 +31,7 @@
 
       <nav class="section-tabs" aria-label="App sections">
         <button class="section-tab" type="button" data-view-tab="log">Log</button>
+        <button class="section-tab" type="button" data-view-tab="book">Book</button>
         <button class="section-tab" type="button" data-view-tab="settle">Settle</button>
         <button class="section-tab" type="button" data-view-tab="payments">Payments</button>
         <button class="section-tab" type="button" data-view-tab="history">History</button>
@@ -84,6 +85,46 @@
         </section>
 
         <section id="periodEntryLock" data-view="log" class="panel warning-panel hidden" aria-live="polite"></section>
+
+        <section id="bookingPanel" class="panel primary-panel booking-panel" data-view="book" aria-labelledby="bookingHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Booking</p>
+              <h2 id="bookingHeading">Reserve the car</h2>
+            </div>
+          </div>
+          <form id="bookingForm" class="form-grid">
+            <label>
+              Driver
+              <select id="bookingMember" required></select>
+            </label>
+            <label>
+              Start
+              <input id="bookingStart" type="datetime-local" required />
+            </label>
+            <label>
+              End
+              <input id="bookingEnd" type="datetime-local" required />
+            </label>
+            <label class="wide">
+              Purpose
+              <input id="bookingPurpose" type="text" maxlength="90" placeholder="Optional" />
+            </label>
+            <button id="bookingSubmit" class="action-button wide" type="submit">Add booking</button>
+            <button id="cancelBookingEdit" class="subtle-button wide hidden" type="button">Cancel editing booking</button>
+          </form>
+        </section>
+
+        <section class="panel wide-panel booking-calendar-panel" data-view="book" aria-labelledby="bookingCalendarHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Calendar</p>
+              <h2 id="bookingCalendarHeading">Car bookings</h2>
+            </div>
+          </div>
+          <div id="bookingConflictNotice" class="booking-conflict-notice hidden" aria-live="polite"></div>
+          <div id="bookingCalendar" class="booking-calendar empty-state">No bookings yet.</div>
+        </section>
 
         <section id="tripLogPanel" class="panel primary-panel" data-view="log" aria-labelledby="tripHeading">
           <div class="panel-header">

@@ -33,6 +33,7 @@ DEFAULT_STATE = {
         "Marie": {"email": "", "role": "member"},
     },
     "trips": [],
+    "bookings": [],
     "fuel": [],
     "paymentStatuses": {},
     "closedPeriods": [],
@@ -58,7 +59,7 @@ def read_state():
     state = {**DEFAULT_STATE, **saved}
     if not isinstance(state.get("members"), list) or not state["members"]:
         state["members"] = DEFAULT_STATE["members"]
-    for key in ("trips", "fuel", "closedPeriods"):
+    for key in ("trips", "bookings", "fuel", "closedPeriods"):
         if not isinstance(state.get(key), list):
             state[key] = []
     if not isinstance(state.get("paymentStatuses"), dict):

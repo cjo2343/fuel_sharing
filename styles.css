@@ -446,6 +446,55 @@ button:not(:disabled):active {
   accent-color: var(--green);
 }
 
+.booking-calendar {
+  display: grid;
+  gap: 16px;
+}
+
+.booking-group {
+  display: grid;
+  gap: 10px;
+}
+
+.booking-group h3 {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 1rem;
+}
+
+.booking-card-list {
+  display: grid;
+  gap: 10px;
+}
+
+.booking-card {
+  border-left: 4px solid var(--green);
+}
+
+.booking-card.active {
+  border-left-color: var(--blue);
+  background: #f6fbff;
+}
+
+.booking-card.past {
+  border-left-color: var(--line);
+  opacity: 0.78;
+}
+
+.booking-conflict-notice {
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: var(--red);
+  padding: 12px 14px;
+  font-weight: 780;
+}
+
+.compact-empty {
+  min-height: 0;
+  padding: 12px;
+}
+
 .summary-band {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2106,8 +2155,9 @@ body.auth-locked #authPanel .text-button {
 
 @media (max-width: 720px) {
   .section-tabs {
-    margin-left: -16px;
-    margin-right: -16px;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
     padding-left: 16px;
     padding-right: 16px;
   }

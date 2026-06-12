@@ -136,6 +136,7 @@ const defaults = {
     Marie: { email: "", role: "member", mobilepayPhone: "" }
   },
   trips: [],
+  bookings: [],
   fuel: [],
   paymentStatuses: {},
   auditLog: [],
@@ -167,6 +168,7 @@ const closedPeriodFilters = {
 const expandedClosedPeriodIds = new Set();
 let editingTripId = null;
 let editingFuelId = null;
+let editingBookingId = null;
 let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
 let deferredInstallPrompt = null;
@@ -219,8 +221,12 @@ const els = {
   syncStatus: document.querySelector("#syncStatus"),
   syncDetail: document.querySelector("#syncDetail"),
   tripDriver: document.querySelector("#tripDriver"),
+  bookingMember: document.querySelector("#bookingMember"),
   fuelPayer: document.querySelector("#fuelPayer"),
   tripDate: document.querySelector("#tripDate"),
+  bookingStart: document.querySelector("#bookingStart"),
+  bookingEnd: document.querySelector("#bookingEnd"),
+  bookingPurpose: document.querySelector("#bookingPurpose"),
   tripParticipants: document.querySelector("#tripParticipants"),
   fuelDate: document.querySelector("#fuelDate"),
   startKm: document.querySelector("#startKm"),
@@ -258,6 +264,11 @@ const els = {
   tripForm: document.querySelector("#tripForm"),
   tripSubmit: document.querySelector("#tripSubmit"),
   cancelTripEdit: document.querySelector("#cancelTripEdit"),
+  bookingForm: document.querySelector("#bookingForm"),
+  bookingSubmit: document.querySelector("#bookingSubmit"),
+  cancelBookingEdit: document.querySelector("#cancelBookingEdit"),
+  bookingCalendar: document.querySelector("#bookingCalendar"),
+  bookingConflictNotice: document.querySelector("#bookingConflictNotice"),
   fuelForm: document.querySelector("#fuelForm"),
   fuelSubmit: document.querySelector("#fuelSubmit"),
   cancelFuelEdit: document.querySelector("#cancelFuelEdit"),
@@ -382,6 +393,55 @@ els.tripDriver.addEventListener("change", () => {
   );
   if (driverCheckbox) driverCheckbox.checked = true;
 });
+
+if (els.bookingForm) {
+  els.bookingForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!canUseAppAsMember()) {
+      alert("Your email is not assigned to a member yet. Ask an admin to add it.");
+      return;
+    }
+
+    const bookingPayload = {
+      id: editingBookingId || crypto.randomUUID(),
+      member: els.bookingMember.value,
+      start: normalizeBookingDateTime(els.bookingStart.value),
+      end: normalizeBookingDateTime(els.bookingEnd.value),
+      purpose: els.bookingPurpose.value.trim(),
+      createdBy: currentUser || els.bookingMember.value
+    };
+
+    const validation = validateBookingInput(bookingPayload, editingBookingId);
+    if (!validation.ok) {
+      alert(validation.message);
+      renderBookingConflictNotice(validation.conflict || null);
+      return;
+    }
+
+    const previousBooking = editingBookingId ? state.bookings.find((booking) => booking.id === editingBookingId) : null;
+    if (editingBookingId) {
+      state.bookings = state.bookings.map((booking) => booking.id === editingBookingId ? bookingPayload : booking);
+    } else {
+      state.bookings.push(bookingPayload);
+    }
+
+    addAuditEntry({
+      type: editingBookingId ? "booking_updated" : "booking_created",
+      entityType: "booking",
+      entityId: bookingPayload.id,
+      summary: `${bookingPayload.member} · ${formatBookingRange(bookingPayload)}`,
+      detail: editingBookingId ? describeBookingAuditChanges(previousBooking, bookingPayload) : (bookingPayload.purpose || "")
+    });
+
+    editingBookingId = null;
+    els.bookingForm.reset();
+    setDefaultBookingTimes();
+    saveState();
+    updateEditUi();
+    render();
+    showAppMessage(previousBooking ? "Booking updated." : "Car booked.");
+  });
+}
 
 els.tripForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1162,6 +1222,17 @@ if (els.cancelTripEdit) {
   });
 }
 
+if (els.cancelBookingEdit) {
+  els.cancelBookingEdit.addEventListener("click", () => {
+    editingBookingId = null;
+    els.bookingForm.reset();
+    setDefaultBookingTimes();
+    renderBookingConflictNotice(null);
+    updateEditUi();
+    render();
+  });
+}
+
 if (els.cancelFuelEdit) {
   els.cancelFuelEdit.addEventListener("click", () => {
     editingFuelId = null;
@@ -1309,33 +1380,48 @@ document.addEventListener("click", async (event) => {
   const [type, id] = button.dataset.delete.split(":");
   const entry = type === "trips"
     ? state.trips.find((item) => item.id === id)
-    : state.fuel.find((item) => item.id === id);
-  const canDelete = type === "trips" ? canManageTripEntry(entry) : canManageFuelEntry(entry);
+    : type === "bookings"
+      ? state.bookings.find((item) => item.id === id)
+      : state.fuel.find((item) => item.id === id);
+  const canDelete = type === "trips"
+    ? canManageTripEntry(entry)
+    : type === "bookings"
+      ? canManageBookingEntry(entry)
+      : canManageFuelEntry(entry);
   if (!canDelete) {
-    showPermissionBlocked(type === "trips" ? describeTripPermissionMessage(entry, "delete") : describeFuelPermissionMessage(entry, "delete"));
+    showPermissionBlocked(type === "trips"
+      ? describeTripPermissionMessage(entry, "delete")
+      : type === "bookings"
+        ? describeBookingPermissionMessage(entry, "delete")
+        : describeFuelPermissionMessage(entry, "delete"));
     return;
   }
 
-  if (!assertCurrentPeriodAllowsMoneyChanges(type === "trips" ? "delete trip logs" : "delete fuel logs")) return;
-  const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
-  if (!normalizedDeleteSaved) return;
+  if (type !== "bookings") {
+    if (!assertCurrentPeriodAllowsMoneyChanges(type === "trips" ? "delete trip logs" : "delete fuel logs")) return;
+    const normalizedDeleteSaved = await softDeleteNormalizedEntryFirst(type, id);
+    if (!normalizedDeleteSaved) return;
+  }
   state[type] = state[type].filter((entry) => entry.id !== id);
   addAuditEntry({
-    type: type === "trips" ? "trip_deleted" : "fuel_deleted",
-    entityType: type === "trips" ? "trip" : "fuel",
+    type: type === "trips" ? "trip_deleted" : type === "bookings" ? "booking_deleted" : "fuel_deleted",
+    entityType: type === "trips" ? "trip" : type === "bookings" ? "booking" : "fuel",
     entityId: id,
     summary: type === "trips"
       ? `${entry?.driver || "Trip"} · ${entry ? formatNumber(Number(entry.endKm || 0) - Number(entry.startKm || 0)) : ""} km`
-      : `${entry?.payer || "Fuel log"} · ${entry ? formatMoney(entry.amount) : ""}`,
-    detail: entry?.date || ""
+      : type === "bookings"
+        ? `${entry?.member || "Booking"} · ${entry ? formatBookingRange(entry) : ""}`
+        : `${entry?.payer || "Fuel log"} · ${entry ? formatMoney(entry.amount) : ""}`,
+    detail: type === "bookings" ? (entry?.purpose || "") : (entry?.date || "")
   });
   if (type === "trips") state.lastOdometer = getLatestOdometer();
   if (editingTripId === id) editingTripId = null;
+  if (editingBookingId === id) editingBookingId = null;
   if (editingFuelId === id) editingFuelId = null;
   saveState();
   updateEditUi();
   render();
-  showAppMessage(type === "trips" ? "Trip deleted." : "Fuel log deleted.");
+  showAppMessage(type === "trips" ? "Trip deleted." : type === "bookings" ? "Booking deleted." : "Fuel log deleted.");
 });
 
 
@@ -1614,6 +1700,7 @@ function render() {
   renderBalances(ledger);
   renderSettlements(ledger);
   renderUnpaidPayments(ledger);
+  renderBookings();
   renderHistory();
   renderAuditLog();
   renderClosedPeriods();
@@ -1942,12 +2029,14 @@ function renderPeopleSelectors() {
     .map((member) => `<option value="${escapeHtml(member)}">${escapeHtml(member)}</option>`)
     .join("");
   els.tripDriver.innerHTML = options;
+  if (els.bookingMember) els.bookingMember.innerHTML = options;
   els.fuelPayer.innerHTML = options;
   els.currentUser.innerHTML = options;
 
   if (currentUser) {
     els.currentUser.value = currentUser;
     els.tripDriver.value = currentUser;
+    if (els.bookingMember) els.bookingMember.value = currentUser;
     els.fuelPayer.value = currentUser;
   }
 
@@ -1961,7 +2050,9 @@ function renderPeopleSelectors() {
   els.fuelPayer.disabled = lockToLoggedInUser || periodLocked;
 
   setFormDisabled(els.tripForm, !canLogEntries);
+  if (els.bookingForm) setFormDisabled(els.bookingForm, !canUse);
   setFormDisabled(els.fuelForm, !canLogEntries);
+  if (els.bookingMember) els.bookingMember.disabled = !canUse || lockToLoggedInUser;
   renderPeriodEntryLock();
   renderLogEntryPanelsVisibility();
 
@@ -4837,6 +4928,7 @@ function memberHasLedgerData(member) {
   const inCurrentTrips = state.trips.some(
     (trip) => trip.driver === member || getTripParticipants(trip).includes(member)
   );
+  const inBookings = state.bookings.some((booking) => booking.member === member);
   const inCurrentFuel = state.fuel.some((fuel) => fuel.payer === member);
   const inPayments = Object.keys(state.paymentStatuses || {}).some((key) => key.includes(`${member}->`) || key.includes(`->${member}:`));
   const inClosedPeriods = state.closedPeriods.some((period) => {
@@ -4847,7 +4939,7 @@ function memberHasLedgerData(member) {
       (period.settlements || []).some((settlement) => settlement.from === member || settlement.to === member)
     );
   });
-  return inCurrentTrips || inCurrentFuel || inPayments || inClosedPeriods;
+  return inCurrentTrips || inBookings || inCurrentFuel || inPayments || inClosedPeriods;
 }
 
 
@@ -5044,8 +5136,21 @@ function canManageFuelEntry(fuel) {
   return Boolean(profile && fuel.payer === profile.name);
 }
 
+function canManageBookingEntry(booking) {
+  if (!booking) return false;
+  if (canManageSettings()) return true;
+  const profile = getCurrentMemberProfile();
+  return Boolean(profile && booking.member === profile.name);
+}
+
 function showLogViewForEditing() {
   activeView = "log";
+  localStorage.setItem(viewStorageKey, activeView);
+  renderSectionNavigation();
+}
+
+function showBookViewForEditing() {
+  activeView = "book";
   localStorage.setItem(viewStorageKey, activeView);
   renderSectionNavigation();
 }
@@ -5075,6 +5180,15 @@ function editEntry(value) {
     startTripEdit(id);
     return;
   }
+  if (type === "bookings") {
+    const booking = state.bookings.find((entry) => entry.id === id);
+    if (!canManageBookingEntry(booking)) {
+      showPermissionBlocked(describeBookingPermissionMessage(booking, "edit"));
+      return;
+    }
+    startBookingEdit(id);
+    return;
+  }
   if (type === "fuel") {
     const fuel = state.fuel.find((entry) => entry.id === id);
     if (!canManageFuelEntry(fuel)) {
@@ -5092,6 +5206,7 @@ function startTripEdit(id) {
 
   showLogViewForEditing();
   editingFuelId = null;
+  editingBookingId = null;
   editingTripId = id;
   renderPeopleSelectors();
   els.tripDriver.value = trip.driver;
@@ -5109,12 +5224,32 @@ function startTripEdit(id) {
   els.startKm.focus();
 }
 
+function startBookingEdit(id) {
+  const booking = state.bookings.find((entry) => entry.id === id);
+  if (!booking) return;
+
+  showBookViewForEditing();
+  editingTripId = null;
+  editingFuelId = null;
+  editingBookingId = id;
+  renderPeopleSelectors();
+  els.bookingMember.value = booking.member;
+  els.bookingStart.value = booking.start;
+  els.bookingEnd.value = booking.end;
+  els.bookingPurpose.value = booking.purpose || "";
+  renderBookingConflictNotice(null);
+  updateEditUi();
+  els.bookingForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  els.bookingStart.focus();
+}
+
 function startFuelEdit(id) {
   const fuel = state.fuel.find((entry) => entry.id === id);
   if (!fuel) return;
 
   showLogViewForEditing();
   editingTripId = null;
+  editingBookingId = null;
   editingFuelId = id;
   renderPeopleSelectors();
   els.fuelPayer.value = fuel.payer;
@@ -5139,8 +5274,164 @@ function startFuelEdit(id) {
 function updateEditUi() {
   if (els.tripSubmit) els.tripSubmit.textContent = editingTripId ? "Save trip changes" : "Add trip";
   if (els.cancelTripEdit) els.cancelTripEdit.classList.toggle("hidden", !editingTripId);
+  if (els.bookingSubmit) els.bookingSubmit.textContent = editingBookingId ? "Save booking changes" : "Add booking";
+  if (els.cancelBookingEdit) els.cancelBookingEdit.classList.toggle("hidden", !editingBookingId);
   if (els.fuelSubmit) els.fuelSubmit.textContent = editingFuelId ? "Save fuel changes" : "Add fuel";
   if (els.cancelFuelEdit) els.cancelFuelEdit.classList.toggle("hidden", !editingFuelId);
+}
+
+function renderBookings() {
+  if (!els.bookingCalendar) return;
+  renderBookingConflictNotice(null);
+
+  const bookings = [...state.bookings].sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  if (bookings.length === 0) {
+    els.bookingCalendar.className = "booking-calendar empty-state";
+    els.bookingCalendar.textContent = "No bookings yet.";
+    return;
+  }
+
+  const now = Date.now();
+  const today = localDateString();
+  const todayBookings = bookings.filter((booking) => String(booking.start).slice(0, 10) <= today && String(booking.end).slice(0, 10) >= today);
+  const upcomingBookings = bookings.filter((booking) => bookingStartMs(booking) >= now && !todayBookings.some((item) => item.id === booking.id));
+  const pastBookings = bookings.filter((booking) => bookingEndMs(booking) < now && !todayBookings.some((item) => item.id === booking.id)).slice(-8).reverse();
+
+  els.bookingCalendar.className = "booking-calendar";
+  els.bookingCalendar.innerHTML = `
+    ${renderBookingGroup("Today", todayBookings, "No booking today.")}
+    ${renderBookingGroup("Upcoming", upcomingBookings, "No upcoming bookings.")}
+    ${renderBookingGroup("Past", pastBookings, "No past bookings.")}
+  `;
+}
+
+function renderBookingGroup(title, bookings, emptyText) {
+  return `
+    <section class="booking-group" aria-label="${escapeHtml(title)} bookings">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="booking-card-list">
+        ${bookings.length ? bookings.map(renderBookingCard).join("") : `<p class="empty-state compact-empty">${escapeHtml(emptyText)}</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderBookingCard(booking) {
+  const status = getBookingStatus(booking);
+  return `
+    <article class="entry-card booking-card ${escapeHtml(status)}">
+      <header>
+        <strong>${escapeHtml(booking.member)}</strong>
+        ${canManageBookingEntry(booking) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="bookings:${escapeHtml(booking.id)}">Edit</button><button class="text-button compact-button" type="button" data-delete="bookings:${escapeHtml(booking.id)}">Delete</button></div>` : ""}
+      </header>
+      ${!canManageBookingEntry(booking) ? renderPermissionNote(describeBookingPermissionMessage(booking, "edit or delete")) : ""}
+      <p>${escapeHtml(formatBookingRange(booking))} <span class="category-chip">${escapeHtml(statusLabelForBooking(status))}</span></p>
+      ${booking.purpose ? `<p>${escapeHtml(booking.purpose)}</p>` : ""}
+    </article>
+  `;
+}
+
+function renderBookingConflictNotice(conflict) {
+  if (!els.bookingConflictNotice) return;
+  if (!conflict) {
+    els.bookingConflictNotice.classList.add("hidden");
+    els.bookingConflictNotice.textContent = "";
+    return;
+  }
+  els.bookingConflictNotice.classList.remove("hidden");
+  els.bookingConflictNotice.textContent = `Conflicts with ${conflict.member}'s booking: ${formatBookingRange(conflict)}.`;
+}
+
+function validateBookingInput(booking, editingId = null) {
+  if (!booking.member) return { ok: false, message: "Choose who is booking the car." };
+  const start = Date.parse(booking.start);
+  const end = Date.parse(booking.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return { ok: false, message: "Choose a valid start and end time." };
+  if (end <= start) return { ok: false, message: "Booking end must be after the start time." };
+  const conflict = findBookingConflict(booking, editingId);
+  if (conflict) {
+    return {
+      ok: false,
+      message: `The car is already booked by ${conflict.member} for ${formatBookingRange(conflict)}.`,
+      conflict
+    };
+  }
+  return { ok: true };
+}
+
+function findBookingConflict(candidate, editingId = null) {
+  const candidateStart = Date.parse(candidate.start);
+  const candidateEnd = Date.parse(candidate.end);
+  return state.bookings.find((booking) => {
+    if (booking.id === editingId) return false;
+    const start = bookingStartMs(booking);
+    const end = bookingEndMs(booking);
+    return Number.isFinite(start) && Number.isFinite(end) && candidateStart < end && candidateEnd > start;
+  }) || null;
+}
+
+function getBookingStatus(booking) {
+  const now = Date.now();
+  if (bookingEndMs(booking) < now) return "past";
+  if (bookingStartMs(booking) <= now && bookingEndMs(booking) >= now) return "active";
+  return "upcoming";
+}
+
+function statusLabelForBooking(status) {
+  if (status === "active") return "In use";
+  if (status === "past") return "Past";
+  return "Upcoming";
+}
+
+function bookingStartMs(booking) {
+  return Date.parse(booking?.start || "");
+}
+
+function bookingEndMs(booking) {
+  return Date.parse(booking?.end || "");
+}
+
+function normalizeBookingDateTime(value) {
+  return String(value || "").slice(0, 16);
+}
+
+function toDateTimeLocalInputValue(date) {
+  const local = new Date(date);
+  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
+  return local.toISOString().slice(0, 16);
+}
+
+function formatBookingRange(booking) {
+  const start = parseBookingDate(booking?.start);
+  const end = parseBookingDate(booking?.end);
+  if (!start || !end) return "Time missing";
+  const sameDay = localDateString(start) === localDateString(end);
+  const dateText = start.toLocaleDateString("en-DK", { day: "2-digit", month: "short", year: "numeric" });
+  const startTime = start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const endTime = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return `${dateText} · ${startTime}-${endTime}`;
+  const endDateText = end.toLocaleDateString("en-DK", { day: "2-digit", month: "short", year: "numeric" });
+  return `${dateText} ${startTime} - ${endDateText} ${endTime}`;
+}
+
+function parseBookingDate(value) {
+  const date = new Date(String(value || ""));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function describeBookingAuditChanges(previousBooking, nextBooking) {
+  if (!previousBooking) return nextBooking?.purpose || "";
+  const changes = [];
+  if (previousBooking.member !== nextBooking.member) changes.push(`Driver: ${previousBooking.member || "-"} -> ${nextBooking.member || "-"}`);
+  if (previousBooking.start !== nextBooking.start || previousBooking.end !== nextBooking.end) changes.push(`Time: ${formatBookingRange(previousBooking)} -> ${formatBookingRange(nextBooking)}`);
+  if ((previousBooking.purpose || "") !== (nextBooking.purpose || "")) changes.push(`Purpose: ${previousBooking.purpose || "-"} -> ${nextBooking.purpose || "-"}`);
+  return changes.join("; ");
+}
+
+function describeBookingPermissionMessage(booking, action) {
+  const actor = describeCurrentActor();
+  if (!booking) return `This booking no longer exists. Refresh and try again.`;
+  return `Only ${booking.member}, the person who booked the car, or an admin can ${action} this booking. You are signed in as ${actor}.`;
 }
 
 function renderHistory() {
@@ -6187,7 +6478,18 @@ function setDefaultDates() {
   els.fuelDate.max = today;
   els.tripDate.value = today;
   els.fuelDate.value = today;
+  setDefaultBookingTimes();
   syncStartOdometerDefault();
+}
+
+function setDefaultBookingTimes() {
+  if (!els.bookingStart || !els.bookingEnd) return;
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  now.setHours(now.getHours() + 1);
+  const end = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  if (!els.bookingStart.value) els.bookingStart.value = toDateTimeLocalInputValue(now);
+  if (!els.bookingEnd.value) els.bookingEnd.value = toDateTimeLocalInputValue(end);
 }
 
 function getSelectedParticipants() {
@@ -6442,6 +6744,22 @@ function normalizeTripEntries(trips) {
   }));
 }
 
+function normalizeBookingEntries(bookings) {
+  if (!Array.isArray(bookings)) return [];
+
+  return bookings
+    .map((booking) => ({
+      ...booking,
+      id: booking.id || makeClientId(),
+      member: String(booking.member || booking.driver || "").trim(),
+      start: normalizeBookingDateTime(booking.start || booking.startAt || ""),
+      end: normalizeBookingDateTime(booking.end || booking.endAt || ""),
+      purpose: booking.purpose ? String(booking.purpose) : "",
+      createdBy: booking.createdBy ? String(booking.createdBy) : ""
+    }))
+    .filter((booking) => booking.member && booking.start && booking.end && Date.parse(booking.end) > Date.parse(booking.start));
+}
+
 function normalizeState(saved) {
   if (!saved) return structuredClone(defaults);
 
@@ -6451,6 +6769,7 @@ function normalizeState(saved) {
     members: normalizeMembers(saved.members),
     memberProfiles: normalizeMemberProfiles(saved.members, saved.memberProfiles),
     trips: normalizeTripEntries(saved.trips),
+    bookings: normalizeBookingEntries(saved.bookings),
     fuel: normalizeFuelEntries(saved.fuel),
     paymentStatuses: normalizePaymentStatuses(saved.paymentStatuses),
     auditLog: auditLog.normalizeAuditEntries(saved.auditLog),
@@ -7759,6 +8078,7 @@ function setSyncStatus(label) {
 function hasLedgerData(candidate) {
   return (
     candidate.trips.length > 0 ||
+    candidate.bookings.length > 0 ||
     candidate.fuel.length > 0 ||
     candidate.closedPeriods.length > 0 ||
     Object.keys(candidate.paymentStatuses).length > 0
@@ -7836,4 +8156,3 @@ function settlementKey(item) {
 function getSettlementStatus(settlement) {
   return normalizePaymentStatus(state.paymentStatuses[settlementKey(settlement)]);
 }
-
