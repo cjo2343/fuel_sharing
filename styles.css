@@ -3629,3 +3629,55 @@ body.auth-locked #authPanel .text-button {
     grid-template-columns: 1fr;
   }
 }
+
+
+.pending-logs-panel {
+  border-color: rgba(47, 125, 99, 0.22);
+}
+
+.pending-log-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pending-log-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(247,249,246,0.94));
+  padding: 14px;
+  display: grid;
+  gap: 9px;
+}
+
+.pending-log-card.is-required {
+  border-color: rgba(184, 115, 51, 0.36);
+  background: linear-gradient(180deg, rgba(255,250,242,0.96), rgba(255,255,255,0.94));
+}
+
+.pending-log-card.is-empty {
+  background: var(--surface-muted);
+}
+
+.pending-log-main,
+.pending-log-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pending-log-main h3 {
+  margin: 2px 0 0;
+}
+
+.pending-log-actions {
+  justify-content: flex-start;
+}
+
+@media (max-width: 720px) {
+  .pending-log-main,
+  .pending-log-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

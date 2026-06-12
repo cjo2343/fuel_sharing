@@ -233,6 +233,7 @@ const els = {
   bookingMember: document.querySelector("#bookingMember"),
   fuelPayer: document.querySelector("#fuelPayer"),
   tripDate: document.querySelector("#tripDate"),
+  pendingLogList: document.querySelector("#pendingLogList"),
   bookingStart: document.querySelector("#bookingStart"),
   bookingEnd: document.querySelector("#bookingEnd"),
   bookingPurpose: document.querySelector("#bookingPurpose"),
@@ -654,7 +655,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
   const normalizedLiters = round(liters);
   const fuelPayload = {
     id: editingFuelId || crypto.randomUUID(),
-    logRef: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.logRef || pendingFuelTripContext?.logRef || null : pendingFuelTripContext?.logRef || null,
+    logRef: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.logRef || pendingFuelTripContext?.logRef || createLogRef(editingFuelId) : pendingFuelTripContext?.logRef || createLogRef(editingFuelId || crypto.randomUUID()),
     sourceTripId: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.sourceTripId || pendingFuelTripContext?.tripId || null : pendingFuelTripContext?.tripId || null,
     sourceBookingId: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.sourceBookingId || pendingFuelTripContext?.bookingId || null : pendingFuelTripContext?.bookingId || null,
     bookingStart: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.bookingStart || pendingFuelTripContext?.bookingStart || null : pendingFuelTripContext?.bookingStart || null,
@@ -1496,6 +1497,18 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const completePendingTripButton = event.target.closest("[data-complete-pending-trip]");
+  if (completePendingTripButton) {
+    startTripFromBooking(completePendingTripButton.dataset.completePendingTrip);
+    return;
+  }
+
+  const addFuelForTripButton = event.target.closest("[data-add-fuel-for-trip]");
+  if (addFuelForTripButton) {
+    startFuelFromTrip(addFuelForTripButton.dataset.addFuelForTrip);
+    return;
+  }
+
   const viewArchiveButton = event.target.closest("[data-view-closed-period]");
   if (viewArchiveButton) {
     const periodId = viewArchiveButton.dataset.viewClosedPeriod;
@@ -1894,6 +1907,7 @@ function render() {
   renderSettlements(ledger);
   renderUnpaidPayments(ledger);
   renderBookings();
+  renderPendingLogs();
   renderHistory();
   renderAuditLog();
   renderBookingActivityLog();
@@ -5534,6 +5548,123 @@ function renderFuelTripContext() {
   `;
 }
 
+
+function isSameCalendarDayValue(a, b) {
+  const first = a ? new Date(a) : null;
+  const second = b ? new Date(b) : null;
+  if (!first || !second || Number.isNaN(first.getTime()) || Number.isNaN(second.getTime())) return false;
+  return localDateString(first) === localDateString(second);
+}
+
+function findTripForBooking(bookingId) {
+  return state.trips.find((trip) => trip.sourceBookingId === bookingId) || null;
+}
+
+function findFuelForTrip(tripId) {
+  return state.fuel.find((fuel) => fuel.sourceTripId === tripId) || null;
+}
+
+function buildPendingLogTasks() {
+  const now = Date.now();
+  const tasks = [];
+
+  for (const booking of state.bookings || []) {
+    const bookingEnd = parseBookingDate(booking.end);
+    if (!bookingEnd || bookingEnd.getTime() > now) continue;
+    const trip = findTripForBooking(booking.id);
+    if (!trip) {
+      tasks.push({
+        type: "trip",
+        id: `trip-${booking.id}`,
+        logRef: booking.logRef || createLogRef(booking.id),
+        booking,
+        dueAt: booking.end,
+        canAct: canCreateTripFromBooking(booking)
+      });
+      continue;
+    }
+    if (!findFuelForTrip(trip.id)) {
+      tasks.push({
+        type: "fuel",
+        id: `fuel-${trip.id}`,
+        logRef: trip.logRef || booking.logRef || createLogRef(trip.id),
+        booking,
+        trip,
+        dueAt: trip.bookingEnd || booking.end || trip.date,
+        required: !isSameCalendarDayValue(trip.bookingStart || booking.start, trip.bookingEnd || booking.end),
+        canAct: canManageTripEntry(trip)
+      });
+    }
+  }
+
+  return tasks.sort((a, b) => new Date(b.dueAt || 0) - new Date(a.dueAt || 0));
+}
+
+function renderPendingLogs() {
+  if (!els.pendingLogList) return;
+  const tasks = buildPendingLogTasks();
+  if (!tasks.length) {
+    els.pendingLogList.innerHTML = `<article class="pending-log-card is-empty"><strong>No pending logs</strong><p class="entry-meta">Ended bookings with missing trip or fuel details will appear here.</p></article>`;
+    return;
+  }
+
+  els.pendingLogList.innerHTML = tasks.map((task) => {
+    const booking = task.booking || {};
+    const trip = task.trip || null;
+    const period = getTripPeriodLabel({
+      date: trip?.date || "",
+      bookingStart: trip?.bookingStart || booking.start,
+      bookingEnd: trip?.bookingEnd || booking.end
+    });
+    const title = task.type === "trip" ? "Trip log needed" : (task.required ? "Fuel log required" : "Fuel log suggested");
+    const description = task.type === "trip"
+      ? "Enter the final odometer to complete this booking."
+      : `${formatNumber(Math.max(0, Number(trip?.endKm || 0) - Number(trip?.startKm || 0)))} km logged. Add the matching refuel receipt${task.required ? " for this multi-day booking" : " if fuel was bought"}.`;
+    const action = task.type === "trip"
+      ? `<button class="action-button compact-button" type="button" data-complete-pending-trip="${escapeHtml(booking.id || "")}" ${task.canAct ? "" : "disabled"}>Complete trip</button>`
+      : `<button class="action-button compact-button" type="button" data-add-fuel-for-trip="${escapeHtml(trip?.id || "")}" ${task.canAct ? "" : "disabled"}>Add fuel</button>`;
+    return `
+      <article class="pending-log-card ${task.required ? "is-required" : ""}">
+        <div class="pending-log-main">
+          <div>
+            <p class="eyebrow">${escapeHtml(formatLogRef(task))}</p>
+            <h3>${escapeHtml(title)}</h3>
+          </div>
+          <span class="status-pill">${task.type === "trip" ? "Odometer" : (task.required ? "Required" : "Suggested")}</span>
+        </div>
+        <p>${escapeHtml(period)}</p>
+        <p class="entry-meta">${escapeHtml(booking.member || trip?.driver || "Driver")}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}</p>
+        <p class="section-note">${escapeHtml(description)}</p>
+        <div class="pending-log-actions">${action}</div>
+      </article>
+    `;
+  }).join("");
+}
+
+function startFuelFromTrip(id) {
+  const trip = state.trips.find((entry) => entry.id === id);
+  if (!trip) return;
+  if (!canManageTripEntry(trip)) {
+    alert("Only the trip driver or an admin can add fuel for this trip.");
+    return;
+  }
+  editingTripId = null;
+  editingFuelId = null;
+  editingBookingId = null;
+  clearTripLoggingContext();
+  pendingFuelTripContext = buildFuelContextFromTrip(trip);
+  els.fuelForm?.reset();
+  clearFuelLocation();
+  prefillFuelFromTripContext(pendingFuelTripContext);
+  updateEditUi();
+  setActiveView("log");
+  setTimeout(() => {
+    els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    els.fuelAmount?.focus();
+  }, 0);
+  showAppMessage(`Fuel form filled for trip ${formatLogRef(trip)}.`);
+}
+
 function startBookingEdit(id) {
   const booking = state.bookings.find((entry) => entry.id === id);
   if (!booking) return;
@@ -5788,7 +5919,8 @@ function renderFuelEntryCard(fuel, ledger = null) {
       </header>
       ${!canManageFuelEntry(fuel) ? renderPermissionNote(describeFuelPermissionMessage(fuel, "edit or delete")) : ""}
       <p>${formatFuelAmountLitersAndPrice(fuel)}</p>
-      <p class="entry-meta">${formatDate(fuel.date)}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+      <p class="entry-meta"><strong>${escapeHtml(formatLogRef(fuel))}</strong> · ${formatDate(fuel.date)}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+      ${fuel.sourceTripId ? `<p class="entry-meta">Linked to trip ${escapeHtml(formatLogRef(fuel))}</p>` : ""}
       ${renderEntryReviewSignal(reviewSignal)}
     </article>
   `;
