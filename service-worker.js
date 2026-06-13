@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v82";
-const BUILD_LABEL = "regression-console-and-sw-coverage";
-const BUILD_UPDATED_AT = "2026-06-13T10:45:00+02:00";
+const CACHE_NAME = "fuel-ledger-v84";
+const BUILD_LABEL = "pending-add-fuel-action-test-fix";
+const BUILD_UPDATED_AT = "2026-06-13T11:05:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

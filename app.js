@@ -1554,7 +1554,7 @@ document.addEventListener("click", async (event) => {
 
   const addFuelForTripButton = event.target.closest("[data-add-fuel-for-trip]");
   if (addFuelForTripButton) {
-    startFuelFromTrip(addFuelForTripButton.dataset.addFuelForTrip);
+    startFuelFromPendingAction(addFuelForTripButton);
     return;
   }
 
@@ -6203,7 +6203,7 @@ function renderPendingLogs() {
       : `${formatNumber(Math.max(0, Number(trip?.endKm || 0) - Number(trip?.startKm || 0)))} km logged. Add the matching refuel receipt${task.required ? " for this multi-day booking" : " if fuel was bought"}.`;
     const action = task.type === "trip"
       ? `<button class="action-button compact-button" type="button" data-complete-pending-trip="${escapeHtml(booking.id || "")}" ${task.canAct ? "" : "disabled"}>Complete trip</button>`
-      : `<button class="action-button compact-button" type="button" data-add-fuel-for-trip="${escapeHtml(trip?.id || "")}" ${task.canAct ? "" : "disabled"}>Add fuel</button>`;
+      : `<button class="action-button compact-button" type="button" data-add-fuel-for-trip="${escapeHtml(trip?.id || "")}" data-add-fuel-booking="${escapeHtml(booking.id || "")}" data-add-fuel-log-ref="${escapeHtml(formatLogRef(task))}" ${task.canAct ? "" : "disabled"}>Add fuel</button>`;
     return `
       <article class="pending-log-card ${task.required ? "is-required" : ""}" data-log-ref="${escapeHtml(normalizeLogRefValue(formatLogRef(task)))}" data-pending-log-type="${escapeHtml(task.type)}">
         <div class="pending-log-main">
@@ -6417,13 +6417,53 @@ function handleStartupDeepLinks(options = {}) {
   return handlePaymentDeepLink(options) || handleLogDeepLink(options);
 }
 
+function findTripForFuelFollowup({ tripId = "", bookingId = "", logRef = "" } = {}) {
+  const normalizedRef = normalizeLogRefValue(logRef);
+  if (tripId) {
+    const exactTrip = state.trips.find((entry) => entry.id === tripId);
+    if (exactTrip) return exactTrip;
+  }
+  if (bookingId) {
+    const bookingTrip = state.trips.find((entry) => entry.sourceBookingId === bookingId);
+    if (bookingTrip) return bookingTrip;
+  }
+  if (normalizedRef) {
+    const refTrip = state.trips.find((entry) => normalizeLogRefValue(formatLogRef(entry)) === normalizedRef || normalizeLogRefValue(entry.logRef) === normalizedRef);
+    if (refTrip) return refTrip;
+  }
+  return null;
+}
+
+function startFuelFromPendingAction(button) {
+  const trip = findTripForFuelFollowup({
+    tripId: button?.dataset?.addFuelForTrip || "",
+    bookingId: button?.dataset?.addFuelBooking || "",
+    logRef: button?.dataset?.addFuelLogRef || ""
+  });
+  if (!trip) {
+    const message = "Could not find the linked trip for this fuel follow-up. Open History and edit the trip, or reload and try again.";
+    showAppMessage(message, "error", { timeoutMs: 7000 });
+    console.warn("Pending fuel follow-up could not resolve trip", {
+      tripId: button?.dataset?.addFuelForTrip || "",
+      bookingId: button?.dataset?.addFuelBooking || "",
+      logRef: button?.dataset?.addFuelLogRef || ""
+    });
+    return;
+  }
+  startFuelFromTrip(trip.id);
+}
+
 function startFuelFromTrip(id) {
-  const trip = state.trips.find((entry) => entry.id === id);
-  if (!trip) return;
+  const trip = findTripForFuelFollowup({ tripId: id });
+  if (!trip) {
+    showAppMessage("Could not find the linked trip for this fuel follow-up.", "error", { timeoutMs: 7000 });
+    return;
+  }
   if (!canManageTripEntry(trip)) {
     alert("Only the trip driver or an admin can add fuel for this trip.");
     return;
   }
+  if (!assertCurrentPeriodAllowsMoneyChanges("add fuel for this trip")) return;
   editingTripId = null;
   editingFuelId = null;
   editingBookingId = null;
