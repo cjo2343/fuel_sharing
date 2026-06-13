@@ -377,6 +377,7 @@ const bookingCalendarController = window.FuelBookingCalendar.createBookingCalend
 
 const renderBookings = bookingCalendarController.renderBookings;
 const setBookingCalendarView = bookingCalendarController.setBookingCalendarView;
+const setBookingCalendarAnchor = bookingCalendarController.setBookingCalendarAnchor;
 const renderBookingConflictNotice = bookingCalendarController.renderBookingConflictNotice;
 const renderBookingAvailabilityPreview = bookingCalendarController.renderBookingAvailabilityPreview;
 const validateBookingInput = bookingCalendarController.validateBookingInput;
@@ -498,6 +499,7 @@ if (els.bookingForm) {
       metadata: buildBookingAuditMetadata(bookingPayload)
     });
 
+    setBookingCalendarAnchor(bookingPayload.start);
     editingBookingId = null;
     els.bookingForm.reset();
     setDefaultBookingTimes();
@@ -1400,6 +1402,7 @@ if (els.cancelTripEdit) {
 
 if (els.cancelBookingEdit) {
   els.cancelBookingEdit.addEventListener("click", () => {
+    setBookingCalendarAnchor(bookingPayload.start);
     editingBookingId = null;
     els.bookingForm.reset();
     setDefaultBookingTimes();

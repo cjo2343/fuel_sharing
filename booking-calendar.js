@@ -16,6 +16,13 @@
       describeCurrentActor
     } = deps;
 
+    let forcedCalendarAnchorDateKey = null;
+
+    function setBookingCalendarAnchor(value) {
+      const dateKey = String(value || "").slice(0, 10);
+      forcedCalendarAnchorDateKey = isDateKey(dateKey) ? dateKey : null;
+    }
+
     function renderBookings() {
       if (!els.bookingCalendar) return;
       renderBookingConflictNotice(null);
@@ -131,6 +138,19 @@
     function getBookingCalendarAnchorDate(bookings, days) {
       const todayKey = localDateString();
       const today = new Date(todayKey);
+      if (forcedCalendarAnchorDateKey && isDateKey(forcedCalendarAnchorDateKey)) {
+        const forcedEnd = new Date(forcedCalendarAnchorDateKey);
+        forcedEnd.setDate(forcedEnd.getDate() + Math.max(0, days - 1));
+        const forcedEndKey = localDateString(forcedEnd);
+        const forcedWindowHasBooking = bookings.some((booking) => {
+          const startKey = String(booking.start || "").slice(0, 10);
+          const endKey = String(booking.end || "").slice(0, 10);
+          return startKey <= forcedEndKey && endKey >= forcedCalendarAnchorDateKey;
+        });
+        if (bookings.length === 0 || forcedWindowHasBooking) {
+          return new Date(forcedCalendarAnchorDateKey);
+        }
+      }
       const selectedStart = String(els.bookingStart?.value || "").slice(0, 10);
       if (selectedStart && isDateKey(selectedStart)) {
         const selectedEnd = new Date(selectedStart);
@@ -175,6 +195,20 @@
 
     function getBookingMonthAnchorDate(bookings) {
       const today = new Date(localDateString());
+      if (forcedCalendarAnchorDateKey && isDateKey(forcedCalendarAnchorDateKey)) {
+        const forcedDate = new Date(forcedCalendarAnchorDateKey);
+        const forcedYear = forcedDate.getFullYear();
+        const forcedMonth = forcedDate.getMonth();
+        const forcedMonthHasBooking = bookings.some((booking) => {
+          const start = parseBookingDate(booking.start);
+          const end = parseBookingDate(booking.end);
+          return (start && start.getFullYear() === forcedYear && start.getMonth() === forcedMonth)
+            || (end && end.getFullYear() === forcedYear && end.getMonth() === forcedMonth);
+        });
+        if (bookings.length === 0 || forcedMonthHasBooking) {
+          return forcedDate;
+        }
+      }
       const selectedStart = String(els.bookingStart?.value || "").slice(0, 10);
       if (selectedStart && isDateKey(selectedStart)) {
         const selectedDate = new Date(selectedStart);
@@ -459,6 +493,7 @@
     return {
       renderBookings,
       setBookingCalendarView,
+      setBookingCalendarAnchor,
       renderBookingConflictNotice,
       renderBookingAvailabilityPreview,
       validateBookingInput,
