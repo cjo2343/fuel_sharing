@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v75";
-const BUILD_LABEL = "booking-calendar-explicit-anchor";
-const BUILD_UPDATED_AT = "2026-06-13T00:15:00+02:00";
+const CACHE_NAME = "fuel-ledger-v76";
+const BUILD_LABEL = "settlement-ux-polish";
+const BUILD_UPDATED_AT = "2026-06-13T00:45:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",

@@ -2035,6 +2035,28 @@ function renderPaymentEvidenceSummary(payment, options = {}) {
   return pieces.join(" · ");
 }
 
+
+function renderSettlementPaymentStory(payment, ledger, options = {}) {
+  const currency = options.currency || state.currency;
+  const person = ledger?.people?.[payment.from] || { km: 0, fuelPaid: 0, shareCost: 0, balance: 0 };
+  const receiver = ledger?.people?.[payment.to] || { fuelPaid: 0, balance: 0 };
+  const summary = summarizePaymentEvidence(payment, { ...options, currency });
+  const direction = normalizePaymentStatus(state.paymentStatuses[settlementKey(payment)]) === "requested"
+    ? "Payment requested"
+    : "Final payment";
+  return `
+    <div class="settlement-story">
+      <span class="settlement-story-label">${escapeHtml(direction)}</span>
+      <p><strong>${escapeHtml(payment.from)}</strong> drove or joined ${formatNumber(summary.payerTripKm)} km in this period. <strong>${escapeHtml(payment.to)}</strong> paid ${formatMoneyFor(summary.payeeFuelTotal, currency)} in fuel. This payment balances ${escapeHtml(payment.from)}'s usage share against fuel paid by ${escapeHtml(payment.to)}.</p>
+      <div class="settlement-mini-metrics" aria-label="Payment calculation summary">
+        <span><b>${formatNumber(person.km || 0)} km</b><small>${escapeHtml(payment.from)} share</small></span>
+        <span><b>${formatMoneyFor(person.shareCost || 0, currency)}</b><small>Usage cost</small></span>
+        <span><b>${formatMoneyFor(receiver.fuelPaid || 0, currency)}</b><small>${escapeHtml(payment.to)} fuel paid</small></span>
+      </div>
+    </div>
+  `;
+}
+
 function renderPaymentEvidenceDetails(payment, options = {}) {
   const currency = options.currency || state.currency;
   const { payerTrips, payeeFuel, relatedBookings } = getPaymentEvidenceSources(payment, options);
@@ -3941,7 +3963,7 @@ function renderSettlements(ledger) {
           if (canMarkPaid) {
             const mobilePayPrompt = getMobilePayReturnPrompt(key);
             requestControls += `<button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(formatPaymentAmountOnly(item.amount))}">Copy amount</button>`;
-            requestControls += `<button class="subtle-button compact-button" type="button" data-open-mobilepay="true" data-payment-key="${escapeHtml(key)}">Open MobilePay</button>`;
+            requestControls += `<button class="primary-action compact-button" type="button" data-open-mobilepay="true" data-payment-key="${escapeHtml(key)}">Open MobilePay</button>`;
             requestControls += `<button class="subtle-button compact-button" type="button" data-payment-key="${escapeHtml(key)}" data-payment-status="paid" ${pending ? "disabled" : ""}>${pending ? "Marking paid..." : "Mark paid"}</button>`;
             requestControls += mobilePayPrompt
               ? `<span class="request-note mobilepay-helper">MobilePay opened. After paying ${escapeHtml(mobilePayPrompt.amount)} to ${escapeHtml(mobilePayPrompt.to)}, return here and tap Mark paid.</span>`
@@ -3972,11 +3994,11 @@ function renderSettlements(ledger) {
               <span class="settlement-route-action">pays</span>
               <span class="settlement-person">${escapeHtml(item.to)}</span>
             </div>
-            <p>${escapeHtml(ledger.period.label)} · ${formatNumber(fromPerson.km)} km distance share at ${formatMoney(ledger.fuelRate)}/km · ${escapeHtml(item.to)} paid ${formatMoney(toPerson.fuelPaid)}</p>
+            ${renderSettlementPaymentStory(item, ledger, { trips: state.trips, fuel: state.fuel, currency: state.currency })}
             <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, { trips: state.trips, fuel: state.fuel, currency: state.currency }))}</p>
             <div class="settlement-detail-row">
               <details class="settlement-details">
-                <summary>Why this payment?</summary>
+                <summary>Calculation</summary>
                 ${renderSettlementMathDetails(item, ledger)}
               </details>
               <details class="settlement-details">
@@ -4497,6 +4519,7 @@ function buildFuelValidationMessage(ledger, actionLabel = "continue") {
 
 function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlements(ledger)) {
   const hiddenCount = Math.max(0, (ledger.settlements || []).length - visibleSettlements.length);
+  const missingRequiredFuel = getMissingRequiredFuelTasksForCurrentPeriod();
   const totals = visibleSettlements.reduce(
     (acc, item) => {
       const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]);
@@ -4518,24 +4541,28 @@ function renderPaymentOverview(ledger, visibleSettlements = getVisibleSettlement
   );
 
   els.paymentOverview.innerHTML = `
-    <div>
+    <div class="payment-overview-card primary-overview">
+      <span>Current settlement</span>
+      <strong>${escapeHtml(ledger.period.label)}</strong>
+      <small>${formatNumber(ledger.totalShareKm)} participant km · ${formatMoney(ledger.totalPaid)} fuel · ${formatMoney(ledger.fuelRate)}/km</small>
+    </div>
+    <div class="payment-overview-card">
       <span>Final payments</span>
-      <strong>${totals.totalCount}</strong>
-      <small>${hiddenCount ? `Showing ${totals.totalCount} payment${totals.totalCount === 1 ? "" : "s"} relevant to you. ${hiddenCount} other period payment${hiddenCount === 1 ? "" : "s"} hidden.` : "Payments needed after all trips and fuel receipts are netted."}</small>
+      <strong>${totals.totalCount} · ${formatMoney(totals.totalAmount)}</strong>
+      <small>${hiddenCount ? `Showing ${totals.totalCount} payment${totals.totalCount === 1 ? "" : "s"} relevant to you. ${hiddenCount} other payment${hiddenCount === 1 ? "" : "s"} hidden.` : "Net payments after trips and fuel receipts are balanced."}</small>
     </div>
-    <div>
-      <span>Requested / paid</span>
-      <strong>${totals.requestedCount} requested · ${totals.paidCount} paid</strong>
-      <small>${formatMoney(totals.requestedAmount)} requested; ${formatMoney(totals.paidAmount)} marked paid.</small>
+    <div class="payment-overview-card">
+      <span>Payment status</span>
+      <strong>${totals.openCount} open · ${totals.requestedCount} requested · ${totals.paidCount} paid</strong>
+      <small>${formatMoney(totals.openAmount)} open; ${formatMoney(totals.requestedAmount)} requested; ${formatMoney(totals.paidAmount)} paid.</small>
     </div>
-    <div>
-      <span>Open payments</span>
-      <strong>${totals.openCount} · ${formatMoney(totals.openAmount)}</strong>
-      <small>${hiddenCount ? "Open payments involving you." : "Final payments not requested yet. Period-wide, not just your account."}</small>
+    <div class="payment-overview-card ${missingRequiredFuel.length ? "needs-attention" : ""}">
+      <span>Required fuel logs</span>
+      <strong>${missingRequiredFuel.length}</strong>
+      <small>${missingRequiredFuel.length ? "Close is blocked until each multi-day booking trip has linked full-tank fuel." : "No required booking-fuel tasks blocking settlement close."}</small>
     </div>
   `;
 }
-
 
 
 function getMemberActionSummary(ledger, visibleSettlements = getVisibleSettlements(ledger)) {
