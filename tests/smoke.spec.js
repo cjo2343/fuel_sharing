@@ -70,6 +70,14 @@ function litersDisplayPattern(value) {
   return new RegExp(`${decimalPattern(value, 1)}\\s*L`);
 }
 
+function typedRefFromEntry(entry, type = "log") {
+  const prefixMap = { booking: "bok", trip: "trp", fuel: "ful", log: "log" };
+  const prefix = prefixMap[type] || String(type || "log").toLowerCase();
+  const raw = entry?.logRef || `#${String(entry?.id || "LOG000").replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 6)}`;
+  const compact = String(raw || "").replace(/[^a-z0-9]/gi, "").replace(/^(BOK|TRP|FUL|LOG)/i, "").toUpperCase().slice(0, 6);
+  return compact ? `${prefix}-${compact}` : `${prefix}-unknown`;
+}
+
 
 
 function makeSeededPermissionState() {
@@ -263,6 +271,55 @@ test("fuel logs require liters and configured DKK/L range", async ({ page }) => 
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
   await expect(page.locator("#fuelList")).toContainText("20 L");
   await expect(page.locator("#fuelList")).toContainText(/15[,.]00 DKK\/L/);
+});
+
+
+test("booking IDs are visible on booking cards, month chips, and save feedback", async ({ page }) => {
+  await openLocalApp(page);
+
+  await page.locator('[data-view-tab="book"]').click();
+  await chooseFirstSelectOption(page.locator("#bookingMember"));
+  await page.locator("#bookingStart").fill("2026-06-18T08:00");
+  await page.locator("#bookingEnd").fill("2026-06-18T10:00");
+  await page.locator("#bookingPurpose").fill("Booking ref visibility regression");
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+
+  const booking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings?.[0]);
+  const bookingRef = typedRefFromEntry(booking, "booking");
+  await expect(page.locator("#appMessageToast")).toContainText(`Car booked as ${bookingRef}.`);
+  await expect(page.locator("#bookingCalendar")).toContainText(bookingRef);
+  await expect(page.locator(`[data-booking-ref="${bookingRef}"]`).first()).toBeVisible();
+
+  await page.locator('[data-booking-calendar-view="month"]').click();
+  await expect(page.locator("#bookingCalendar")).toContainText("Booking ref visibility regression");
+  await expect(page.locator("#bookingCalendar")).toContainText(bookingRef);
+});
+
+test("booking-to-trip linkage shows booking and trip IDs in log context and pending fuel", async ({ page }) => {
+  await openLocalApp(page);
+
+  await page.locator('[data-view-tab="book"]').click();
+  await chooseFirstSelectOption(page.locator("#bookingMember"));
+  await page.locator("#bookingStart").fill("2026-06-10T21:00");
+  await page.locator("#bookingEnd").fill("2026-06-11T23:00");
+  await page.locator("#bookingPurpose").fill("Booking ref linkage regression");
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+
+  const booking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings?.[0]);
+  const bookingRef = typedRefFromEntry(booking, "booking");
+  await page.locator(`[data-convert-booking-to-trip="${booking.id}"]`).click();
+  await expect(page.locator('[data-view="log"]#tripLogPanel')).toBeVisible();
+  await expect(page.locator("#tripBookingContext")).toContainText(bookingRef);
+
+  await page.locator("#startKm").fill("3000");
+  await page.locator("#endKm").fill("3077");
+  await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
+
+  const trip = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").trips?.[0]);
+  const tripRef = typedRefFromEntry(trip, "trip");
+  await expect(page.locator("#pendingLogList")).toContainText("Fuel log required");
+  await expect(page.locator("#pendingLogList")).toContainText(bookingRef);
+  await expect(page.locator("#pendingLogList")).toContainText(tripRef);
 });
 
 test("create, edit, persist, delete booking and reject overlapping booking", async ({ page }) => {
