@@ -6346,15 +6346,30 @@ function findPaymentItemByRef(paymentRef) {
   return getUnpaidPaymentItems(calculateLedger()).find((item) => paymentRefEquals(item, target)) || null;
 }
 
-function scrollToPaymentRef(paymentRef) {
+function scrollToPaymentRef(paymentRef, options = {}) {
   const target = normalizePaymentRefValue(paymentRef);
   if (!target) return false;
-  const card = Array.from(document.querySelectorAll("[data-payment-ref]")).find((entry) => normalizePaymentRefValue(entry.dataset.paymentRef) === target);
-  if (!card) return false;
-  card.scrollIntoView({ behavior: "smooth", block: "center" });
-  card.classList.add("highlight-pulse");
-  window.setTimeout(() => card.classList.remove("highlight-pulse"), 4200);
-  return true;
+  const selectors = Array.isArray(options.selectors) && options.selectors.length ? options.selectors : ["[data-payment-ref]"];
+  for (const selector of selectors) {
+    const card = Array.from(document.querySelectorAll(selector)).find((entry) => normalizePaymentRefValue(entry.dataset.paymentRef) === target);
+    if (!card) continue;
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("highlight-pulse");
+    window.setTimeout(() => card.classList.remove("highlight-pulse"), 4200);
+    return true;
+  }
+  return false;
+}
+
+function schedulePaymentRefHighlight(paymentRef, options = {}) {
+  const attempts = Array.isArray(options.attempts) && options.attempts.length ? options.attempts : [80, 250, 650];
+  for (const delay of attempts) {
+    window.setTimeout(() => {
+      if (!scrollToPaymentRef(paymentRef, options) && options.fallback) {
+        options.fallback();
+      }
+    }, delay);
+  }
 }
 
 function handlePaymentDeepLink(options = {}) {
@@ -6370,27 +6385,26 @@ function handlePaymentDeepLink(options = {}) {
     if (periodId) expandedClosedPeriodIds.add(periodId);
     setActiveHistorySection("archive");
     setActiveView("history");
-    window.setTimeout(() => {
-      if (!scrollToPaymentRef(normalizedRef)) {
+    schedulePaymentRefHighlight(normalizedRef, {
+      selectors: [".archive-payment-card[data-payment-ref]"],
+      fallback: () => {
         const periodCard = periodId ? document.querySelector(`[data-period-id="${cssEscape(periodId)}"]`) : null;
         (periodCard || document.querySelector("#closedPeriods"))?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
-    }, 80);
+    });
   } else if (resolvedScope === "current") {
     setActiveView("settle");
-    window.setTimeout(() => {
-      if (!scrollToPaymentRef(normalizedRef)) {
-        els.settlements?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 80);
+    schedulePaymentRefHighlight(normalizedRef, {
+      selectors: [".settlement-card[data-payment-ref]"],
+      fallback: () => els.settlements?.scrollIntoView({ behavior: "smooth", block: "start" })
+    });
   } else {
     setActivePaymentSection("all");
     setActiveView("payments");
-    window.setTimeout(() => {
-      if (!scrollToPaymentRef(normalizedRef)) {
-        els.unpaidPaymentList?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 80);
+    schedulePaymentRefHighlight(normalizedRef, {
+      selectors: [".unpaid-payment-card[data-payment-ref]", "[data-payment-ref]"],
+      fallback: () => els.unpaidPaymentList?.scrollIntoView({ behavior: "smooth", block: "start" })
+    });
   }
 
   if (!options.silent && !item) {

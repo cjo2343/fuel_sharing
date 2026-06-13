@@ -464,6 +464,91 @@ test("period-aware audit log clears current history and freezes closed-period hi
 });
 
 
+
+test("multi-day booking trip requires linked full-tank fuel before closing", async ({ page }) => {
+  await openLocalApp(page);
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.locator('[data-view-tab="book"]').click();
+  await chooseFirstSelectOption(page.locator("#bookingMember"));
+  await page.locator("#bookingStart").fill("2026-06-10T21:00");
+  await page.locator("#bookingEnd").fill("2026-06-11T23:00");
+  await page.locator("#bookingPurpose").fill("Required fuel regression");
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#bookingCalendar")).toContainText("Required fuel regression");
+
+  const bookingId = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")).bookings[0].id);
+  await page.locator(`[data-convert-booking-to-trip="${bookingId}"]`).click();
+  await expect(page.locator('[data-view="log"]#tripLogPanel')).toBeVisible();
+  await expect(page.locator("#tripDate")).toHaveValue("2026-06-11");
+  await page.locator("#startKm").fill("2000");
+  await page.locator("#endKm").fill("2088");
+  await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
+
+  await expect(page.locator("#pendingLogList")).toContainText("Fuel log required");
+  await page.locator('[data-view-tab="settle"]').click();
+  await expect(page.locator("#settlementWarning")).toContainText("multi-day booking trip needs a linked full-tank fuel log");
+  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await expect(page.locator("#pendingLogList")).toContainText("Required fuel regression");
+  await expect(page.locator("#periodList")).not.toContainText("Required fuel regression");
+
+  await page.locator('[data-add-fuel-for-trip]').first().click();
+  await expect(page.locator("#fuelTripContext")).toContainText("Required for multi-day booking");
+  await page.locator("#fuelAmount").fill("444");
+  await page.locator("#fuelLiters").fill("30");
+  await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#fuelList")).not.toContainText("444,00 DKK");
+  await expect(page.locator("#fuelTripContext")).toContainText("Required for multi-day booking");
+
+  await page.locator("#fuelFullTank").check();
+  await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#fuelList")).toContainText("444,00 DKK");
+
+  await page.locator('[data-view-tab="settle"]').click();
+  await expect(page.locator("#settlementWarning")).not.toContainText("multi-day booking trip needs");
+  await requestAllOpenPayments(page);
+  await expect(page.locator("#settlementWarning")).not.toContainText("Request all settlement payments");
+  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await page.locator('[data-view-tab="history"]').click();
+  await openClosedPeriodCard(page.locator(".archived-period-card").first());
+  await expect(page.locator("#periodList")).toContainText("Required fuel regression");
+});
+
+test("payment deep links route current payments to Settlement and closed payments to archived cards", async ({ page }) => {
+  await openLocalApp(page);
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await createBasicTripAndFuel(page, { note: "Payment deep link regression", fuelAmount: "222.22" });
+  await page.locator('[data-view-tab="settle"]').click();
+  await expect(page.locator("#settlements")).toContainText("distance share");
+  await expect(page.locator("#settlements")).not.toContainText(/drove or joined\s+42 km/i);
+
+  const paymentCard = page.locator(".settlement-card").first();
+  const paymentRef = await paymentCard.getAttribute("data-payment-ref");
+  expect(paymentRef).toBeTruthy();
+  await expect(paymentCard).toContainText(/fuel share/i);
+  await expect(paymentCard).toContainText(/10[,.]5 km distance share/);
+
+  await page.goto(`/#payment=${paymentRef}&scope=current`);
+  await expect(page.locator('[data-view="settle"][aria-labelledby="settleHeading"]')).toBeVisible();
+  await expect(page.locator(`.settlement-card[data-payment-ref="${paymentRef}"]`)).toHaveClass(/highlight-pulse/);
+
+  await requestAllOpenPayments(page);
+  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await page.locator('[data-view-tab="history"]').click();
+  const closedPeriodCard = page.locator(".archived-period-card").first();
+  await openClosedPeriodCard(closedPeriodCard);
+  await expect(closedPeriodCard.locator(`.archive-payment-card[data-payment-ref="${paymentRef}"]`)).toHaveCount(1);
+  const periodId = await closedPeriodCard.getAttribute("data-period-id");
+  expect(periodId).toBeTruthy();
+
+  await page.goto(`/#payment=${paymentRef}&scope=closed&period=${periodId}`);
+  await expect(page.locator("#periodsHeading")).toContainText("Closed periods");
+  const highlightedArchivePayment = page.locator(`.archive-payment-card[data-payment-ref="${paymentRef}"]`);
+  await expect(highlightedArchivePayment).toHaveCount(1);
+  await expect(highlightedArchivePayment).toHaveClass(/highlight-pulse/);
+});
+
 test("non-admin members see clear permission messages for entries owned by someone else", async ({ page }) => {
   await openLocalAppAsEmilieWithChristianEntries(page);
 
