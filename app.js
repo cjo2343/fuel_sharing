@@ -8999,22 +8999,71 @@ async function syncNormalizedTablesFromJson() {
       updated_at: new Date().toISOString()
     })).filter((booking) => booking.legacy_id && booking.member_id && booking.start_at && booking.end_at);
 
-    if (bookingPayloads.length) {
-      const upsertBookings = await supabaseClient
-        .from("car_bookings")
-        .upsert(bookingPayloads, { onConflict: "ledger_id,legacy_id" });
-      if (upsertBookings.error) throw upsertBookings.error;
-    }
-
     const existingBookingsResult = await supabaseClient
       .from("car_bookings")
-      .select("id,legacy_id")
+      .select("id,legacy_id,member_id,start_at,end_at,purpose")
       .eq("ledger_id", ledgerId)
       .is("deleted_at", null);
     if (existingBookingsResult.error) throw existingBookingsResult.error;
 
+    const isoKey = (value) => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value || "") : date.toISOString();
+    };
+    const bookingSignature = (booking) => [
+      booking.member_id || "",
+      isoKey(booking.start_at),
+      isoKey(booking.end_at),
+      String(booking.purpose || "")
+    ].join("|");
+    const existingBookings = existingBookingsResult.data || [];
+    const existingByLegacyId = new Map(existingBookings.filter((booking) => booking.legacy_id).map((booking) => [booking.legacy_id, booking]));
+    const existingBySignature = new Map(existingBookings.map((booking) => [bookingSignature(booking), booking]));
+    const bookingPayloadsToUpsert = [];
+
+    for (const payload of bookingPayloads) {
+      const existingByLegacy = existingByLegacyId.get(payload.legacy_id);
+      const matchingExisting = existingByLegacy || existingBySignature.get(bookingSignature(payload));
+      if (matchingExisting && matchingExisting.legacy_id !== payload.legacy_id) {
+        const adoptResult = await supabaseClient
+          .from("car_bookings")
+          .update({
+            legacy_id: payload.legacy_id,
+            member_id: payload.member_id,
+            start_at: payload.start_at,
+            end_at: payload.end_at,
+            purpose: payload.purpose,
+            updated_at: payload.updated_at
+          })
+          .eq("id", matchingExisting.id);
+        if (adoptResult.error) {
+          if (isBookingOverlapError(adoptResult.error)) {
+            console.info("Skipped duplicate normalized booking row during JSON reconciliation", { legacyId: payload.legacy_id });
+            continue;
+          }
+          throw adoptResult.error;
+        }
+        existingByLegacyId.set(payload.legacy_id, { ...matchingExisting, ...payload, id: matchingExisting.id });
+        continue;
+      }
+      bookingPayloadsToUpsert.push(payload);
+    }
+
+    if (bookingPayloadsToUpsert.length) {
+      const upsertBookings = await supabaseClient
+        .from("car_bookings")
+        .upsert(bookingPayloadsToUpsert, { onConflict: "ledger_id,legacy_id" });
+      if (upsertBookings.error) {
+        if (isBookingOverlapError(upsertBookings.error)) {
+          console.info("Skipped duplicate normalized booking overlap during JSON reconciliation", upsertBookings.error);
+        } else {
+          throw upsertBookings.error;
+        }
+      }
+    }
+
     const activeBookingIds = new Set(state.bookings.map((booking) => booking.id));
-    const bookingsToSoftDelete = (existingBookingsResult.data || []).filter((booking) => booking.legacy_id && !activeBookingIds.has(booking.legacy_id));
+    const bookingsToSoftDelete = existingBookings.filter((booking) => booking.legacy_id && !activeBookingIds.has(booking.legacy_id));
     for (const booking of bookingsToSoftDelete) {
       const deleted = await supabaseClient
         .from("car_bookings")
