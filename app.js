@@ -2031,7 +2031,12 @@ function summarizePaymentEvidence(payment, options = {}) {
 function renderPaymentEvidenceSummary(payment, options = {}) {
   const summary = summarizePaymentEvidence(payment, options);
   const pieces = [];
-  pieces.push(`${summary.payerTripCount} trip${summary.payerTripCount === 1 ? "" : "s"} for ${escapeHtml(payment.from)} (${formatNumber(summary.payerTripKm)} km)`);
+  const chargedKm = Number(options.chargedKm || 0);
+  const tripTotalText = `${formatNumber(summary.payerTripKm)} km total`;
+  const chargedShareText = chargedKm > 0 && Math.abs(chargedKm - summary.payerTripKm) > 0.01
+    ? `, ${formatNumber(chargedKm)} km charged share`
+    : "";
+  pieces.push(`${summary.payerTripCount} trip${summary.payerTripCount === 1 ? "" : "s"} involving ${escapeHtml(payment.from)} (${tripTotalText}${chargedShareText})`);
   pieces.push(`${summary.payeeFuelCount} fuel log${summary.payeeFuelCount === 1 ? "" : "s"} paid by ${escapeHtml(payment.to)} (${formatMoneyFor(summary.payeeFuelTotal, summary.currency)})`);
   if (summary.bookingCount) pieces.push(`${summary.bookingCount} booking-linked trip${summary.bookingCount === 1 ? "" : "s"}`);
   return pieces.join(" · ");
@@ -3999,7 +4004,7 @@ function renderSettlements(ledger) {
               <span class="settlement-person">${escapeHtml(item.to)}</span>
             </div>
             ${renderSettlementPaymentStory(item, ledger, { trips: state.trips, fuel: state.fuel, currency: state.currency })}
-            <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, { trips: state.trips, fuel: state.fuel, currency: state.currency }))}</p>
+            <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, { trips: state.trips, fuel: state.fuel, currency: state.currency, chargedKm: Number(ledger?.people?.[item.from]?.km || 0) }))}</p>
             <div class="settlement-detail-row">
               <details class="settlement-details">
                 <summary>Calculation</summary>
@@ -7620,7 +7625,7 @@ function renderPeriodSettlements(period) {
                     <span class="archive-payment-person">${escapeHtml(settlement.to)}</span>
                   </div>
                   <p>${escapeHtml(statusNote)}</p>
-                  <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(settlement, { trips: period.trips || [], fuel: period.fuel || [], currency: period.currency || state.currency }))}</p>
+                  <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(settlement, { trips: period.trips || [], fuel: period.fuel || [], currency: period.currency || state.currency, chargedKm: Number(period?.ledger?.people?.[settlement.from]?.km || settlement?.km || 0) }))}</p>
                 </div>
                 <div class="archive-payment-amount">
                   <b>${amountText}</b>

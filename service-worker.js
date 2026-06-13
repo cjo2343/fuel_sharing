@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v86";
-const BUILD_LABEL = "booking-sync-preflight-fix";
+const CACHE_NAME = "fuel-ledger-v87";
+const BUILD_LABEL = "settlement-share-wording-tweak";
 const BUILD_UPDATED_AT = "2026-06-13T11:05:00+02:00";
 const CORE_ASSETS = [
   "/",
