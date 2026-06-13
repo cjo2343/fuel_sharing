@@ -19,6 +19,7 @@ function makeCleanState() {
     },
     fuelType: "diesel",
     fuelConsumption: 5.3,
+    fuelTankCapacity: 55,
     fuelFallbackPrice: 14.5,
     fuelWarningThreshold: 70,
     fuelPriceWarningRange: { min: 8, max: 25 },
@@ -120,6 +121,7 @@ function makeSeededPermissionState() {
     lastOdometer: 1042,
     fuelType: "diesel",
     fuelConsumption: 5.3,
+    fuelTankCapacity: 55,
     fuelFallbackPrice: 14.5,
     fuelWarningThreshold: 70,
     carSettingsVersion: 2
@@ -753,4 +755,82 @@ test("trip planner uses tank capacity for remaining-range guidance", async ({ pa
   await expect(page.locator("#tripEstimateResult")).toContainText("55 L");
   await expect(page.locator("#tripEstimateResult")).toContainText(/Range after trip|full/i);
   await expect(page.locator("#tripEstimateResult")).toContainText(/full.*tank|full/i);
+});
+
+test("tank capacity settings persist and drive trip planner output", async ({ page, request }) => {
+  await openLocalApp(page);
+
+  await page.locator('[data-view-tab="admin"]').click();
+  await expect(page.locator("#fuelTankCapacity")).toBeVisible();
+  await page.locator("#fuelConsumption").fill("5.5");
+  await page.locator("#fuelTankCapacity").fill("60");
+  await page.locator("#fuelWarningThreshold").fill("75");
+  await page.locator('#settingsForm button[type="submit"]').click();
+  await expect.poll(async () => {
+    const response = await request.get('/api/state');
+    const saved = await response.json();
+    return {
+      fuelConsumption: String(saved.fuelConsumption),
+      fuelTankCapacity: String(saved.fuelTankCapacity),
+      fuelWarningThreshold: String(saved.fuelWarningThreshold)
+    };
+  }).toEqual({
+    fuelConsumption: "5.5",
+    fuelTankCapacity: "60",
+    fuelWarningThreshold: "75"
+  });
+
+  await page.reload();
+  await page.locator('[data-view-tab="log"]').click();
+  await expect(page.locator("#tripForm")).toBeVisible();
+  await page.locator('[data-view-tab="admin"]').click();
+  await expect(page.locator("#fuelConsumption")).toHaveValue("5.5");
+  await expect(page.locator("#fuelTankCapacity")).toHaveValue("60");
+  await expect(page.locator("#fuelWarningThreshold")).toHaveValue("75");
+
+  await page.locator('[data-view-tab="book"]').click();
+  await page.locator("#tripEstimateDistance").fill("300");
+  await page.locator("#tripEstimatorParticipants input").first().check();
+  await expect(page.locator("#tripEstimateResult")).toContainText("Tank capacity");
+  await expect(page.locator("#tripEstimateResult")).toContainText("60 L");
+  await expect(page.locator("#tripEstimateResult")).toContainText(/5[,.]5 L\/100 km/);
+});
+
+test("trip planner warns when planned trip crosses configured tank range threshold", async ({ page, request }) => {
+  const seeded = makeCleanState();
+  seeded.fuelConsumption = 5.5;
+  seeded.fuelTankCapacity = 55;
+  seeded.fuelWarningThreshold = 70;
+  seeded.fuel = [{
+    id: "full-tank-range-anchor",
+    payer: "Christian",
+    date: "2026-06-01",
+    amount: 500,
+    liters: 36,
+    pricePerLiter: 13.89,
+    odometer: 1000,
+    station: "Range Anchor Station",
+    fullTank: true
+  }];
+  seeded.trips = [{
+    id: "range-history-trip",
+    driver: "Christian",
+    date: "2026-06-08",
+    startKm: 1000,
+    endKm: 1600,
+    participants: ["Christian"],
+    note: "Range threshold history trip"
+  }];
+  seeded.lastOdometer = 1600;
+  await request.put("/api/state", { data: seeded });
+
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="book"]').click();
+  await page.locator("#tripEstimateDistance").fill("200");
+  await page.locator("#tripEstimatorParticipants input").first().check();
+
+  await expect(page.locator("#tripEstimateResult")).toContainText("Tank capacity");
+  await expect(page.locator("#tripEstimateResult")).toContainText("55 L");
+  await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip/i);
+  await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop/i);
 });

@@ -966,7 +966,7 @@ function renderSectionNavigation() {
   });
 }
 
-els.settingsForm.addEventListener("submit", (event) => {
+els.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) {
     alert("Only an admin can change group settings.");
@@ -1017,6 +1017,8 @@ els.settingsForm.addEventListener("submit", (event) => {
   state.fuel = state.fuel.filter((fuel) => state.members.includes(fuel.payer));
 
   saveState();
+  if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+  await saveRemoteState();
   render();
 });
 
@@ -8960,6 +8962,7 @@ async function syncNormalizedTablesFromJson() {
       currency: state.currency || "DKK",
       fuel_type: state.fuelType || defaults.fuelType,
       estimated_consumption_l_per_100km: Number(state.fuelConsumption) || defaults.fuelConsumption,
+      fuel_tank_capacity_l: getFuelTankCapacity(),
       fallback_fuel_price: Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice,
       low_fuel_threshold_percent: Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold,
       updated_at: new Date().toISOString()

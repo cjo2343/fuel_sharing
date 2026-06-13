@@ -40,6 +40,7 @@ DEFAULT_STATE = {
     "lastOdometer": "",
     "fuelType": "diesel",
     "fuelConsumption": 5.3,
+    "fuelTankCapacity": 55,
     "fuelFallbackPrice": 14.5,
     "fuelWarningThreshold": 70,
     "carSettingsVersion": 2,
