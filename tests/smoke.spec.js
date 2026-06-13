@@ -796,6 +796,36 @@ test("tank capacity settings persist and drive trip planner output", async ({ pa
   await expect(page.locator("#tripEstimateResult")).toContainText(/5[,.]5 L\/100 km/);
 });
 
+
+
+test("trip planner subtracts planned distance from full-tank baseline without station history", async ({ page, request }) => {
+  const seeded = makeCleanState();
+  seeded.fuelConsumption = 5.4;
+  seeded.fuelTankCapacity = 55;
+  seeded.fuelWarningThreshold = 25;
+  seeded.fuel = [{
+    id: "full-tank-no-station",
+    payer: "Christian",
+    date: "2026-06-01",
+    amount: 500,
+    liters: 40,
+    odometer: 10000,
+    fullTank: true
+  }];
+  seeded.lastOdometer = 10000;
+  await request.put("/api/state", { data: seeded });
+
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="book"]').click();
+  await page.locator("#tripEstimateDistance").fill("366");
+  await page.locator("#tripEstimatorParticipants input").first().check();
+
+  await expect(page.locator("#tripEstimateResult")).toContainText("Range after trip");
+  await expect(page.locator("#tripEstimateResult")).toContainText(/65[0-5][,.][0-9] km left|65[0-5] km left/);
+  await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip: about 35[,.]2 L \/ 65[0-5][,.][0-9] km remaining|After the trip: about 35[,.]2 L \/ 65[0-5] km remaining/);
+  await expect(page.locator("#tripEstimateResult")).not.toContainText("Add full-tank odometer logs to make remaining-range predictions smarter");
+});
+
 test("trip planner warns when planned trip crosses configured tank range threshold", async ({ page, request }) => {
   const seeded = makeCleanState();
   seeded.fuelConsumption = 5.5;

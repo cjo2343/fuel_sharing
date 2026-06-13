@@ -2820,8 +2820,8 @@ function renderTripEstimate() {
         <strong>${formatNumber(refuel.plannedLiters)} L</strong>
       </article>
       <article>
-        <span>Range after trip</span>
-        <strong>${refuel.latestFuelOdometer ? `${formatNumber(refuel.projectedRangeRemaining)} km` : `${formatNumber(refuel.fullTankRange)} km full`}</strong>
+        <span>${refuel.latestFuelOdometer ? "Range after trip" : "Full-tank range"}</span>
+        <strong>${refuel.latestFuelOdometer ? `${formatNumber(refuel.projectedRangeRemaining)} km left` : `${formatNumber(refuel.fullTankRange)} km full`}</strong>
       </article>
       <article>
         <span>Tank capacity</span>
@@ -3069,6 +3069,10 @@ function buildStationInsights() {
   const livePrice = latestFuelPrice && Number(latestFuelPrice.price) > 0 ? Number(latestFuelPrice.price) : 0;
   const referencePrice = overallAvg || livePrice || Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice;
   const currentFuel = state.fuel.map((fuel) => ({ ...fuel, periodStatus: "open", periodLabel: "Current period" }));
+  const odometerFuelLogs = fuelLogs
+    .filter((fuel) => Number(fuel.odometer) > 0)
+    .sort((a, b) => Number(b.odometer || 0) - Number(a.odometer || 0));
+  const fullTankLogs = odometerFuelLogs.filter((fuel) => fuel.fullTank || fuel.full_tank);
   const reviewLogs = usable
     .map((fuel) => {
       const price = getFuelPricePerLiter(fuel);
@@ -3090,13 +3094,8 @@ function buildStationInsights() {
     .slice(0, 6);
 
   const currentReviewLogs = reviewLogs.filter((item) => currentFuel.some((fuel) => fuel.id === item.fuel.id));
-  const fullTankLogs = usable
-    .filter((fuel) => fuel.fullTank && Number(fuel.odometer) > 0)
-    .sort((a, b) => Number(b.odometer || 0) - Number(a.odometer || 0));
   const latestFullTank = fullTankLogs[0] || null;
-  const latestOdometerFuel = usable
-    .filter((fuel) => Number(fuel.odometer) > 0)
-    .sort((a, b) => Number(b.odometer || 0) - Number(a.odometer || 0))[0] || null;
+  const latestOdometerFuel = odometerFuelLogs[0] || null;
 
   return {
     totalFuelLogs: fuelLogs.length,
