@@ -3695,6 +3695,16 @@ body.auth-locked #authPanel .text-button {
 .pending-log-list {
   display: grid;
   gap: 12px;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  padding-right: 4px;
+  scroll-padding-block: 12px;
+}
+
+#tripLogPanel,
+#fuelLogPanel {
+  scroll-margin-top: 88px;
+  scroll-margin-bottom: 180px;
 }
 
 .pending-log-card {

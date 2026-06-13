@@ -373,8 +373,22 @@
       `;
     }
 
+    function clearBookingAvailabilityPreview(message = "Choose a time to check availability.") {
+      renderBookingConflictNotice(null);
+      if (!els.bookingAvailabilityPreview) return;
+      els.bookingAvailabilityPreview.classList.remove("available", "conflict", "invalid");
+      els.bookingAvailabilityPreview.classList.add("empty-state");
+      els.bookingAvailabilityPreview.textContent = message;
+      els.bookingStart?.removeAttribute("aria-invalid");
+      els.bookingEnd?.removeAttribute("aria-invalid");
+    }
+
     function renderBookingAvailabilityPreview(candidate, editingId = null) {
       renderBookingDateHints();
+      if (!candidate) {
+        clearBookingAvailabilityPreview();
+        return;
+      }
       if (!els.bookingAvailabilityPreview) {
         renderBookingConflictNotice(candidate ? findBookingConflict(candidate, editingId) : null, candidate);
         return;
@@ -383,7 +397,7 @@
       const preview = els.bookingAvailabilityPreview;
       const startMs = Date.parse(candidate?.start || "");
       const endMs = Date.parse(candidate?.end || "");
-      preview.classList.remove("available", "conflict", "invalid");
+      preview.classList.remove("available", "conflict", "invalid", "empty-state");
       els.bookingStart?.removeAttribute("aria-invalid");
       els.bookingEnd?.removeAttribute("aria-invalid");
 
@@ -496,6 +510,7 @@
       setBookingCalendarAnchor,
       renderBookingConflictNotice,
       renderBookingAvailabilityPreview,
+      clearBookingAvailabilityPreview,
       validateBookingInput,
       findBookingConflict,
       getBookingStatus,

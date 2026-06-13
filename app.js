@@ -380,6 +380,7 @@ const setBookingCalendarView = bookingCalendarController.setBookingCalendarView;
 const setBookingCalendarAnchor = bookingCalendarController.setBookingCalendarAnchor;
 const renderBookingConflictNotice = bookingCalendarController.renderBookingConflictNotice;
 const renderBookingAvailabilityPreview = bookingCalendarController.renderBookingAvailabilityPreview;
+const clearBookingAvailabilityPreview = bookingCalendarController.clearBookingAvailabilityPreview;
 const validateBookingInput = bookingCalendarController.validateBookingInput;
 const findBookingConflict = bookingCalendarController.findBookingConflict;
 const bookingStartMs = bookingCalendarController.bookingStartMs;
@@ -503,7 +504,7 @@ if (els.bookingForm) {
     editingBookingId = null;
     els.bookingForm.reset();
     setDefaultBookingTimes();
-    updateBookingAvailabilityPreview();
+    clearBookingAvailabilityPreview(previousBooking ? "Booking updated. Choose another time to check availability." : "Booking saved. Choose another time to check availability.");
     saveState();
     updateEditUi();
     render();
@@ -601,8 +602,9 @@ els.tripForm.addEventListener("submit", async (event) => {
   render();
   if (!wasEditingTrip && pendingFuelTripContext) {
     setTimeout(() => {
-      els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
-      els.fuelAmount?.focus();
+      els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "center" });
+      els.fuelForm?.scrollIntoView({ behavior: "smooth", block: "center" });
+      els.fuelAmount?.focus({ preventScroll: true });
     }, 0);
     showAppMessage(`Trip ${formatTypedLogRef(tripPayload, "trip")} logged. Add the matching fuel receipt when ready.`);
   } else {
@@ -6475,8 +6477,9 @@ function startFuelFromTrip(id) {
   updateEditUi();
   setActiveView("log");
   setTimeout(() => {
-    els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
-    els.fuelAmount?.focus();
+    els.fuelLogPanel?.scrollIntoView({ behavior: "smooth", block: "center" });
+    els.fuelForm?.scrollIntoView({ behavior: "smooth", block: "center" });
+    els.fuelAmount?.focus({ preventScroll: true });
   }, 0);
   showAppMessage(`Fuel form filled for trip ${formatLogRef(trip)}.`);
 }
