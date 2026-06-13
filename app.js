@@ -2038,20 +2038,22 @@ function renderPaymentEvidenceSummary(payment, options = {}) {
 
 function renderSettlementPaymentStory(payment, ledger, options = {}) {
   const currency = options.currency || state.currency;
-  const person = ledger?.people?.[payment.from] || { km: 0, fuelPaid: 0, shareCost: 0, balance: 0 };
-  const receiver = ledger?.people?.[payment.to] || { fuelPaid: 0, balance: 0 };
-  const summary = summarizePaymentEvidence(payment, { ...options, currency });
+  const person = ledger?.people?.[payment.from] || { km: 0, fuelPaid: 0, tripCost: 0, balance: 0 };
+  const receiver = ledger?.people?.[payment.to] || { fuelPaid: 0, tripCost: 0, balance: 0 };
+  const payerShareKm = Number(person.km || 0);
+  const payerFuelShare = Number(person.tripCost || person.shareCost || 0);
+  const receiverFuelPaid = Number(receiver.fuelPaid || 0);
   const direction = normalizePaymentStatus(state.paymentStatuses[settlementKey(payment)]) === "requested"
     ? "Payment requested"
     : "Final payment";
   return `
     <div class="settlement-story">
       <span class="settlement-story-label">${escapeHtml(direction)}</span>
-      <p><strong>${escapeHtml(payment.from)}</strong> drove or joined ${formatNumber(summary.payerTripKm)} km in this period. <strong>${escapeHtml(payment.to)}</strong> paid ${formatMoneyFor(summary.payeeFuelTotal, currency)} in fuel. This payment balances ${escapeHtml(payment.from)}'s usage share against fuel paid by ${escapeHtml(payment.to)}.</p>
+      <p><strong>${escapeHtml(payment.from)}</strong> has a ${formatNumber(payerShareKm)} km distance share in this period. <strong>${escapeHtml(payment.to)}</strong> paid ${formatMoneyFor(receiverFuelPaid, currency)} in fuel. This payment balances ${escapeHtml(payment.from)}'s fuel share against fuel paid by ${escapeHtml(payment.to)}.</p>
       <div class="settlement-mini-metrics" aria-label="Payment calculation summary">
-        <span><b>${formatNumber(person.km || 0)} km</b><small>${escapeHtml(payment.from)} share</small></span>
-        <span><b>${formatMoneyFor(person.shareCost || 0, currency)}</b><small>Usage cost</small></span>
-        <span><b>${formatMoneyFor(receiver.fuelPaid || 0, currency)}</b><small>${escapeHtml(payment.to)} fuel paid</small></span>
+        <span><b>${formatNumber(payerShareKm)} km</b><small>${escapeHtml(payment.from)} distance share</small></span>
+        <span><b>${formatMoneyFor(payerFuelShare, currency)}</b><small>${escapeHtml(payment.from)} fuel share</small></span>
+        <span><b>${formatMoneyFor(receiverFuelPaid, currency)}</b><small>${escapeHtml(payment.to)} fuel paid</small></span>
       </div>
     </div>
   `;
