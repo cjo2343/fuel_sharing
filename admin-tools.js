@@ -78,6 +78,61 @@
     return staleRequests.length;
   }
 
+
+  function isGeneratedSoftDeletedTripRow(row) {
+    if (!row || !row.deleted_at) return false;
+    return String(row.legacy_id || "").startsWith(generatedTestPrefix) ||
+      String(row.note || "").includes(generatedTestMarker);
+  }
+
+  function isGeneratedSoftDeletedFuelRow(row) {
+    if (!row || !row.deleted_at) return false;
+    return String(row.legacy_id || "").startsWith(generatedTestPrefix) ||
+      String(row.station_name || "").includes(generatedTestMarker);
+  }
+
+  async function purgeSoftDeletedGeneratedTestRows({ dryRun = true } = {}) {
+    if (!supabaseClient || !currentSession) throw new Error("Sign in before purging test rows.");
+    if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
+
+    const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+    const [tripsResult, fuelResult] = await Promise.all([
+      supabaseClient
+        .from("trips")
+        .select("id,legacy_id,note,deleted_at")
+        .eq("ledger_id", ledgerId)
+        .not("deleted_at", "is", null),
+      supabaseClient
+        .from("fuel_payments")
+        .select("id,legacy_id,station_name,deleted_at")
+        .eq("ledger_id", ledgerId)
+        .not("deleted_at", "is", null)
+    ]);
+
+    const firstError = [tripsResult, fuelResult].find((result) => result.error)?.error;
+    if (firstError) throw firstError;
+
+    const tripIds = (tripsResult.data || []).filter(isGeneratedSoftDeletedTripRow).map((row) => row.id);
+    const fuelIds = (fuelResult.data || []).filter(isGeneratedSoftDeletedFuelRow).map((row) => row.id);
+
+    const summary = { trips: tripIds.length, fuel: fuelIds.length, total: tripIds.length + fuelIds.length, dryRun: Boolean(dryRun) };
+    if (dryRun || summary.total === 0) return summary;
+
+    if (tripIds.length) {
+      const deleteParticipants = await supabaseClient.from("trip_participants").delete().in("trip_id", tripIds);
+      if (deleteParticipants.error) throw deleteParticipants.error;
+      const deleteTrips = await supabaseClient.from("trips").delete().in("id", tripIds).eq("ledger_id", ledgerId);
+      if (deleteTrips.error) throw deleteTrips.error;
+    }
+
+    if (fuelIds.length) {
+      const deleteFuel = await supabaseClient.from("fuel_payments").delete().in("id", fuelIds).eq("ledger_id", ledgerId);
+      if (deleteFuel.error) throw deleteFuel.error;
+    }
+
+    return summary;
+  }
+
   async function refreshDatabaseDiagnostics() {
     if (!supabaseClient || !currentSession) {
       databaseDiagnosticsStatus = {
@@ -209,12 +264,14 @@
   window.renderDatabaseDiagnosticsPanel = renderDatabaseDiagnosticsPanel;
   window.getCurrentSettlementRequestContext = getCurrentSettlementRequestContext;
   window.cleanStaleSettlementRequests = cleanStaleSettlementRequests;
+  window.purgeSoftDeletedGeneratedTestRows = purgeSoftDeletedGeneratedTestRows;
   window.refreshDatabaseDiagnostics = refreshDatabaseDiagnostics;
 
   window.FuelAdminTools = {
     renderDatabaseDiagnosticsPanel,
     getCurrentSettlementRequestContext,
     cleanStaleSettlementRequests,
-    refreshDatabaseDiagnostics
+    refreshDatabaseDiagnostics,
+    purgeSoftDeletedGeneratedTestRows
   };
 })();

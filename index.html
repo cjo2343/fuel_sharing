@@ -591,11 +591,12 @@
             </article>
             <article class="data-tool-card">
               <strong>Test data</strong>
-              <p>Create or remove generated test trips and fuel logs. Useful for checking dual-write and System health.</p>
+              <p>Create or remove generated test trips and fuel logs. Purge only removes old soft-deleted generated rows from normalized tables.</p>
               <div class="button-row">
                 <button id="addTestTrip" class="subtle-button" type="button">Add test trip</button>
                 <button id="addTestFuel" class="subtle-button" type="button">Add test fuel</button>
                 <button id="removeTestData" class="danger-button" type="button">Remove test data</button>
+                <button id="purgeSoftDeletedTestRows" class="danger-button" type="button">Purge soft-deleted test rows</button>
               </div>
             </article>
             <article class="data-tool-card">

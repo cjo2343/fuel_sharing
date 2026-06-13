@@ -351,6 +351,7 @@ const els = {
   addTestTrip: document.querySelector("#addTestTrip"),
   addTestFuel: document.querySelector("#addTestFuel"),
   removeTestData: document.querySelector("#removeTestData"),
+  purgeSoftDeletedTestRows: document.querySelector("#purgeSoftDeletedTestRows"),
   runStressTest: document.querySelector("#runStressTest"),
   runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
   pwaPanel: document.querySelector("#pwaPanel"),
@@ -1101,6 +1102,45 @@ els.addTestFuel?.addEventListener("click", () => {
 els.removeTestData?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   removeGeneratedTestData();
+});
+
+els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  if (!window.FuelAdminTools?.purgeSoftDeletedGeneratedTestRows) {
+    setDataToolsMessage("Soft-deleted test row cleanup is not available in this build.");
+    return;
+  }
+  const preview = await window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: true });
+  if (!preview.total) {
+    setDataToolsMessage("No soft-deleted generated test rows found in normalized tables.");
+    await refreshDatabaseDiagnostics().catch(() => {});
+    return;
+  }
+  const message = [
+    `This will permanently delete ${preview.trips} soft-deleted generated test trip row${preview.trips === 1 ? "" : "s"} and ${preview.fuel} soft-deleted generated test fuel row${preview.fuel === 1 ? "" : "s"}.`,
+    "",
+    "Only rows already marked deleted and carrying the generated test marker are eligible.",
+    "Real audit/history rows are left untouched.",
+    "",
+    "Type PURGE TEST ROWS to continue."
+  ].join("\n");
+  const typed = prompt(message);
+  if (typed !== "PURGE TEST ROWS") {
+    setDataToolsMessage("Soft-deleted test row purge cancelled.");
+    return;
+  }
+  els.purgeSoftDeletedTestRows.disabled = true;
+  try {
+    const result = await window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: false });
+    setDataToolsMessage(`Purged ${result.trips} soft-deleted generated test trip row${result.trips === 1 ? "" : "s"} and ${result.fuel} soft-deleted generated test fuel row${result.fuel === 1 ? "" : "s"}.`);
+    await refreshDatabaseDiagnostics().catch(() => {});
+    await checkNormalizedTablesAgainstCurrentState().catch(() => {});
+  } catch (error) {
+    console.warn("Soft-deleted test row purge failed", error);
+    setDataToolsMessage(`Could not purge soft-deleted test rows: ${error.message || error}`);
+  } finally {
+    els.purgeSoftDeletedTestRows.disabled = false;
+  }
 });
 
 els.runStressTest?.addEventListener("click", async () => {
