@@ -740,3 +740,17 @@ test("build info is visible to all users in About and admin panels", async ({ pa
     await expect(page.locator("#buildInfoPanel")).toContainText(value);
   }
 });
+
+test("trip planner uses tank capacity for remaining-range guidance", async ({ page }) => {
+  await openLocalApp(page);
+
+  await page.locator('[data-view-tab="book"]').click();
+  await expect(page.locator("#tripEstimateDistance")).toBeVisible();
+  await page.locator("#tripEstimateDistance").fill("350");
+  await page.locator("#tripEstimatorParticipants input").first().check();
+
+  await expect(page.locator("#tripEstimateResult")).toContainText("Tank capacity");
+  await expect(page.locator("#tripEstimateResult")).toContainText("55 L");
+  await expect(page.locator("#tripEstimateResult")).toContainText(/Range after trip|full/i);
+  await expect(page.locator("#tripEstimateResult")).toContainText(/full.*tank|full/i);
+});

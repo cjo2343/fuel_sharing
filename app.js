@@ -145,6 +145,7 @@ const defaults = {
   lastOdometer: "",
   fuelType: "diesel",
   fuelConsumption: 5.3,
+  fuelTankCapacity: 55,
   fuelFallbackPrice: 14.5,
   fuelPriceWarningMinDkkPerLiter: defaultFuelPriceWarningRange.minDkkPerLiter,
   fuelPriceWarningMaxDkkPerLiter: defaultFuelPriceWarningRange.maxDkkPerLiter,
@@ -267,6 +268,7 @@ const els = {
   currency: document.querySelector("#currency"),
   fuelType: document.querySelector("#fuelType"),
   fuelConsumption: document.querySelector("#fuelConsumption"),
+  fuelTankCapacity: document.querySelector("#fuelTankCapacity"),
   fuelFallbackPrice: document.querySelector("#fuelFallbackPrice"),
   fuelPriceWarningMin: document.querySelector("#fuelPriceWarningMin"),
   fuelPriceWarningMax: document.querySelector("#fuelPriceWarningMax"),
@@ -982,6 +984,7 @@ els.settingsForm.addEventListener("submit", (event) => {
   state.currency = els.currency.value.trim() || defaults.currency;
   state.fuelType = els.fuelType?.value || defaults.fuelType;
   state.fuelConsumption = Math.max(0.1, Number(els.fuelConsumption?.value) || defaults.fuelConsumption);
+  state.fuelTankCapacity = Math.max(1, Number(els.fuelTankCapacity?.value) || defaults.fuelTankCapacity);
   state.fuelFallbackPrice = Math.max(0.1, Number(els.fuelFallbackPrice?.value) || defaults.fuelFallbackPrice);
   const minFuelPriceWarning = Math.max(0.1, Number(els.fuelPriceWarningMin?.value) || defaults.fuelPriceWarningMinDkkPerLiter);
   const maxFuelPriceWarning = Math.max(minFuelPriceWarning + 0.1, Number(els.fuelPriceWarningMax?.value) || defaults.fuelPriceWarningMaxDkkPerLiter);
@@ -2573,6 +2576,7 @@ function renderSettings() {
   els.currency.value = state.currency;
   if (els.fuelType) els.fuelType.value = state.fuelType || defaults.fuelType;
   if (els.fuelConsumption) els.fuelConsumption.value = state.fuelConsumption || defaults.fuelConsumption;
+  if (els.fuelTankCapacity) els.fuelTankCapacity.value = state.fuelTankCapacity || defaults.fuelTankCapacity;
   if (els.fuelFallbackPrice) els.fuelFallbackPrice.value = state.fuelFallbackPrice || defaults.fuelFallbackPrice;
   const fuelPriceRange = getFuelPriceWarningRange(state);
   if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.value = fuelPriceRange.minDkkPerLiter;
@@ -2594,6 +2598,7 @@ function renderSettings() {
   els.currency.disabled = !canManage;
   if (els.fuelType) els.fuelType.disabled = !canManage;
   if (els.fuelConsumption) els.fuelConsumption.disabled = !canManage;
+  if (els.fuelTankCapacity) els.fuelTankCapacity.disabled = !canManage;
   if (els.fuelFallbackPrice) els.fuelFallbackPrice.disabled = !canManage;
   if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.disabled = !canManage;
   if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.disabled = !canManage;
@@ -2811,6 +2816,14 @@ function renderTripEstimate() {
       <article>
         <span>Estimated liters</span>
         <strong>${formatNumber(refuel.plannedLiters)} L</strong>
+      </article>
+      <article>
+        <span>Range after trip</span>
+        <strong>${refuel.latestFuelOdometer ? `${formatNumber(refuel.projectedRangeRemaining)} km` : `${formatNumber(refuel.fullTankRange)} km full`}</strong>
+      </article>
+      <article>
+        <span>Tank capacity</span>
+        <strong>${formatNumber(refuel.tankCapacity)} L</strong>
       </article>
       <article>
         <span>People</span>
@@ -3101,33 +3114,58 @@ function buildStationInsights() {
   };
 }
 
+function getFuelTankCapacity(source = state) {
+  return Math.max(1, Number(source?.fuelTankCapacity) || defaults.fuelTankCapacity);
+}
+
+function getFuelWarningUsedPercent(source = state) {
+  return Math.min(100, Math.max(1, Number(source?.fuelWarningThreshold) || defaults.fuelWarningThreshold));
+}
+
 function buildRefuelPlanning(distanceKm = 0) {
   const insights = buildStationInsights();
   const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const tankCapacity = getFuelTankCapacity();
+  const warningUsedPercent = getFuelWarningUsedPercent();
+  const warningLitersUsed = tankCapacity * warningUsedPercent / 100;
   const plannedLiters = distanceKm > 0 ? distanceKm * consumption / 100 : 100 * consumption / 100;
   const currentOdometer = Number(getLatestOdometer() || 0);
   const latestFuelOdometer = insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0;
   const kmSinceFuel = currentOdometer > 0 && latestFuelOdometer > 0 ? Math.max(0, currentOdometer - Number(latestFuelOdometer)) : 0;
   const litersSinceFuel = kmSinceFuel > 0 ? kmSinceFuel * consumption / 100 : 0;
   const projectedLiters = litersSinceFuel + plannedLiters;
+  const estimatedLitersRemaining = Math.max(0, tankCapacity - litersSinceFuel);
+  const projectedLitersRemaining = Math.max(0, tankCapacity - projectedLiters);
+  const estimatedRangeRemaining = estimatedLitersRemaining > 0 ? estimatedLitersRemaining / consumption * 100 : 0;
+  const projectedRangeRemaining = projectedLitersRemaining > 0 ? projectedLitersRemaining / consumption * 100 : 0;
+  const fullTankRange = tankCapacity / consumption * 100;
   const stationCandidates = insights.stations
     .filter((station) => station.avgPrice > 0)
     .sort((a, b) => a.avgPrice - b.avgPrice || b.logCount - a.logCount)
     .slice(0, 3);
-  let recommendation = "Log full-tank odometer readings to estimate whether refueling is needed.";
+  let recommendation = `Tank capacity is ${formatNumber(tankCapacity)} L. Log full-tank odometer readings to estimate remaining range.`;
   let tone = "neutral";
-  if (distanceKm > 0 && latestFuelOdometer > 0) {
-    recommendation = `Since the last logged fuel odometer, this trip would represent about ${formatNumber(projectedLiters)} L of estimated fuel use.`;
-    if (projectedLiters > 35) {
-      tone = "warning";
-      recommendation += " Consider checking fuel level before leaving or planning a refuel stop.";
+  if (latestFuelOdometer > 0) {
+    const remainingText = `${formatNumber(estimatedLitersRemaining)} L / ${formatNumber(estimatedRangeRemaining)} km estimated remaining now`;
+    if (distanceKm > 0) {
+      recommendation = `Since the last logged fuel odometer, this trip would bring estimated fuel use to ${formatNumber(projectedLiters)} L. After the trip: about ${formatNumber(projectedLitersRemaining)} L / ${formatNumber(projectedRangeRemaining)} km remaining.`;
+      if (projectedLiters >= tankCapacity) {
+        tone = "warning";
+        recommendation += " Refuel before or during this trip.";
+      } else if (projectedLiters >= warningLitersUsed) {
+        tone = "warning";
+        recommendation += " This crosses the configured low-range warning threshold; plan a refuel stop.";
+      } else {
+        recommendation += ` Current estimate: ${remainingText}.`;
+      }
     } else {
-      recommendation += " This does not look like a refuel warning by itself.";
+      recommendation = `Current estimate since the last logged fuel odometer: ${remainingText}. Full-tank range is about ${formatNumber(fullTankRange)} km.`;
+      if (litersSinceFuel >= warningLitersUsed) tone = "warning";
     }
   } else if (distanceKm > 0) {
-    recommendation = `This trip is expected to use about ${formatNumber(plannedLiters)} L. Add full-tank odometer logs to make refuel predictions smarter.`;
+    recommendation = `This trip is expected to use about ${formatNumber(plannedLiters)} L. A full ${formatNumber(tankCapacity)} L tank gives about ${formatNumber(fullTankRange)} km at ${formatNumber(consumption)} L/100 km. Add full-tank odometer logs to make remaining-range predictions smarter.`;
   }
-  return { insights, consumption, plannedLiters, kmSinceFuel, projectedLiters, latestFuelOdometer, stationCandidates, recommendation, tone };
+  return { insights, consumption, tankCapacity, warningUsedPercent, warningLitersUsed, plannedLiters, kmSinceFuel, litersSinceFuel, projectedLiters, estimatedLitersRemaining, projectedLitersRemaining, estimatedRangeRemaining, projectedRangeRemaining, fullTankRange, latestFuelOdometer, stationCandidates, recommendation, tone };
 }
 
 function renderStationInsights() {
@@ -3768,6 +3806,11 @@ function renderSmartPredictions(ledger) {
         <span>Planning confidence</span>
         <strong><span class="status-pill status-${planningTone}">${prediction.planningConfidence}</span></strong>
         <small>${prediction.intel.canUseHistoricalForPlanning ? "Uses clean historical cost/km." : "Uses car setting because historical data is not trusted for planning."}</small>
+      </article>
+      <article class="smart-card smart-card-${prediction.planEstimate.refuel.tone === "warning" ? "warning" : "ok"}">
+        <span>Tank range</span>
+        <strong>${prediction.planEstimate.refuel.latestFuelOdometer ? `${formatNumber(prediction.planEstimate.refuel.projectedRangeRemaining)} km after plan` : `${formatNumber(prediction.planEstimate.refuel.fullTankRange)} km full`}</strong>
+        <small>${escapeHtml(prediction.planEstimate.refuel.recommendation)}</small>
       </article>
       <article>
         <span>Historical data quality</span>
@@ -8245,6 +8288,7 @@ function normalizeState(saved) {
     lastOdometer: saved.lastOdometer ?? "",
     fuelType: getFuelTypeForState(saved),
     fuelConsumption: getFuelConsumptionForState(saved),
+    fuelTankCapacity: Math.max(1, Number(saved.fuelTankCapacity) || defaults.fuelTankCapacity),
     fuelFallbackPrice: getFuelFallbackPriceForState(saved),
     fuelPriceWarningMinDkkPerLiter: getFuelPriceWarningRange(saved).minDkkPerLiter,
     fuelPriceWarningMaxDkkPerLiter: getFuelPriceWarningRange(saved).maxDkkPerLiter,
@@ -8528,6 +8572,24 @@ async function getNormalizedWriteContext() {
   return { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
 }
 
+async function upsertLedgerSettings(ledgerPayload) {
+  const result = await supabaseClient.from("ledgers").upsert(ledgerPayload).select("id").single();
+  if (!result.error) return result.data;
+
+  // Older production databases may not have fuel_tank_capacity_l yet. Keep the
+  // app usable until the schema migration from supabase-schema.sql is applied.
+  const message = String(result.error?.message || "");
+  const code = String(result.error?.code || "");
+  if ((code === "PGRST204" || message.includes("fuel_tank_capacity_l")) && Object.prototype.hasOwnProperty.call(ledgerPayload, "fuel_tank_capacity_l")) {
+    const fallbackPayload = { ...ledgerPayload };
+    delete fallbackPayload.fuel_tank_capacity_l;
+    const fallbackResult = await supabaseClient.from("ledgers").upsert(fallbackPayload).select("id").single();
+    if (!fallbackResult.error) return fallbackResult.data;
+    throw fallbackResult.error;
+  }
+  throw result.error;
+}
+
 async function syncLedgerDirectoryForAdmin(ledgerId) {
   const now = new Date().toISOString();
   const ledgerPayload = {
@@ -8536,13 +8598,13 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
     currency: state.currency || "DKK",
     fuel_type: state.fuelType || defaults.fuelType,
     estimated_consumption_l_per_100km: Number(state.fuelConsumption) || defaults.fuelConsumption,
+    fuel_tank_capacity_l: getFuelTankCapacity(),
     fallback_fuel_price: Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice,
     low_fuel_threshold_percent: Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold,
     updated_at: now
   };
 
-  const ledgerResult = await supabaseClient.from("ledgers").upsert(ledgerPayload).select("id").single();
-  if (ledgerResult.error) throw ledgerResult.error;
+  await upsertLedgerSettings(ledgerPayload);
 
   const memberPayloads = getMemberNames().map((name) => {
     const profile = getMemberProfile(name);
@@ -8903,8 +8965,7 @@ async function syncNormalizedTablesFromJson() {
       updated_at: new Date().toISOString()
     };
 
-    const ledgerResult = await supabaseClient.from("ledgers").upsert(ledgerPayload).select("id").single();
-    if (ledgerResult.error) throw ledgerResult.error;
+    await upsertLedgerSettings(ledgerPayload);
 
     const memberPayloads = getMemberNames().map((name) => {
       const profile = getMemberProfile(name);
@@ -9374,6 +9435,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     currency: ledger.currency || jsonFallbackState.currency,
     fuelType: ledger.fuel_type || jsonFallbackState.fuelType,
     fuelConsumption: Number(ledger.estimated_consumption_l_per_100km) || jsonFallbackState.fuelConsumption,
+    fuelTankCapacity: Number(ledger.fuel_tank_capacity_l) || jsonFallbackState.fuelTankCapacity || defaults.fuelTankCapacity,
     fuelFallbackPrice: Number(ledger.fallback_fuel_price) || jsonFallbackState.fuelFallbackPrice,
     fuelWarningThreshold: Number(ledger.low_fuel_threshold_percent) || jsonFallbackState.fuelWarningThreshold,
     members: memberNames,

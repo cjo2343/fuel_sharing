@@ -16,12 +16,16 @@ create table if not exists public.ledgers (
   currency text not null default 'DKK',
   fuel_type text not null default 'diesel',
   estimated_consumption_l_per_100km numeric(8,3) not null default 5.3,
+  fuel_tank_capacity_l numeric(8,2) not null default 55,
   fallback_fuel_price numeric(10,2) not null default 14.50,
   low_fuel_threshold_percent numeric(6,2) not null default 70,
   high_fuel_threshold_percent numeric(6,2) not null default 140,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.ledgers
+  add column if not exists fuel_tank_capacity_l numeric(8,2) not null default 55;
 
 create table if not exists public.ledger_members (
   id uuid primary key default gen_random_uuid(),
@@ -160,8 +164,8 @@ create table if not exists public.push_subscriptions (
   updated_at timestamptz not null default now()
 );
 
-insert into public.ledgers (id, name, currency, fuel_type, estimated_consumption_l_per_100km, fallback_fuel_price)
-values ('main-car', 'Fuel Ledger', 'DKK', 'diesel', 5.3, 14.50)
+insert into public.ledgers (id, name, currency, fuel_type, estimated_consumption_l_per_100km, fuel_tank_capacity_l, fallback_fuel_price)
+values ('main-car', 'Fuel Ledger', 'DKK', 'diesel', 5.3, 55, 14.50)
 on conflict (id) do nothing;
 
 insert into public.ledger_members (ledger_id, name, role)
