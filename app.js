@@ -9062,12 +9062,45 @@ async function syncNormalizedTablesFromJson() {
     const existingBookings = existingBookingsResult.data || [];
     const existingByLegacyId = new Map(existingBookings.filter((booking) => booking.legacy_id).map((booking) => [booking.legacy_id, booking]));
     const existingBySignature = new Map(existingBookings.map((booking) => [bookingSignature(booking), booking]));
+    const sameBookingFields = (pair) => {
+      const left = pair.left;
+      const right = pair.right;
+      return String(left.member_id || "") === String(right.member_id || "")
+        && isoKey(left.start_at) === isoKey(right.start_at)
+        && isoKey(left.end_at) === isoKey(right.end_at)
+        && String(left.purpose || "") === String(right.purpose || "");
+    };
+    const bookingRangesOverlap = (pair) => {
+      const left = pair.left;
+      const right = pair.right;
+      if (String(left.member_id || "") !== String(right.member_id || "")) return false;
+      const leftStart = new Date(left.start_at).getTime();
+      const leftEnd = new Date(left.end_at).getTime();
+      const rightStart = new Date(right.start_at).getTime();
+      const rightEnd = new Date(right.end_at).getTime();
+      if ([leftStart, leftEnd, rightStart, rightEnd].some((value) => Number.isNaN(value))) return false;
+      return leftStart < rightEnd && leftEnd > rightStart;
+    };
+    const findOverlappingExistingBooking = (query) => {
+      const payload = query.payload;
+      const allowedExistingId = query.allowedExistingId || null;
+      return existingBookings.find((booking) => (
+        (!allowedExistingId || booking.id !== allowedExistingId) && bookingRangesOverlap({ left: payload, right: booking })
+      ));
+    };
     const bookingPayloadsToUpsert = [];
 
     for (const payload of bookingPayloads) {
       const existingByLegacy = existingByLegacyId.get(payload.legacy_id);
-      const matchingExisting = existingByLegacy || existingBySignature.get(bookingSignature(payload));
-      if (matchingExisting && matchingExisting.legacy_id !== payload.legacy_id) {
+      if (existingByLegacy) {
+        if (sameBookingFields({ left: existingByLegacy, right: payload })) continue;
+        if (findOverlappingExistingBooking({ payload, allowedExistingId: existingByLegacy.id })) continue;
+        bookingPayloadsToUpsert.push(payload);
+        continue;
+      }
+
+      const matchingExisting = existingBySignature.get(bookingSignature(payload));
+      if (matchingExisting) {
         const adoptResult = await supabaseClient
           .from("car_bookings")
           .update({
@@ -9079,16 +9112,12 @@ async function syncNormalizedTablesFromJson() {
             updated_at: payload.updated_at
           })
           .eq("id", matchingExisting.id);
-        if (adoptResult.error) {
-          if (isBookingOverlapError(adoptResult.error)) {
-            console.info("Skipped duplicate normalized booking row during JSON reconciliation", { legacyId: payload.legacy_id });
-            continue;
-          }
-          throw adoptResult.error;
-        }
+        if (adoptResult.error) throw adoptResult.error;
         existingByLegacyId.set(payload.legacy_id, { ...matchingExisting, ...payload, id: matchingExisting.id });
         continue;
       }
+
+      if (findOverlappingExistingBooking({ payload })) continue;
       bookingPayloadsToUpsert.push(payload);
     }
 
@@ -9097,11 +9126,7 @@ async function syncNormalizedTablesFromJson() {
         .from("car_bookings")
         .upsert(bookingPayloadsToUpsert, { onConflict: "ledger_id,legacy_id" });
       if (upsertBookings.error) {
-        if (isBookingOverlapError(upsertBookings.error)) {
-          console.info("Skipped duplicate normalized booking overlap during JSON reconciliation", upsertBookings.error);
-        } else {
-          throw upsertBookings.error;
-        }
+        if (!isBookingOverlapError(upsertBookings.error)) throw upsertBookings.error;
       }
     }
 
