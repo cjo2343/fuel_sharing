@@ -323,7 +323,7 @@ After testing/stress testing, admins can start with clean production activity wh
 4. Click **Reset production activity**.
 5. Type `RESET PRODUCTION` to confirm.
 
-This deletes trips, fuel logs, settlement requests, and settlement periods, creates one fresh empty open period, and refreshes the JSON backup snapshot. Use it only after downloading/keeping a backup.
+This deletes bookings, trips, fuel logs, settlement requests, and settlement periods, creates one fresh empty open period, and refreshes the JSON backup snapshot. Use it only after downloading/keeping a backup.
 
 
 ### Monthly member summaries

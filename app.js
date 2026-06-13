@@ -7188,6 +7188,7 @@ async function runProductionActivityReset() {
   }
   const warning = [
     "This will permanently delete/reset all activity tables for this ledger:",
+    "- bookings and booking activity",
     "- trips and trip participants",
     "- fuel logs",
     "- settlement requests",
@@ -7197,7 +7198,7 @@ async function runProductionActivityReset() {
     "A JSON backup download will start before the reset."
   ].join("\n");
   if (!confirm(warning)) return;
-  const typed = prompt("Type RESET PRODUCTION to delete all activity data and start one fresh empty period.");
+  const typed = prompt("Type RESET PRODUCTION to delete all bookings, trips, fuel logs, settlement data, and start one fresh empty period.");
   if (typed !== "RESET PRODUCTION") {
     alert("Reset cancelled. The confirmation text did not match.");
     return;
@@ -7213,6 +7214,7 @@ async function runProductionActivityReset() {
     const { data, error } = await supabaseClient.rpc("production_activity_reset", { target_ledger_id: ledgerId });
     if (error) throw error;
 
+    state.bookings = [];
     state.trips = [];
     state.fuel = [];
     state.closedPeriods = [];
@@ -7231,7 +7233,7 @@ async function runProductionActivityReset() {
     await checkNormalizedTablesAgainstCurrentState().catch(() => {});
     setDefaultDates();
     setActiveView("log");
-    if (els.authMessage) els.authMessage.textContent = "Production activity reset complete. You are ready to enter real trips and fuel logs.";
+    if (els.authMessage) els.authMessage.textContent = "Production activity reset complete. You are ready to enter real bookings, trips, and fuel logs.";
   } catch (error) {
     console.error("Production activity reset failed", error);
     alert(`Production reset failed: ${error.message || error}`);

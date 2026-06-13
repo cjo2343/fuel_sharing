@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v95";
-const BUILD_LABEL = "settings-persistence-test-fix";
-const BUILD_UPDATED_AT = "2026-06-13T12:45:00+02:00";
+const CACHE_NAME = "fuel-ledger-v96";
+const BUILD_LABEL = "reset-includes-bookings";
+const BUILD_UPDATED_AT = "2026-06-13T14:25:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",
