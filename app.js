@@ -373,7 +373,8 @@ const bookingCalendarController = window.FuelBookingCalendar.createBookingCalend
   canManageBookingEntry,
   canCreateTripFromBooking,
   describeBookingPermissionMessage: (...args) => describeBookingPermissionMessage(...args),
-  describeCurrentActor
+  describeCurrentActor,
+  formatTypedLogRef
 });
 
 const renderBookings = bookingCalendarController.renderBookings;
@@ -510,7 +511,7 @@ if (els.bookingForm) {
     updateEditUi();
     render();
     if (isNewBooking) sendBookingPush(bookingPayload).catch((error) => console.warn("Booking push notification failed", error));
-    showAppMessage(previousBooking ? "Booking updated." : "Car booked.");
+    showAppMessage(previousBooking ? `Booking ${formatTypedLogRef(bookingPayload, "booking")} updated.` : `Car booked as ${formatTypedLogRef(bookingPayload, "booking")}.`);
   });
 }
 
@@ -6014,12 +6015,13 @@ function renderTripBookingContext() {
   els.tripBookingContext.innerHTML = `
     <div class="booking-log-context-header">
       <div>
-        <p class="eyebrow">Booking log</p>
+        <p class="eyebrow">Booking ${escapeHtml(formatTypedLogRef(context, "booking"))}</p>
         <h3>${escapeHtml(formatTypedLogRef(context, "trip"))}</h3>
       </div>
       <span class="status-pill">Ready to complete</span>
     </div>
     <dl class="booking-log-summary">
+      <div><dt>Booking</dt><dd>${escapeHtml(formatTypedLogRef(context, "booking"))}</dd></div>
       <div><dt>Driver</dt><dd>${escapeHtml(context.member || els.tripDriver?.value || "Driver")}</dd></div>
       <div><dt>Period</dt><dd>${escapeHtml(period)}</dd></div>
       <div><dt>Purpose</dt><dd>${purpose}</dd></div>
@@ -6251,17 +6253,20 @@ function renderPendingLogs() {
     const action = task.type === "trip"
       ? `<button class="action-button compact-button" type="button" data-complete-pending-trip="${escapeHtml(booking.id || "")}" ${task.canAct ? "" : "disabled"}>Complete trip</button>`
       : `<button class="action-button compact-button" type="button" data-add-fuel-for-trip="${escapeHtml(trip?.id || "")}" data-add-fuel-booking="${escapeHtml(booking.id || "")}" data-add-fuel-log-ref="${escapeHtml(formatLogRef(task))}" ${task.canAct ? "" : "disabled"}>Add fuel</button>`;
+    const bookingRef = formatTypedLogRef(booking, "booking");
+    const taskRef = task.type === "trip" ? bookingRef : formatTypedLogRef(trip || task, "trip");
+    const bookingMeta = `Booking ${bookingRef}`;
     return `
-      <article class="pending-log-card ${task.required ? "is-required" : ""}" data-log-ref="${escapeHtml(normalizeLogRefValue(formatLogRef(task)))}" data-pending-log-type="${escapeHtml(task.type)}">
+      <article class="pending-log-card ${task.required ? "is-required" : ""}" data-log-ref="${escapeHtml(normalizeLogRefValue(formatLogRef(task)))}" data-booking-ref="${escapeHtml(bookingRef)}" data-pending-log-type="${escapeHtml(task.type)}">
         <div class="pending-log-main">
           <div>
-            <p class="eyebrow">${escapeHtml(formatLogRef(task))}</p>
+            <p class="eyebrow">${escapeHtml(taskRef)}${task.type === "fuel" ? ` · ${escapeHtml(bookingRef)}` : ""}</p>
             <h3>${escapeHtml(title)}</h3>
           </div>
           <span class="status-pill">${task.type === "trip" ? "Odometer" : (task.required ? "Required" : "Suggested")}</span>
         </div>
         <p>${escapeHtml(period)}</p>
-        <p class="entry-meta">${escapeHtml(booking.member || trip?.driver || "Driver")}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}</p>
+        <p class="entry-meta">${escapeHtml(booking.member || trip?.driver || "Driver")} · ${escapeHtml(bookingMeta)}${booking.purpose ? ` · ${escapeHtml(booking.purpose)}` : ""}</p>
         <p class="section-note">${escapeHtml(description)}</p>
         <div class="pending-log-actions">${action}</div>
       </article>
@@ -6596,7 +6601,7 @@ function startTripFromBooking(id) {
   if (!booking) return;
   const existingTrip = findTripForBooking(booking.id);
   if (existingTrip) {
-    alert(`This booking has already been logged as trip ${formatLogRef(existingTrip)}.`);
+    alert(`Booking ${formatTypedLogRef(booking, "booking")} has already been logged as trip ${formatTypedLogRef(existingTrip, "trip")}.`);
     render();
     return;
   }
@@ -8402,12 +8407,13 @@ async function sendBookingPush(booking) {
     .map(getMemberProfile)
     .filter((profile) => profile.email && profile.email !== loggedInEmail && profile.name !== booking.member);
 
+  const bookingRef = formatTypedLogRef(booking, "booking");
   const results = await Promise.all(recipients.map((profile) => notifications.sendPushNotification({
     supabaseClient,
     sendPushUrl,
     targetEmail: profile.email,
-    title: "Fuel Ledger car booking",
-    body: `${booking.member} booked the car: ${formatBookingRange(booking)}${booking.purpose ? ` · ${booking.purpose}` : ""}`,
+    title: `Fuel Ledger booking ${bookingRef}`,
+    body: `${bookingRef} · ${booking.member} booked the car: ${formatBookingRange(booking)}${booking.purpose ? ` · ${booking.purpose}` : ""}`,
     url: `${window.location.origin}/`,
     tag: `booking:${booking.id}:${profile.email}`
   })));

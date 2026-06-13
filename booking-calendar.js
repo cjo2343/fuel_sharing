@@ -13,7 +13,8 @@
       renderPermissionNote,
       canManageBookingEntry,
       canCreateTripFromBooking,
-      describeCurrentActor
+      describeCurrentActor,
+      formatTypedLogRef = (entry) => (entry && entry.logRef) || "bok-unknown"
     } = deps;
 
     let forcedCalendarAnchorDateKey = null;
@@ -270,8 +271,10 @@
       const logTripButton = isFinalBookingDay && canCreateTripFromBooking(booking)
         ? `<button class="subtle-button compact-button booking-month-log-button" type="button" data-convert-booking-to-trip="${escapeHtml(booking.id)}">Log trip</button>`
         : "";
+      const bookingRef = formatTypedLogRef(booking, "booking");
       return `
-        <div class="booking-month-chip ${escapeHtml(getBookingStatus(booking))}">
+        <div class="booking-month-chip ${escapeHtml(getBookingStatus(booking))}" data-booking-ref="${escapeHtml(bookingRef)}">
+          <span class="log-ref booking-month-chip-ref">${escapeHtml(bookingRef)}</span>
           <strong>${escapeHtml(booking.member || "Booked")}</strong>
           <span>${escapeHtml(time)}</span>
           ${booking.purpose ? `<span class="booking-month-chip-purpose">${escapeHtml(booking.purpose)}</span>` : ""}
@@ -306,10 +309,14 @@
         canManageBookingEntry(booking) ? `<button class="subtle-button compact-button" type="button" data-edit="bookings:${escapeHtml(booking.id)}">Edit</button>` : "",
         canManageBookingEntry(booking) ? `<button class="text-button compact-button" type="button" data-delete="bookings:${escapeHtml(booking.id)}">Delete</button>` : ""
       ].filter(Boolean).join("");
+      const bookingRef = formatTypedLogRef(booking, "booking");
       return `
-        <article class="entry-card booking-card ${escapeHtml(status)}">
+        <article class="entry-card booking-card ${escapeHtml(status)}" data-booking-ref="${escapeHtml(bookingRef)}">
           <header>
-            <strong>${escapeHtml(booking.member)}</strong>
+            <div>
+              <span class="log-ref">${escapeHtml(bookingRef)}</span>
+              <strong>${escapeHtml(booking.member)}</strong>
+            </div>
             <div class="entry-actions">${actionButtons}</div>
           </header>
           ${!canManageBookingEntry(booking) ? renderPermissionNote(describeBookingPermissionMessage(booking, "edit or delete")) : ""}
