@@ -549,6 +549,72 @@ test("payment deep links route current payments to Settlement and closed payment
   await expect(highlightedArchivePayment).toHaveClass(/highlight-pulse/);
 });
 
+
+test("service worker script is reachable and matches build metadata", async ({ request }) => {
+  const response = await request.get("/service-worker.js");
+  expect(response.ok()).toBeTruthy();
+  const body = await response.text();
+  expect(body).toContain("CACHE_NAME");
+  expect(body).toContain("BUILD_LABEL");
+
+  const buildResponse = await request.get("/build-info.js");
+  expect(buildResponse.ok()).toBeTruthy();
+  const buildBody = await buildResponse.text();
+  const expectedCache = buildBody.match(/expectedServiceWorkerCache:\s*"([^"]+)"/)?.[1];
+  const expectedBuild = buildBody.match(/buildLabel:\s*"([^"]+)"/)?.[1];
+  expect(expectedCache).toBeTruthy();
+  expect(expectedBuild).toBeTruthy();
+  expect(body).toContain(`CACHE_NAME = "${expectedCache}"`);
+  expect(body).toContain(`BUILD_LABEL = "${expectedBuild}"`);
+});
+
+test("payment status actions do not mutate booking records or emit normalized sync warnings", async ({ page }) => {
+  const consoleMessages = [];
+  page.on("console", (message) => {
+    consoleMessages.push(`${message.type()}: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => {
+    consoleMessages.push(`pageerror: ${error.message}`);
+  });
+
+  await openLocalApp(page);
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.locator('[data-view-tab="book"]').click();
+  await chooseFirstSelectOption(page.locator("#bookingMember"));
+  await page.locator("#bookingStart").fill("2026-06-15T09:00");
+  await page.locator("#bookingEnd").fill("2026-06-15T12:00");
+  await page.locator("#bookingPurpose").fill("Payment action booking immutability");
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#bookingCalendar")).toContainText("Payment action booking immutability");
+
+  await page.locator('[data-view-tab="log"]').click();
+  await expect(page.locator("#tripForm")).toBeVisible();
+  await createBasicTripAndFuel(page, { note: "Payment action should not mutate bookings", fuelAmount: "222.22" });
+
+  const beforeBookings = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings || []);
+  expect(beforeBookings).toHaveLength(1);
+
+  await page.locator('[data-view-tab="settle"]').click();
+  const requestButton = page.locator('button[data-payment-status="requested"]').first();
+  await expect(requestButton).toHaveCount(1);
+  await requestButton.evaluate((button) => button.click());
+  await expect(page.locator("#auditLog")).toContainText("Payment requested");
+
+  const reopenButton = page.locator('button[data-payment-status="open"]').first();
+  await expect(reopenButton).toHaveCount(1);
+  await reopenButton.evaluate((button) => button.click());
+  await expect(page.locator("#auditLog")).toContainText("Payment reopened");
+
+  const afterBookings = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings || []);
+  expect(afterBookings).toEqual(beforeBookings);
+
+  const noisyOutput = consoleMessages.join("\n");
+  expect(noisyOutput).not.toContain("Normalized table dual-write failed");
+  expect(noisyOutput).not.toContain("23P01");
+  expect(noisyOutput).not.toContain("car_bookings");
+});
+
 test("non-admin members see clear permission messages for entries owned by someone else", async ({ page }) => {
   await openLocalAppAsEmilieWithChristianEntries(page);
 

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v81";
-const BUILD_LABEL = "normalized-booking-sync-cleanup";
-const BUILD_UPDATED_AT = "2026-06-13T10:25:00+02:00";
+const CACHE_NAME = "fuel-ledger-v82";
+const BUILD_LABEL = "regression-console-and-sw-coverage";
+const BUILD_UPDATED_AT = "2026-06-13T10:45:00+02:00";
 const CORE_ASSETS = [
   "/",
   "/index.html",
