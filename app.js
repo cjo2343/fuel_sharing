@@ -2594,16 +2594,19 @@ function renderSettings() {
     els.settingsPanel.classList.toggle("hidden", !canManage);
   }
 
-  els.currency.value = state.currency;
-  if (els.fuelType) els.fuelType.value = state.fuelType || defaults.fuelType;
-  if (els.fuelConsumption) els.fuelConsumption.value = state.fuelConsumption || defaults.fuelConsumption;
-  if (els.fuelTankCapacity) els.fuelTankCapacity.value = state.fuelTankCapacity || defaults.fuelTankCapacity;
-  if (els.fuelFallbackPrice) els.fuelFallbackPrice.value = state.fuelFallbackPrice || defaults.fuelFallbackPrice;
-  const fuelPriceRange = getFuelPriceWarningRange(state);
-  if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.value = fuelPriceRange.minDkkPerLiter;
-  if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.value = fuelPriceRange.maxDkkPerLiter;
-  if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
-  if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.checked = state.paymentRemindersEnabled !== false;
+  const isEditingSettings = Boolean(els.settingsForm && els.settingsForm.contains(document.activeElement));
+  if (!isEditingSettings) {
+    els.currency.value = state.currency;
+    if (els.fuelType) els.fuelType.value = state.fuelType || defaults.fuelType;
+    if (els.fuelConsumption) els.fuelConsumption.value = state.fuelConsumption || defaults.fuelConsumption;
+    if (els.fuelTankCapacity) els.fuelTankCapacity.value = state.fuelTankCapacity || defaults.fuelTankCapacity;
+    if (els.fuelFallbackPrice) els.fuelFallbackPrice.value = state.fuelFallbackPrice || defaults.fuelFallbackPrice;
+    const fuelPriceRange = getFuelPriceWarningRange(state);
+    if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.value = fuelPriceRange.minDkkPerLiter;
+    if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.value = fuelPriceRange.maxDkkPerLiter;
+    if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
+  }
+  if (els.paymentRemindersEnabled && !isEditingSettings) els.paymentRemindersEnabled.checked = state.paymentRemindersEnabled !== false;
   if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.value = Number.isFinite(Number(state.paymentReminderAfterDays)) ? Number(state.paymentReminderAfterDays) : defaults.paymentReminderAfterDays;
   if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.value = Math.max(1, Number(state.paymentReminderRepeatDays) || defaults.paymentReminderRepeatDays);
   if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.value = Math.max(1, Number(state.paymentReminderMaxCount) || defaults.paymentReminderMaxCount);
@@ -3181,9 +3184,9 @@ function buildRefuelPlanning(distanceKm = 0) {
   const warningUsedPercent = getFuelWarningUsedPercent();
   const warningLitersUsed = tankCapacity * warningUsedPercent / 100;
   const plannedLiters = distanceKm > 0 ? distanceKm * consumption / 100 : 100 * consumption / 100;
-  const currentOdometer = Number(getLatestOdometer() || 0);
-  const latestFuelOdometer = insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0;
-  const kmSinceFuel = currentOdometer > 0 && latestFuelOdometer > 0 ? Math.max(0, currentOdometer - Number(latestFuelOdometer)) : 0;
+  const latestFuelOdometer = Number(insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0);
+  const currentOdometer = Number(getLatestRangeOdometer(latestFuelOdometer) || 0);
+  const kmSinceFuel = currentOdometer > 0 && latestFuelOdometer > 0 ? Math.max(0, currentOdometer - latestFuelOdometer) : 0;
   const litersSinceFuel = kmSinceFuel > 0 ? kmSinceFuel * consumption / 100 : 0;
   const projectedLiters = litersSinceFuel + plannedLiters;
   const estimatedLitersRemaining = Math.max(0, tankCapacity - litersSinceFuel);
@@ -9994,6 +9997,21 @@ function getLedgerPeriod() {
     end,
     label: start === end ? formatDate(start) : `${formatDate(start)} - ${formatDate(end)}`
   };
+}
+
+
+function getLatestRangeOdometer(fuelBaselineOdometer = 0) {
+  const activeLatest = state.trips.reduce((latest, trip) => Math.max(latest, Number(trip.endKm) || 0), 0);
+  const archivedLatest = state.closedPeriods.reduce((latest, period) => {
+    const periodLatest = (period.trips || []).reduce(
+      (tripLatest, trip) => Math.max(tripLatest, Number(trip.endKm) || 0),
+      0
+    );
+    return Math.max(latest, periodLatest);
+  }, 0);
+  const fuelLatest = state.fuel.reduce((latest, fuel) => Math.max(latest, Number(fuel.odometer) || 0), 0);
+  const latest = Math.max(activeLatest, archivedLatest, fuelLatest, Number(fuelBaselineOdometer) || 0);
+  return latest > 0 ? round(latest) : "";
 }
 
 function getLatestOdometer() {

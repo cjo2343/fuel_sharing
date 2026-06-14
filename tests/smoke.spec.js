@@ -812,7 +812,9 @@ test("trip planner subtracts planned distance from full-tank baseline without st
     odometer: 10000,
     fullTank: true
   }];
-  seeded.lastOdometer = 10000;
+  // Simulate stale convenience/default odometer from a previous session. Range
+  // planning must use real trip/fuel records, not this stale value.
+  seeded.lastOdometer = 10200;
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
