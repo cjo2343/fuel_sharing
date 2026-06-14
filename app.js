@@ -563,6 +563,8 @@ els.tripForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (!validateTripAgainstEstimatedTankRange(start, end, { excludeTripId: editingTripId })) return;
+
   const tripId = editingTripId || crypto.randomUUID();
   const existingTrip = editingTripId ? state.trips.find((trip) => trip.id === editingTripId) : null;
   const tripPayload = {
@@ -3181,6 +3183,63 @@ function getFuelWarningUsedPercent(source = state) {
 
 function getTankLowRangeThresholdPercent(source = state) {
   return Math.min(100, Math.max(1, Number(source?.fuelWarningThreshold) || defaults.fuelWarningThreshold));
+}
+
+function buildTripFuelRangeImpact(startKm = 0, endKm = 0, options = {}) {
+  const insights = buildStationInsights();
+  const latestFuelOdometer = Number(insights.latestFullTank?.odometer || 0);
+  const proposedEndKm = Number(endKm) || 0;
+  const proposedStartKm = Number(startKm) || 0;
+  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const tankCapacity = getFuelTankCapacity();
+  const warningLitersRemaining = tankCapacity * getTankLowRangeThresholdPercent() / 100;
+
+  if (!latestFuelOdometer || proposedEndKm <= latestFuelOdometer) {
+    return {
+      enforced: false,
+      latestFuelOdometer,
+      consumption,
+      tankCapacity,
+      warningLitersRemaining,
+      projectedLiters: 0,
+      projectedLitersRemaining: tankCapacity,
+      projectedRangeRemaining: tankCapacity / consumption * 100,
+      projectedKmSinceFuel: 0,
+      proposedDistanceKm: Math.max(0, proposedEndKm - proposedStartKm)
+    };
+  }
+
+  const currentRangeOdometer = Number(getLatestRangeOdometer(latestFuelOdometer, { excludeTripId: options.excludeTripId }) || latestFuelOdometer);
+  const projectedOdometer = Math.max(currentRangeOdometer, proposedEndKm);
+  const projectedKmSinceFuel = Math.max(0, projectedOdometer - latestFuelOdometer);
+  const projectedLiters = projectedKmSinceFuel * consumption / 100;
+  const projectedLitersRemaining = tankCapacity - projectedLiters;
+  const projectedRangeRemaining = Math.max(0, projectedLitersRemaining) / consumption * 100;
+  return {
+    enforced: true,
+    latestFuelOdometer,
+    currentRangeOdometer,
+    projectedOdometer,
+    projectedKmSinceFuel,
+    consumption,
+    tankCapacity,
+    warningLitersRemaining,
+    projectedLiters,
+    projectedLitersRemaining,
+    projectedRangeRemaining,
+    proposedDistanceKm: Math.max(0, proposedEndKm - proposedStartKm)
+  };
+}
+
+function validateTripAgainstEstimatedTankRange(startKm = 0, endKm = 0, options = {}) {
+  const impact = buildTripFuelRangeImpact(startKm, endKm, options);
+  if (!impact.enforced) return true;
+  const overflowLiters = impact.projectedLiters - impact.tankCapacity;
+  if (overflowLiters > 0.05) {
+    alert(`This trip would exceed the estimated fuel remaining since the last full-tank log at ${formatNumber(impact.latestFuelOdometer)} km. Estimated use would reach ${formatNumber(impact.projectedLiters)} L, but the tank capacity is ${formatNumber(impact.tankCapacity)} L. Add a fuel log before saving this trip, or check the odometer values.`);
+    return false;
+  }
+  return true;
 }
 
 function buildRefuelPlanning(distanceKm = 0) {
@@ -6766,13 +6825,13 @@ function startTripFromBooking(id) {
   els.endKm.value = "";
   els.tripNote.value = booking.purpose ? `Booking: ${booking.purpose}` : "Booking";
   renderTripBookingContext();
+  updateEditUi();
+  setActiveView("log");
   const plannedParticipants = Array.isArray(booking.plannedParticipants) ? booking.plannedParticipants : [];
   const tripParticipants = new Set([booking.member, ...plannedParticipants].filter(Boolean));
   for (const input of els.tripParticipants.querySelectorAll("input")) {
     input.checked = tripParticipants.has(input.value);
   }
-  updateEditUi();
-  setActiveView("log");
   setTimeout(() => {
     els.tripForm.scrollIntoView({ behavior: "smooth", block: "start" });
     els.endKm.focus();
@@ -10019,8 +10078,12 @@ function getLedgerPeriod() {
 }
 
 
-function getLatestRangeOdometer(fuelBaselineOdometer = 0) {
-  const activeLatest = state.trips.reduce((latest, trip) => Math.max(latest, Number(trip.endKm) || 0), 0);
+function getLatestRangeOdometer(fuelBaselineOdometer = 0, options = {}) {
+  const excludeTripId = options.excludeTripId || null;
+  const activeLatest = state.trips.reduce((latest, trip) => {
+    if (excludeTripId && trip.id === excludeTripId) return latest;
+    return Math.max(latest, Number(trip.endKm) || 0);
+  }, 0);
   const archivedLatest = state.closedPeriods.reduce((latest, period) => {
     const periodLatest = (period.trips || []).reduce(
       (tripLatest, trip) => Math.max(tripLatest, Number(trip.endKm) || 0),

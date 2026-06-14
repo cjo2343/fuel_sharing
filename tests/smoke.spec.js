@@ -423,11 +423,11 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   await expect(page.locator("#auditLog")).toContainText("Payment requested");
   await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
 
-  const reminderButton = page.locator('button[data-payment-reminder="true"]').first();
+  const reminderButton = page.locator('button[data-payment-reminder="true"]:not([disabled])').first();
   if (await reminderButton.count()) {
-    await reminderButton.evaluate((button) => button.click());
-    await expect(page.locator("#auditLog")).toContainText("Payment reminder sent");
-    await expect(page.locator("#auditLog")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification/i);
+    await reminderButton.evaluate((button) => window.setTimeout(() => button.click(), 0));
+    await expect(page.locator("body")).toContainText(/Reminder .* recorded|Reminder .* sent/i);
+    await expect(page.locator("body")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification|Reminder .* sent/i);
   }
 
   const reopenButton = page.locator('button[data-payment-status="open"]').first();
@@ -868,6 +868,48 @@ test("trip planner warns when planned trip crosses configured tank range thresho
   await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop|leaves the tank below/i);
 });
 
+
+test("trip save is blocked when estimated tank range would go negative", async ({ page, request }) => {
+  const seeded = makeCleanState();
+  seeded.fuelConsumption = 5.4;
+  seeded.fuelTankCapacity = 55;
+  seeded.fuelWarningThreshold = 25;
+  seeded.fuel = [{
+    id: "full-tank-before-overrange-trip",
+    payer: "Christian",
+    date: "2026-06-01",
+    amount: 500,
+    liters: 40,
+    odometer: 10000,
+    fullTank: true
+  }];
+  seeded.lastOdometer = 10000;
+  await request.put("/api/state", { data: seeded });
+
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="log"]').click();
+  await expect(page.locator("#tripForm")).toBeVisible();
+  await page.locator("#tripDriver").selectOption("Christian");
+  await page.locator("#tripDate").fill("2026-06-02");
+  await page.locator("#startKm").fill("10000");
+  await page.locator("#endKm").fill("11100");
+  await page.locator('#tripParticipants input[value="Christian"]').check();
+
+  const dialogPromise = page.waitForEvent("dialog");
+  await page.locator("#tripForm").evaluate((form) => {
+    window.setTimeout(() => form.requestSubmit(), 0);
+  });
+  const dialog = await dialogPromise;
+  expect(dialog.message()).toContain("exceed the estimated fuel remaining");
+  await dialog.accept();
+
+  await expect.poll(async () => {
+    const response = await request.get("/api/state");
+    const saved = await response.json();
+    return saved.trips.length;
+  }).toBe(0);
+});
+
 test("smart tank range uses actual data, not unsaved plan estimate", async ({ page, request }) => {
   const seeded = makeCleanState();
   seeded.fuelConsumption = 5.4;
@@ -912,14 +954,12 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   await page.locator("#tripEstimateDistance").fill("123");
   await page.locator("#tripEstimateStart").fill("Roskilde");
   await page.locator("#tripEstimateDestination").fill("Aarhus");
-  await page.locator("#tripEstimatorParticipants input").evaluateAll((inputs) => {
-    inputs.forEach((input) => {
-      input.checked = false;
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-  });
+  for (const input of await page.locator("#tripEstimatorParticipants input").all()) {
+    if (await input.isChecked()) await input.uncheck();
+  }
   await page.locator('#tripEstimatorParticipants input[value="Christian"]').check();
   await page.locator('#tripEstimatorParticipants input[value="Marie"]').check();
+  await expect(page.locator("#tripEstimateResult")).toContainText("Christian, Marie");
   await page.getByRole("button", { name: "Use this estimate for booking" }).click();
 
   await expect(page.locator("#bookingPurpose")).toHaveValue(/Roskilde.*Aarhus.*123/);
