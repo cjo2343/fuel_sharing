@@ -4240,3 +4240,69 @@ body.auth-locked #authPanel .text-button {
 .test-lab-report li {
   margin: 0.2rem 0;
 }
+
+.test-lab-report-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.test-lab-report-header span,
+.test-lab-success-note {
+  color: var(--muted-text);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.test-lab-scenario-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.55rem 0;
+}
+
+.test-lab-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.22rem 0.48rem;
+}
+
+.test-lab-chip.ok {
+  background: rgba(37, 99, 75, 0.08);
+  border-color: rgba(37, 99, 75, 0.18);
+  color: var(--primary-strong);
+}
+
+.test-lab-chip.warning {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.18);
+  color: #b42318;
+}
+
+.test-lab-failures,
+.test-lab-errors {
+  border-top: 1px solid var(--border);
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+}
+
+.test-lab-details {
+  border-top: 1px solid var(--border);
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+}
+
+.test-lab-details summary {
+  cursor: pointer;
+  color: var(--primary-strong);
+  font-weight: 800;
+}

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v135";
-const BUILD_LABEL = "test-lab-security-timeout-status";
-const BUILD_UPDATED_AT = "2026-06-14T21:30:00.000Z";
+const CACHE_NAME = "fuel-ledger-v136";
+const BUILD_LABEL = "test-lab-ui-security-skip";
+const BUILD_UPDATED_AT = "2026-06-14T21:45:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

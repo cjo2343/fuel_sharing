@@ -338,21 +338,49 @@
 
   function renderReportHtml(report) {
     if (!report) return "";
-    const status = report.ok ? "✅ Passed" : "❌ Failed";
-    const scenarioSummary = asArray(report.scenarios).length ? `<p><strong>Scenarios:</strong> ${asArray(report.scenarios).map((scenario) => `${scenario.ok ? "✅" : "❌"} ${escapeHtml(scenario.name || scenario.id)} (${scenario.passedCount || 0}/${(scenario.passedCount || 0) + (scenario.failedCount || 0)})`).join(" · ")}</p>` : "";
-    const checks = asArray(report.checks).map((check) => `<li>${check.ok ? "✅" : "❌"} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("");
-    const generated = report.generated ? `<p><strong>Generated:</strong> ${report.generated.trips || 0} trips, ${report.generated.fuel || 0} fuel logs, ${report.generated.bookings || 0} bookings.</p>` : "";
-    const cleanup = report.cleanup ? `<p><strong>Cleanup:</strong> ${escapeHtml(report.cleanup.message || "complete")}</p>` : "";
+    const statusText = report.ok ? "Passed" : "Needs review";
+    const statusIcon = report.ok ? "✅" : "❌";
+    const reportClass = report.ok ? "ok" : "warning";
+    const failedChecks = asArray(report.checks).filter((check) => !check.ok);
+    const allChecks = asArray(report.checks);
+    const scenarios = asArray(report.scenarios);
     const owner = report.createdBy ? ` · ${escapeHtml(report.createdBy)}` : "";
     const synced = report.syncedAt ? ` · synced ${escapeHtml(formatDateTime(report.syncedAt))}` : "";
+    const runId = report.id ? escapeHtml(report.id) : "unknown run";
+    const scenarioChips = scenarios.length
+      ? `<div class="test-lab-scenario-chips">${scenarios.map((scenario) => {
+          const total = (scenario.passedCount || 0) + (scenario.failedCount || 0);
+          return `<span class="test-lab-chip ${scenario.ok ? "ok" : "warning"}">${scenario.ok ? "✅" : "❌"} ${escapeHtml(scenario.name || scenario.id)} ${scenario.passedCount || 0}/${total}</span>`;
+        }).join("")}</div>`
+      : "";
+    const failedHtml = failedChecks.length
+      ? `<div class="test-lab-failures"><strong>Failed checks</strong><ul>${failedChecks.map((check) => `<li>❌ ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></div>`
+      : `<p class="test-lab-success-note">All reported checks passed.</p>`;
+    const generated = report.generated
+      ? `<p><strong>Generated:</strong> ${report.generated.trips || 0} trips, ${report.generated.fuel || 0} fuel logs, ${report.generated.bookings || 0} bookings.</p>`
+      : "";
+    const cleanup = report.cleanup
+      ? `<p><strong>Cleanup:</strong> ${escapeHtml(report.cleanup.message || "complete")}</p>`
+      : "";
+    const errors = asArray(report.errors).length
+      ? `<div class="test-lab-errors"><strong>Errors</strong><ul>${asArray(report.errors).map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul></div>`
+      : "";
+    const allChecksHtml = allChecks.length
+      ? `<details class="test-lab-details"><summary>Show all ${allChecks.length} checks</summary><ul>${allChecks.map((check) => `<li>${check.ok ? "✅" : "❌"} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></details>`
+      : "";
     return `
-      <div class="test-lab-report ${report.ok ? "ok" : "warning"}">
-        <strong>${status}: ${escapeHtml(report.scenario || "Test Lab")}</strong>
-        <p>${report.passedCount || 0} passed, ${report.failedCount || 0} failed · ${escapeHtml(report.id || "")}${owner}${synced}</p>
-        ${scenarioSummary}
+      <div class="test-lab-report ${reportClass}">
+        <div class="test-lab-report-header">
+          <strong>${statusIcon} ${statusText}: ${escapeHtml(report.scenario || "Test Lab")}</strong>
+          <span>${report.passedCount || 0} passed · ${report.failedCount || 0} failed</span>
+        </div>
+        <p class="entry-meta">${runId}${owner}${synced}</p>
+        ${scenarioChips}
+        ${failedHtml}
         ${generated}
         ${cleanup}
-        <ul>${checks}</ul>
+        ${errors}
+        ${allChecksHtml}
       </div>
     `;
   }
