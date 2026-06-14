@@ -440,8 +440,3 @@ This rule applies to `app.js`, helper modules, CSS, icons, `index.html`, `manife
 ### Test Lab scenario matrix
 
 The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.
-
-
-## Supabase Security Health
-
-The Test Lab includes a Supabase Security Health scenario. It checks admin/session/member mapping, normalized table health, and probes the `close_settlement_period` RPC with a harmless zero-period id so the app can detect whether the transactional period-close function is installed without changing production data.

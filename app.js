@@ -1911,18 +1911,33 @@ async function runFullTestLabScenario() {
   let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors });
   renderTestLabReport(report);
 
+  let cleanup = null;
+  try {
+    cleanup = cleanupGeneratedTestEntriesFromState();
+    await flushStressSave(`${report.ok && !errors.length ? "Test Lab passed" : "Test Lab finished with issues"} and cleaned up ${cleanup.removed?.total || 0} generated item(s).`);
+  } catch (cleanupError) {
+    console.warn("Test Lab cleanup failed", cleanupError);
+    errors.push(`Cleanup failed: ${cleanupError.message || cleanupError}`);
+  }
+
+  report = {
+    ...report,
+    finishedAt: new Date().toISOString(),
+    after: testLab.stateSummary(state),
+    cleanup,
+    errors
+  };
+  if (errors.length && report.ok) {
+    report = { ...report, ok: false, failedCount: report.failedCount + errors.length };
+  }
+  renderTestLabReport(report);
+
   if (report.ok && !errors.length) {
-    const cleanup = cleanupGeneratedTestEntriesFromState();
-    await flushStressSave(`Test Lab passed and cleaned up ${cleanup.removed?.total || 0} generated item(s).`);
-    report = {
-      ...report,
-      finishedAt: new Date().toISOString(),
-      after: testLab.stateSummary(state),
-      cleanup
-    };
-    renderTestLabReport(report);
+    setDataToolsMessage(`Test Lab passed and cleaned up ${cleanup?.removed?.total || 0} generated item(s).`);
+  } else if (cleanup) {
+    setDataToolsMessage(`Test Lab found ${report.failedCount} issue(s), but generated data was cleaned up. Export the report for details.`);
   } else {
-    setDataToolsMessage(`Test Lab found ${report.failedCount} issue(s). Generated data was preserved for inspection. Export the report before cleanup.`);
+    setDataToolsMessage(`Test Lab found ${report.failedCount} issue(s). Cleanup did not finish; use Clean Test Lab data before rerunning.`);
   }
 }
 

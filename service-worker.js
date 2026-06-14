@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v129";
-const BUILD_LABEL = "supabase-security-health-rpc";
-const BUILD_UPDATED_AT = "2026-06-14T19:20:00.000Z";
+const CACHE_NAME = "fuel-ledger-v130";
+const BUILD_LABEL = "test-lab-runner-cleanup-fix";
+const BUILD_UPDATED_AT = "2026-06-14T19:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

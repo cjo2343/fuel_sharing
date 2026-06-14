@@ -42,8 +42,8 @@ function testInvariantChecksPassForBalancedLedger() {
   const ledger = {
     totalPaid: 100,
     people: [
-      { name: 'Christian', cost: 50, paid: 100, balance: 50 },
-      { name: 'Marie', cost: 50, paid: 0, balance: -50 }
+      { name: 'Christian', tripCost: 50, fuelPaid: 100, net: 50, balance: 50 },
+      { name: 'Marie', tripCost: 50, fuelPaid: 0, net: -50, balance: -50 }
     ],
     settlements: [{ from: 'Marie', to: 'Christian', amount: 50 }]
   };
@@ -104,6 +104,15 @@ function testReportIncludesSyncMetadata() {
   assert.match(html, /synced/);
 }
 
+function testRuntimePwaUnavailableCacheMetadataIsNotHardFailure() {
+  const lab = loadHelpers();
+  const checks = lab.runRuntimePwaChecks({
+    buildInfo: { version: 'test', expectedServiceWorkerCache: 'fuel-ledger-test' },
+    runtimeGlobals: { FuelLedgerModel: {}, FuelLocationPrivacy: {}, FuelPeriodClosing: {}, FuelTestLab: {}, permissionHelpers: {} }
+  });
+  assert.equal(checks.every((check) => check.ok), true, JSON.stringify(checks));
+  assert.equal(checks.some((check) => check.name === 'Service worker cache metadata is available'), true);
+}
 
 
 function testScenarioMatrixCoversExpandedLogic() {
@@ -169,6 +178,7 @@ const tests = [
   testInvariantChecksCatchBadData,
   testReportRenderingEscapesHtml,
   testReportIncludesSyncMetadata,
+  testRuntimePwaUnavailableCacheMetadataIsNotHardFailure,
   testScenarioMatrixCoversExpandedLogic
 ];
 

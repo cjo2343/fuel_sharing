@@ -395,8 +395,3 @@ Before deploying this build to Render, set `FUEL_LEDGER_API_SECRET` to a separat
 ### Test Lab scenario matrix
 
 The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.
-
-
-## Security health after deploy
-
-After deploying this release, sign in as an admin and run **Test Lab → Security health**. The check should confirm the current user maps to an active admin member, normalized tables are healthy, and `close_settlement_period` is installed and guarded.
