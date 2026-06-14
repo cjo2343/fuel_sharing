@@ -463,4 +463,9 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 
 - Fuel receipt date inputs no longer set a browser max date from the current day or booking context. This keeps later-dated receipts editable when correcting real odometer data.
 - Fuel save now blocks odometer values that go backwards compared with earlier/later fuel logs by receipt date, excluding the log currently being edited.
-- Build metadata bumped to `2026.06.14.56 / fuel-date-odometer-validation` with cache `fuel-ledger-v155`.
+- Build metadata bumped to `2026.06.14.57 / fuel-date-odometer-validation` with cache `fuel-ledger-v156`.
+
+
+### 2026-06-14.57 — Fuel overfill guided corrections
+- Added inline correction actions when a fuel log would overfill the configured tank.
+- Users can keep the current odometer and set liters to the maximum allowed value, or keep liters and set a minimum plausible odometer based on configured consumption.

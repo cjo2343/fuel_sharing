@@ -4467,3 +4467,41 @@ body.auth-locked #authPanel .text-button {
   cursor: progress;
   opacity: 0.65;
 }
+
+.fuel-correction-panel {
+  border: 1px solid rgba(180, 83, 9, 0.28);
+  border-radius: var(--radius-sm);
+  background: #fff8ea;
+  color: #7c2d12;
+  padding: 14px 16px;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.fuel-correction-panel.hidden {
+  display: none;
+}
+
+.fuel-correction-panel strong {
+  color: #7c2d12;
+  font-size: 0.98rem;
+}
+
+.fuel-correction-panel p {
+  margin: 0;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.fuel-correction-panel small {
+  color: #8a5a2b;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.fuel-correction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}

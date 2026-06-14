@@ -678,3 +678,7 @@ The app uses cached local data if the initial Supabase load is slow, but this is
 ### Test Lab inspect links
 
 Test Lab failure buttons open matching current-period entries directly in edit mode when the signed-in user has permission. Fuel odometer failures now load the exact fuel log into the fuel form so the saved date, odometer, liters, station, and full-tank values can be corrected without searching manually.
+
+
+#### Fuel overfill guided corrections
+When a fuel receipt would overfill the configured tank, the app now offers one-click correction suggestions for liters or odometer instead of only blocking the save.

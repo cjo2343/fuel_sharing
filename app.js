@@ -308,6 +308,7 @@ const els = {
   fuelStationLongitude: document.querySelector("#fuelStationLongitude"),
   fuelStationBrand: document.querySelector("#fuelStationBrand"),
   fuelFullTank: document.querySelector("#fuelFullTank"),
+  fuelCorrectionPanel: document.querySelector("#fuelCorrectionPanel"),
   periodEntryLock: document.querySelector("#periodEntryLock"),
   tripLogPanel: document.querySelector("#tripLogPanel"),
   tripBookingContext: document.querySelector("#tripBookingContext"),
@@ -735,6 +736,7 @@ if (els.tripEstimateResult) {
 
 els.fuelForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  clearFuelCorrectionPanel();
   if (!canUseAppAsMember()) {
     showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
     return;
@@ -2575,7 +2577,19 @@ if (els.cancelBookingEdit) {
 }
 
 if (els.cancelFuelEdit) {
-  els.cancelFuelEdit.addEventListener("click", () => {
+  
+els.fuelCorrectionPanel?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-fuel-correction-action]");
+  if (!button) return;
+  applyFuelCorrection(button.dataset.fuelCorrectionAction);
+});
+
+[els.fuelLiters, els.fuelOdometer, els.fuelDate, els.fuelFullTank].forEach((control) => {
+  control?.addEventListener("input", clearFuelCorrectionPanel);
+  control?.addEventListener("change", clearFuelCorrectionPanel);
+});
+
+els.cancelFuelEdit.addEventListener("click", () => {
     editingFuelId = null;
     els.fuelForm.reset();
     clearFuelLocation();
@@ -4520,6 +4534,90 @@ function validateFuelOdometerChronology(fuelInput = {}, options = {}) {
   return false;
 }
 
+
+function clearFuelCorrectionPanel() {
+  if (!els.fuelCorrectionPanel) return;
+  els.fuelCorrectionPanel.classList.add("hidden");
+  els.fuelCorrectionPanel.innerHTML = "";
+  delete els.fuelCorrectionPanel.dataset.suggestedLiters;
+  delete els.fuelCorrectionPanel.dataset.suggestedOdometer;
+}
+
+function buildFuelOverfillCorrection(fuelInput = {}, tankBeforeFuel = null, options = {}) {
+  const liters = Number(fuelInput.liters) || 0;
+  const odometer = Number(fuelInput.odometer) || 0;
+  const tankCapacity = getFuelTankCapacity();
+  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const estimatedBefore = Math.max(0, Math.min(tankCapacity, Number(tankBeforeFuel?.estimatedLitersRemaining || 0)));
+  const availableSpace = Math.max(0, tankCapacity - estimatedBefore);
+  const safeLiters = Math.max(0, round(availableSpace));
+  const extraLitersNeeded = Math.max(0, liters - availableSpace);
+  const extraKmNeeded = extraLitersNeeded > 0 ? extraLitersNeeded * 100 / consumption : 0;
+  const suggestedOdometer = odometer > 0 && extraKmNeeded > 0 ? Math.ceil(odometer + extraKmNeeded) : 0;
+  return {
+    tankCapacity,
+    consumption,
+    estimatedBefore,
+    availableSpace,
+    safeLiters,
+    extraLitersNeeded,
+    extraKmNeeded,
+    suggestedOdometer,
+    latestFuelOdometer: Number(tankBeforeFuel?.latestFuelOdometer || 0),
+    currentOdometer: odometer,
+    currentLiters: liters,
+    fullTank: Boolean(fuelInput.fullTank)
+  };
+}
+
+function renderFuelCorrectionPanel(message, correction) {
+  if (!els.fuelCorrectionPanel || !correction) return;
+  const safeLiters = Math.max(0, Number(correction.safeLiters) || 0);
+  const suggestedOdometer = Math.max(0, Number(correction.suggestedOdometer) || 0);
+  els.fuelCorrectionPanel.dataset.suggestedLiters = String(safeLiters);
+  els.fuelCorrectionPanel.dataset.suggestedOdometer = String(suggestedOdometer);
+  const litersAction = safeLiters > 0
+    ? `<button class="subtle-button compact-button" type="button" data-fuel-correction-action="set-liters">Keep ${formatNumber(correction.currentOdometer)} km → set liters to ${formatNumber(safeLiters)} L</button>`
+    : "";
+  const odometerAction = suggestedOdometer > 0
+    ? `<button class="subtle-button compact-button" type="button" data-fuel-correction-action="set-odometer">Keep ${formatNumber(correction.currentLiters)} L → set odometer to about ${formatNumber(suggestedOdometer)} km</button>`
+    : "";
+  els.fuelCorrectionPanel.innerHTML = `
+    <strong>Fuel log needs a correction</strong>
+    <p>${escapeHtml(message)}</p>
+    <small>Estimated before this receipt: ${formatNumber(correction.estimatedBefore)} L in a ${formatNumber(correction.tankCapacity)} L tank. At ${formatNumber(correction.consumption)} L/100 km, choose a safe adjustment below or edit manually.</small>
+    <div class="fuel-correction-actions">
+      ${litersAction}
+      ${odometerAction}
+      <button class="subtle-button compact-button" type="button" data-fuel-correction-action="dismiss">Edit manually</button>
+    </div>
+  `;
+  els.fuelCorrectionPanel.classList.remove("hidden");
+  els.fuelCorrectionPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function applyFuelCorrection(action) {
+  if (!els.fuelCorrectionPanel || !action) return;
+  if (action === "set-liters") {
+    const suggested = Number(els.fuelCorrectionPanel.dataset.suggestedLiters || 0);
+    if (suggested > 0 && els.fuelLiters) {
+      els.fuelLiters.value = String(suggested);
+      els.fuelLiters.focus();
+      showAppMessage(`Liters adjusted to ${formatNumber(suggested)} L. Review and save again.`, "info");
+    }
+  } else if (action === "set-odometer") {
+    const suggested = Number(els.fuelCorrectionPanel.dataset.suggestedOdometer || 0);
+    if (suggested > 0 && els.fuelOdometer) {
+      els.fuelOdometer.value = String(suggested);
+      const details = document.querySelector("#fuelDetails");
+      if (details) details.open = true;
+      els.fuelOdometer.focus();
+      showAppMessage(`Odometer adjusted to about ${formatNumber(suggested)} km. Review and save again.`, "info");
+    }
+  }
+  clearFuelCorrectionPanel();
+}
+
 function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) {
   const liters = Number(fuelInput.liters) || 0;
   const odometer = Number(fuelInput.odometer) || 0;
@@ -4547,15 +4645,17 @@ function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) 
     const message = fullTank
       ? `This full-tank fuel log adds ${formatNumber(liters)} L, but the tank is estimated to have about ${formatNumber(estimatedBefore)} L already. Only about ${formatNumber(availableSpace)} L should fit. Check the odometer/liters, or add the missing trip before this fuel log.`
       : `This fuel log would overfill the tank. The tank is estimated to have about ${formatNumber(estimatedBefore)} L already, so only about ${formatNumber(availableSpace)} L should fit before reaching the configured ${formatNumber(tankCapacity)} L capacity.`;
-    showUserError(message);
-    showAppMessage(message, "error");
+    const correction = buildFuelOverfillCorrection(fuelInput, tankBeforeFuel, options);
+    renderFuelCorrectionPanel(message, correction);
+    showUserError(`${message} Use one of the suggested corrections below, or edit manually.`, { timeoutMs: 7200 });
     return false;
   }
 
   if (!fullTank && projectedAfter > tankCapacity + toleranceLiters) {
     const message = `This fuel log would raise the estimated tank level to ${formatNumber(projectedAfter)} L, above the configured ${formatNumber(tankCapacity)} L capacity.`;
-    showUserError(message);
-    showAppMessage(message, "error");
+    const correction = buildFuelOverfillCorrection(fuelInput, tankBeforeFuel, options);
+    renderFuelCorrectionPanel(message, correction);
+    showUserError(`${message} Use one of the suggested corrections below, or edit manually.`, { timeoutMs: 7200 });
     return false;
   }
 
