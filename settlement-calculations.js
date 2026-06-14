@@ -203,6 +203,31 @@ function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = 
   };
 }
 
+
+function summarizeSettlementProgress(settlements, statusForSettlement) {
+  const list = Array.isArray(settlements) ? settlements : [];
+  return list.reduce(
+    (acc, item) => {
+      const amount = Math.max(0, safeNumber(item?.amount));
+      const status = normalizePaymentStatus(typeof statusForSettlement === "function" ? statusForSettlement(item) : item?.status);
+      acc.totalCount += 1;
+      acc.totalAmount = roundMoney(acc.totalAmount + amount);
+      if (status === "paid") {
+        acc.paidCount += 1;
+        acc.paidAmount = roundMoney(acc.paidAmount + amount);
+      } else if (status === "requested") {
+        acc.requestedCount += 1;
+        acc.requestedAmount = roundMoney(acc.requestedAmount + amount);
+      } else {
+        acc.openCount += 1;
+        acc.openAmount = roundMoney(acc.openAmount + amount);
+      }
+      return acc;
+    },
+    { totalCount: 0, totalAmount: 0, requestedCount: 0, requestedAmount: 0, paidCount: 0, paidAmount: 0, openCount: 0, openAmount: 0 }
+  );
+}
+
 function calculateFuelEstimate(ledger) {
   const totalTripKm = safeNumber(ledger.totalTripKm);
   const totalPaid = safeNumber(ledger.totalPaid);

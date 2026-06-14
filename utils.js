@@ -145,6 +145,30 @@ function normalizePaymentStatus(status) {
   return status === "requested" ? "requested" : "open";
 }
 
+
+const PAYMENT_STATUS_TRANSITIONS = Object.freeze({
+  open: Object.freeze(["requested"]),
+  requested: Object.freeze(["paid", "open", "cancelled"]),
+  paid: Object.freeze(["open"]),
+  cancelled: Object.freeze(["requested", "open"])
+});
+
+function isValidPaymentStatusTransition(previousStatus, nextStatus) {
+  const previous = normalizePaymentStatus(previousStatus);
+  const next = normalizePaymentStatus(nextStatus);
+  if (previous === next) return true;
+  return PAYMENT_STATUS_TRANSITIONS[previous]?.includes(next) || false;
+}
+
+function paymentStatusTransitionMessage(previousStatus, nextStatus) {
+  const previous = normalizePaymentStatus(previousStatus);
+  const next = normalizePaymentStatus(nextStatus);
+  if (isValidPaymentStatusTransition(previous, next)) return "";
+  if (previous === "open" && next === "paid") return "Request the payment before marking it paid.";
+  if (previous === "paid" && next === "requested") return "Reopen the paid payment before sending a new request.";
+  return `Payment status cannot change from ${statusLabel(previous).toLowerCase()} to ${statusLabel(next).toLowerCase()}.`;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")

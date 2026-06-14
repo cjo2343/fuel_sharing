@@ -191,6 +191,49 @@ function testReceiptMetricsIgnoreUnknownFuelPayers() {
   assert.equal(ledger.receiptPricePerLiter, 20);
 }
 
+function testPaymentStatusTransitionsBlockUnsafeJumps() {
+  const context = loadSettlementContext();
+
+  assert.equal(context.isValidPaymentStatusTransition("open", "requested"), true);
+  assert.equal(context.isValidPaymentStatusTransition("requested", "paid"), true);
+  assert.equal(context.isValidPaymentStatusTransition("requested", "open"), true);
+  assert.equal(context.isValidPaymentStatusTransition("paid", "open"), true);
+  assert.equal(context.isValidPaymentStatusTransition("open", "paid"), false);
+  assert.equal(context.isValidPaymentStatusTransition("paid", "requested"), false);
+  assert.equal(context.paymentStatusTransitionMessage("open", "paid"), "Request the payment before marking it paid.");
+}
+
+function testSettlementProgressIsSafeAndRounded() {
+  const context = loadSettlementContext();
+  const settlements = [
+    { from: "Marie", to: "Christian", amount: "10.005", status: "requested" },
+    { from: "Jonas", to: "Christian", amount: "20", status: "paid" },
+    { from: "Unknown", to: "Christian", amount: "bad", status: "paid" },
+    { from: "Marie", to: "Jonas", amount: -5, status: "open" }
+  ];
+
+  const progress = context.summarizeSettlementProgress(settlements);
+
+  assert.equal(progress.totalCount, 4);
+  assert.equal(progress.totalAmount, 30.01);
+  assert.equal(progress.requestedCount, 1);
+  assert.equal(progress.requestedAmount, 10.01);
+  assert.equal(progress.paidCount, 2);
+  assert.equal(progress.paidAmount, 20);
+  assert.equal(progress.openCount, 1);
+  assert.equal(progress.openAmount, 0);
+  assert.deepEqual(plain(context.summarizeSettlementProgress(null)), {
+    totalCount: 0,
+    totalAmount: 0,
+    requestedCount: 0,
+    requestedAmount: 0,
+    paidCount: 0,
+    paidAmount: 0,
+    openCount: 0,
+    openAmount: 0
+  });
+}
+
 const tests = [
   testSharedTripCreatesSingleSettlement,
   testParticipantDeduplicationAndUnknownParticipantFiltering,
@@ -198,7 +241,9 @@ const tests = [
   testNegativeTripDistanceDoesNotReduceBalances,
   testHistoricalStatsTolerateMissingClosedPeriods,
   testMalformedTripAndFuelArraysAreSafe,
-  testReceiptMetricsIgnoreUnknownFuelPayers
+  testReceiptMetricsIgnoreUnknownFuelPayers,
+  testPaymentStatusTransitionsBlockUnsafeJumps,
+  testSettlementProgressIsSafeAndRounded
 ];
 
 for (const test of tests) {

@@ -4218,26 +4218,7 @@ function getVisibleSettlements(ledger) {
 
 
 function getSettlementProgress(ledger) {
-  const settlements = ledger?.settlements || [];
-  return settlements.reduce(
-    (acc, item) => {
-      const status = normalizePaymentStatus(state.paymentStatuses[settlementKey(item)]);
-      acc.totalCount += 1;
-      acc.totalAmount += Number(item.amount || 0);
-      if (status === "paid") {
-        acc.paidCount += 1;
-        acc.paidAmount += Number(item.amount || 0);
-      } else if (status === "requested") {
-        acc.requestedCount += 1;
-        acc.requestedAmount += Number(item.amount || 0);
-      } else {
-        acc.openCount += 1;
-        acc.openAmount += Number(item.amount || 0);
-      }
-      return acc;
-    },
-    { totalCount: 0, totalAmount: 0, requestedCount: 0, requestedAmount: 0, paidCount: 0, paidAmount: 0, openCount: 0, openAmount: 0 }
-  );
+  return summarizeSettlementProgress(ledger?.settlements, (item) => state.paymentStatuses[settlementKey(item)]);
 }
 
 function buildClosePeriodSummary(ledger) {
@@ -5091,6 +5072,12 @@ async function updatePaymentStatus(button) {
 
   if (!settlement || (mayChangeRequest && !canManageSettlementRequest(settlement) && !canManageSettings()) || (mayMarkPaid && !canMarkSettlementPaid(settlement))) {
     showPermissionBlocked(describePaymentPermissionMessage(settlement, requestedStatus));
+    render();
+    return;
+  }
+
+  if (!isValidPaymentStatusTransition(previousStatus, requestedStatus)) {
+    showAppMessage(paymentStatusTransitionMessage(previousStatus, requestedStatus), "warning");
     render();
     return;
   }
