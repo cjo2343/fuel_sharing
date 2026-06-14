@@ -1908,6 +1908,13 @@ async function runFullTestLabScenario() {
   }
 
   const generatedBeforeCleanup = testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker });
+  try {
+    setDataToolsMessage(`Test Lab ${runId}: running Supabase security health checks...`);
+    await refreshSupabaseSecurityHealth({ silent: true });
+  } catch (securityError) {
+    console.warn("Test Lab security health check failed", securityError);
+    errors.push(`Security health failed: ${securityError.message || securityError}`);
+  }
   let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors });
   renderTestLabReport(report);
 

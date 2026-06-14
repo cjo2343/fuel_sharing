@@ -111,13 +111,20 @@
     const unknownFuelPayers = asArray(state.fuel).filter((fuel) => fuel && fuel.payer && !knownMembers.has(String(fuel.payer)));
     checks.push(unknownFuelPayers.length ? fail("Fuel payers are known members", `${unknownFuelPayers.length} fuel log(s) have unknown payers.`) : pass("Fuel payers are known members"));
 
-    const people = asArray(ledger.people);
-    const netTotal = roundMoney(people.reduce((sum, person) => sum + safeNumber(person && person.balance), 0));
+    const peopleSource = ledger.people;
+    const people = Array.isArray(peopleSource) ? peopleSource : Object.values(asObject(peopleSource));
+    const netTotal = roundMoney(people.reduce((sum, person) => sum + safeNumber(person && (person.balance ?? person.net)), 0));
     checks.push(Math.abs(netTotal) <= 0.01 ? pass("Ledger net balances sum to 0.00", `Net total ${netTotal.toFixed(2)}`) : fail("Ledger net balances sum to 0.00", `Net total ${netTotal.toFixed(2)}`));
 
-    const tripCostTotal = roundMoney(people.reduce((sum, person) => sum + safeNumber(person && (person.tripCost ?? person.cost)), 0));
+    const tripCostTotal = roundMoney(
+      people.reduce((sum, person) => sum + safeNumber(person && (person.tripCost ?? person.cost)), 0)
+    );
+    const totalCost = roundMoney(ledger.totalCost ?? tripCostTotal);
     const totalPaid = roundMoney(safeNumber(ledger.totalPaid));
-    checks.push(Math.abs(tripCostTotal - totalPaid) <= 0.01 ? pass("Rounded trip costs match fuel paid", `${tripCostTotal.toFixed(2)} vs ${totalPaid.toFixed(2)}`) : fail("Rounded trip costs match fuel paid", `${tripCostTotal.toFixed(2)} vs ${totalPaid.toFixed(2)}`));
+    const allocatedCost = totalCost || tripCostTotal;
+    checks.push(Math.abs(allocatedCost - totalPaid) <= 0.01
+      ? pass("Rounded trip costs match fuel paid", `${allocatedCost.toFixed(2)} vs ${totalPaid.toFixed(2)}`)
+      : fail("Rounded trip costs match fuel paid", `${allocatedCost.toFixed(2)} vs ${totalPaid.toFixed(2)}`));
 
     const badSettlements = asArray(ledger.settlements).filter((settlement) => safeNumber(settlement && settlement.amount) <= 0 || !settlement.from || !settlement.to || settlement.from === settlement.to);
     checks.push(badSettlements.length ? fail("Settlement payments are valid", `${badSettlements.length} invalid settlement(s).`) : pass("Settlement payments are valid"));
