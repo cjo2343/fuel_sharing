@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v124";
-const BUILD_LABEL = "period-close-busy-flag-fix";
-const BUILD_UPDATED_AT = "2026-06-14T17:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v125";
+const BUILD_LABEL = "test-lab-scenario-runner";
+const BUILD_UPDATED_AT = "2026-06-14T18:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -12,6 +12,7 @@ const CORE_ASSETS = [
   "/data-store.js",
   "/settlement-calculations.js",
   "/period-closing-helpers.js",
+  "/stress-test-helpers.js",
   "/ui-messages.js",
   "/sync-status-helpers.js",
   "/location-privacy-helpers.js",

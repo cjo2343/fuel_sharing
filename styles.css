@@ -4201,3 +4201,42 @@ body.auth-locked #authPanel .text-button {
   font-size: 0.85rem;
   line-height: 1.35;
 }
+
+.test-lab-report-host {
+  margin-top: 0.75rem;
+}
+
+.test-lab-report {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.test-lab-report.ok {
+  border-color: rgba(37, 99, 75, 0.24);
+}
+
+.test-lab-report.warning {
+  border-color: rgba(180, 83, 9, 0.32);
+}
+
+.test-lab-report strong {
+  display: block;
+  color: var(--ink);
+  margin-bottom: 0.35rem;
+}
+
+.test-lab-report p {
+  margin: 0.25rem 0;
+}
+
+.test-lab-report ul {
+  margin: 0.65rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.test-lab-report li {
+  margin: 0.2rem 0;
+}

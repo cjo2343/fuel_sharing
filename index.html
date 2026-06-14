@@ -613,12 +613,16 @@
               </div>
             </article>
             <article class="data-tool-card">
-              <strong>Stress test</strong>
-              <p>Generate many safe test entries, save them, verify normalized tables, and clean them up again.</p>
+              <strong>Test Lab</strong>
+              <p>Run tagged scenario tests, verify ledger invariants, save/sync generated data, clean it up, and export a debug report if anything fails.</p>
               <div class="button-row">
-                <button id="runStressTest" class="subtle-button" type="button">Run stress test</button>
+                <button id="runFullTestLab" class="subtle-button" type="button">Run full Test Lab</button>
+                <button id="runStressTest" class="subtle-button" type="button">Add stress data</button>
                 <button id="runRapidSaveTest" class="subtle-button" type="button">Rapid save test</button>
+                <button id="exportTestLabReport" class="subtle-button" type="button">Export last report</button>
+                <button id="cleanupTestLabData" class="danger-button" type="button">Clean Test Lab data</button>
               </div>
+              <div id="testLabReport" class="section-note test-lab-report-host" aria-live="polite"></div>
             </article>
           </div>
           <p id="dataToolsMessage" class="section-note"></p>
@@ -719,6 +723,7 @@
     <script src="sync-status-helpers.js"></script>
     <script src="location-privacy-helpers.js"></script>
     <script src="period-closing-helpers.js"></script>
+    <script src="stress-test-helpers.js"></script>
     <script src="audit-log.js"></script>
     <script src="notifications.js"></script>
     <script src="admin-tools.js"></script>

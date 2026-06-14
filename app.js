@@ -25,6 +25,8 @@ const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
 const dataStore = window.FuelDataStore;
 const notifications = window.FuelNotifications;
 const auditLog = window.FuelAuditLog;
+const testLab = window.FuelTestLab;
+let lastTestLabReport = null;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 let auditLogDirty = false;
 
@@ -360,7 +362,11 @@ const els = {
   removeTestData: document.querySelector("#removeTestData"),
   purgeSoftDeletedTestRows: document.querySelector("#purgeSoftDeletedTestRows"),
   runStressTest: document.querySelector("#runStressTest"),
+  runFullTestLab: document.querySelector("#runFullTestLab"),
   runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
+  exportTestLabReport: document.querySelector("#exportTestLabReport"),
+  cleanupTestLabData: document.querySelector("#cleanupTestLabData"),
+  testLabReport: document.querySelector("#testLabReport"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -1201,6 +1207,21 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
   await runGeneratedRapidSaveTest();
 });
 
+els.runFullTestLab?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runFullTestLabScenario();
+});
+
+els.exportTestLabReport?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  downloadLastTestLabReport();
+});
+
+els.cleanupTestLabData?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await cleanupGeneratedTestDataWithReport();
+});
+
 els.memberManagementForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
@@ -1349,24 +1370,22 @@ function addGeneratedTestFuel() {
 }
 
 function removeGeneratedTestData() {
-  const beforeTrips = state.trips.length;
-  const beforeFuel = state.fuel.length;
-
-  state.trips = state.trips.filter((trip) => !isGeneratedTestEntry(trip));
-  state.fuel = state.fuel.filter((fuel) => !isGeneratedTestEntry(fuel));
-
-  const removedTrips = beforeTrips - state.trips.length;
-  const removedFuel = beforeFuel - state.fuel.length;
-
-  Object.keys(state.paymentStatuses || {}).forEach((key) => {
-    if (key.includes(generatedTestPrefix) || key.includes(generatedTestMarker)) delete state.paymentStatuses[key];
-  });
-
-  state.lastOdometer = getLatestOdometer();
-  setDataToolsMessage(`Removed ${removedTrips} generated test trip(s) and ${removedFuel} generated test fuel log(s). Triggered save + normalized sync.`);
+  const cleanup = cleanupGeneratedTestEntriesFromState();
+  setDataToolsMessage(`${cleanup.message} Triggered save + normalized sync.`);
   saveState();
   setDefaultDates();
   render();
+  if (testLab) {
+    const report = buildCurrentTestLabReport({
+      id: testLab.createTestRunId(),
+      scenario: "remove-test-data",
+      startedAt: new Date().toISOString(),
+      before: cleanup.before,
+      generated: cleanup.after,
+      cleanup
+    });
+    renderTestLabReport(report);
+  }
 }
 
 function isGeneratedTestEntry(entry) {
@@ -1477,6 +1496,165 @@ async function runGeneratedRapidSaveTest() {
   setDataToolsMessage(`Rapid save test complete. Normalized table check: ${normalizedTableStatus.ok ? "green" : "needs review"}.`);
   render();
 }
+
+function makeGeneratedTestBooking(index = 0, runId = "") {
+  const members = getMemberNames();
+  const actor = members[index % Math.max(1, members.length)] || getTestActorName();
+  const start = new Date(Date.now() - ((index + 1) * 86400000) + (index % 6) * 3600000);
+  const end = new Date(start.getTime() + (90 + (index % 4) * 30) * 60000);
+  const id = `${generatedTestPrefix}booking-${crypto.randomUUID()}`;
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+  return {
+    id,
+    logRef: createLogRef(id),
+    member: actor,
+    start: normalizeBookingDateTime(start.toISOString().slice(0, 16)),
+    end: normalizeBookingDateTime(end.toISOString().slice(0, 16)),
+    purpose: `${generatedTestMarker} ${runId} generated booking ${index + 1} ${stamp}`,
+    createdBy: currentUser || actor,
+    plannedDistanceKm: 10 + (index % 5) * 7,
+    routeFrom: "Test Lab",
+    routeTo: "Generated route",
+    plannedParticipants: members.slice(0, Math.min(3, members.length)),
+    testRunId: runId || ""
+  };
+}
+
+function tagGeneratedEntry(entry, runId) {
+  if (!entry || typeof entry !== "object") return entry;
+  entry.testRunId = runId;
+  if (entry.note && !String(entry.note).includes(runId)) entry.note = `${entry.note} ${runId}`;
+  if (entry.station && !String(entry.station).includes(runId)) entry.station = `${entry.station} ${runId}`;
+  return entry;
+}
+
+function cleanupGeneratedTestEntriesFromState() {
+  const before = testLab?.generatedDataSummary ? testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker }) : null;
+  const isTest = (entry) => testLab?.isTestLabEntry ? testLab.isTestLabEntry(entry, { prefix: generatedTestPrefix, marker: generatedTestMarker }) : isGeneratedTestEntry(entry);
+
+  state.trips = (state.trips || []).filter((trip) => !isTest(trip));
+  state.fuel = (state.fuel || []).filter((fuel) => !isTest(fuel));
+  state.bookings = (state.bookings || []).filter((booking) => !isTest(booking));
+  state.closedPeriods = (state.closedPeriods || []).filter((period) => !isTest(period));
+
+  Object.keys(state.paymentStatuses || {}).forEach((key) => {
+    if (key.includes(generatedTestPrefix) || key.includes(generatedTestMarker)) delete state.paymentStatuses[key];
+  });
+
+  state.lastOdometer = getLatestOdometer();
+  const after = testLab?.generatedDataSummary ? testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker }) : null;
+  const removed = before && after ? {
+    trips: before.trips - after.trips,
+    fuel: before.fuel - after.fuel,
+    bookings: before.bookings - after.bookings,
+    closedPeriods: before.closedPeriods - after.closedPeriods,
+    paymentStatuses: before.paymentStatuses - after.paymentStatuses,
+    total: before.total - after.total
+  } : null;
+  return { before, after, removed, message: removed ? `Removed ${removed.total} generated test item(s).` : "Generated test data cleaned." };
+}
+
+function renderTestLabReport(report) {
+  lastTestLabReport = report || lastTestLabReport;
+  if (!els.testLabReport || !testLab?.renderReportHtml || !lastTestLabReport) return;
+  els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
+}
+
+function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [] }) {
+  const ledger = calculateLedger();
+  const checks = testLab?.runStateInvariantChecks
+    ? testLab.runStateInvariantChecks({ state, ledger })
+    : [];
+  return testLab.buildTestLabReport({
+    id,
+    scenario,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    buildInfo: window.FuelBuildInfo?.BUILD_INFO || null,
+    normalizedTableStatus,
+    before,
+    after: testLab.stateSummary(state),
+    generated,
+    cleanup,
+    checks,
+    errors
+  });
+}
+
+async function cleanupGeneratedTestDataWithReport() {
+  const cleanup = cleanupGeneratedTestEntriesFromState();
+  await flushStressSave(`${cleanup.message} Triggered save + normalized sync.`);
+  const report = buildCurrentTestLabReport({
+    id: testLab?.createTestRunId ? testLab.createTestRunId() : `testlab-${Date.now()}`,
+    scenario: "cleanup-test-data",
+    startedAt: new Date().toISOString(),
+    before: cleanup.before,
+    generated: cleanup.after,
+    cleanup
+  });
+  renderTestLabReport(report);
+}
+
+async function runFullTestLabScenario() {
+  if (!assertCurrentPeriodAllowsNewEntries()) return;
+  if (!testLab) {
+    showUserError("Test Lab helpers are not loaded. Refresh the app and try again.");
+    return;
+  }
+  if (!confirmUserAction("Run the full Test Lab? This will create tagged test bookings, trips and fuel logs, verify ledger invariants, save them, then clean them up again.")) return;
+  const members = getMemberNames();
+  if (!members.length) {
+    showUserError("Add at least one member before running the Test Lab.");
+    return;
+  }
+
+  const runId = testLab.createTestRunId();
+  const startedAt = new Date().toISOString();
+  const before = testLab.stateSummary(state);
+  const errors = [];
+  setDataToolsMessage(`Test Lab ${runId}: generating scenario data...`);
+
+  try {
+    cleanupGeneratedTestEntriesFromState();
+    for (let i = 0; i < 6; i += 1) state.bookings.push(makeGeneratedTestBooking(i, runId));
+    for (let i = 0; i < 18; i += 1) state.trips.push(tagGeneratedEntry(makeGeneratedTestTrip(200 + i), runId));
+    for (let i = 0; i < 10; i += 1) state.fuel.push(tagGeneratedEntry(makeGeneratedTestFuel(200 + i), runId));
+    state.lastOdometer = getLatestOdometer();
+    await flushStressSave(`Test Lab ${runId}: saved generated data; checking invariants...`);
+  } catch (error) {
+    console.warn("Test Lab generation failed", error);
+    errors.push(error.message || String(error));
+  }
+
+  const generatedBeforeCleanup = testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker });
+  let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors });
+  renderTestLabReport(report);
+
+  if (report.ok && !errors.length) {
+    const cleanup = cleanupGeneratedTestEntriesFromState();
+    await flushStressSave(`Test Lab passed and cleaned up ${cleanup.removed?.total || 0} generated item(s).`);
+    report = {
+      ...report,
+      finishedAt: new Date().toISOString(),
+      after: testLab.stateSummary(state),
+      cleanup
+    };
+    renderTestLabReport(report);
+  } else {
+    setDataToolsMessage(`Test Lab found ${report.failedCount} issue(s). Generated data was preserved for inspection. Export the report before cleanup.`);
+  }
+}
+
+function downloadLastTestLabReport() {
+  if (!lastTestLabReport) {
+    showUserWarning("Run a Test Lab scenario before exporting a report.");
+    return;
+  }
+  const filename = `fuel-ledger-test-lab-report-${lastTestLabReport.id || localDateString()}.json`;
+  downloadTextFile(filename, JSON.stringify(lastTestLabReport, null, 2), "application/json");
+  setDataToolsMessage("Test Lab report downloaded.");
+}
+
 
 
 if (els.cancelTripEdit) {
