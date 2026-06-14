@@ -392,6 +392,6 @@ Before deploying this build to Render, set `FUEL_LEDGER_API_SECRET` to a separat
 
 
 
-## Test Lab reports
+### Test Lab scenario matrix
 
-Test Lab reports are saved into shared ledger state (`testLabReports`, latest five). After deployment, run the Test Lab in one browser and confirm another signed-in browser can export the latest report after sync/refresh.
+The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.

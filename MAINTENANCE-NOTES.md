@@ -425,8 +425,7 @@ The current maintenance baseline includes these safety improvements:
 - Fuel-location privacy defaults to station coordinates only. Saving the user's own GPS coordinates requires explicit opt-in.
 - `ledger-model.js` documents the core state shape and provides lightweight validation helpers without converting the app to TypeScript.
 - Supabase settlement-request triggers enforce transition rules and party/ledger integrity on the database side.
-- Period closing uses snapshot fingerprints, duplicate-close checks, busy-state protection, and the Supabase RPC transaction when the current schema is deployed. Smoke tests should await the async close helper instead of assuming a synchronous button click.
-- Test Lab debug reports are stored in shared ledger state as the latest five reports, so an admin can run a scenario in one browser/device and export the report from another signed-in browser.
+- Period closing uses snapshot fingerprints, duplicate-close checks, and busy-state protection. Smoke tests should await the async close helper instead of assuming a synchronous button click.
 
 ## Deployment metadata rule
 
@@ -436,3 +435,8 @@ When any runtime/app-shell file changes, update both of these together:
 - `service-worker.js` — bump `CACHE_NAME` and keep `CORE_ASSETS` aligned with scripts loaded by `index.html`.
 
 This rule applies to `app.js`, helper modules, CSS, icons, `index.html`, `manifest.json`, and the service worker itself. Documentation-only or test-only changes do not require a cache/build metadata bump.
+
+
+### Test Lab scenario matrix
+
+The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.

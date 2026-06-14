@@ -130,6 +130,166 @@
     return checks;
   }
 
+
+
+  function runPaymentLifecycleChecks(input = {}) {
+    const transition = typeof input.transition === "function"
+      ? input.transition
+      : (typeof window.isValidPaymentStatusTransition === "function" ? window.isValidPaymentStatusTransition : null);
+    const checks = [];
+    if (!transition) {
+      checks.push(fail("Payment transition helper is available", "isValidPaymentStatusTransition was not found."));
+      return checks;
+    }
+    checks.push(transition("open", "requested") ? pass("Payment can move open → requested") : fail("Payment can move open → requested"));
+    checks.push(transition("requested", "paid") ? pass("Payment can move requested → paid") : fail("Payment can move requested → paid"));
+    checks.push(transition("requested", "cancelled") ? pass("Payment can move requested → cancelled") : fail("Payment can move requested → cancelled"));
+    checks.push(!transition("open", "paid") ? pass("Payment blocks open → paid") : fail("Payment blocks open → paid", "Payment should be requested before paid."));
+    checks.push(!transition("paid", "requested") ? pass("Payment blocks paid → requested") : fail("Payment blocks paid → requested", "Paid payments should not become requested again."));
+    return checks;
+  }
+
+  function runPermissionBoundaryChecks(input = {}) {
+    const helpers = input.permissionHelpers || window.permissionHelpers;
+    const checks = [];
+    if (!helpers) {
+      checks.push(fail("Permission helper module is available", "window.permissionHelpers was not found."));
+      return checks;
+    }
+    const admin = { name: "Admin", role: "admin" };
+    const owner = { name: "Owner", role: "member" };
+    const other = { name: "Other", role: "member" };
+    const trip = { driver: "Owner" };
+    const fuel = { payer: "Owner" };
+    const booking = { member: "Owner" };
+    const settlement = { from: "Owner", to: "Other", amount: 10 };
+    checks.push(helpers.canManageTripEntryForProfile(trip, owner) ? pass("Trip owner can edit own trip") : fail("Trip owner can edit own trip"));
+    checks.push(!helpers.canManageTripEntryForProfile(trip, other) ? pass("Unrelated member cannot edit another trip") : fail("Unrelated member cannot edit another trip"));
+    checks.push(helpers.canManageFuelEntryForProfile(fuel, owner) ? pass("Fuel payer can edit own fuel log") : fail("Fuel payer can edit own fuel log"));
+    checks.push(!helpers.canManageFuelEntryForProfile(fuel, other) ? pass("Unrelated member cannot edit another fuel log") : fail("Unrelated member cannot edit another fuel log"));
+    checks.push(helpers.canManageBookingEntryForProfile(booking, owner) ? pass("Booking owner can edit own booking") : fail("Booking owner can edit own booking"));
+    checks.push(helpers.canManageSettlementRequestForProfile(settlement, other) ? pass("Recipient can request payment") : fail("Recipient can request payment"));
+    checks.push(!helpers.canManageSettlementRequestForProfile(settlement, owner) ? pass("Payer cannot request payment to themselves") : fail("Payer cannot request payment to themselves"));
+    checks.push(helpers.canMarkSettlementPaidForProfile(settlement, owner) ? pass("Payer can mark payment paid") : fail("Payer can mark payment paid"));
+    checks.push(!helpers.canMarkSettlementPaidForProfile(settlement, other) ? pass("Recipient cannot mark payer's payment paid") : fail("Recipient cannot mark payer's payment paid"));
+    checks.push(helpers.canManageTripEntryForProfile(trip, admin) && helpers.canManageFuelEntryForProfile(fuel, admin) ? pass("Admin can manage generated entries") : fail("Admin can manage generated entries"));
+    const protection = helpers.summarizeMemberAdminProtection({ name: "Admin", role: "admin", is_active: true }, [{ name: "Admin", role: "admin", is_active: true }], admin);
+    checks.push(!protection.canDeactivate && !protection.canDemote ? pass("Last/self admin protection is active") : fail("Last/self admin protection is active"));
+    return checks;
+  }
+
+  function runLocationPrivacyChecks(input = {}) {
+    const privacy = input.locationPrivacy || window.FuelLocationPrivacy;
+    const checks = [];
+    if (!privacy) {
+      checks.push(fail("Location privacy helper is available", "window.FuelLocationPrivacy was not found."));
+      return checks;
+    }
+    const defaultPayload = privacy.buildFuelLocationPayload({
+      stationName: "Station", stationBrand: "Brand",
+      userLatitude: 55.676098, userLongitude: 12.568337,
+      stationLatitude: 55.7, stationLongitude: 12.6
+    });
+    checks.push(defaultPayload.location === null ? pass("Default fuel privacy does not save user GPS") : fail("Default fuel privacy does not save user GPS"));
+    checks.push(defaultPayload.stationInfo && defaultPayload.stationInfo.latitude ? pass("Default fuel privacy saves selected station GPS") : fail("Default fuel privacy saves selected station GPS"));
+    const noCoords = privacy.buildFuelLocationPayload({ mode: "no-coordinates", stationLatitude: 55.7, stationLongitude: 12.6 });
+    checks.push(noCoords.location === null && noCoords.stationInfo === null ? pass("Station-name-only mode saves no coordinates") : fail("Station-name-only mode saves no coordinates"));
+    const full = privacy.buildFuelLocationPayload({ mode: "full", userLatitude: 55.676098, userLongitude: 12.568337, stationLatitude: 55.7, stationLongitude: 12.6 });
+    checks.push(full.location && full.stationInfo ? pass("Full mode can save user and station GPS") : fail("Full mode can save user and station GPS"));
+    checks.push(privacy.inferFuelLocationPrivacyMode({ location: { latitude: 1, longitude: 2 } }) === "full" ? pass("Edit mode infers full GPS logs") : fail("Edit mode infers full GPS logs"));
+    return checks;
+  }
+
+  function runBackupRoundTripChecks(input = {}) {
+    const dataStore = input.dataStore || window.dataStore;
+    const state = asObject(input.state);
+    const checks = [];
+    if (!dataStore || typeof dataStore.validateBackupPayload !== "function") {
+      checks.push(fail("Backup validator is available", "dataStore.validateBackupPayload was not found."));
+      return checks;
+    }
+    const payload = { app: "fuel-ledger", version: 1, exportedAt: new Date().toISOString(), state };
+    const result = dataStore.validateBackupPayload(payload);
+    checks.push(result && result.ok ? pass("Current state passes backup validation") : fail("Current state passes backup validation", asArray(result && result.errors).slice(0, 3).join("; ")));
+    const malformed = dataStore.validateBackupPayload({ state: { members: [], trips: "bad" } });
+    checks.push(malformed && !malformed.ok ? pass("Malformed backup is rejected") : fail("Malformed backup is rejected"));
+    return checks;
+  }
+
+  function runBookingEdgeChecks(input = {}) {
+    const state = asObject(input.state);
+    const checks = [];
+    const bookings = asArray(state.bookings);
+    checks.push(uniqueIdCheck(bookings, "Booking"));
+    const badRanges = bookings.filter((booking) => {
+      const start = Date.parse(booking && booking.start || "");
+      const end = Date.parse(booking && booking.end || "");
+      return Number.isFinite(start) && Number.isFinite(end) && end <= start;
+    });
+    checks.push(badRanges.length ? fail("Booking end times are after starts", `${badRanges.length} booking(s) end before they start.`) : pass("Booking end times are after starts"));
+    const linkedTrips = asArray(state.trips).filter((trip) => trip && trip.bookingId);
+    const bookingIds = new Set(bookings.map((booking) => booking && booking.id).filter(Boolean));
+    const missingLinks = linkedTrips.filter((trip) => !bookingIds.has(trip.bookingId));
+    checks.push(missingLinks.length ? fail("Booking-linked trips reference existing bookings", `${missingLinks.length} linked trip(s) reference missing bookings.`) : pass("Booking-linked trips reference existing bookings"));
+    return checks;
+  }
+
+  function runRuntimePwaChecks(input = {}) {
+    const checks = [];
+    const buildInfo = input.buildInfo || window.FuelBuildInfo?.BUILD_INFO;
+    checks.push(buildInfo && buildInfo.version ? pass("Build info is loaded", buildInfo.version) : fail("Build info is loaded"));
+    if (buildInfo && buildInfo.serviceWorkerCache && buildInfo.expectedServiceWorkerCache) {
+      checks.push(buildInfo.serviceWorkerCache === buildInfo.expectedServiceWorkerCache ? pass("Service worker cache matches build info", buildInfo.serviceWorkerCache) : fail("Service worker cache matches build info", `${buildInfo.serviceWorkerCache} vs ${buildInfo.expectedServiceWorkerCache}`));
+    } else {
+      checks.push(fail("Service worker cache metadata is available"));
+    }
+    const runtimeGlobals = input.runtimeGlobals || window;
+    const requiredGlobals = ["FuelLedgerModel", "FuelLocationPrivacy", "FuelPeriodClosing", "FuelTestLab", "permissionHelpers"];
+    const missing = requiredGlobals.filter((name) => !runtimeGlobals[name]);
+    checks.push(missing.length ? fail("Runtime helper modules are loaded", missing.join(", ")) : pass("Runtime helper modules are loaded"));
+    return checks;
+  }
+
+  function runSyncReportChecks(input = {}) {
+    const state = asObject(input.state);
+    const reports = asArray(state.testLabReports);
+    const checks = [];
+    checks.push(reports.length <= 5 ? pass("Synced Test Lab report history is capped", `${reports.length} report(s)`) : fail("Synced Test Lab report history is capped", `${reports.length} report(s)`));
+    const latest = reports[0];
+    if (latest) {
+      checks.push(latest.id && latest.syncedAt ? pass("Latest synced report has export metadata", latest.id) : fail("Latest synced report has export metadata"));
+    } else {
+      checks.push(pass("Synced report export can start empty", "No synced report yet."));
+    }
+    return checks;
+  }
+
+  function runScenarioMatrixChecks(input = {}) {
+    const scenarios = [
+      { id: "ledger", name: "Ledger invariants", checks: runStateInvariantChecks(input) },
+      { id: "payments", name: "Payment lifecycle", checks: runPaymentLifecycleChecks(input) },
+      { id: "permissions", name: "Permission boundaries", checks: runPermissionBoundaryChecks(input) },
+      { id: "backup", name: "Backup/import validation", checks: runBackupRoundTripChecks(input) },
+      { id: "privacy", name: "Location privacy", checks: runLocationPrivacyChecks(input) },
+      { id: "bookings", name: "Booking edge checks", checks: runBookingEdgeChecks(input) },
+      { id: "sync", name: "Sync/report storage", checks: runSyncReportChecks(input) },
+      { id: "runtime", name: "Runtime/PWA metadata", checks: runRuntimePwaChecks(input) }
+    ];
+    return scenarios.map((scenario) => ({
+      ...scenario,
+      ok: asArray(scenario.checks).every((check) => check.ok),
+      passedCount: asArray(scenario.checks).filter((check) => check.ok).length,
+      failedCount: asArray(scenario.checks).filter((check) => !check.ok).length
+    }));
+  }
+
+  function flattenScenarioChecks(scenarios) {
+    return asArray(scenarios).flatMap((scenario) => asArray(scenario.checks).map((check) => ({
+      ...check,
+      scenario: scenario.name || scenario.id || "Scenario"
+    })));
+  }
+
   function buildTestLabReport(input = {}) {
     const checks = asArray(input.checks);
     const failed = checks.filter((check) => !check.ok);
@@ -150,6 +310,7 @@
       after: input.after || null,
       generated: input.generated || null,
       cleanup: input.cleanup || null,
+      scenarios: asArray(input.scenarios),
       checks,
       errors: asArray(input.errors)
     };
@@ -158,7 +319,8 @@
   function renderReportHtml(report) {
     if (!report) return "";
     const status = report.ok ? "✅ Passed" : "❌ Failed";
-    const checks = asArray(report.checks).map((check) => `<li>${check.ok ? "✅" : "❌"} ${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("");
+    const scenarioSummary = asArray(report.scenarios).length ? `<p><strong>Scenarios:</strong> ${asArray(report.scenarios).map((scenario) => `${scenario.ok ? "✅" : "❌"} ${escapeHtml(scenario.name || scenario.id)} (${scenario.passedCount || 0}/${(scenario.passedCount || 0) + (scenario.failedCount || 0)})`).join(" · ")}</p>` : "";
+    const checks = asArray(report.checks).map((check) => `<li>${check.ok ? "✅" : "❌"} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("");
     const generated = report.generated ? `<p><strong>Generated:</strong> ${report.generated.trips || 0} trips, ${report.generated.fuel || 0} fuel logs, ${report.generated.bookings || 0} bookings.</p>` : "";
     const cleanup = report.cleanup ? `<p><strong>Cleanup:</strong> ${escapeHtml(report.cleanup.message || "complete")}</p>` : "";
     const owner = report.createdBy ? ` · ${escapeHtml(report.createdBy)}` : "";
@@ -167,6 +329,7 @@
       <div class="test-lab-report ${report.ok ? "ok" : "warning"}">
         <strong>${status}: ${escapeHtml(report.scenario || "Test Lab")}</strong>
         <p>${report.passedCount || 0} passed, ${report.failedCount || 0} failed · ${escapeHtml(report.id || "")}${owner}${synced}</p>
+        ${scenarioSummary}
         ${generated}
         ${cleanup}
         <ul>${checks}</ul>
@@ -198,6 +361,15 @@
     stateSummary,
     generatedDataSummary,
     runStateInvariantChecks,
+    runPaymentLifecycleChecks,
+    runPermissionBoundaryChecks,
+    runLocationPrivacyChecks,
+    runBackupRoundTripChecks,
+    runBookingEdgeChecks,
+    runRuntimePwaChecks,
+    runSyncReportChecks,
+    runScenarioMatrixChecks,
+    flattenScenarioChecks,
     buildTestLabReport,
     renderReportHtml
   };

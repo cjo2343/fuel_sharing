@@ -364,6 +364,11 @@ const els = {
   purgeSoftDeletedTestRows: document.querySelector("#purgeSoftDeletedTestRows"),
   runStressTest: document.querySelector("#runStressTest"),
   runFullTestLab: document.querySelector("#runFullTestLab"),
+  runScenarioMatrix: document.querySelector("#runScenarioMatrix"),
+  runPaymentScenario: document.querySelector("#runPaymentScenario"),
+  runBackupScenario: document.querySelector("#runBackupScenario"),
+  runPrivacyScenario: document.querySelector("#runPrivacyScenario"),
+  runRuntimeScenario: document.querySelector("#runRuntimeScenario"),
   runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
   exportTestLabReport: document.querySelector("#exportTestLabReport"),
   cleanupTestLabData: document.querySelector("#cleanupTestLabData"),
@@ -1213,6 +1218,47 @@ els.runFullTestLab?.addEventListener("click", async () => {
   await runFullTestLabScenario();
 });
 
+els.runScenarioMatrix?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runTestLabScenarioMatrix();
+});
+
+els.runPaymentScenario?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runTestLabScenarioMatrix({
+    scenarioName: "payment-permission-checks",
+    scenarioFilter: ["payments", "permissions"],
+    confirmMessage: "Run payment and permission checks? This does not create production data."
+  });
+});
+
+els.runBackupScenario?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runTestLabScenarioMatrix({
+    scenarioName: "backup-import-checks",
+    scenarioFilter: ["backup"],
+    confirmMessage: "Run backup/import validation checks? This does not restore or overwrite data."
+  });
+});
+
+els.runPrivacyScenario?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runTestLabScenarioMatrix({
+    scenarioName: "location-privacy-checks",
+    scenarioFilter: ["privacy"],
+    confirmMessage: "Run location privacy checks? This does not request or save your current GPS location."
+  });
+});
+
+els.runRuntimeScenario?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runTestLabScenarioMatrix({
+    scenarioName: "runtime-pwa-checks",
+    scenarioFilter: ["runtime", "sync"],
+    confirmMessage: "Run runtime/PWA and synced-report checks?"
+  });
+});
+
 els.exportTestLabReport?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   downloadLastTestLabReport();
@@ -1609,11 +1655,25 @@ function renderTestLabReport(report = null, { persist = true } = {}) {
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
 }
 
-function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [] }) {
+function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [], scenarioFilter = null }) {
   const ledger = calculateLedger();
-  const checks = testLab?.runStateInvariantChecks
-    ? testLab.runStateInvariantChecks({ state, ledger })
-    : [];
+  const matrixInput = {
+    state,
+    ledger,
+    buildInfo: window.FuelBuildInfo?.BUILD_INFO || null,
+    permissionHelpers: window.permissionHelpers,
+    locationPrivacy: window.FuelLocationPrivacy,
+    dataStore,
+    transition: typeof isValidPaymentStatusTransition === "function" ? isValidPaymentStatusTransition : null
+  };
+  let scenarios = testLab?.runScenarioMatrixChecks ? testLab.runScenarioMatrixChecks(matrixInput) : [];
+  if (Array.isArray(scenarioFilter) && scenarioFilter.length) {
+    const allowed = new Set(scenarioFilter);
+    scenarios = scenarios.filter((item) => allowed.has(item.id));
+  }
+  const checks = testLab?.flattenScenarioChecks
+    ? testLab.flattenScenarioChecks(scenarios)
+    : (testLab?.runStateInvariantChecks ? testLab.runStateInvariantChecks({ state, ledger }) : []);
   return testLab.buildTestLabReport({
     id,
     scenario,
@@ -1627,9 +1687,32 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     after: testLab.stateSummary(state),
     generated,
     cleanup,
+    scenarios,
     checks,
     errors
   });
+}
+
+
+async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scenarioFilter = null, confirmMessage = "Run the Test Lab scenario matrix? This creates no production data; it validates app logic and exports a synced report." } = {}) {
+  if (!testLab) {
+    showUserError("Test Lab helpers are not loaded. Refresh the app and try again.");
+    return;
+  }
+  if (!confirmUserAction(confirmMessage)) return;
+  const startedAt = new Date().toISOString();
+  const id = testLab.createTestRunId();
+  setDataToolsMessage(`Test Lab ${id}: running ${scenarioName}...`);
+  const report = buildCurrentTestLabReport({
+    id,
+    scenario: scenarioName,
+    startedAt,
+    before: testLab.stateSummary(state),
+    generated: testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker }),
+    scenarioFilter
+  });
+  renderTestLabReport(report);
+  setDataToolsMessage(`${scenarioName} complete: ${report.passedCount} passed, ${report.failedCount} failed.`);
 }
 
 async function cleanupGeneratedTestDataWithReport() {

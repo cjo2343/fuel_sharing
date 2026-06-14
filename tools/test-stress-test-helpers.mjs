@@ -104,12 +104,70 @@ function testReportIncludesSyncMetadata() {
   assert.match(html, /synced/);
 }
 
+
+
+function testScenarioMatrixCoversExpandedLogic() {
+  const lab = loadHelpers();
+  const state = {
+    members: ['Christian', 'Marie'],
+    trips: [{ id: 'trip-1', driver: 'Christian', startKm: 100, endKm: 120, participants: ['Christian', 'Marie'] }],
+    fuel: [{ id: 'fuel-1', payer: 'Christian', amount: 100, liters: 8 }],
+    bookings: [{ id: 'booking-1', member: 'Christian', start: '2026-06-14T10:00', end: '2026-06-14T11:00' }],
+    closedPeriods: [],
+    paymentStatuses: {},
+    testLabReports: [{ id: 'previous-report', syncedAt: '2026-06-14T18:45:00.000Z' }]
+  };
+  const ledger = {
+    totalPaid: 100,
+    people: [
+      { name: 'Christian', cost: 50, paid: 100, balance: 50 },
+      { name: 'Marie', cost: 50, paid: 0, balance: -50 }
+    ],
+    settlements: [{ from: 'Marie', to: 'Christian', amount: 50 }]
+  };
+  const permissionHelpers = {
+    canManageTripEntryForProfile: (entry, profile) => profile.role === 'admin' || entry.driver === profile.name,
+    canManageFuelEntryForProfile: (entry, profile) => profile.role === 'admin' || entry.payer === profile.name,
+    canManageBookingEntryForProfile: (entry, profile) => profile.role === 'admin' || entry.member === profile.name,
+    canManageSettlementRequestForProfile: (settlement, profile) => profile.role === 'admin' || settlement.to === profile.name,
+    canMarkSettlementPaidForProfile: (settlement, profile) => profile.role === 'admin' || settlement.from === profile.name,
+    summarizeMemberAdminProtection: () => ({ canDeactivate: false, canDemote: false })
+  };
+  const locationPrivacy = {
+    buildFuelLocationPayload: (input = {}) => {
+      if (input.mode === 'no-coordinates') return { location: null, stationInfo: null };
+      if (input.mode === 'full') return { location: { latitude: 1, longitude: 2 }, stationInfo: { latitude: 3, longitude: 4 } };
+      return { location: null, stationInfo: { latitude: 3, longitude: 4 } };
+    },
+    inferFuelLocationPrivacyMode: (fuel) => fuel.location ? 'full' : 'station-only'
+  };
+  const dataStore = {
+    validateBackupPayload: (payload) => payload?.state?.members?.length ? { ok: true, errors: [] } : { ok: false, errors: ['bad'] }
+  };
+  const scenarios = lab.runScenarioMatrixChecks({
+    state,
+    ledger,
+    permissionHelpers,
+    locationPrivacy,
+    dataStore,
+    transition: (previous, next) => previous === 'open' && next === 'paid' ? false : !(previous === 'paid' && next === 'requested'),
+    buildInfo: { version: 'test', serviceWorkerCache: 'cache', expectedServiceWorkerCache: 'cache' },
+    runtimeGlobals: { FuelLedgerModel: {}, FuelLocationPrivacy: {}, FuelPeriodClosing: {}, FuelTestLab: {}, permissionHelpers: {} }
+  });
+  assert.equal(JSON.stringify(scenarios.map((item) => item.id)), JSON.stringify(['ledger', 'payments', 'permissions', 'backup', 'privacy', 'bookings', 'sync', 'runtime']));
+  assert.equal(scenarios.every((scenario) => scenario.failedCount === 0), true, JSON.stringify(scenarios));
+  const flattened = lab.flattenScenarioChecks(scenarios);
+  assert.equal(flattened.length > scenarios.length, true);
+  assert.equal(flattened.every((check) => check.scenario), true);
+}
+
 const tests = [
   testGeneratedSummaryAndDetection,
   testInvariantChecksPassForBalancedLedger,
   testInvariantChecksCatchBadData,
   testReportRenderingEscapesHtml,
-  testReportIncludesSyncMetadata
+  testReportIncludesSyncMetadata,
+  testScenarioMatrixCoversExpandedLogic
 ];
 
 for (const test of tests) {
