@@ -198,6 +198,16 @@ let normalizedTableStatus = {
   message: "Normalized tables have not been checked yet.",
   details: []
 };
+const supabaseLoadSafety = {
+  normalizedCheckInFlight: false,
+  normalizedCheckTimer: null,
+  lastNormalizedCheckAt: 0,
+  normalizedCheckCooldownMs: 60 * 1000,
+  securityHealthInFlight: false,
+  lastSecurityHealthAt: 0,
+  securityHealthCooldownMs: 2 * 60 * 1000,
+  requests: []
+};
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -1206,7 +1216,7 @@ els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
     const result = await window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: false });
     setDataToolsMessage(`Purged ${result.trips} soft-deleted generated test trip row${result.trips === 1 ? "" : "s"} and ${result.fuel} soft-deleted generated test fuel row${result.fuel === 1 ? "" : "s"}.`);
     await refreshDatabaseDiagnostics().catch(() => {});
-    await checkNormalizedTablesAgainstCurrentState().catch(() => {});
+    await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
   } catch (error) {
     console.warn("Soft-deleted test row purge failed", error);
     setDataToolsMessage(`Could not purge soft-deleted test rows: ${error.message || error}`);
@@ -1311,7 +1321,7 @@ els.memberManagementList?.addEventListener("click", async (event) => {
 els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await refreshDatabaseDiagnostics();
-  await checkNormalizedTablesAgainstCurrentState().catch((error) => {
+  await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "manual-refresh" }).catch((error) => {
     normalizedTableStatus = {
       checked: true,
       ok: false,
@@ -1345,7 +1355,7 @@ els.cleanStaleRequests?.addEventListener("click", async () => {
   } finally {
     els.cleanStaleRequests.disabled = false;
     await refreshDatabaseDiagnostics();
-    await checkNormalizedTablesAgainstCurrentState().catch((error) => {
+    await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "manual-refresh" }).catch((error) => {
       normalizedTableStatus = {
         checked: true,
         ok: false,
@@ -1510,7 +1520,7 @@ async function flushStressSave(label) {
   writeLocalState();
   if (supabaseClient && currentSession) {
     await saveSupabaseState();
-    await checkNormalizedTablesAgainstCurrentState();
+    await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "advanced-stress" });
   } else {
     saveState();
   }
@@ -1644,6 +1654,68 @@ function getCurrentTestLabReport() {
   return lastTestLabReport || getLatestSyncedTestLabReport();
 }
 
+function recordSupabaseLoadEvent(label) {
+  const now = Date.now();
+  supabaseLoadSafety.requests = (supabaseLoadSafety.requests || [])
+    .filter((entry) => now - Number(entry.at || 0) < 5 * 60 * 1000);
+  supabaseLoadSafety.requests.push({ at: now, label: String(label || "supabase") });
+}
+
+function getSupabaseLoadSummary() {
+  const now = Date.now();
+  const recent = (supabaseLoadSafety.requests || []).filter((entry) => now - Number(entry.at || 0) < 60 * 1000);
+  const byLabel = recent.reduce((acc, entry) => {
+    const label = entry.label || "supabase";
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
+  return { lastMinute: recent.length, byLabel };
+}
+
+function scheduleNormalizedTableCheck({ delayMs = 30000, reason = "scheduled" } = {}) {
+  if (!supabaseClient || !currentSession) return;
+  if (supabaseLoadSafety.normalizedCheckTimer) return;
+  supabaseLoadSafety.normalizedCheckTimer = window.setTimeout(() => {
+    supabaseLoadSafety.normalizedCheckTimer = null;
+    checkNormalizedTablesAgainstCurrentState({ reason, silent: true }).catch((error) => {
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: `Could not read normalized tables: ${error.message || error}`
+      };
+      render();
+    });
+  }, delayMs);
+}
+
+function buildLightweightSecurityHealthStatus(message = "Lightweight security checks completed without backend probes.") {
+  const helper = securityHealth || window.FuelSecurityHealth;
+  const checks = helper?.buildLocalSecurityChecks ? helper.buildLocalSecurityChecks({
+    hasSupabaseConfig,
+    hasSession: Boolean(currentSession),
+    hasMemberProfile: Boolean(getCurrentMemberProfile()),
+    isAdmin: canManageSettings(),
+    normalizedTableStatus
+  }) : [{ ok: true, name: "Security health helper unavailable", detail: "Backend probes were skipped." }];
+  return {
+    checked: true,
+    ok: !checks.some((check) => !check.ok),
+    mode: hasSupabaseConfig ? "lightweight" : "local",
+    checkedAt: new Date().toISOString(),
+    message,
+    checks: [
+      ...checks,
+      {
+        ok: true,
+        level: "warning",
+        warning: true,
+        name: "Deep Supabase backend probe skipped",
+        detail: "Skipped during routine Test Lab runs to avoid extra database load. Use Security health directly for a live backend probe."
+      }
+    ]
+  };
+}
+
 function createSecurityHealthTimeoutStatus(timeoutMs = 8000) {
   return {
     checked: true,
@@ -1662,13 +1734,50 @@ function createSecurityHealthTimeoutStatus(timeoutMs = 8000) {
   };
 }
 
-async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000 } = {}) {
+async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000, deep = false, force = false } = {}) {
+  if (!deep) {
+    supabaseSecurityStatus = buildLightweightSecurityHealthStatus("Routine Test Lab security checks completed; deep backend probe skipped to avoid database load.");
+    return supabaseSecurityStatus;
+  }
+
+  const now = Date.now();
+  if (!force && supabaseSecurityStatus.checked && now - supabaseLoadSafety.lastSecurityHealthAt < supabaseLoadSafety.securityHealthCooldownMs) {
+    const remainingSeconds = Math.ceil((supabaseLoadSafety.securityHealthCooldownMs - (now - supabaseLoadSafety.lastSecurityHealthAt)) / 1000);
+    return {
+      ...supabaseSecurityStatus,
+      checks: [
+        ...(Array.isArray(supabaseSecurityStatus.checks) ? supabaseSecurityStatus.checks : []),
+        {
+          ok: true,
+          level: "warning",
+          warning: true,
+          name: "Security health cooldown active",
+          detail: `Reused the latest backend health result. Try again in ${remainingSeconds}s to reduce Supabase load.`
+        }
+      ]
+    };
+  }
+
+  if (supabaseLoadSafety.securityHealthInFlight) {
+    return {
+      checked: true,
+      ok: true,
+      mode: "in-flight",
+      checkedAt: new Date().toISOString(),
+      message: "A Security Health check is already running.",
+      checks: [{ ok: true, level: "warning", warning: true, name: "Security health already running", detail: "Skipped this duplicate request to avoid extra Supabase load." }]
+    };
+  }
+
+  supabaseLoadSafety.securityHealthInFlight = true;
+  supabaseLoadSafety.lastSecurityHealthAt = now;
+  recordSupabaseLoadEvent("security-health");
   let timeoutId = null;
   const timeout = new Promise((resolve) => {
     timeoutId = setTimeout(() => resolve(createSecurityHealthTimeoutStatus(timeoutMs)), timeoutMs);
   });
   try {
-    const status = await Promise.race([refreshSupabaseSecurityHealth({ silent: true }), timeout]);
+    const status = await Promise.race([refreshSupabaseSecurityHealth({ silent: true, force }), timeout]);
     if (timeoutId) clearTimeout(timeoutId);
     supabaseSecurityStatus = status && typeof status === "object" ? status : createSecurityHealthTimeoutStatus(timeoutMs);
   } catch (error) {
@@ -1681,6 +1790,8 @@ async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000 } = {}
       message: `Security health check failed: ${error.message || error}`,
       checks: [{ ok: false, name: "Supabase security health completed", detail: error.message || String(error) }]
     };
+  } finally {
+    supabaseLoadSafety.securityHealthInFlight = false;
   }
   return supabaseSecurityStatus;
 }
@@ -1695,11 +1806,27 @@ function persistTestLabReport(report, { sync = true } = {}) {
   const existing = normalizeTestLabReports(state.testLabReports).filter((item) => item.id !== enriched.id);
   state.testLabReports = normalizeTestLabReports([enriched, ...existing]);
   lastTestLabReport = state.testLabReports[0];
-  if (sync) saveState();
+  if (sync) saveTestLabReportState();
   return lastTestLabReport;
 }
 
-async function refreshSupabaseSecurityHealth({ silent = false } = {}) {
+function saveTestLabReportState() {
+  state.updatedAt = new Date().toISOString();
+  writeLocalState();
+  markLocalChangeQueued();
+  if (supabaseClient && currentSession) {
+    saveJsonMirrorBackup({ force: true })
+      .then(() => {
+        markRemoteSaveSucceeded("Shared");
+        scheduleNormalizedTableCheck({ delayMs: 60000, reason: "test-lab-report" });
+      })
+      .catch((error) => markRemoteSaveFailed(error, "Could not save Test Lab report."));
+  } else {
+    queueRemoteSave();
+  }
+}
+
+async function refreshSupabaseSecurityHealth({ silent = false, force = false } = {}) {
   const checks = [];
   const checkedAt = new Date().toISOString();
 
@@ -1719,6 +1846,14 @@ async function refreshSupabaseSecurityHealth({ silent = false } = {}) {
     };
     return supabaseSecurityStatus;
   }
+
+  const now = Date.now();
+  if (!force && supabaseSecurityStatus.checked && now - supabaseLoadSafety.lastSecurityHealthAt < supabaseLoadSafety.securityHealthCooldownMs) {
+    if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
+    return supabaseSecurityStatus;
+  }
+  recordSupabaseLoadEvent("security-health-live");
+  supabaseLoadSafety.lastSecurityHealthAt = now;
 
   const localChecks = helper.buildLocalSecurityChecks({
     hasSupabaseConfig,
@@ -1968,7 +2103,7 @@ async function runStandaloneSecurityHealthScenario() {
 
   let securityStatus;
   try {
-    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 15000 });
+    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 15000, deep: true, force: true });
   } catch (error) {
     securityStatus = {
       checked: true,
@@ -8182,7 +8317,7 @@ async function afterMemberManagementChange(message) {
   memberManagementStatus.error = "";
   await loadSupabaseState();
   await refreshDatabaseDiagnostics().catch(() => {});
-  await checkNormalizedTablesAgainstCurrentState().catch(() => {});
+  await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
   render();
 }
 
@@ -8240,7 +8375,7 @@ async function runProductionActivityReset() {
     await loadSupabaseState();
     await saveJsonMirrorBackup({ force: true }).catch((error) => console.warn("JSON backup after reset failed", error));
     await refreshDatabaseDiagnostics().catch(() => {});
-    await checkNormalizedTablesAgainstCurrentState().catch(() => {});
+    await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
     setDefaultDates();
     setActiveView("log");
     if (els.authMessage) els.authMessage.textContent = "Production activity reset complete. You are ready to enter real bookings, trips, and fuel logs.";
@@ -10528,8 +10663,17 @@ function mergeClosedPeriodPaymentState(tablePeriods, jsonPeriods) {
   });
 }
 
-async function checkNormalizedTablesAgainstCurrentState() {
+async function checkNormalizedTablesAgainstCurrentState({ force = false, silent = false, reason = "manual" } = {}) {
   if (!supabaseClient || !currentSession) return;
+  const now = Date.now();
+  if (supabaseLoadSafety.normalizedCheckInFlight) return;
+  if (!force && now - supabaseLoadSafety.lastNormalizedCheckAt < supabaseLoadSafety.normalizedCheckCooldownMs) {
+    return;
+  }
+  supabaseLoadSafety.normalizedCheckInFlight = true;
+  supabaseLoadSafety.lastNormalizedCheckAt = now;
+  recordSupabaseLoadEvent(`normalized-health:${reason}`);
+  try {
   if (!(await hasFreshSupabaseSession())) return;
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
@@ -10652,7 +10796,10 @@ async function checkNormalizedTablesAgainstCurrentState() {
     admins: admins.length
   };
 
-  render();
+  if (!silent) render();
+  } finally {
+    supabaseLoadSafety.normalizedCheckInFlight = false;
+  }
 }
 
 async function loadRemoteState() {
@@ -10756,14 +10903,7 @@ async function loadSupabaseState() {
       await syncNormalizedTablesFromJson();
     }
 
-    checkNormalizedTablesAgainstCurrentState().catch((error) => {
-      normalizedTableStatus = {
-        checked: true,
-        ok: false,
-        message: `Could not read normalized tables: ${error.message || error}`
-      };
-      render();
-    });
+    scheduleNormalizedTableCheck({ delayMs: 30000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
     lastSyncError = error.message || "Could not load cloud data.";
@@ -10796,14 +10936,7 @@ async function saveSupabaseState() {
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
     markRemoteSaveSucceeded("Tables");
-    checkNormalizedTablesAgainstCurrentState().catch((error) => {
-      normalizedTableStatus = {
-        checked: true,
-        ok: false,
-        message: `Could not read normalized tables: ${error.message || error}`
-      };
-      render();
-    });
+    scheduleNormalizedTableCheck({ delayMs: 60000, reason: "save" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
     markRemoteSaveFailed(error, "Could not save table data.");
