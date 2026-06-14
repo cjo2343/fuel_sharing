@@ -564,7 +564,7 @@
               <p class="eyebrow">About</p>
               <h2 id="aboutBuildInfoHeading">App version</h2>
             </div>
-            <button id="refreshAboutBuildInfo" class="subtle-button" type="button">Refresh status</button>
+            <button id="refreshAboutBuildInfo" class="subtle-button" type="button" onclick="window.FuelBuildInfo?.refreshBuildInfo?.()">Refresh status</button>
           </div>
           <p class="section-note">Share this read-only version and update status when checking whether a phone or home-screen app has the newest files. No admin access is needed.</p>
           <div id="aboutBuildInfoPanel" class="build-info-panel-content compact-build-info"></div>
@@ -717,7 +717,7 @@
               <p class="eyebrow">Admin</p>
               <h2 id="buildInfoHeading">Version & update status</h2>
             </div>
-            <button id="refreshBuildInfo" class="subtle-button" type="button">Refresh status</button>
+            <button id="refreshBuildInfo" class="subtle-button" type="button" onclick="window.FuelBuildInfo?.refreshBuildInfo?.()">Refresh status</button>
           </div>
           <p class="section-note">Use this panel to confirm a phone or home-screen PWA is running the newest deployed files and service worker cache.</p>
           <div id="buildInfoPanel" class="build-info-panel-content"></div>

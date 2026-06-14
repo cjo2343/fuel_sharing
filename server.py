@@ -247,6 +247,7 @@ def fetch_fuel_price(path):
         "source": "Configured fallback",
     }
 
+
 def configured_supabase_origin():
     return (supabase_url() or "").rstrip("/")
 
@@ -262,12 +263,13 @@ def configured_supabase_realtime_origin():
 
 def content_security_policy():
     # Keep this CSP compatible with the static PWA, Supabase Auth/PostgREST/Realtime,
-    # the CDN-hosted Supabase client, Overpass station search, service workers, and
-    # browser notification flows. Broad table Realtime is still disabled in the app;
-    # this only permits the narrow ledger_events channel when enabled.
+    # the CDN-hosted Supabase client and its source maps, Overpass station search,
+    # service workers, and browser notification flows. Broad table Realtime remains
+    # off in the app; this only permits the narrow ledger_events channel when active.
     connect_sources = [
         "'self'",
         "https://overpass-api.de",
+        "https://cdn.jsdelivr.net",
     ]
     supabase_origin = configured_supabase_origin()
     supabase_realtime = configured_supabase_realtime_origin()
@@ -304,7 +306,6 @@ def security_headers():
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Resource-Policy": "same-origin",
     }
-
 
 def read_request_body(handler):
     length = int(handler.headers.get("Content-Length", "0"))

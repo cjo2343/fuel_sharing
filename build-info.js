@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.14.60",
-    buildLabel: "csp-security-headers",
-    updatedAt: "2026-06-15T06:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v159"
+    version: "2026.06.14.61",
+    buildLabel: "csp-jsdelivr-connect-fix",
+    updatedAt: "2026-06-15T05:08:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v160"
   });
 
   function formatDateTime(value) {
@@ -92,14 +92,6 @@
     return serviceWorkerInfo;
   }
 
-  function wireBuildInfoRefreshButtons() {
-    document.querySelectorAll("#refreshBuildInfo, #refreshAboutBuildInfo").forEach((button) => {
-      if (button.dataset.buildInfoRefreshBound === "true") return;
-      button.dataset.buildInfoRefreshBound = "true";
-      button.addEventListener("click", () => refreshBuildInfo());
-    });
-  }
-
   window.FuelBuildInfo = {
     BUILD_INFO,
     renderBuildInfo,
@@ -107,12 +99,8 @@
     serviceWorkerStatus
   };
 
-  wireBuildInfoRefreshButtons();
   refreshBuildInfo();
-  window.addEventListener("load", () => {
-    wireBuildInfoRefreshButtons();
-    refreshBuildInfo();
-  });
+  window.addEventListener("load", () => refreshBuildInfo());
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("controllerchange", () => refreshBuildInfo());
   }
