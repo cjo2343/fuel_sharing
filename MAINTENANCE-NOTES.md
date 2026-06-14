@@ -458,3 +458,9 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 - Test Lab inspect buttons now open the matching current-period fuel/trip/booking entry in edit mode when the user has permission.
 - Fuel odometer failure links load the exact fuel log into the fuel form so date, amount, liters, odometer, station, location privacy, and full-tank fields can be corrected directly.
 - Build metadata bumped to `2026.06.14.55 / testlab-inspect-edit-prefill` with cache `fuel-ledger-v154`.
+
+## 2026-06-14 - Fuel date and odometer validation
+
+- Fuel receipt date inputs no longer set a browser max date from the current day or booking context. This keeps later-dated receipts editable when correcting real odometer data.
+- Fuel save now blocks odometer values that go backwards compared with earlier/later fuel logs by receipt date, excluding the log currently being edited.
+- Build metadata bumped to `2026.06.14.56 / fuel-date-odometer-validation` with cache `fuel-ledger-v155`.

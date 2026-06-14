@@ -248,6 +248,8 @@ This does not block legitimate edge cases, but it makes users confirm that all f
 
 The app warns before settlement requests if logged fuel looks too low or too high for the trip distance, if large payments are missing liters, if DKK/L looks unrealistic, or if receipt-based consumption is outside a plausible range. These warnings do not block valid edge cases, but they require confirmation before requesting or closing settlements.
 
+Fuel receipt dates stay editable for corrections, including later-dated receipts. When saving a fuel log with an odometer, Fuel Ledger checks nearby fuel logs by date and blocks obvious backwards odometer values so a later receipt cannot be saved below a previous receipt's odometer.
+
 
 ## Editing current-period entries
 

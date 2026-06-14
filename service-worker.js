@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v154";
-const BUILD_LABEL = "testlab-inspect-edit-prefill";
-const BUILD_UPDATED_AT = "2026-06-15T04:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v155";
+const BUILD_LABEL = "fuel-date-odometer-validation";
+const BUILD_UPDATED_AT = "2026-06-15T04:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

@@ -778,6 +778,10 @@ els.fuelForm.addEventListener("submit", async (event) => {
   }
 
   const normalizedLiters = round(liters);
+  const fuelDate = els.fuelDate.value;
+  if (!validateFuelOdometerChronology({ date: fuelDate, odometer }, { excludeFuelId: editingFuelId })) {
+    return;
+  }
   if (!validateFuelAgainstEstimatedTankCapacity({ liters: normalizedLiters, odometer, fullTank }, { excludeFuelId: editingFuelId })) {
     return;
   }
@@ -789,7 +793,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
     bookingStart: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.bookingStart || pendingFuelTripContext?.bookingStart || null : pendingFuelTripContext?.bookingStart || null,
     bookingEnd: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.bookingEnd || pendingFuelTripContext?.bookingEnd || null : pendingFuelTripContext?.bookingEnd || null,
     payer: els.fuelPayer.value,
-    date: els.fuelDate.value,
+    date: fuelDate,
     amount: roundMoney(amount),
     liters: normalizedLiters,
     pricePerLiter: roundMoney(amount / normalizedLiters),
@@ -4456,6 +4460,64 @@ function validateTripAgainstEstimatedTankRange(startKm = 0, endKm = 0, options =
     return false;
   }
   return true;
+}
+
+function normalizeFuelChronologyDate(value) {
+  if (!value) return "";
+  const text = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+function findFuelOdometerChronologyIssue(fuelInput = {}, options = {}) {
+  const odometer = Number(fuelInput.odometer) || 0;
+  const date = normalizeFuelChronologyDate(fuelInput.date);
+  if (!date || odometer <= 0) return null;
+
+  const candidateLogs = (Array.isArray(state.fuel) ? state.fuel : [])
+    .filter((fuel) => fuel && fuel.id !== options.excludeFuelId)
+    .map((fuel) => ({
+      ...fuel,
+      chronologyDate: normalizeFuelChronologyDate(fuel.date),
+      chronologyOdometer: Number(fuel.odometer) || 0
+    }))
+    .filter((fuel) => fuel.chronologyDate && fuel.chronologyOdometer > 0);
+
+  const previous = candidateLogs
+    .filter((fuel) => fuel.chronologyDate < date)
+    .sort((a, b) => b.chronologyDate.localeCompare(a.chronologyDate) || b.chronologyOdometer - a.chronologyOdometer)[0] || null;
+
+  if (previous && odometer < previous.chronologyOdometer) {
+    return {
+      type: "below-previous",
+      relatedFuel: previous,
+      message: `This odometer is lower than the previous fuel log from ${formatDate(previous.date)}: ${formatNumber(previous.chronologyOdometer)} km. Enter ${formatNumber(previous.chronologyOdometer)} km or higher, or correct the earlier fuel log first.`
+    };
+  }
+
+  const next = candidateLogs
+    .filter((fuel) => fuel.chronologyDate > date)
+    .sort((a, b) => a.chronologyDate.localeCompare(b.chronologyDate) || a.chronologyOdometer - b.chronologyOdometer)[0] || null;
+
+  if (next && odometer > next.chronologyOdometer) {
+    return {
+      type: "above-next",
+      relatedFuel: next,
+      message: `This odometer is higher than the next fuel log from ${formatDate(next.date)}: ${formatNumber(next.chronologyOdometer)} km. Lower it, move the date, or correct the later fuel log first.`
+    };
+  }
+
+  return null;
+}
+
+function validateFuelOdometerChronology(fuelInput = {}, options = {}) {
+  const issue = findFuelOdometerChronologyIssue(fuelInput, options);
+  if (!issue) return true;
+  showUserError(issue.message);
+  showAppMessage(issue.message, "error");
+  const details = document.querySelector("#fuelDetails");
+  if (details) details.open = true;
+  els.fuelOdometer?.focus();
+  return false;
 }
 
 function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) {
@@ -9364,13 +9426,16 @@ function clearFuelLoggingContext() {
 }
 
 function getFuelDateLimitForActiveContext() {
-  const bookingEnd = pendingFuelTripContext?.bookingEnd ? parseBookingDate(pendingFuelTripContext.bookingEnd) : null;
-  return bookingEnd ? localDateString(bookingEnd) : localDateString();
+  return "";
 }
 
 function syncFuelDateBounds() {
   if (!els.fuelDate) return;
-  els.fuelDate.max = getFuelDateLimitForActiveContext();
+  // Fuel receipts can be corrected independently of the current calendar date
+  // or booking end date. A previous build set a max date here, which blocked
+  // fixing later-dated fuel logs discovered by Test Lab. Keep this field
+  // unrestricted and rely on explicit odometer/period validation instead.
+  els.fuelDate.removeAttribute("max");
 }
 
 function setDefaultDates() {
