@@ -36,7 +36,19 @@ function testSettlementRequestTriggerIsInstalled() {
   console.log("ok - testSettlementRequestTriggerIsInstalled");
 }
 
+
+function testPeriodCloseRpcExists() {
+  assert.match(schema, /create or replace function public\.close_settlement_period\(/);
+  assert.match(schema, /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id\)\)/);
+  assert.match(schema, /Only ledger admins can close settlement periods/);
+  assert.match(schema, /This settlement period snapshot has already been closed/);
+  assert.match(schema, /insert into public\.settlement_periods \(ledger_id, status, label, opened_at\)/);
+  assert.match(schema, /jsonb_build_object\(\s*'closed_period_id'/m);
+  console.log("ok - testPeriodCloseRpcExists");
+}
+
 testSettlementRequestTransitionGuardExists();
 testSettlementRequestPartyGuardsExist();
 testSettlementRequestSameLedgerGuardExists();
 testSettlementRequestTriggerIsInstalled();
+testPeriodCloseRpcExists();

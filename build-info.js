@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.14.26",
-    buildLabel: "test-lab-scenario-runner",
-    updatedAt: "2026-06-14T18:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v125"
+    version: "2026.06.14.27",
+    buildLabel: "period-close-rpc-transaction",
+    updatedAt: "2026-06-14T18:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v126"
   });
 
   function formatDateTime(value) {

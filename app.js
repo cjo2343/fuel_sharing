@@ -4683,37 +4683,27 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
     const context = await getNormalizedWriteContext();
     if (!context?.openPeriodId) return true;
 
-    const existingPeriod = await supabaseClient
-      .from("settlement_periods")
-      .select("id, snapshot_json")
-      .eq("id", context.openPeriodId)
-      .maybeSingle();
-    if (existingPeriod.error) throw existingPeriod.error;
-    if (existingPeriod.data?.snapshot_json?.entryFingerprint === periodSnapshot.entryFingerprint) {
-      throw new Error("This settlement period snapshot has already been written to the normalized database.");
+    const rpcResult = await closeNormalizedPeriodWithRpc(context, periodSnapshot);
+    if (rpcResult.ok) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: "Closed the normalized settlement period through the database transaction RPC and opened a fresh period. JSON will be updated as backup."
+      };
+      return true;
     }
 
-    const closedAt = periodSnapshot.closedAt || new Date().toISOString();
-    const closeResult = await supabaseClient
-      .from("settlement_periods")
-      .update({
-        status: "closed",
-        label: periodSnapshot.label || "Closed period",
-        closed_at: closedAt,
-        snapshot_json: periodSnapshot,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", context.openPeriodId)
-      .eq("status", "open")
-      .is("closed_at", null);
-    if (closeResult.error) throw closeResult.error;
+    if (!rpcResult.shouldFallback) {
+      throw rpcResult.error || new Error("Could not close the normalized settlement period.");
+    }
 
-    await ensureOpenSettlementPeriod(context.ledgerId);
+    console.warn("Period-close RPC is unavailable; falling back to guarded table updates. Apply the latest supabase-schema.sql to enable transactional period closing.", rpcResult.error);
+    await closeNormalizedPeriodWithGuardedTableUpdates(context, periodSnapshot);
 
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: "Closed the normalized settlement period and opened a fresh period. JSON will be updated as backup."
+      message: "Closed the normalized settlement period with guarded table updates. Apply the latest Supabase schema to use the transaction RPC."
     };
     return true;
   } catch (error) {
@@ -4727,6 +4717,57 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
     render();
     return false;
   }
+}
+
+async function closeNormalizedPeriodWithRpc(context, periodSnapshot) {
+  const { data, error } = await supabaseClient.rpc("close_settlement_period", {
+    target_ledger_id: context.ledgerId,
+    target_period_id: context.openPeriodId,
+    period_snapshot: periodSnapshot
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingPeriodCloseRpcError(error)
+  };
+}
+
+function isMissingPeriodCloseRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || /close_settlement_period/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+}
+
+async function closeNormalizedPeriodWithGuardedTableUpdates(context, periodSnapshot) {
+  const existingPeriod = await supabaseClient
+    .from("settlement_periods")
+    .select("id, snapshot_json")
+    .eq("id", context.openPeriodId)
+    .maybeSingle();
+  if (existingPeriod.error) throw existingPeriod.error;
+  if (existingPeriod.data?.snapshot_json?.entryFingerprint === periodSnapshot.entryFingerprint) {
+    throw new Error("This settlement period snapshot has already been written to the normalized database.");
+  }
+
+  const closedAt = periodSnapshot.closedAt || new Date().toISOString();
+  const closeResult = await supabaseClient
+    .from("settlement_periods")
+    .update({
+      status: "closed",
+      label: periodSnapshot.label || "Closed period",
+      closed_at: closedAt,
+      snapshot_json: periodSnapshot,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", context.openPeriodId)
+    .eq("status", "open")
+    .is("closed_at", null);
+  if (closeResult.error) throw closeResult.error;
+
+  await ensureOpenSettlementPeriod(context.ledgerId);
 }
 
 function renderSettlementWarning(ledger) {

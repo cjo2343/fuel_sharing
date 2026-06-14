@@ -25,7 +25,7 @@ Use this checklist when applying database or app changes to an existing Fuel Sha
 
 ## Database update
 
-Run `supabase-schema.sql` in the Supabase SQL Editor before deploying the updated app files.
+Run `supabase-schema.sql` in the Supabase SQL Editor before deploying the updated app files. This release installs/updates the `close_settlement_period` RPC used for transactional period closing; deploy the schema first so the frontend does not need to use its compatibility fallback.
 
 The schema is designed to be re-runnable with `create table if not exists`, `create or replace function`, and `drop policy if exists` statements.
 

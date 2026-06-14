@@ -18,7 +18,7 @@ The app is mostly frontend-driven and uses Supabase for authentication, storage,
 
 `car_share_ledgers` remains a broad JSON backup/state table. Ledger members can update it for compatibility with the current app architecture. The normalized tables now have stricter RLS than this legacy JSON state.
 
-Long-term goal: move fully to normalized tables and either remove `car_share_ledgers` writes from normal app flows or make that table admin-only. For payment requests, frontend rules are mirrored by database trigger/RLS hardening in `supabase-schema.sql`; keep frontend permission helpers and SQL transition guards aligned.
+Long-term goal: move fully to normalized tables and either remove `car_share_ledgers` writes from normal app flows or make that table admin-only. For payment requests, frontend rules are mirrored by database trigger/RLS hardening in `supabase-schema.sql`; keep frontend permission helpers and SQL transition guards aligned. Period closing now prefers the `close_settlement_period` Supabase RPC, which closes the current period, writes the frozen snapshot, records the closing admin, and opens the next period in one database transaction; the frontend keeps a guarded table-update fallback only for databases that have not run the latest schema yet.
 
 ## Safe refactor order
 
