@@ -15,7 +15,7 @@ function calculateLedger() {
   );
 
   for (const trip of state.trips) {
-    const km = trip.endKm - trip.startKm;
+    const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
     const participants = getTripParticipants(trip).filter((member) => people[member]);
     const shareKm = participants.length > 0 ? km / participants.length : km;
 
@@ -25,7 +25,9 @@ function calculateLedger() {
   }
 
   for (const fuel of state.fuel) {
-    people[fuel.payer].fuelPaid += fuel.amount;
+    if (people[fuel.payer]) {
+      people[fuel.payer].fuelPaid += Number(fuel.amount || 0);
+    }
   }
 
   const totalTripKm = round(
@@ -94,7 +96,7 @@ function calculateLedger() {
 function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = {}) {
   const periods = [
     { trips: currentTrips, fuel: currentFuel },
-    ...state.closedPeriods.map((period) => ({
+    ...(Array.isArray(state.closedPeriods) ? state.closedPeriods : []).map((period) => ({
       trips: Array.isArray(period.trips) ? period.trips : [],
       fuel: Array.isArray(period.fuel) ? period.fuel : [],
       totalTripKm: Number(period.totalTripKm || 0),
