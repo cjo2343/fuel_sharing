@@ -79,6 +79,17 @@ function typedRefFromEntry(entry, type = "log") {
   return compact ? `${prefix}-${compact}` : `${prefix}-unknown`;
 }
 
+async function expectUserError(page, expected) {
+  const toast = page.locator("#appMessageToast");
+  await expect(toast).toBeVisible();
+  if (expected instanceof RegExp) {
+    await expect(toast).toContainText(expected);
+  } else {
+    await expect(toast).toContainText(expected);
+  }
+  await expect(toast).toHaveAttribute("data-type", "error");
+}
+
 
 
 function makeSeededPermissionState() {
@@ -895,13 +906,10 @@ test("trip save is blocked when estimated tank range would go negative", async (
   await page.locator("#endKm").fill("11100");
   await page.locator('#tripParticipants input[value="Christian"]').check();
 
-  const dialogPromise = page.waitForEvent("dialog");
   await page.locator("#tripForm").evaluate((form) => {
     window.setTimeout(() => form.requestSubmit(), 0);
   });
-  const dialog = await dialogPromise;
-  expect(dialog.message()).toContain("exceed the estimated fuel remaining");
-  await dialog.accept();
+  await expectUserError(page, "exceed the estimated fuel remaining");
 
   await expect.poll(async () => {
     const response = await request.get("/api/state");
@@ -1011,13 +1019,10 @@ test("fuel log is blocked when liters exceed configured tank capacity", async ({
   await page.locator("#fuelDetails").evaluate((details) => { details.open = true; });
   await page.locator("#fuelOdometer").fill("10000");
 
-  const dialogPromise = page.waitForEvent("dialog");
   await page.locator("#fuelForm").evaluate((form) => {
     window.setTimeout(() => form.requestSubmit(), 0);
   });
-  const dialog = await dialogPromise;
-  expect(dialog.message()).toContain("tank capacity");
-  await dialog.accept();
+  await expectUserError(page, "tank capacity");
 
   await expect.poll(async () => {
     const response = await request.get("/api/state");
@@ -1053,13 +1058,10 @@ test("fuel log is blocked when it would overfill estimated tank level", async ({
   await page.locator("#fuelOdometer").fill("10100");
   await page.locator("#fuelFullTank").check();
 
-  const dialogPromise = page.waitForEvent("dialog");
   await page.locator("#fuelForm").evaluate((form) => {
     window.setTimeout(() => form.requestSubmit(), 0);
   });
-  const dialog = await dialogPromise;
-  expect(dialog.message()).toMatch(/Only about|overfill|should fit/i);
-  await dialog.accept();
+  await expectUserError(page, /Only about|overfill|should fit/i);
 
   await expect.poll(async () => {
     const response = await request.get("/api/state");

@@ -463,7 +463,7 @@ if (els.bookingForm) {
   els.bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!canUseAppAsMember()) {
-      alert("Your email is not assigned to a member yet. Ask an admin to add it.");
+      showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
       return;
     }
 
@@ -485,7 +485,7 @@ if (els.bookingForm) {
 
     const validation = validateBookingInput(bookingPayload, editingBookingId);
     if (!validation.ok) {
-      alert(validation.message);
+      showUserError(validation.message);
       renderBookingAvailabilityPreview(bookingPayload, editingBookingId);
       return;
     }
@@ -545,7 +545,7 @@ document.addEventListener("click", (event) => {
 els.tripForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canUseAppAsMember()) {
-    alert("Your email is not assigned to a member yet. Ask an admin to add it.");
+    showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
@@ -554,12 +554,12 @@ els.tripForm.addEventListener("submit", async (event) => {
   const participants = getSelectedParticipants();
 
   if (end <= start) {
-    alert("End odometer must be higher than start odometer.");
+    showUserError("End odometer must be higher than start odometer.");
     return;
   }
 
   if (participants.length === 0) {
-    alert("Choose at least one person to split the trip with.");
+    showUserError("Choose at least one person to split the trip with.");
     return;
   }
 
@@ -670,7 +670,7 @@ if (els.tripEstimateResult) {
 els.fuelForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canUseAppAsMember()) {
-    alert("Your email is not assigned to a member yet. Ask an admin to add it.");
+    showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
@@ -687,14 +687,14 @@ els.fuelForm.addEventListener("submit", async (event) => {
 
   const validation = validateFuelLogInput({ amount, liters });
   if (!validation.ok) {
-    alert(validation.message);
+    showUserError(validation.message);
     showAppMessage(validation.message, "error");
     return;
   }
 
   if (pendingFuelTripContext?.requiredFuel && !fullTank) {
     const message = "Multi-day booking fuel logs must confirm the tank was filled to full.";
-    alert(message);
+    showUserError(message);
     showAppMessage(message, "error");
     const details = document.querySelector("#fuelDetails");
     if (details) details.open = true;
@@ -993,7 +993,7 @@ function renderSectionNavigation() {
 els.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) {
-    alert("Only an admin can change group settings.");
+    showUserError("Only an admin can change group settings.");
     return;
   }
 
@@ -1001,7 +1001,7 @@ els.settingsForm.addEventListener("submit", async (event) => {
   const members = parsed.map((member) => member.name);
 
   if (members.length < 2) {
-    alert("Add at least two people.");
+    showUserError("Add at least two people.");
     return;
   }
 
@@ -1048,14 +1048,14 @@ els.settingsForm.addEventListener("submit", async (event) => {
 
 els.resetPeriod.addEventListener("click", () => {
   if (!canManageSettings()) {
-    alert("Only an admin can reset the current period.");
+    showUserError("Only an admin can reset the current period.");
     return;
   }
   if (state.trips.length === 0 && state.fuel.length === 0) {
-    alert("There is no current period data to reset.");
+    showUserError("There is no current period data to reset.");
     return;
   }
-  if (!confirm("Remove all trips, fuel payments, and request statuses from the current open period? Settings and archived periods stay unchanged.")) return;
+  if (!confirmUserAction("Remove all trips, fuel payments, and request statuses from the current open period? Settings and archived periods stay unchanged.")) return;
   const resetLedger = calculateLedger();
   const resetTripCount = state.trips.length;
   const resetFuelCount = state.fuel.length;
@@ -1076,10 +1076,10 @@ els.resetPeriod.addEventListener("click", () => {
 
 els.resetData.addEventListener("click", () => {
   if (!canManageSettings()) {
-    alert("Only an admin can reset data.");
+    showUserError("Only an admin can reset data.");
     return;
   }
-  if (!confirm("Reset all trips, fuel payments, and settings?")) return;
+  if (!confirmUserAction("Reset all trips, fuel payments, and settings?")) return;
   state = structuredClone(defaults);
   clearTripLoggingContext();
   clearFuelLoggingContext();
@@ -1273,7 +1273,7 @@ function addGeneratedTestTrip() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
   const actor = getTestActorName();
   if (!actor) {
-    alert("Add at least one member before creating test trips.");
+    showUserError("Add at least one member before creating test trips.");
     return;
   }
 
@@ -1302,7 +1302,7 @@ function addGeneratedTestFuel() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
   const actor = getTestActorName();
   if (!actor) {
-    alert("Add at least one member before creating test fuel logs.");
+    showUserError("Add at least one member before creating test fuel logs.");
     return;
   }
 
@@ -1419,10 +1419,10 @@ async function flushStressSave(label) {
 
 async function runGeneratedStressTest() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirm("Run a generated stress test? This will add 25 test trips and 15 test fuel logs, save them, verify the normalized tables, then leave them visible until you press Remove test data.")) return;
+  if (!confirmUserAction("Run a generated stress test? This will add 25 test trips and 15 test fuel logs, save them, verify the normalized tables, then leave them visible until you press Remove test data.")) return;
   const members = getMemberNames();
   if (!members.length) {
-    alert("Add at least one member before running the stress test.");
+    showUserError("Add at least one member before running the stress test.");
     return;
   }
 
@@ -1440,10 +1440,10 @@ async function runGeneratedStressTest() {
 
 async function runGeneratedRapidSaveTest() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirm("Run a rapid save test? This will perform 8 small generated changes with separate saves. Generated data can be removed afterwards with Remove test data.")) return;
+  if (!confirmUserAction("Run a rapid save test? This will perform 8 small generated changes with separate saves. Generated data can be removed afterwards with Remove test data.")) return;
   const members = getMemberNames();
   if (!members.length) {
-    alert("Add at least one member before running the rapid save test.");
+    showUserError("Add at least one member before running the rapid save test.");
     return;
   }
 
@@ -2679,7 +2679,7 @@ function assertCurrentPeriodAllowsMoneyChanges(action = "change this period") {
   if (!isCurrentPeriodLockedForNewEntries()) return true;
   const message = getPeriodEntryLockMessage();
   showAppMessage(message, "warning", { timeoutMs: 6500 });
-  alert(message);
+  showUserError(message);
   renderPeriodEntryLock();
   return false;
 }
@@ -3312,7 +3312,7 @@ function validateTripAgainstEstimatedTankRange(startKm = 0, endKm = 0, options =
   if (!impact.enforced) return true;
   const overflowLiters = impact.projectedLiters - impact.tankCapacity;
   if (overflowLiters > 0.05) {
-    alert(`This trip would exceed the estimated fuel remaining since the last full-tank log at ${formatNumber(impact.latestFuelOdometer)} km. Estimated use would reach ${formatNumber(impact.projectedLiters)} L, but the tank capacity is ${formatNumber(impact.tankCapacity)} L. Add a fuel log before saving this trip, or check the odometer values.`);
+    showUserError(`This trip would exceed the estimated fuel remaining since the last full-tank log at ${formatNumber(impact.latestFuelOdometer)} km. Estimated use would reach ${formatNumber(impact.projectedLiters)} L, but the tank capacity is ${formatNumber(impact.tankCapacity)} L. Add a fuel log before saving this trip, or check the odometer values.`);
     return false;
   }
   return true;
@@ -3327,7 +3327,7 @@ function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) 
 
   if (liters > tankCapacity + toleranceLiters) {
     const message = `This fuel log is ${formatNumber(liters)} L, but the configured tank capacity is ${formatNumber(tankCapacity)} L. Check the receipt or update the tank capacity before saving.`;
-    alert(message);
+    showUserError(message);
     showAppMessage(message, "error");
     return false;
   }
@@ -3345,14 +3345,14 @@ function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) 
     const message = fullTank
       ? `This full-tank fuel log adds ${formatNumber(liters)} L, but the tank is estimated to have about ${formatNumber(estimatedBefore)} L already. Only about ${formatNumber(availableSpace)} L should fit. Check the odometer/liters, or add the missing trip before this fuel log.`
       : `This fuel log would overfill the tank. The tank is estimated to have about ${formatNumber(estimatedBefore)} L already, so only about ${formatNumber(availableSpace)} L should fit before reaching the configured ${formatNumber(tankCapacity)} L capacity.`;
-    alert(message);
+    showUserError(message);
     showAppMessage(message, "error");
     return false;
   }
 
   if (!fullTank && projectedAfter > tankCapacity + toleranceLiters) {
     const message = `This fuel log would raise the estimated tank level to ${formatNumber(projectedAfter)} L, above the configured ${formatNumber(tankCapacity)} L capacity.`;
-    alert(message);
+    showUserError(message);
     showAppMessage(message, "error");
     return false;
   }
@@ -4362,24 +4362,24 @@ function renderSettlements(ledger) {
 
 async function closeCurrentPeriod(options = {}) {
   if (!canManageSettings() && !options.allowMemberClose) {
-    alert("Only an admin can close periods manually.");
+    showUserError("Only an admin can close periods manually.");
     return;
   }
   if (state.trips.length === 0 && state.fuel.length === 0) {
-    alert("Add trips or fuel before closing a period.");
+    showUserError("Add trips or fuel before closing a period.");
     return;
   }
 
   const ledger = calculateLedger();
   const settlementProgress = getSettlementProgress(ledger);
   if (settlementProgress.openCount > 0 && !options.allowOpenPayments) {
-    alert(`Request all settlement payments before closing this period. ${settlementProgress.openCount} payment${settlementProgress.openCount === 1 ? " is" : "s are"} still not requested.`);
+    showUserError(`Request all settlement payments before closing this period. ${settlementProgress.openCount} payment${settlementProgress.openCount === 1 ? " is" : "s are"} still not requested.`);
     return;
   }
 
   const missingRequiredFuel = getMissingRequiredFuelTasksForCurrentPeriod();
   if (missingRequiredFuel.length > 0 && !options.skipRequiredBookingFuel) {
-    alert(buildMissingRequiredFuelMessage(missingRequiredFuel, "close this period"));
+    showUserError(buildMissingRequiredFuelMessage(missingRequiredFuel, "close this period"));
     setActiveView("log");
     render();
     window.setTimeout(() => els.pendingLogsPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
@@ -4387,10 +4387,10 @@ async function closeCurrentPeriod(options = {}) {
   }
 
   if (!options.skipFuelValidation && isFuelEstimateWarningActive(ledger)) {
-    if (!confirm(buildFuelValidationMessage(ledger, "close this period anyway"))) return;
+    if (!confirmUserAction(buildFuelValidationMessage(ledger, "close this period anyway"))) return;
   }
 
-  if (!options.skipConfirm && !confirm(buildClosePeriodConfirmation(ledger))) {
+  if (!options.skipConfirm && !confirmUserAction(buildClosePeriodConfirmation(ledger))) {
     return;
   }
 
@@ -4494,7 +4494,7 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
       ok: false,
       message: `Could not close the normalized settlement period, so JSON was not changed: ${error.message || error}`
     };
-    alert("Could not close this period in the normalized database. The period was not archived. Check the console for details.");
+    showUserError("Could not close this period in the normalized database. The period was not archived. Check the console for details.");
     render();
     return false;
   }
@@ -5083,7 +5083,7 @@ async function updatePaymentStatus(button) {
   }
 
   if (button.dataset.paymentStatus === "requested" && isFuelEstimateWarningActive(ledger)) {
-    if (!confirm(buildFuelValidationMessage(ledger, "request this payment anyway"))) {
+    if (!confirmUserAction(buildFuelValidationMessage(ledger, "request this payment anyway"))) {
       render();
       return;
     }
@@ -5519,7 +5519,7 @@ async function importLedgerBackup() {
       : "";
 
     if (
-      !confirm(
+      !confirmUserAction(
         `Restore this backup? This will replace the current ledger with ${memberCount} people, ${tripCount} current trips, ${fuelCount} current fuel payments, and ${periodCount} closed periods.${warningText}`
       )
     ) {
@@ -5656,7 +5656,7 @@ function closedPeriodFileStem(period) {
 function downloadClosedPeriodReport(periodId) {
   const period = findClosedPeriod(periodId);
   if (!period) {
-    alert("Could not find that closed period.");
+    showUserError("Could not find that closed period.");
     return;
   }
 
@@ -5667,7 +5667,7 @@ function downloadClosedPeriodReport(periodId) {
 function downloadClosedPeriodCsv(periodId) {
   const period = findClosedPeriod(periodId);
   if (!period) {
-    alert("Could not find that closed period.");
+    showUserError("Could not find that closed period.");
     return;
   }
 
@@ -5678,7 +5678,7 @@ function downloadClosedPeriodCsv(periodId) {
 function downloadClosedPeriodAuditCsv(periodId) {
   const period = findClosedPeriod(periodId);
   if (!period) {
-    alert("Could not find that closed period.");
+    showUserError("Could not find that closed period.");
     return;
   }
 
@@ -5967,7 +5967,7 @@ function removeUnusedTestUsers() {
     return;
   }
 
-  if (!confirm(`Remove these unused test users?\n\n${removable.join("\n")}`)) return;
+  if (!confirmUserAction(`Remove these unused test users?\n\n${removable.join("\n")}`)) return;
 
   state.members = state.members.filter((member) => !removable.includes(member));
   for (const member of removable) delete state.memberProfiles[member];
@@ -6159,7 +6159,7 @@ function describeFuelPermissionMessage(fuel, action = "edit") {
 function showPermissionBlocked(message) {
   if (!message) return;
   showAppMessage(message, "warning", { timeoutMs: 7000 });
-  alert(message);
+  showUserError(message);
 }
 
 function renderPermissionNote(message) {
@@ -6808,7 +6808,7 @@ function startFuelFromTrip(id) {
     return;
   }
   if (!canManageTripEntry(trip)) {
-    alert("Only the trip driver or an admin can add fuel for this trip.");
+    showUserError("Only the trip driver or an admin can add fuel for this trip.");
     return;
   }
   if (!assertCurrentPeriodAllowsMoneyChanges("add fuel for this trip")) return;
@@ -6897,12 +6897,12 @@ function startTripFromBooking(id) {
   if (!booking) return;
   const existingTrip = findTripForBooking(booking.id);
   if (existingTrip) {
-    alert(`Booking ${formatTypedLogRef(booking, "booking")} has already been logged as trip ${formatTypedLogRef(existingTrip, "trip")}.`);
+    showUserError(`Booking ${formatTypedLogRef(booking, "booking")} has already been logged as trip ${formatTypedLogRef(existingTrip, "trip")}.`);
     render();
     return;
   }
   if (!canCreateTripFromBooking(booking)) {
-    alert("Only the booked driver can turn this booking into a trip log.");
+    showUserError("Only the booked driver can turn this booking into a trip log.");
     return;
   }
 
@@ -7187,7 +7187,7 @@ function confirmManagedMemberRoleChange(existingMember, nextRole) {
   const message = nextRole === "admin"
     ? `Promote ${name} to admin? Admins can manage members, settings, diagnostics, exports, and reset tools.`
     : `Change ${name} from admin to member? They will lose access to member management, settings, diagnostics, exports, and reset tools.`;
-  return confirm(message);
+  return confirmUserAction(message);
 }
 
 function renderMemberManagementPanel() {
@@ -7322,7 +7322,7 @@ function protectAgainstAdminLockout(payload, existingMember, nextActive = existi
   const currentEmail = getLoggedInEmail();
   const isSelf = normalizeEmail(existingMember?.email || "") === currentEmail;
   if (isSelf && (!nextActive || payload.role !== "admin")) {
-    alert("You cannot deactivate or demote yourself. Add another admin first, then ask that admin to change your role if needed.");
+    showUserError("You cannot deactivate or demote yourself. Add another admin first, then ask that admin to change your role if needed.");
     return false;
   }
 
@@ -7332,7 +7332,7 @@ function protectAgainstAdminLockout(payload, existingMember, nextActive = existi
     return nextActive && payload.role === "admin";
   });
   if (activeAdminsAfter.length === 0) {
-    alert("At least one active admin is required.");
+    showUserError("At least one active admin is required.");
     return false;
   }
   return true;
@@ -7341,7 +7341,7 @@ function protectAgainstAdminLockout(payload, existingMember, nextActive = existi
 async function saveManagedMember(row) {
   const payload = getManagedMemberPayloadFromRow(row);
   if (!payload.name) {
-    alert("Member name is required.");
+    showUserError("Member name is required.");
     return;
   }
   const existing = (memberManagementStatus.rows || []).find((member) => member.id === payload.id);
@@ -7359,7 +7359,7 @@ async function saveManagedMember(row) {
     })
     .eq("id", payload.id);
   if (error) {
-    alert(`Could not save member: ${error.message || error}`);
+    showUserError(`Could not save member: ${error.message || error}`);
     return;
   }
   await afterMemberManagementChange(`${payload.name} saved as ${memberRoleLabel(payload.role)}.`);
@@ -7368,7 +7368,7 @@ async function saveManagedMember(row) {
 async function setManagedMemberActive(row, isActive) {
   const payload = getManagedMemberPayloadFromRow(row);
   const existing = (memberManagementStatus.rows || []).find((member) => member.id === payload.id);
-  if (!isActive && !confirm(`Deactivate ${describeManagedMember(existing)}? They will no longer be able to access the app.`)) return;
+  if (!isActive && !confirmUserAction(`Deactivate ${describeManagedMember(existing)}? They will no longer be able to access the app.`)) return;
   if (!protectAgainstAdminLockout(payload, existing, isActive)) return;
 
   const { error } = await supabaseClient
@@ -7376,7 +7376,7 @@ async function setManagedMemberActive(row, isActive) {
     .update({ is_active: isActive, updated_at: new Date().toISOString() })
     .eq("id", payload.id);
   if (error) {
-    alert(`Could not update member: ${error.message || error}`);
+    showUserError(`Could not update member: ${error.message || error}`);
     return;
   }
   await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
@@ -7388,11 +7388,11 @@ async function addManagedMember() {
   const mobilepayPhone = normalizePhone(els.newMemberMobilePayPhone?.value || "");
   const role = els.newMemberRole?.value === "admin" ? "admin" : "member";
   if (!name) {
-    alert("Member name is required.");
+    showUserError("Member name is required.");
     return;
   }
   if (!email) {
-    alert("Login email is required before inviting a member.");
+    showUserError("Login email is required before inviting a member.");
     return;
   }
 
@@ -7409,7 +7409,7 @@ async function addManagedMember() {
       updated_at: new Date().toISOString()
     }, { onConflict: "ledger_id,name" });
   if (error) {
-    alert(`Could not add member: ${error.message || error}`);
+    showUserError(`Could not add member: ${error.message || error}`);
     return;
   }
   if (els.newMemberName) els.newMemberName.value = "";
@@ -7432,11 +7432,11 @@ async function afterMemberManagementChange(message) {
 
 async function runProductionActivityReset() {
   if (!supabaseClient || !currentSession) {
-    alert("Sign in as an admin before resetting production activity.");
+    showUserError("Sign in as an admin before resetting production activity.");
     return;
   }
   if (!canManageSettings()) {
-    alert("Only an admin can reset production activity.");
+    showUserError("Only an admin can reset production activity.");
     return;
   }
   const warning = [
@@ -7450,10 +7450,10 @@ async function runProductionActivityReset() {
     "Members, emails, roles, MobilePay phones, and ledger settings are kept.",
     "A JSON backup download will start before the reset."
   ].join("\n");
-  if (!confirm(warning)) return;
+  if (!confirmUserAction(warning)) return;
   const typed = prompt("Type RESET PRODUCTION to delete all bookings, trips, fuel logs, settlement data, and start one fresh empty period.");
   if (typed !== "RESET PRODUCTION") {
-    alert("Reset cancelled. The confirmation text did not match.");
+    showUserError("Reset cancelled. The confirmation text did not match.");
     return;
   }
 
@@ -7489,7 +7489,7 @@ async function runProductionActivityReset() {
     if (els.authMessage) els.authMessage.textContent = "Production activity reset complete. You are ready to enter real bookings, trips, and fuel logs.";
   } catch (error) {
     console.error("Production activity reset failed", error);
-    alert(`Production reset failed: ${error.message || error}`);
+    showUserError(`Production reset failed: ${error.message || error}`);
   } finally {
     els.productionActivityReset.disabled = false;
     render();
@@ -8934,7 +8934,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
       ok: false,
       message: `Could not save trip to normalized tables, so JSON was not changed: ${error.message || error}`
     };
-    alert("Could not save this trip to the normalized database. The local JSON backup was not changed. Check the console for details.");
+    showUserError("Could not save this trip to the normalized database. The local JSON backup was not changed. Check the console for details.");
     render();
     return false;
   }
@@ -8989,7 +8989,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       ok: false,
       message: `Could not save fuel log to normalized tables, so JSON was not changed: ${error.message || error}`
     };
-    alert("Could not save this fuel log to the normalized database. The local JSON backup was not changed. Check the console for details.");
+    showUserError("Could not save this fuel log to the normalized database. The local JSON backup was not changed. Check the console for details.");
     render();
     return false;
   }
@@ -9042,7 +9042,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       ok: false,
       message
     };
-    alert(message);
+    showUserError(message);
     render();
     return false;
   }
@@ -9140,7 +9140,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       ok: false,
       message: `Could not save settlement request to normalized tables, so JSON was not changed: ${error.message || error}`
     };
-    alert("Could not save this settlement request to the normalized database. The local JSON backup was not changed. Check the console for details.");
+    showUserError("Could not save this settlement request to the normalized database. The local JSON backup was not changed. Check the console for details.");
     render();
     return false;
   }
@@ -9180,7 +9180,7 @@ async function softDeleteNormalizedEntryFirst(type, id) {
       ok: false,
       message: `Could not delete from normalized tables, so JSON was not changed: ${error.message || error}`
     };
-    alert("Could not delete this entry from the normalized database. The local JSON backup was not changed. Check the console for details.");
+    showUserError("Could not delete this entry from the normalized database. The local JSON backup was not changed. Check the console for details.");
     render();
     return false;
   }
