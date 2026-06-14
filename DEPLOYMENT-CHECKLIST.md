@@ -406,3 +406,8 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 - After deploying `2026.06.14.54 / sync-recovery-ux`, reload once so the active service worker cache is `fuel-ledger-v153`.
 - If a device still shows the old red `Local only` startup timeout, clear site data or remove/reinstall the PWA to force the new runtime.
 - Confirm that a successful `Sync now` clears `Cloud delayed` and returns the badge to `Database`/`Cloud`.
+
+### Test Lab inspect edit prefill deployment note
+
+- After deploying `2026.06.14.55 / testlab-inspect-edit-prefill`, reload once so the active service worker cache is `fuel-ledger-v154`.
+- Verify a Test Lab fuel odometer failure button opens the referenced fuel log in edit mode with the odometer/date fields pre-filled.

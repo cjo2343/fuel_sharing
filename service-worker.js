@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v153";
-const BUILD_LABEL = "sync-recovery-ux";
+const CACHE_NAME = "fuel-ledger-v154";
+const BUILD_LABEL = "testlab-inspect-edit-prefill";
 const BUILD_UPDATED_AT = "2026-06-15T04:05:00.000Z";
 const CORE_ASSETS = [
   "/",

@@ -672,3 +672,7 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 ### Sync recovery behavior
 
 The app uses cached local data if the initial Supabase load is slow, but this is now treated as a recoverable delayed-cloud state. The startup timeout is 15 seconds, background retry continues, and a successful background or manual sync clears the warning automatically.
+
+### Test Lab inspect links
+
+Test Lab failure buttons open matching current-period entries directly in edit mode when the signed-in user has permission. Fuel odometer failures now load the exact fuel log into the fuel form so the saved date, odometer, liters, station, and full-tank values can be corrected without searching manually.

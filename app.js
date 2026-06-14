@@ -2236,53 +2236,67 @@ function renderTestLabReport(report = null, { persist = false } = {}) {
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
 }
 
+function highlightVisibleEntryCard(type, id, missingMessage) {
+  window.setTimeout(() => {
+    const card = document.querySelector(`[data-entry-type="${CSS.escape(type)}"][data-entry-id="${CSS.escape(id)}"]`);
+    if (!card) {
+      showUserWarning(missingMessage);
+      return;
+    }
+    const group = card.closest("details.history-group");
+    if (group) group.open = true;
+    card.classList.add("entry-card-highlight");
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
+  }, 0);
+}
+
 function inspectTestLabEntry(value) {
   const [type, id] = String(value || "").split(":");
   if (!type || !id) return;
   if (type === "fuel") {
-    showLogViewForEditing();
-    render();
+    const fuel = state.fuel.find((entry) => entry.id === id);
+    if (!fuel) {
+      showLogViewForEditing();
+      render();
+      highlightVisibleEntryCard("fuel", id, "That fuel log is not visible in the current period. It may be archived or deleted.");
+      return;
+    }
+    if (!canManageFuelEntry(fuel)) {
+      showPermissionBlocked(describeFuelPermissionMessage(fuel, "edit"));
+      return;
+    }
+    if (!assertCurrentPeriodAllowsMoneyChanges("edit fuel logs")) return;
+    startFuelEdit(id);
+    showAppMessage(`Fuel log ${formatTypedLogRef(fuel, "fuel")} loaded for editing.`);
     window.setTimeout(() => {
-      const card = document.querySelector(`[data-entry-type="fuel"][data-entry-id="${CSS.escape(id)}"]`);
-      if (!card) {
-        showUserWarning("That fuel log is not visible in the current period. It may be archived or deleted.");
-        return;
-      }
-      const group = card.closest("details.history-group");
-      if (group) group.open = true;
-      card.classList.add("entry-card-highlight");
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
+      els.fuelOdometer?.focus();
+      els.fuelForm?.classList.add("entry-card-highlight");
+      window.setTimeout(() => els.fuelForm?.classList.remove("entry-card-highlight"), 4000);
     }, 0);
     return;
   }
   if (type === "trips" || type === "trip") {
+    const trip = state.trips.find((entry) => entry.id === id);
+    if (trip && canManageTripEntry(trip) && assertCurrentPeriodAllowsMoneyChanges("edit trip logs")) {
+      startTripEdit(id);
+      showAppMessage(`Trip ${formatTypedLogRef(trip, "trip")} loaded for editing.`);
+      return;
+    }
     showLogViewForEditing();
     render();
-    window.setTimeout(() => {
-      const card = document.querySelector(`[data-entry-type="trip"][data-entry-id="${CSS.escape(id)}"]`);
-      if (!card) {
-        showUserWarning("That trip log is not visible in the current period. It may be archived or deleted.");
-        return;
-      }
-      card.classList.add("entry-card-highlight");
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
-    }, 0);
+    highlightVisibleEntryCard("trip", id, "That trip log is not visible in the current period. It may be archived or deleted.");
     return;
   }
   if (type === "bookings" || type === "booking") {
+    const booking = state.bookings.find((entry) => entry.id === id);
+    if (booking && canManageBookingEntry(booking)) {
+      startBookingEdit(id);
+      showAppMessage(`Booking ${formatTypedLogRef(booking, "booking")} loaded for editing.`);
+      return;
+    }
     setActiveView("book");
-    window.setTimeout(() => {
-      const card = document.querySelector(`[data-entry-type="booking"][data-entry-id="${CSS.escape(id)}"]`);
-      if (!card) {
-        showUserWarning("That booking is not visible in the current calendar view. It may be archived or deleted.");
-        return;
-      }
-      card.classList.add("entry-card-highlight");
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
-    }, 0);
+    highlightVisibleEntryCard("booking", id, "That booking is not visible in the current calendar view. It may be archived or deleted.");
   }
 }
 

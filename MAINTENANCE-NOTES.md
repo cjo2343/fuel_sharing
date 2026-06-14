@@ -452,3 +452,9 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 - Startup cloud timeouts now show a recoverable `Cloud delayed` status instead of a red/sticky local-only error.
 - Successful background or manual cloud sync clears the delayed warning and removes the local/degraded state automatically.
 - The sync badge now shows retry timing so operators can distinguish a temporary delayed startup from true unsaved local changes.
+
+## 2026-06-14 - Test Lab inspect edit prefill
+
+- Test Lab inspect buttons now open the matching current-period fuel/trip/booking entry in edit mode when the user has permission.
+- Fuel odometer failure links load the exact fuel log into the fuel form so date, amount, liters, odometer, station, location privacy, and full-tank fields can be corrected directly.
+- Build metadata bumped to `2026.06.14.55 / testlab-inspect-edit-prefill` with cache `fuel-ledger-v154`.
