@@ -1646,6 +1646,44 @@ function getCurrentTestLabReport() {
   return lastTestLabReport || getLatestSyncedTestLabReport();
 }
 
+function createSecurityHealthTimeoutStatus(timeoutMs = 8000) {
+  return {
+    checked: true,
+    ok: false,
+    mode: hasSupabaseConfig ? "supabase" : "local",
+    checkedAt: new Date().toISOString(),
+    message: `Security health check timed out after ${Math.round(timeoutMs / 1000)} seconds.`,
+    checks: [{
+      ok: false,
+      name: "Supabase security health completed",
+      detail: "Timed out before the backend checks returned. Try the Security health button directly, then export the report if it repeats."
+    }]
+  };
+}
+
+async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000 } = {}) {
+  let timeoutId = null;
+  const timeout = new Promise((resolve) => {
+    timeoutId = setTimeout(() => resolve(createSecurityHealthTimeoutStatus(timeoutMs)), timeoutMs);
+  });
+  try {
+    const status = await Promise.race([refreshSupabaseSecurityHealth({ silent: true }), timeout]);
+    if (timeoutId) clearTimeout(timeoutId);
+    supabaseSecurityStatus = status && typeof status === "object" ? status : createSecurityHealthTimeoutStatus(timeoutMs);
+  } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId);
+    supabaseSecurityStatus = {
+      checked: true,
+      ok: false,
+      mode: hasSupabaseConfig ? "supabase" : "local",
+      checkedAt: new Date().toISOString(),
+      message: `Security health check failed: ${error.message || error}`,
+      checks: [{ ok: false, name: "Supabase security health completed", detail: error.message || String(error) }]
+    };
+  }
+  return supabaseSecurityStatus;
+}
+
 function persistTestLabReport(report, { sync = true } = {}) {
   if (!report || typeof report !== "object") return null;
   const enriched = {
@@ -1799,8 +1837,9 @@ function renderTestLabReport(report = null, { persist = true } = {}) {
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
 }
 
-function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [], scenarioFilter = null }) {
+function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [], scenarioFilter = null, securityStatus = null }) {
   const ledger = calculateLedger();
+  const effectiveSecurityStatus = securityStatus || supabaseSecurityStatus;
   const matrixInput = {
     state,
     ledger,
@@ -1809,7 +1848,7 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     locationPrivacy: window.FuelLocationPrivacy,
     dataStore,
     securityHealthHelper: securityHealth,
-    supabaseSecurityStatus,
+    supabaseSecurityStatus: effectiveSecurityStatus,
     transition: typeof isValidPaymentStatusTransition === "function" ? isValidPaymentStatusTransition : null
   };
   let scenarios = testLab?.runScenarioMatrixChecks ? testLab.runScenarioMatrixChecks(matrixInput) : [];
@@ -1829,7 +1868,7 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     createdBy: describeCurrentActor(),
     browser: navigator.userAgent || "",
     normalizedTableStatus,
-    supabaseSecurityStatus,
+    supabaseSecurityStatus: effectiveSecurityStatus,
     before,
     after: testLab.stateSummary(state),
     generated,
@@ -1850,14 +1889,15 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
   const startedAt = new Date().toISOString();
   const id = testLab.createTestRunId();
   setDataToolsMessage(`Test Lab ${id}: running ${scenarioName}...`);
-  await refreshSupabaseSecurityHealth({ silent: true });
+  const securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 8000 });
   const report = buildCurrentTestLabReport({
     id,
     scenario: scenarioName,
     startedAt,
     before: testLab.stateSummary(state),
     generated: testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker }),
-    scenarioFilter
+    scenarioFilter,
+    securityStatus
   });
   renderTestLabReport(report);
   setDataToolsMessage(`${scenarioName} complete: ${report.passedCount} passed, ${report.failedCount} failed.`);
@@ -1914,22 +1954,12 @@ async function runFullTestLabScenario() {
   }
 
   const generatedBeforeCleanup = testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker });
-  try {
-    setDataToolsMessage(`Test Lab ${runId}: running Supabase security health checks...`);
-    await refreshSupabaseSecurityHealth({ silent: true });
-  } catch (securityError) {
-    console.warn("Test Lab security health check failed", securityError);
-    supabaseSecurityStatus = {
-      checked: true,
-      ok: false,
-      mode: hasSupabaseConfig ? "supabase" : "local",
-      checkedAt: new Date().toISOString(),
-      message: `Security health check could not complete: ${securityError.message || securityError}`,
-      checks: [{ ok: false, name: "Supabase security health completed", detail: securityError.message || String(securityError) }]
-    };
-    errors.push(`Security health failed: ${securityError.message || securityError}`);
+  setDataToolsMessage(`Test Lab ${runId}: running Supabase security health checks...`);
+  const securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 8000 });
+  if (!securityStatus.ok) {
+    errors.push(securityStatus.message || "Security health needs review.");
   }
-  let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors });
+  let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors, securityStatus });
   renderTestLabReport(report);
 
   let cleanup = null;
