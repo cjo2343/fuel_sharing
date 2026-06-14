@@ -51,7 +51,8 @@ function testSavedStatusesClearPendingLanguage() {
   });
   assert.equal(display.text, "Database");
   assert.equal(display.status, "tables");
-  assert.match(display.detail, /Saved to database/);
+  assert.match(display.detail, /Synced/);
+  assert.match(display.detail, /live sync off/);
   assert.doesNotMatch(display.detail, /unsynced/);
 }
 

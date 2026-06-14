@@ -18,6 +18,7 @@
   function syncDisplayForStatus(label, options = {}) {
     const pendingCount = normalizePendingCount(options.pendingCount);
     const lastCloudSaveAt = options.lastCloudSaveAt || "";
+    const lastCloudSyncAt = options.lastCloudSyncAt || lastCloudSaveAt || "";
     const lastLocalSaveAt = options.lastLocalSaveAt || "";
     const lastSyncError = options.lastSyncError || "";
     const normalizedLabel = String(label || "").trim() || "Local";
@@ -30,8 +31,8 @@
         text: "Database",
         status: "tables",
         detail: lastCloudSaveAt
-          ? `Saved to database ${formatSaveTime(lastCloudSaveAt)}`
-          : "Saved/read through normalized database tables"
+          ? `Synced ${formatSaveTime(lastCloudSyncAt || lastCloudSaveAt)} · live sync off`
+          : "Synced through database tables · live sync off"
       };
     }
 
@@ -39,7 +40,7 @@
       return {
         text: "Cloud",
         status: "cloud",
-        detail: lastCloudSaveAt ? `Saved to cloud ${formatSaveTime(lastCloudSaveAt)}` : "Saved to Supabase"
+        detail: lastCloudSyncAt ? `Synced ${formatSaveTime(lastCloudSyncAt)} · live sync off` : "Saved to Supabase · live sync off"
       };
     }
 
@@ -47,7 +48,7 @@
       return {
         text: "Shared",
         status: "shared",
-        detail: lastCloudSaveAt ? `Saved to shared file ${formatSaveTime(lastCloudSaveAt)}` : "Saved to shared file"
+        detail: lastCloudSyncAt ? `Synced ${formatSaveTime(lastCloudSyncAt)}` : "Saved to shared file"
       };
     }
 
@@ -68,7 +69,7 @@
     }
 
     if (normalizedLabel === "Syncing") {
-      return { text: "Syncing", status: "syncing", detail: "Loading shared data..." };
+      return { text: "Syncing", status: "syncing", detail: "Refreshing shared data..." };
     }
 
     if (normalizedLabel === "Login") {

@@ -440,3 +440,8 @@ This rule applies to `app.js`, helper modules, CSS, icons, `index.html`, `manife
 ### Test Lab scenario matrix
 
 The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.
+
+
+### Sync clarity update
+
+Supabase Realtime is off by default. Use **Sync now** to refresh shared data on demand. Critical actions such as closing periods or updating payment status warn and offer a refresh when the local copy may be stale.

@@ -193,6 +193,7 @@ let pushEnabled = false;
 let latestFuelPrice = null;
 let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
+let lastCloudSyncAt = "";
 let lastJsonMirrorSaveAt = "";
 let lastSyncError = "";
 let pendingLocalChanges = 0;
@@ -265,6 +266,7 @@ const els = {
   currentUser: document.querySelector("#currentUser"),
   syncStatus: document.querySelector("#syncStatus"),
   syncDetail: document.querySelector("#syncDetail"),
+  syncNow: document.querySelector("#syncNow"),
   tripDriver: document.querySelector("#tripDriver"),
   bookingMember: document.querySelector("#bookingMember"),
   fuelPayer: document.querySelector("#fuelPayer"),
@@ -402,6 +404,7 @@ const els = {
   supabaseLoadMonitor: document.querySelector("#supabaseLoadMonitor"),
   refreshSupabaseLoadMonitor: document.querySelector("#refreshSupabaseLoadMonitor"),
   exportSupabaseLoadReport: document.querySelector("#exportSupabaseLoadReport"),
+  syncNowAdmin: document.querySelector("#syncNowAdmin"),
   toggleLiveSync: document.querySelector("#toggleLiveSync"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
@@ -1312,6 +1315,42 @@ els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
 
+async function handleManualSyncNow(source = "manual") {
+  if (!supabaseClient) {
+    await loadRemoteState();
+    return;
+  }
+  if (!currentSession) {
+    setSyncStatus("Login");
+    showAppMessage("Sign in before syncing shared data.", "warning");
+    return;
+  }
+  const button = source === "admin" ? els.syncNowAdmin : els.syncNow;
+  const originalText = button?.textContent || "Sync now";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Syncing...";
+  }
+  try {
+    const loaded = await loadSupabaseState({ force: true, reason: `manual-${source}` });
+    if (loaded) showAppMessage("Shared data refreshed.");
+    else showAppMessage("Cloud sync did not complete. You can keep using local data and try again.", "warning");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+els.syncNow?.addEventListener("click", () => {
+  handleManualSyncNow("topbar");
+});
+
+els.syncNowAdmin?.addEventListener("click", () => {
+  handleManualSyncNow("admin");
+});
+
 els.toggleLiveSync?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   liveSyncEnabled = !liveSyncEnabled;
@@ -1782,6 +1821,7 @@ function buildSupabaseLoadReport() {
       normalizedReadModeActive,
       pendingLocalChanges,
       lastCloudSaveAt,
+      lastCloudSyncAt,
       lastJsonMirrorSaveAt,
       lastLocalSaveAt,
       lastSyncError
@@ -1813,6 +1853,7 @@ function renderSupabaseLoadMonitor() {
       <span>${summary.lastMinute} in the last minute · ${summary.lastFiveMinutes} in the last 5 minutes</span>
       <p>${escapeHtml(statusText)}</p>
       <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · Realtime channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
+      <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
     </div>
     ${topLabels.length ? `
       <ul class="included-fuel-list compact-diagnostics-list">
@@ -5350,7 +5391,32 @@ function renderSettlements(ledger) {
     .join("");
 }
 
+function cloudSyncAgeMs() {
+  const timestamp = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
+  return Number.isFinite(timestamp) ? Date.now() - timestamp : Infinity;
+}
+
+function shouldWarnBeforeCriticalCloudAction() {
+  if (!supabaseClient || !currentSession) return false;
+  if (pendingLocalChanges > 0 || lastSyncError) return true;
+  return cloudSyncAgeMs() > 10 * 60 * 1000;
+}
+
+async function confirmFreshCloudStateForCriticalAction(actionLabel) {
+  if (!shouldWarnBeforeCriticalCloudAction()) return true;
+  const message = lastSyncError
+    ? `${actionLabel} changes shared data, but the latest cloud sync failed: ${lastSyncError}. Try syncing now before continuing?`
+    : pendingLocalChanges > 0
+      ? `${actionLabel} changes shared data, but this device has ${pendingLocalChanges} unsynced local change${pendingLocalChanges === 1 ? "" : "s"}. Sync now before continuing?`
+      : `${actionLabel} changes shared data. Your last confirmed cloud sync is more than 10 minutes old. Sync now before continuing?`;
+  if (!confirmUserAction(message)) return false;
+  const loaded = await loadSupabaseState({ force: true, reason: `critical-action:${actionLabel}` });
+  if (loaded) return true;
+  return confirmUserAction(`${actionLabel} could not refresh shared data first. Continue anyway using the local copy?`);
+}
+
 async function closeCurrentPeriod(options = {}) {
+  if (!(await confirmFreshCloudStateForCriticalAction("Close period"))) return;
   if (!canManageSettings() && !options.allowMemberClose) {
     showUserError("Only an admin can close periods manually.");
     return;
@@ -6123,6 +6189,7 @@ function renderMemberActionPanel(ledger, visibleSettlements = getVisibleSettleme
 }
 
 async function updatePaymentStatus(button) {
+  if (!(await confirmFreshCloudStateForCriticalAction("Update payment status"))) return;
   const key = button.dataset.paymentKey;
   if (pendingSettlementRequestKeys.has(key)) return;
 
@@ -6330,6 +6397,7 @@ async function sendClosedPaymentReminder(button) {
 
 
 async function updateClosedPaymentStatus(button) {
+  if (!(await confirmFreshCloudStateForCriticalAction("Update closed-period payment"))) return;
   const period = findClosedPeriod(button.dataset.closedPeriodId);
   const index = Number(button.dataset.closedSettlementIndex);
   const nextStatus = normalizePaymentStatus(button.dataset.closedPaymentStatus);
@@ -11070,6 +11138,7 @@ async function loadSupabaseState(options = {}) {
     if (error) throw error;
 
     lastCloudSaveAt = data.updated_at || new Date().toISOString();
+    lastCloudSyncAt = new Date().toISOString();
     lastJsonMirrorSaveAt = data.updated_at || "";
     lastSyncError = "";
     const jsonState = normalizeState(data.state);
@@ -11139,6 +11208,7 @@ async function saveSupabaseState(options = {}) {
     }
 
     lastCloudSaveAt = new Date().toISOString();
+    lastCloudSyncAt = lastCloudSaveAt;
     lastSyncError = "";
     markRemoteSaveSucceeded("Tables");
     scheduleNormalizedTableCheck({ delayMs: 180000, reason: "save" });
@@ -11180,6 +11250,7 @@ async function saveJsonMirrorBackup({ force = false } = {}) {
   lastJsonMirrorSaveAt = savedAt;
   localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
   lastCloudSaveAt = savedAt;
+  lastCloudSyncAt = savedAt;
   return true;
 }
 
@@ -11250,6 +11321,7 @@ function setSyncStatus(label) {
     ? window.FuelSyncStatus.syncDisplayForStatus(label, {
         pendingCount: pendingLocalChanges,
         lastCloudSaveAt,
+        lastCloudSyncAt,
         lastLocalSaveAt,
         lastSyncError
       })

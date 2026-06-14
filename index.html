@@ -21,7 +21,7 @@
             Using as
             <select id="currentUser"></select>
           </label>
-          <span class="sync-stack"><span id="syncStatus" class="sync-status">Local</span><small id="syncDetail" class="sync-detail">Not saved yet</small></span>
+          <span class="sync-stack"><span id="syncStatus" class="sync-status">Local</span><small id="syncDetail" class="sync-detail">Not saved yet</small><button id="syncNow" class="sync-now-button" type="button">Sync now</button></span>
           <div class="odometer" aria-label="Logged kilometers">
             <span id="totalKm">0</span>
             <small>km</small>
@@ -645,6 +645,7 @@
               <strong>Supabase load monitor</strong>
               <p>Shows recent app-side saves, reloads, health checks, and Supabase calls so CPU spikes can be traced back to app activity.</p>
               <div class="button-row">
+                <button id="syncNowAdmin" class="subtle-button" type="button">Sync now</button>
                 <button id="refreshSupabaseLoadMonitor" class="subtle-button" type="button">Refresh load monitor</button>
                 <button id="exportSupabaseLoadReport" class="subtle-button" type="button">Export load report</button>
                 <button id="toggleLiveSync" class="subtle-button" type="button">Enable live sync</button>
