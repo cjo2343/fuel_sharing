@@ -144,6 +144,7 @@ const defaults = {
   auditLog: [],
   currentPeriodId: "",
   closedPeriods: [],
+  testLabReports: [],
   lastOdometer: "",
   fuelType: "diesel",
   fuelConsumption: 5.3,
@@ -1554,9 +1555,57 @@ function cleanupGeneratedTestEntriesFromState() {
   return { before, after, removed, message: removed ? `Removed ${removed.total} generated test item(s).` : "Generated test data cleaned." };
 }
 
-function renderTestLabReport(report) {
-  lastTestLabReport = report || lastTestLabReport;
-  if (!els.testLabReport || !testLab?.renderReportHtml || !lastTestLabReport) return;
+function normalizeTestLabReports(value) {
+  const reports = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? [value]
+      : [];
+  return reports
+    .filter((report) => report && typeof report === "object" && !Array.isArray(report))
+    .map((report) => ({
+      ...report,
+      id: String(report.id || "").trim() || `testlab-${Date.now()}`,
+      syncedAt: report.syncedAt || report.finishedAt || report.startedAt || new Date().toISOString()
+    }))
+    .sort((a, b) => Date.parse(b.syncedAt || b.finishedAt || b.startedAt || "") - Date.parse(a.syncedAt || a.finishedAt || a.startedAt || ""))
+    .slice(0, 5);
+}
+
+function getLatestSyncedTestLabReport() {
+  const reports = normalizeTestLabReports(state.testLabReports);
+  return reports[0] || null;
+}
+
+function getCurrentTestLabReport() {
+  return lastTestLabReport || getLatestSyncedTestLabReport();
+}
+
+function persistTestLabReport(report, { sync = true } = {}) {
+  if (!report || typeof report !== "object") return null;
+  const enriched = {
+    ...report,
+    createdBy: report.createdBy || describeCurrentActor(),
+    syncedAt: new Date().toISOString()
+  };
+  const existing = normalizeTestLabReports(state.testLabReports).filter((item) => item.id !== enriched.id);
+  state.testLabReports = normalizeTestLabReports([enriched, ...existing]);
+  lastTestLabReport = state.testLabReports[0];
+  if (sync) saveState();
+  return lastTestLabReport;
+}
+
+function renderTestLabReport(report = null, { persist = true } = {}) {
+  if (report) {
+    lastTestLabReport = persist ? persistTestLabReport(report) : report;
+  } else {
+    lastTestLabReport = getCurrentTestLabReport();
+  }
+  if (!els.testLabReport || !testLab?.renderReportHtml) return;
+  if (!lastTestLabReport) {
+    els.testLabReport.innerHTML = `<p class="entry-meta">No Test Lab report yet. Run the Test Lab here or in another synced browser, then refresh status/export the latest report.</p>`;
+    return;
+  }
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
 }
 
@@ -1571,6 +1620,8 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     startedAt,
     finishedAt: new Date().toISOString(),
     buildInfo: window.FuelBuildInfo?.BUILD_INFO || null,
+    createdBy: describeCurrentActor(),
+    browser: navigator.userAgent || "",
     normalizedTableStatus,
     before,
     after: testLab.stateSummary(state),
@@ -1646,13 +1697,17 @@ async function runFullTestLabScenario() {
 }
 
 function downloadLastTestLabReport() {
-  if (!lastTestLabReport) {
+  const report = getCurrentTestLabReport();
+  if (!report) {
     showUserWarning("Run a Test Lab scenario before exporting a report.");
     return;
   }
-  const filename = `fuel-ledger-test-lab-report-${lastTestLabReport.id || localDateString()}.json`;
-  downloadTextFile(filename, JSON.stringify(lastTestLabReport, null, 2), "application/json");
-  setDataToolsMessage("Test Lab report downloaded.");
+  lastTestLabReport = report;
+  renderTestLabReport(null, { persist: false });
+  const filename = `fuel-ledger-test-lab-report-${report.id || localDateString()}.json`;
+  downloadTextFile(filename, JSON.stringify(report, null, 2), "application/json");
+  const source = report.syncedAt ? "synced" : "local";
+  setDataToolsMessage(`Test Lab report downloaded from ${source} report storage.`);
 }
 
 
@@ -2592,6 +2647,7 @@ function render() {
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
+  renderTestLabReport(null, { persist: false });
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
@@ -8818,6 +8874,7 @@ function normalizeState(saved) {
           auditLog: auditLog.normalizeAuditEntries(period.auditLog)
         }))
       : [],
+    testLabReports: normalizeTestLabReports(saved.testLabReports || saved.lastTestLabReport),
     lastOdometer: saved.lastOdometer ?? "",
     fuelType: getFuelTypeForState(saved),
     fuelConsumption: getFuelConsumptionForState(saved),

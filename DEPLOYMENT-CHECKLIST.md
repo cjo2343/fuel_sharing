@@ -390,3 +390,8 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 
 Before deploying this build to Render, set `FUEL_LEDGER_API_SECRET` to a separate random value. Render-hosted `/api/state` and `/api/payment-action` now fail closed if this secret is missing, and return `401` unless maintenance requests include `X-Ledger-Api-Secret` or `Authorization: Bearer ...`. Do not expose this secret to frontend JavaScript.
 
+
+
+## Test Lab reports
+
+Test Lab reports are saved into shared ledger state (`testLabReports`, latest five). After deployment, run the Test Lab in one browser and confirm another signed-in browser can export the latest report after sync/refresh.

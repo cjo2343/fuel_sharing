@@ -143,6 +143,9 @@
       passedCount: checks.length - failed.length,
       buildInfo: input.buildInfo || null,
       normalizedTableStatus: input.normalizedTableStatus || null,
+      createdBy: input.createdBy || "",
+      browser: input.browser || "",
+      syncedAt: input.syncedAt || "",
       before: input.before || null,
       after: input.after || null,
       generated: input.generated || null,
@@ -158,15 +161,23 @@
     const checks = asArray(report.checks).map((check) => `<li>${check.ok ? "✅" : "❌"} ${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("");
     const generated = report.generated ? `<p><strong>Generated:</strong> ${report.generated.trips || 0} trips, ${report.generated.fuel || 0} fuel logs, ${report.generated.bookings || 0} bookings.</p>` : "";
     const cleanup = report.cleanup ? `<p><strong>Cleanup:</strong> ${escapeHtml(report.cleanup.message || "complete")}</p>` : "";
+    const owner = report.createdBy ? ` · ${escapeHtml(report.createdBy)}` : "";
+    const synced = report.syncedAt ? ` · synced ${escapeHtml(formatDateTime(report.syncedAt))}` : "";
     return `
       <div class="test-lab-report ${report.ok ? "ok" : "warning"}">
         <strong>${status}: ${escapeHtml(report.scenario || "Test Lab")}</strong>
-        <p>${report.passedCount || 0} passed, ${report.failedCount || 0} failed · ${escapeHtml(report.id || "")}</p>
+        <p>${report.passedCount || 0} passed, ${report.failedCount || 0} failed · ${escapeHtml(report.id || "")}${owner}${synced}</p>
         ${generated}
         ${cleanup}
         <ul>${checks}</ul>
       </div>
     `;
+  }
+
+  function formatDateTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value || "unknown time";
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   }
 
   function escapeHtml(value) {

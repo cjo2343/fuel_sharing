@@ -425,7 +425,8 @@ The current maintenance baseline includes these safety improvements:
 - Fuel-location privacy defaults to station coordinates only. Saving the user's own GPS coordinates requires explicit opt-in.
 - `ledger-model.js` documents the core state shape and provides lightweight validation helpers without converting the app to TypeScript.
 - Supabase settlement-request triggers enforce transition rules and party/ledger integrity on the database side.
-- Period closing uses snapshot fingerprints, duplicate-close checks, and busy-state protection. Smoke tests should await the async close helper instead of assuming a synchronous button click.
+- Period closing uses snapshot fingerprints, duplicate-close checks, busy-state protection, and the Supabase RPC transaction when the current schema is deployed. Smoke tests should await the async close helper instead of assuming a synchronous button click.
+- Test Lab debug reports are stored in shared ledger state as the latest five reports, so an admin can run a scenario in one browser/device and export the report from another signed-in browser.
 
 ## Deployment metadata rule
 

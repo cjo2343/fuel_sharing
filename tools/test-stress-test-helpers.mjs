@@ -87,11 +87,29 @@ function testReportRenderingEscapesHtml() {
   assert.doesNotMatch(html, /<script>/);
 }
 
+function testReportIncludesSyncMetadata() {
+  const lab = loadHelpers();
+  const report = lab.buildTestLabReport({
+    id: 'report-1',
+    createdBy: 'Christian',
+    browser: 'UnitTest',
+    syncedAt: '2026-06-14T18:45:00.000Z',
+    checks: [{ ok: true, name: 'ok' }]
+  });
+  assert.equal(report.createdBy, 'Christian');
+  assert.equal(report.browser, 'UnitTest');
+  assert.equal(report.syncedAt, '2026-06-14T18:45:00.000Z');
+  const html = lab.renderReportHtml(report);
+  assert.match(html, /Christian/);
+  assert.match(html, /synced/);
+}
+
 const tests = [
   testGeneratedSummaryAndDetection,
   testInvariantChecksPassForBalancedLedger,
   testInvariantChecksCatchBadData,
-  testReportRenderingEscapesHtml
+  testReportRenderingEscapesHtml,
+  testReportIncludesSyncMetadata
 ];
 
 for (const test of tests) {
