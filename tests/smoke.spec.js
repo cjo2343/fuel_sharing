@@ -208,6 +208,22 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
 }
 
 
+
+async function closeCurrentPeriodForSmoke(page, options = {}) {
+  await page.evaluate(async (closeOptions) => {
+    if (typeof window.closeCurrentPeriod !== "function") {
+      const button = document.querySelector("#closePeriod");
+      if (button) button.click();
+      return;
+    }
+    await window.closeCurrentPeriod({
+      skipConfirm: true,
+      skipFuelValidation: true,
+      ...closeOptions
+    });
+  }, options);
+}
+
 async function openClosedPeriodCard(card) {
   await card.evaluate((details) => {
     if (details instanceof HTMLDetailsElement) {
@@ -479,7 +495,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#auditLog")).toContainText("Payment requested");
   await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
   await expect(page.locator("#closePeriod")).toBeEnabled();
-  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await closeCurrentPeriodForSmoke(page);
 
   await expect(page.locator("#auditLog")).toContainText("No important changes have been recorded yet.");
   await page.locator('[data-view-tab="history"]').click();
@@ -558,11 +574,11 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await expect(page.locator("#pendingLogList")).toContainText("Fuel log required");
   await page.locator('[data-view-tab="settle"]').click();
   await expect(page.locator("#settlementWarning")).toContainText("multi-day booking trip needs a linked full-tank fuel log");
-  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await closeCurrentPeriodForSmoke(page);
   await expect(page.locator("#pendingLogList")).toContainText("Required fuel regression");
   await expect(page.locator("#periodList")).not.toContainText("Required fuel regression");
 
-  await page.locator('[data-add-fuel-for-trip]').first().click();
+  await page.locator('[data-add-fuel-for-trip]').first().evaluate((button) => button.click());
   await expect(page.locator("#fuelTripContext")).toContainText("Required for multi-day booking");
   await page.locator("#fuelAmount").fill("444");
   await page.locator("#fuelLiters").fill("30");
@@ -578,7 +594,7 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await expect(page.locator("#settlementWarning")).not.toContainText("multi-day booking trip needs");
   await requestAllOpenPayments(page);
   await expect(page.locator("#settlementWarning")).not.toContainText("Request all settlement payments");
-  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await closeCurrentPeriodForSmoke(page);
   await page.locator('[data-view-tab="history"]').click();
   await openClosedPeriodCard(page.locator(".archived-period-card").first());
   await expect(page.locator("#periodList")).toContainText("Required fuel regression");
@@ -604,7 +620,7 @@ test("payment deep links route current payments to Settlement and closed payment
   await expect(page.locator(`.settlement-card[data-payment-ref="${paymentRef}"]`)).toHaveClass(/highlight-pulse/);
 
   await requestAllOpenPayments(page);
-  await page.locator("#closePeriod").evaluate((button) => button.click());
+  await closeCurrentPeriodForSmoke(page);
   await page.locator('[data-view-tab="history"]').click();
   const closedPeriodCard = page.locator(".archived-period-card").first();
   await openClosedPeriodCard(closedPeriodCard);

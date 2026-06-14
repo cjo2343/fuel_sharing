@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v121";
-const BUILD_LABEL = "data-model-typedefs";
-const BUILD_UPDATED_AT = "2026-06-14T17:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v122";
+const BUILD_LABEL = "period-close-hardening";
+const BUILD_UPDATED_AT = "2026-06-14T17:15:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -11,6 +11,7 @@ const CORE_ASSETS = [
   "/ledger-model.js",
   "/data-store.js",
   "/settlement-calculations.js",
+  "/period-closing-helpers.js",
   "/ui-messages.js",
   "/sync-status-helpers.js",
   "/location-privacy-helpers.js",

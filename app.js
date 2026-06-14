@@ -4389,8 +4389,17 @@ async function closeCurrentPeriod(options = {}) {
 
   const ledger = calculateLedger();
   const settlementProgress = getSettlementProgress(ledger);
-  if (settlementProgress.openCount > 0 && !options.allowOpenPayments) {
-    showUserError(`Request all settlement payments before closing this period. ${settlementProgress.openCount} payment${settlementProgress.openCount === 1 ? " is" : "s are"} still not requested.`);
+  const readiness = window.FuelPeriodClosing?.getClosePeriodReadiness({
+    isAdmin: canManageSettings(),
+    closingInProgress: closingPeriodInProgress,
+    trips: state.trips,
+    fuel: state.fuel,
+    closedPeriods: state.closedPeriods,
+    progress: settlementProgress,
+    options
+  });
+  if (readiness && !readiness.ok) {
+    showUserError(readiness.firstMessage);
     return;
   }
 
@@ -4411,6 +4420,11 @@ async function closeCurrentPeriod(options = {}) {
     return;
   }
 
+  closingPeriodInProgress = true;
+  els.closePeriod.disabled = true;
+  els.closePeriod.textContent = "Closing...";
+
+  try {
   const period = {
     id: crypto.randomUUID(),
     closedAt: new Date().toISOString(),
@@ -4421,6 +4435,7 @@ async function closeCurrentPeriod(options = {}) {
     fuelRate: roundMoney(ledger.fuelRate),
     totalCost: ledger.totalCost,
     totalPaid: ledger.totalPaid,
+    entryFingerprint: readiness?.entryFingerprint || window.FuelPeriodClosing?.periodEntryFingerprint?.(state.trips, state.fuel) || "",
     people: state.members.map((member) => ({
       name: member,
       km: ledger.people[member].km,
@@ -4473,6 +4488,12 @@ async function closeCurrentPeriod(options = {}) {
   setActiveHistorySection("archive");
   render();
   showAppMessage("Settlement period closed. A fresh period is ready.");
+  } finally {
+    closingPeriodInProgress = false;
+    if (els.closePeriod) {
+      els.closePeriod.textContent = "Close period";
+    }
+  }
 }
 
 async function closeNormalizedPeriodFirst(periodSnapshot) {
@@ -4482,6 +4503,16 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
     setSyncStatus("Saving");
     const context = await getNormalizedWriteContext();
     if (!context?.openPeriodId) return true;
+
+    const existingPeriod = await supabaseClient
+      .from("settlement_periods")
+      .select("id, snapshot_json")
+      .eq("id", context.openPeriodId)
+      .maybeSingle();
+    if (existingPeriod.error) throw existingPeriod.error;
+    if (existingPeriod.data?.snapshot_json?.entryFingerprint === periodSnapshot.entryFingerprint) {
+      throw new Error("This settlement period snapshot has already been written to the normalized database.");
+    }
 
     const closedAt = periodSnapshot.closedAt || new Date().toISOString();
     const closeResult = await supabaseClient
@@ -4493,7 +4524,9 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
         snapshot_json: periodSnapshot,
         updated_at: new Date().toISOString()
       })
-      .eq("id", context.openPeriodId);
+      .eq("id", context.openPeriodId)
+      .eq("status", "open")
+      .is("closed_at", null);
     if (closeResult.error) throw closeResult.error;
 
     await ensureOpenSettlementPeriod(context.ledgerId);
