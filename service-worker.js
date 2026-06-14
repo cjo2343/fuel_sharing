@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v131";
-const BUILD_LABEL = "full-test-lab-security-health";
-const BUILD_UPDATED_AT = "2026-06-14T19:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v132";
+const BUILD_LABEL = "test-lab-report-ui-cleanup";
+const BUILD_UPDATED_AT = "2026-06-14T20:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

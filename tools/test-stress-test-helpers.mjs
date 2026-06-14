@@ -104,6 +104,27 @@ function testReportIncludesSyncMetadata() {
   assert.match(html, /synced/);
 }
 
+function testReportRenderingIsCompactAndExpandable() {
+  const lab = loadHelpers();
+  const report = lab.buildTestLabReport({
+    id: 'compact-report',
+    scenario: 'full-test-lab',
+    scenarios: [
+      { id: 'ledger', name: 'Ledger invariants', ok: false, passedCount: 1, failedCount: 1 },
+      { id: 'runtime', name: 'Runtime/PWA metadata', ok: true, passedCount: 3, failedCount: 0 }
+    ],
+    checks: [
+      { ok: true, scenario: 'Runtime/PWA metadata', name: 'Build info is loaded' },
+      { ok: false, scenario: 'Ledger invariants', name: 'Rounded trip costs match fuel paid', detail: '0.00 vs 1800.00' }
+    ]
+  });
+  const html = lab.renderReportHtml(report);
+  assert.match(html, /Failed checks/);
+  assert.match(html, /Show all 2 checks/);
+  assert.match(html, /test-lab-scenario-chips/);
+  assert.match(html, /Rounded trip costs match fuel paid/);
+}
+
 function testRuntimePwaUnavailableCacheMetadataIsNotHardFailure() {
   const lab = loadHelpers();
   const checks = lab.runRuntimePwaChecks({
@@ -178,6 +199,7 @@ const tests = [
   testInvariantChecksCatchBadData,
   testReportRenderingEscapesHtml,
   testReportIncludesSyncMetadata,
+  testReportRenderingIsCompactAndExpandable,
   testRuntimePwaUnavailableCacheMetadataIsNotHardFailure,
   testScenarioMatrixCoversExpandedLogic
 ];

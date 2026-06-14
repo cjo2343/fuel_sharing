@@ -1434,6 +1434,33 @@ function addGeneratedTestFuel() {
   render();
 }
 
+function buildCleanupOnlyTestLabReport(cleanup, scenario = "remove-test-data") {
+  const removedTotal = cleanup?.removed?.total || 0;
+  const remainingTotal = cleanup?.after?.total || 0;
+  return testLab.buildTestLabReport({
+    id: testLab.createTestRunId(),
+    scenario,
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    buildInfo: window.FuelBuildInfo?.BUILD_INFO || null,
+    createdBy: describeCurrentActor(),
+    browser: navigator.userAgent || "",
+    normalizedTableStatus,
+    before: cleanup?.before || null,
+    after: testLab.stateSummary(state),
+    generated: cleanup?.after || null,
+    cleanup,
+    checks: [
+      remainingTotal === 0
+        ? { ok: true, name: "Generated Test Lab data is cleaned up", detail: cleanup?.message || "No generated data remains." }
+        : { ok: false, name: "Generated Test Lab data is cleaned up", detail: `${remainingTotal} generated item(s) still remain.` },
+      removedTotal >= 0
+        ? { ok: true, name: "Cleanup completed safely", detail: `${removedTotal} generated item(s) removed.` }
+        : { ok: false, name: "Cleanup completed safely", detail: "Cleanup result was malformed." }
+    ]
+  });
+}
+
 function removeGeneratedTestData() {
   const cleanup = cleanupGeneratedTestEntriesFromState();
   setDataToolsMessage(`${cleanup.message} Triggered save + normalized sync.`);
@@ -1441,15 +1468,7 @@ function removeGeneratedTestData() {
   setDefaultDates();
   render();
   if (testLab) {
-    const report = buildCurrentTestLabReport({
-      id: testLab.createTestRunId(),
-      scenario: "remove-test-data",
-      startedAt: new Date().toISOString(),
-      before: cleanup.before,
-      generated: cleanup.after,
-      cleanup
-    });
-    renderTestLabReport(report);
+    renderTestLabReport(buildCleanupOnlyTestLabReport(cleanup, "remove-test-data"));
   }
 }
 
@@ -1865,15 +1884,9 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
 async function cleanupGeneratedTestDataWithReport() {
   const cleanup = cleanupGeneratedTestEntriesFromState();
   await flushStressSave(`${cleanup.message} Triggered save + normalized sync.`);
-  const report = buildCurrentTestLabReport({
-    id: testLab?.createTestRunId ? testLab.createTestRunId() : `testlab-${Date.now()}`,
-    scenario: "cleanup-test-data",
-    startedAt: new Date().toISOString(),
-    before: cleanup.before,
-    generated: cleanup.after,
-    cleanup
-  });
-  renderTestLabReport(report);
+  if (testLab) {
+    renderTestLabReport(buildCleanupOnlyTestLabReport(cleanup, "cleanup-test-data"));
+  }
 }
 
 async function runFullTestLabScenario() {

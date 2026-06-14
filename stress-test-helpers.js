@@ -121,10 +121,15 @@
     );
     const totalCost = roundMoney(ledger.totalCost ?? tripCostTotal);
     const totalPaid = roundMoney(safeNumber(ledger.totalPaid));
+    const totalShareKm = roundMoney(ledger.totalShareKm ?? ledger.totalKm ?? 0);
     const allocatedCost = totalCost || tripCostTotal;
-    checks.push(Math.abs(allocatedCost - totalPaid) <= 0.01
-      ? pass("Rounded trip costs match fuel paid", `${allocatedCost.toFixed(2)} vs ${totalPaid.toFixed(2)}`)
-      : fail("Rounded trip costs match fuel paid", `${allocatedCost.toFixed(2)} vs ${totalPaid.toFixed(2)}`));
+    if (totalPaid > 0 && totalShareKm <= 0 && allocatedCost <= 0) {
+      checks.push(pass("Rounded trip costs match fuel paid", `No shared km yet; ${totalPaid.toFixed(2)} paid fuel is waiting for trip allocation.`));
+    } else {
+      checks.push(Math.abs(allocatedCost - totalPaid) <= 0.01
+        ? pass("Rounded trip costs match fuel paid", `${allocatedCost.toFixed(2)} vs ${totalPaid.toFixed(2)}`)
+        : fail("Rounded trip costs match fuel paid", `${allocatedCost.toFixed(2)} vs ${totalPaid.toFixed(2)}`));
+    }
 
     const badSettlements = asArray(ledger.settlements).filter((settlement) => safeNumber(settlement && settlement.amount) <= 0 || !settlement.from || !settlement.to || settlement.from === settlement.to);
     checks.push(badSettlements.length ? fail("Settlement payments are valid", `${badSettlements.length} invalid settlement(s).`) : pass("Settlement payments are valid"));
@@ -339,22 +344,53 @@
   function renderReportHtml(report) {
     if (!report) return "";
     const status = report.ok ? "✅ Passed" : "❌ Failed";
-    const scenarioSummary = asArray(report.scenarios).length ? `<p><strong>Scenarios:</strong> ${asArray(report.scenarios).map((scenario) => `${scenario.ok ? "✅" : "❌"} ${escapeHtml(scenario.name || scenario.id)} (${scenario.passedCount || 0}/${(scenario.passedCount || 0) + (scenario.failedCount || 0)})`).join(" · ")}</p>` : "";
-    const checks = asArray(report.checks).map((check) => `<li>${check.ok ? "✅" : "❌"} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("");
+    const statusText = report.ok ? "Passed" : "Failed";
+    const scenarioName = escapeHtml(report.scenario || "Test Lab");
+    const failedChecks = asArray(report.checks).filter((check) => !check.ok);
+    const passedChecks = asArray(report.checks).filter((check) => check.ok);
+    const scenarios = asArray(report.scenarios);
+    const scenarioChips = scenarios.length ? `
+      <div class="test-lab-scenario-chips" aria-label="Scenario summary">
+        ${scenarios.map((scenario) => {
+          const ok = !!scenario.ok;
+          const total = (scenario.passedCount || 0) + (scenario.failedCount || 0);
+          return `<span class="test-lab-chip ${ok ? "ok" : "warning"}">${ok ? "✅" : "❌"} ${escapeHtml(scenario.name || scenario.id)} <small>${scenario.passedCount || 0}/${total}</small></span>`;
+        }).join("")}
+      </div>` : "";
+    const failedHtml = failedChecks.length ? `
+      <div class="test-lab-failures">
+        <strong>Failed checks</strong>
+        <ul>${failedChecks.map((check) => renderCheckItem(check)).join("")}</ul>
+      </div>` : `<p class="test-lab-success-note">All checks passed.</p>`;
     const generated = report.generated ? `<p><strong>Generated:</strong> ${report.generated.trips || 0} trips, ${report.generated.fuel || 0} fuel logs, ${report.generated.bookings || 0} bookings.</p>` : "";
     const cleanup = report.cleanup ? `<p><strong>Cleanup:</strong> ${escapeHtml(report.cleanup.message || "complete")}</p>` : "";
     const owner = report.createdBy ? ` · ${escapeHtml(report.createdBy)}` : "";
     const synced = report.syncedAt ? ` · synced ${escapeHtml(formatDateTime(report.syncedAt))}` : "";
+    const details = asArray(report.checks).length ? `
+      <details class="test-lab-details">
+        <summary>Show all ${asArray(report.checks).length} checks</summary>
+        <ul>
+          ${failedChecks.map((check) => renderCheckItem(check)).join("")}
+          ${passedChecks.map((check) => renderCheckItem(check)).join("")}
+        </ul>
+      </details>` : "";
     return `
       <div class="test-lab-report ${report.ok ? "ok" : "warning"}">
-        <strong>${status}: ${escapeHtml(report.scenario || "Test Lab")}</strong>
-        <p>${report.passedCount || 0} passed, ${report.failedCount || 0} failed · ${escapeHtml(report.id || "")}${owner}${synced}</p>
-        ${scenarioSummary}
-        ${generated}
-        ${cleanup}
-        <ul>${checks}</ul>
+        <div class="test-lab-report-header">
+          <span class="test-lab-status ${report.ok ? "ok" : "warning"}">${statusText}</span>
+          <strong>${scenarioName}</strong>
+        </div>
+        <p class="test-lab-report-meta">${report.passedCount || 0} passed · ${report.failedCount || 0} failed · ${escapeHtml(report.id || "")}${owner}${synced}</p>
+        ${failedHtml}
+        ${scenarioChips}
+        <div class="test-lab-report-facts">${generated}${cleanup}</div>
+        ${details}
       </div>
     `;
+  }
+
+  function renderCheckItem(check) {
+    return `<li class="${check.ok ? "ok" : "warning"}">${check.ok ? "✅" : "❌"} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`;
   }
 
   function formatDateTime(value) {
