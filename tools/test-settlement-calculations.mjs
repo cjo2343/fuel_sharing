@@ -234,6 +234,45 @@ function testSettlementProgressIsSafeAndRounded() {
   });
 }
 
+function testTripCostRoundingBalancesToTotalPaid() {
+  const context = loadSettlementContext({
+    trips: [
+      {
+        id: "trip-1",
+        driver: "Christian",
+        date: "2026-01-05",
+        startKm: 0,
+        endKm: 3,
+        participants: ["Christian", "Marie", "Jonas"]
+      }
+    ],
+    fuel: [{ id: "fuel-1", payer: "Christian", date: "2026-01-05", amount: 100, liters: 5 }]
+  });
+
+  const ledger = context.calculateLedger();
+  const people = Object.values(ledger.people);
+  const tripCostTotal = people.reduce((sum, person) => context.roundMoney(sum + person.tripCost), 0);
+  const netTotal = people.reduce((sum, person) => context.roundMoney(sum + person.net), 0);
+  const settlementTotal = ledger.settlements.reduce((sum, settlement) => context.roundMoney(sum + settlement.amount), 0);
+
+  assert.equal(tripCostTotal, 100);
+  assert.equal(netTotal, 0);
+  assert.equal(settlementTotal, 66.66);
+  assert.deepEqual(people.map((person) => person.tripCost).sort((a, b) => b - a), [33.34, 33.33, 33.33]);
+}
+
+function testAllocateRoundedMoneyHandlesMalformedInputs() {
+  const context = loadSettlementContext();
+
+  assert.deepEqual(plain(context.allocateRoundedMoney(null, 10)), {});
+  assert.deepEqual(plain(context.allocateRoundedMoney([{ name: "Christian", amount: "bad" }], 0)), { Christian: 0 });
+  assert.deepEqual(plain(context.allocateRoundedMoney([
+    { name: "Christian", amount: 0.333 },
+    { name: "Marie", amount: 0.333 },
+    { name: "Jonas", amount: 0.333 }
+  ], 1)), { Christian: 0.34, Marie: 0.33, Jonas: 0.33 });
+}
+
 const tests = [
   testSharedTripCreatesSingleSettlement,
   testParticipantDeduplicationAndUnknownParticipantFiltering,
@@ -242,6 +281,8 @@ const tests = [
   testHistoricalStatsTolerateMissingClosedPeriods,
   testMalformedTripAndFuelArraysAreSafe,
   testReceiptMetricsIgnoreUnknownFuelPayers,
+  testTripCostRoundingBalancesToTotalPaid,
+  testAllocateRoundedMoneyHandlesMalformedInputs,
   testPaymentStatusTransitionsBlockUnsafeJumps,
   testSettlementProgressIsSafeAndRounded
 ];

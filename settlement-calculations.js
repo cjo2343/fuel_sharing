@@ -41,10 +41,14 @@ function calculateLedger() {
   }
 
   const fuelRate = totalKm > 0 ? totalPaid / totalKm : 0;
+  const tripCostsByPerson = allocateRoundedMoney(
+    Object.entries(people).map(([name, person]) => ({ name, amount: person.km * fuelRate })),
+    totalKm > 0 ? totalPaid : 0
+  );
   let totalCost = 0;
 
-  for (const person of Object.values(people)) {
-    person.tripCost = roundMoney(person.km * fuelRate);
+  for (const [name, person] of Object.entries(people)) {
+    person.tripCost = tripCostsByPerson[name] || 0;
     person.net = roundMoney(person.fuelPaid - person.tripCost);
     totalCost += person.tripCost;
   }
@@ -140,6 +144,52 @@ function applyFuelToPeopleLedger(people, fuel) {
 
 function knownMemberAmount(fuel, members) {
   return members.includes(fuel?.payer) ? safeNumber(fuel.amount) : 0;
+}
+
+
+function allocateRoundedMoney(items, expectedTotal) {
+  const targetCents = moneyToCents(expectedTotal);
+  const normalized = Array.isArray(items) ? items : [];
+  if (targetCents <= 0 || normalized.length === 0) {
+    return Object.fromEntries(normalized.map((item) => [item.name, 0]));
+  }
+
+  const rows = normalized.map((item, index) => {
+    const rawCents = Math.max(0, safeNumber(item?.amount) * 100);
+    const floorCents = Math.floor(rawCents);
+    return {
+      name: item?.name,
+      index,
+      cents: floorCents,
+      remainder: rawCents - floorCents
+    };
+  });
+
+  let assignedCents = rows.reduce((sum, row) => sum + row.cents, 0);
+  let centsToAssign = targetCents - assignedCents;
+
+  if (centsToAssign > 0) {
+    const byRemainder = [...rows].sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+    for (let i = 0; i < centsToAssign; i += 1) {
+      byRemainder[i % byRemainder.length].cents += 1;
+    }
+  } else if (centsToAssign < 0) {
+    const bySmallestRemainder = [...rows].sort((a, b) => a.remainder - b.remainder || b.index - a.index);
+    for (let i = 0; i < Math.abs(centsToAssign); i += 1) {
+      const row = bySmallestRemainder[i % bySmallestRemainder.length];
+      if (row.cents > 0) row.cents -= 1;
+    }
+  }
+
+  return Object.fromEntries(rows.map((row) => [row.name, centsToMoney(row.cents)]));
+}
+
+function moneyToCents(value) {
+  return Math.round((safeNumber(value) + Number.EPSILON) * 100);
+}
+
+function centsToMoney(cents) {
+  return roundMoney(safeNumber(cents) / 100);
 }
 
 function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = {}) {
