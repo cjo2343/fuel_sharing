@@ -153,12 +153,52 @@ function testHistoricalStatsTolerateMissingClosedPeriods() {
   assert.equal(stats.litersPer100Km, 10);
 }
 
+function testMalformedTripAndFuelArraysAreSafe() {
+  const context = loadSettlementContext({
+    trips: null,
+    fuel: null
+  });
+
+  const ledger = context.calculateLedger();
+
+  assert.equal(ledger.totalTripKm, 0);
+  assert.equal(ledger.totalPaid, 0);
+  assert.deepEqual(plain(ledger.settlements), []);
+}
+
+function testReceiptMetricsIgnoreUnknownFuelPayers() {
+  const context = loadSettlementContext({
+    trips: [
+      {
+        id: "trip-1",
+        driver: "Christian",
+        date: "2026-01-05",
+        startKm: 0,
+        endKm: 100,
+        participants: ["Christian"]
+      }
+    ],
+    fuel: [
+      { id: "fuel-1", payer: "Christian", date: "2026-01-05", amount: 100, liters: 5 },
+      { id: "fuel-2", payer: "Unknown", date: "2026-01-06", amount: 900, liters: 45 }
+    ]
+  });
+
+  const ledger = context.calculateLedger();
+
+  assert.equal(ledger.totalPaid, 100);
+  assert.equal(ledger.totalFuelLiters, 5);
+  assert.equal(ledger.receiptPricePerLiter, 20);
+}
+
 const tests = [
   testSharedTripCreatesSingleSettlement,
   testParticipantDeduplicationAndUnknownParticipantFiltering,
   testStringFuelAmountsAndUnknownPayersAreSafe,
   testNegativeTripDistanceDoesNotReduceBalances,
-  testHistoricalStatsTolerateMissingClosedPeriods
+  testHistoricalStatsTolerateMissingClosedPeriods,
+  testMalformedTripAndFuelArraysAreSafe,
+  testReceiptMetricsIgnoreUnknownFuelPayers
 ];
 
 for (const test of tests) {

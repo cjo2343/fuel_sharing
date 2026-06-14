@@ -2,47 +2,31 @@
 // Loaded before app.js; functions intentionally remain global for the current non-module app.
 
 function calculateLedger() {
-  const people = Object.fromEntries(
-    state.members.map((member) => [
-      member,
-      {
-        km: 0,
-        tripCost: 0,
-        fuelPaid: 0,
-        net: 0
-      }
-    ])
-  );
+  const members = getKnownMembers();
+  const people = createPeopleLedger(members);
+  const trips = getStateArray("trips");
+  const fuelPayments = getStateArray("fuel");
 
-  for (const trip of state.trips) {
-    const km = Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
-    const participants = getTripParticipants(trip).filter((member) => people[member]);
-    const shareKm = participants.length > 0 ? km / participants.length : km;
-
-    for (const participant of participants.length > 0 ? participants : [trip.driver]) {
-      if (people[participant]) people[participant].km += shareKm;
-    }
+  for (const trip of trips) {
+    applyTripToPeopleLedger(people, trip);
   }
 
-  for (const fuel of state.fuel) {
-    if (people[fuel.payer]) {
-      people[fuel.payer].fuelPaid += Number(fuel.amount || 0);
-    }
+  for (const fuel of fuelPayments) {
+    applyFuelToPeopleLedger(people, fuel);
   }
 
-  const totalTripKm = round(
-    state.trips.reduce((sum, trip) => sum + Math.max(0, Number(trip.endKm) - Number(trip.startKm)), 0)
-  );
-  const fuelByPerson = Object.fromEntries(state.members.map((member) => [member, 0]));
-  const fuelLitersByPerson = Object.fromEntries(state.members.map((member) => [member, 0]));
-  for (const fuel of state.fuel) {
+  const totalTripKm = calculateTotalTripKm(trips);
+  const fuelByPerson = createZeroMap(members);
+  const fuelLitersByPerson = createZeroMap(members);
+  for (const fuel of fuelPayments) {
     if (fuelByPerson[fuel.payer] !== undefined) {
-      fuelByPerson[fuel.payer] = roundMoney(fuelByPerson[fuel.payer] + Number(fuel.amount || 0));
-      fuelLitersByPerson[fuel.payer] = round(fuelLitersByPerson[fuel.payer] + Number(fuel.liters || 0));
+      fuelByPerson[fuel.payer] = roundMoney(fuelByPerson[fuel.payer] + safeNumber(fuel.amount));
+      fuelLitersByPerson[fuel.payer] = round(fuelLitersByPerson[fuel.payer] + safeNumber(fuel.liters));
     }
   }
-  const totalFuelLiters = round(Object.values(fuelLitersByPerson).reduce((sum, liters) => sum + Number(liters || 0), 0));
-  const receiptPricePerLiter = totalFuelLiters > 0 ? roundMoney(state.fuel.reduce((sum, fuel) => sum + Number(fuel.amount || 0), 0) / totalFuelLiters) : 0;
+  const totalFuelLiters = round(Object.values(fuelLitersByPerson).reduce((sum, liters) => sum + safeNumber(liters), 0));
+  const totalReceiptFuelPaid = roundMoney(fuelPayments.reduce((sum, fuel) => sum + knownMemberAmount(fuel, members), 0));
+  const receiptPricePerLiter = totalFuelLiters > 0 ? roundMoney(totalReceiptFuelPaid / totalFuelLiters) : 0;
   const receiptConsumption = totalFuelLiters > 0 && totalTripKm > 0 ? round(totalFuelLiters / totalTripKm * 100) : 0;
   const receiptKmPerLiter = totalFuelLiters > 0 && totalTripKm > 0 ? round(totalTripKm / totalFuelLiters) : 0;
 
@@ -67,8 +51,8 @@ function calculateLedger() {
 
   const fuelEstimate = calculateFuelEstimate({ totalTripKm: round(totalTripKm), totalPaid: roundMoney(totalPaid) });
   const historicalFuelStats = calculateHistoricalFuelStats({
-    currentTrips: state.trips,
-    currentFuel: state.fuel
+    currentTrips: trips,
+    currentFuel: fuelPayments
   });
 
   return {
@@ -83,7 +67,7 @@ function calculateLedger() {
     receiptConsumption,
     receiptKmPerLiter,
     historicalFuelStats,
-    fuelPayments: [...state.fuel].sort(byNewest),
+    fuelPayments: [...fuelPayments].sort(byNewest),
     fuelEstimate,
     fuelRate,
     totalCost: roundMoney(totalCost),
@@ -91,6 +75,71 @@ function calculateLedger() {
     period: getLedgerPeriod(),
     settlements: buildSettlements(people)
   };
+}
+
+function getKnownMembers() {
+  return Array.isArray(state.members) ? state.members.filter((member) => typeof member === "string" && member.trim()) : [];
+}
+
+function getStateArray(key) {
+  return Array.isArray(state[key]) ? state[key] : [];
+}
+
+function createZeroMap(keys) {
+  return Object.fromEntries(keys.map((key) => [key, 0]));
+}
+
+function createPeopleLedger(members) {
+  return Object.fromEntries(
+    members.map((member) => [
+      member,
+      {
+        km: 0,
+        tripCost: 0,
+        fuelPaid: 0,
+        net: 0
+      }
+    ])
+  );
+}
+
+function safeNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function calculateTripKm(trip) {
+  return Math.max(0, safeNumber(trip?.endKm) - safeNumber(trip?.startKm));
+}
+
+function calculateTotalTripKm(trips) {
+  return round(trips.reduce((sum, trip) => sum + calculateTripKm(trip), 0));
+}
+
+function getKnownTripParticipants(trip, people) {
+  return getTripParticipants(trip).filter((member) => people[member]);
+}
+
+function applyTripToPeopleLedger(people, trip) {
+  const km = calculateTripKm(trip);
+  const participants = getKnownTripParticipants(trip, people);
+  const assignedMembers = participants.length > 0 ? participants : [trip?.driver].filter((member) => people[member]);
+  if (assignedMembers.length === 0) return;
+
+  const shareKm = km / assignedMembers.length;
+  for (const participant of assignedMembers) {
+    people[participant].km += shareKm;
+  }
+}
+
+function applyFuelToPeopleLedger(people, fuel) {
+  if (people[fuel?.payer]) {
+    people[fuel.payer].fuelPaid += safeNumber(fuel.amount);
+  }
+}
+
+function knownMemberAmount(fuel, members) {
+  return members.includes(fuel?.payer) ? safeNumber(fuel.amount) : 0;
 }
 
 function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = {}) {
@@ -115,11 +164,9 @@ function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = 
   for (const period of periods) {
     const trips = Array.isArray(period.trips) ? period.trips : [];
     const fuel = Array.isArray(period.fuel) ? period.fuel : [];
-    const periodTripKm = Number(period.totalTripKm || trips.reduce((sum, trip) => {
-      return sum + Math.max(0, Number(trip.endKm || 0) - Number(trip.startKm || 0));
-    }, 0));
-    const periodPaid = Number(period.totalPaid || fuel.reduce((sum, item) => sum + Number(item.amount || 0), 0));
-    const periodLiters = fuel.reduce((sum, item) => sum + Number(item.liters || 0), 0);
+    const periodTripKm = safeNumber(period.totalTripKm || trips.reduce((sum, trip) => sum + calculateTripKm(trip), 0));
+    const periodPaid = safeNumber(period.totalPaid || fuel.reduce((sum, item) => sum + safeNumber(item.amount), 0));
+    const periodLiters = fuel.reduce((sum, item) => sum + safeNumber(item.liters), 0);
 
     if (periodTripKm > 0) {
       totalTripKm += periodTripKm;
@@ -133,8 +180,8 @@ function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = 
     }
 
     for (const item of fuel) {
-      const liters = Number(item.liters || 0);
-      const amount = Number(item.amount || 0);
+      const liters = safeNumber(item.liters);
+      const amount = safeNumber(item.amount);
       if (liters > 0 && amount > 0) {
         totalAmountWithLiters += amount;
         fuelLogsWithLiters += 1;
@@ -157,14 +204,14 @@ function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = 
 }
 
 function calculateFuelEstimate(ledger) {
-  const totalTripKm = Number(ledger.totalTripKm || 0);
-  const totalPaid = Number(ledger.totalPaid || 0);
-  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
-  const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
-  const livePrice = latestFuelPrice && latestFuelPrice.price > 0 ? Number(latestFuelPrice.price) : 0;
+  const totalTripKm = safeNumber(ledger.totalTripKm);
+  const totalPaid = safeNumber(ledger.totalPaid);
+  const consumption = Math.max(0.1, safeNumber(state.fuelConsumption) || defaults.fuelConsumption);
+  const fallbackPrice = Math.max(0.1, safeNumber(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
+  const livePrice = latestFuelPrice && latestFuelPrice.price > 0 ? safeNumber(latestFuelPrice.price) : 0;
   const pricePerLiter = livePrice || fallbackPrice;
   const source = livePrice ? "live" : "fallback";
-  const threshold = Math.min(100, Math.max(1, Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold));
+  const threshold = Math.min(100, Math.max(1, safeNumber(state.fuelWarningThreshold) || defaults.fuelWarningThreshold));
   const highThreshold = 140;
   const liters = totalTripKm * consumption / 100;
   const expectedCost = roundMoney(liters * pricePerLiter);
