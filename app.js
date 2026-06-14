@@ -3207,20 +3207,23 @@ function buildRefuelPlanning(distanceKm = 0) {
   let recommendation = `Tank capacity is ${formatNumber(tankCapacity)} L. Log full-tank odometer readings to estimate remaining range.`;
   let tone = "neutral";
   if (latestFuelOdometer > 0) {
-    const remainingText = `${formatNumber(estimatedLitersRemaining)} L / ${formatNumber(estimatedRangeRemaining)} km estimated remaining now`;
+    const currentRangeText = `${formatNumber(estimatedLitersRemaining)} L / ${formatNumber(estimatedRangeRemaining)} km`;
     if (distanceKm > 0) {
-      recommendation = `Since the last logged fuel odometer, this trip would bring estimated fuel use to ${formatNumber(projectedLiters)} L. After the trip: about ${formatNumber(projectedLitersRemaining)} L / ${formatNumber(projectedRangeRemaining)} km remaining.`;
+      recommendation = `This planned trip would use about ${formatNumber(plannedLiters)} L. After the trip: about ${formatNumber(projectedLitersRemaining)} L / ${formatNumber(projectedRangeRemaining)} km remaining.`;
+      if (litersSinceFuel > 0) {
+        recommendation += ` Including completed driving since the last full-tank log, total estimated use would be ${formatNumber(projectedLiters)} L.`;
+      }
       if (projectedLiters >= tankCapacity) {
         tone = "warning";
         recommendation += " Refuel before or during this trip.";
       } else if (projectedLitersRemaining <= warningLitersRemaining) {
         tone = "warning";
-        recommendation += " This leaves the tank below the configured low-range warning threshold; plan a refuel stop.";
+        recommendation += " This would leave the tank below the configured low-range warning threshold; plan a refuel stop.";
       } else {
-        recommendation += ` Current estimate: ${remainingText}.`;
+        recommendation += ` This plan is still only an estimate; before saving it as a booking, the car is currently estimated at about ${currentRangeText} remaining.`;
       }
     } else {
-      recommendation = `Current estimate since the last logged fuel odometer: ${remainingText}. Full-tank range is about ${formatNumber(fullTankRange)} km.`;
+      recommendation = `Current range since the last logged fuel odometer: about ${currentRangeText} remaining. Full-tank range is about ${formatNumber(fullTankRange)} km.`;
       if (estimatedLitersRemaining <= warningLitersRemaining) tone = "warning";
     }
   } else if (distanceKm > 0) {
