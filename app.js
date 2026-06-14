@@ -1518,7 +1518,7 @@ async function flushStressSave(label) {
 
 async function runGeneratedStressTest() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirmUserAction("Run a generated stress test? This will add 25 test trips and 15 test fuel logs, save them, verify the normalized tables, then leave them visible until you press Remove test data.")) return;
+  if (!confirmUserAction("Run the advanced stress test? This writes temporary generated data to the app and may increase Supabase usage. Use only when diagnosing sync behavior; clean generated data afterwards.")) return;
   const members = getMemberNames();
   if (!members.length) {
     showUserError("Add at least one member before running the stress test.");
@@ -1528,8 +1528,8 @@ async function runGeneratedStressTest() {
   setDataToolsMessage("Running stress test: generating entries...");
   await new Promise((resolve) => setTimeout(resolve, 50));
 
-  const tripCount = 25;
-  const fuelCount = 15;
+  const tripCount = 6;
+  const fuelCount = 3;
   for (let i = 0; i < tripCount; i += 1) state.trips.push(makeGeneratedTestTrip(i));
   for (let i = 0; i < fuelCount; i += 1) state.fuel.push(makeGeneratedTestFuel(i));
   state.lastOdometer = getLatestOdometer();
@@ -1539,19 +1539,19 @@ async function runGeneratedStressTest() {
 
 async function runGeneratedRapidSaveTest() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
-  if (!confirmUserAction("Run a rapid save test? This will perform 8 small generated changes with separate saves. Generated data can be removed afterwards with Remove test data.")) return;
+  if (!confirmUserAction("Run the advanced rapid save test? This performs repeated saves and may increase Supabase CPU usage. Use only when diagnosing sync behavior.")) return;
   const members = getMemberNames();
   if (!members.length) {
     showUserError("Add at least one member before running the rapid save test.");
     return;
   }
 
-  for (let i = 0; i < 8; i += 1) {
-    setDataToolsMessage(`Rapid save test ${i + 1}/8...`);
+  for (let i = 0; i < 4; i += 1) {
+    setDataToolsMessage(`Rapid save test ${i + 1}/4...`);
     if (i % 2 === 0) state.trips.push(makeGeneratedTestTrip(100 + i));
     else state.fuel.push(makeGeneratedTestFuel(100 + i));
     state.lastOdometer = getLatestOdometer();
-    await flushStressSave(`Rapid save test ${i + 1}/8 saved.`);
+    await flushStressSave(`Rapid save test ${i + 1}/4 saved.`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
@@ -1836,11 +1836,12 @@ function renderTestLabReport(report = null, { persist = true } = {}) {
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
 }
 
-function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [], scenarioFilter = null, securityStatus = null }) {
-  const ledger = calculateLedger();
+function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [], scenarioFilter = null, securityStatus = null, sourceState = null, sourceLedger = null, after = null }) {
+  const reportState = sourceState || state;
+  const ledger = sourceLedger || calculateLedger();
   const effectiveSecurityStatus = securityStatus || supabaseSecurityStatus;
   const matrixInput = {
-    state,
+    state: reportState,
     ledger,
     buildInfo: window.FuelBuildInfo?.BUILD_INFO || null,
     permissionHelpers: window.permissionHelpers,
@@ -1869,7 +1870,7 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     normalizedTableStatus,
     supabaseSecurityStatus: effectiveSecurityStatus,
     before,
-    after: testLab.stateSummary(state),
+    after: after || testLab.stateSummary(reportState),
     generated,
     cleanup,
     scenarios,
@@ -1955,13 +1956,54 @@ async function cleanupGeneratedTestDataWithReport() {
   renderTestLabReport(report);
 }
 
+function cloneForTestLab(value) {
+  try {
+    return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+  } catch {
+    return JSON.parse(JSON.stringify(value));
+  }
+}
+
+function calculateLedgerForState(testState) {
+  const originalState = state;
+  try {
+    state = testState;
+    return calculateLedger();
+  } finally {
+    state = originalState;
+  }
+}
+
+function buildSafeTestLabState(runId) {
+  const testState = cloneForTestLab(state);
+  if (!Array.isArray(testState.trips)) testState.trips = [];
+  if (!Array.isArray(testState.fuel)) testState.fuel = [];
+  if (!Array.isArray(testState.bookings)) testState.bookings = [];
+  const isTest = (entry) => testLab?.isTestLabEntry ? testLab.isTestLabEntry(entry, { prefix: generatedTestPrefix, marker: generatedTestMarker }) : isGeneratedTestEntry(entry);
+  testState.trips = testState.trips.filter((entry) => !isTest(entry));
+  testState.fuel = testState.fuel.filter((entry) => !isTest(entry));
+  testState.bookings = testState.bookings.filter((entry) => !isTest(entry));
+
+  const originalState = state;
+  try {
+    state = testState;
+    for (let i = 0; i < 1; i += 1) testState.bookings.push(makeGeneratedTestBooking(i, runId));
+    for (let i = 0; i < 3; i += 1) testState.trips.push(tagGeneratedEntry(makeGeneratedTestTrip(300 + i), runId));
+    for (let i = 0; i < 2; i += 1) testState.fuel.push(tagGeneratedEntry(makeGeneratedTestFuel(300 + i), runId));
+    testState.lastOdometer = getLatestOdometer();
+  } finally {
+    state = originalState;
+  }
+  return testState;
+}
+
 async function runFullTestLabScenario() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
   if (!testLab) {
     showUserError("Test Lab helpers are not loaded. Refresh the app and try again.");
     return;
   }
-  if (!confirmUserAction("Run the full Test Lab? This will create tagged test bookings, trips and fuel logs, verify ledger invariants, save them, then clean them up again.")) return;
+  if (!confirmUserAction("Run the safe Test Lab? This uses a small in-memory generated scenario, saves only the final report, and does not sync temporary trips/fuel/bookings to Supabase.")) return;
   const members = getMemberNames();
   if (!members.length) {
     showUserError("Add at least one member before running the Test Lab.");
@@ -1972,74 +2014,55 @@ async function runFullTestLabScenario() {
   const startedAt = new Date().toISOString();
   const before = testLab.stateSummary(state);
   const errors = [];
-  setDataToolsMessage(`Test Lab ${runId}: generating scenario data...`);
+  setDataToolsMessage(`Test Lab ${runId}: building safe in-memory scenario...`);
 
+  let testState = null;
+  let testLedger = null;
+  let generated = null;
   try {
-    cleanupGeneratedTestEntriesFromState();
-    for (let i = 0; i < 6; i += 1) state.bookings.push(makeGeneratedTestBooking(i, runId));
-    for (let i = 0; i < 18; i += 1) state.trips.push(tagGeneratedEntry(makeGeneratedTestTrip(200 + i), runId));
-    for (let i = 0; i < 10; i += 1) state.fuel.push(tagGeneratedEntry(makeGeneratedTestFuel(200 + i), runId));
-    state.lastOdometer = getLatestOdometer();
-    suppressNormalizedBookingWrites = true;
-    try {
-      await flushStressSave(`Test Lab ${runId}: saved generated data locally and synced generated trips/fuel; checking invariants...`);
-    } finally {
-      suppressNormalizedBookingWrites = false;
-    }
+    testState = buildSafeTestLabState(runId);
+    testLedger = calculateLedgerForState(testState);
+    generated = testLab.generatedDataSummary(testState, { prefix: generatedTestPrefix, marker: generatedTestMarker });
   } catch (error) {
-    console.warn("Test Lab generation failed", error);
+    console.warn("Test Lab safe scenario failed", error);
     errors.push(error.message || String(error));
+    testState = state;
+    testLedger = calculateLedger();
+    generated = testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker });
   }
 
-  const generatedBeforeCleanup = testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker });
-  setDataToolsMessage(`Test Lab ${runId}: running Supabase security health checks...`);
+  setDataToolsMessage(`Test Lab ${runId}: running lightweight security health checks...`);
   const securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 5000 });
-  if (!securityStatus.ok) {
+  if (securityStatus && securityStatus.ok === false) {
     errors.push(securityStatus.message || "Security health needs review.");
   }
-  let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors, securityStatus });
-  renderTestLabReport(report);
 
-  let cleanup = null;
-  try {
-    cleanup = cleanupGeneratedTestEntriesFromState();
-    await flushStressSave(`${report.ok && !errors.length ? "Test Lab passed" : "Test Lab finished with issues"} and cleaned up ${cleanup.removed?.total || 0} generated item(s).`);
-    if (supabaseClient && currentSession) {
-      await checkNormalizedTablesAgainstCurrentState().catch((error) => {
-        normalizedTableStatus = {
-          checked: true,
-          ok: false,
-          message: `Could not refresh normalized table health after Test Lab cleanup: ${error.message || error}`
-        };
-      });
-    }
-  } catch (cleanupError) {
-    console.warn("Test Lab cleanup failed", cleanupError);
-    errors.push(`Cleanup failed: ${cleanupError.message || cleanupError}`);
-  }
+  const cleanup = {
+    before: generated,
+    after: { trips: 0, fuel: 0, bookings: 0, closedPeriods: 0, paymentStatuses: 0, total: 0 },
+    removed: generated,
+    message: "No production data was created; generated scenario ran in memory only."
+  };
 
-  report = buildCurrentTestLabReport({
+  const report = buildCurrentTestLabReport({
     id: runId,
-    scenario: "full-test-lab",
+    scenario: "safe-full-test-lab",
     startedAt,
     before,
-    generated: generatedBeforeCleanup,
+    after: testLab.stateSummary(state),
+    generated,
     cleanup,
     errors,
-    securityStatus
+    securityStatus,
+    sourceState: testState,
+    sourceLedger: testLedger
   });
-  report = { ...report, after: testLab.stateSummary(state) };
-  if (errors.length && report.ok) {
-    report = { ...report, ok: false, failedCount: report.failedCount + errors.length };
-  }
   renderTestLabReport(report);
 
-  if (report.ok && !errors.length) {
-    setDataToolsMessage(`Test Lab passed and cleaned up ${cleanup?.removed?.total || 0} generated item(s).`);
-  } else if (cleanup) {
-    setDataToolsMessage(`Test Lab found ${report.failedCount} issue(s), but generated data was cleaned up. Export the report for details.`);
+  if (report.ok) {
+    setDataToolsMessage(`Safe Test Lab passed with ${report.warningCount || 0} warning(s). Temporary data was not synced to Supabase.`);
   } else {
-    setDataToolsMessage(`Test Lab found ${report.failedCount} issue(s). Cleanup did not finish; use Clean Test Lab data before rerunning.`);
+    setDataToolsMessage(`Safe Test Lab found ${report.failedCount} issue(s). Export the report for details.`);
   }
 }
 

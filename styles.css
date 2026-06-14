@@ -4318,3 +4318,25 @@ body.auth-locked #authPanel .text-button {
   color: var(--primary-strong);
   font-weight: 800;
 }
+
+.test-lab-primary-actions {
+  margin-bottom: 0.5rem;
+}
+
+.test-lab-action-group {
+  margin: 0.45rem 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border-color, #d8e1dc);
+  border-radius: 0.75rem;
+  background: rgba(238, 247, 243, 0.45);
+}
+
+.test-lab-action-group summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--accent-color, #155f4b);
+}
+
+.test-lab-action-group[open] summary {
+  margin-bottom: 0.45rem;
+}

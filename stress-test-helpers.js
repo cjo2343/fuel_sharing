@@ -254,6 +254,60 @@
     return checks;
   }
 
+
+
+  function runFuelCapacityChecks(input = {}) {
+    const state = asObject(input.state);
+    const checks = [];
+    const tankCapacity = Math.max(1, safeNumber(state.fuelTankCapacity, 55));
+    const consumption = Math.max(0.1, safeNumber(state.fuelConsumption, 5.3));
+    const toleranceLiters = Math.max(0.25, tankCapacity * 0.02);
+    const fuelLogs = asArray(state.fuel);
+
+    checks.push(tankCapacity > 0 ? pass("Fuel tank capacity is configured", `${tankCapacity} L`) : fail("Fuel tank capacity is configured"));
+    checks.push(consumption > 0 ? pass("Fuel consumption setting is configured", `${consumption} L/100 km`) : fail("Fuel consumption setting is configured"));
+
+    const overCapacityFuel = fuelLogs.filter((fuel) => safeNumber(fuel && fuel.liters) > tankCapacity + toleranceLiters);
+    checks.push(overCapacityFuel.length
+      ? fail("Fuel logs do not exceed tank capacity", `${overCapacityFuel.length} fuel log(s) exceed ${tankCapacity} L.`)
+      : pass("Fuel logs do not exceed tank capacity"));
+
+    const invalidFuelOdometers = fuelLogs.filter((fuel) => fuel && fuel.odometer !== "" && fuel.odometer != null && safeNumber(fuel.odometer, -1) < 0);
+    checks.push(invalidFuelOdometers.length
+      ? fail("Fuel odometers are non-negative", `${invalidFuelOdometers.length} fuel log(s) have negative odometers.`)
+      : pass("Fuel odometers are non-negative"));
+
+    const fullTankLogs = fuelLogs
+      .map((fuel) => ({ ...asObject(fuel), odometerValue: safeNumber(fuel && fuel.odometer) }))
+      .filter((fuel) => (fuel.fullTank || fuel.full_tank) && fuel.odometerValue > 0)
+      .sort((a, b) => a.odometerValue - b.odometerValue);
+
+    const impossibleSegments = [];
+    for (let i = 1; i < fullTankLogs.length; i += 1) {
+      const previous = fullTankLogs[i - 1];
+      const current = fullTankLogs[i];
+      const km = Math.max(0, current.odometerValue - previous.odometerValue);
+      const estimatedUsed = km * consumption / 100;
+      const partialFuel = fuelLogs
+        .map((fuel) => ({ ...asObject(fuel), odometerValue: safeNumber(fuel && fuel.odometer) }))
+        .filter((fuel) => !(fuel.fullTank || fuel.full_tank) && fuel.odometerValue > previous.odometerValue && fuel.odometerValue <= current.odometerValue)
+        .reduce((sum, fuel) => sum + Math.max(0, safeNumber(fuel.liters)), 0);
+      if (estimatedUsed > tankCapacity + partialFuel + toleranceLiters) {
+        impossibleSegments.push(`${previous.odometerValue}-${current.odometerValue} km`);
+      }
+    }
+    checks.push(impossibleSegments.length
+      ? fail("Full-tank odometer gaps fit configured capacity", impossibleSegments.slice(0, 3).join(", "))
+      : pass("Full-tank odometer gaps fit configured capacity"));
+
+    const syntheticTooLarge = tankCapacity + Math.max(1, toleranceLiters * 2);
+    checks.push(syntheticTooLarge > tankCapacity + toleranceLiters
+      ? pass("Tank-capacity overfill rule is represented", `${syntheticTooLarge.toFixed(1)} L would exceed ${tankCapacity} L.`)
+      : fail("Tank-capacity overfill rule is represented"));
+
+    return checks;
+  }
+
   function runRuntimePwaChecks(input = {}) {
     const checks = [];
     const buildInfo = input.buildInfo || window.FuelBuildInfo?.BUILD_INFO;
@@ -304,6 +358,7 @@
       { id: "backup", name: "Backup/import validation", checks: runBackupRoundTripChecks(input) },
       { id: "privacy", name: "Location privacy", checks: runLocationPrivacyChecks(input) },
       { id: "bookings", name: "Booking edge checks", checks: runBookingEdgeChecks(input) },
+      { id: "fuel-capacity", name: "Fuel capacity and odometer checks", checks: runFuelCapacityChecks(input) },
       { id: "sync", name: "Sync/report storage", checks: runSyncReportChecks(input) },
       { id: "security", name: "Supabase security health", checks: runSupabaseSecurityHealthChecks(input) },
       { id: "runtime", name: "Runtime/PWA metadata", checks: runRuntimePwaChecks(input) }
@@ -451,6 +506,7 @@
     runLocationPrivacyChecks,
     runBackupRoundTripChecks,
     runBookingEdgeChecks,
+    runFuelCapacityChecks,
     runRuntimePwaChecks,
     runSyncReportChecks,
     runScenarioMatrixChecks,

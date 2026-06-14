@@ -124,7 +124,9 @@ function testScenarioMatrixCoversExpandedLogic() {
     bookings: [{ id: 'booking-1', member: 'Christian', start: '2026-06-14T10:00', end: '2026-06-14T11:00' }],
     closedPeriods: [],
     paymentStatuses: {},
-    testLabReports: [{ id: 'previous-report', syncedAt: '2026-06-14T18:45:00.000Z' }]
+    testLabReports: [{ id: 'previous-report', syncedAt: '2026-06-14T18:45:00.000Z' }],
+    fuelTankCapacity: 55,
+    fuelConsumption: 5.3
   };
   const ledger = {
     totalPaid: 100,
@@ -165,11 +167,28 @@ function testScenarioMatrixCoversExpandedLogic() {
     supabaseSecurityStatus: { checked: true, checks: [{ ok: true, name: 'RPC available' }] },
     runtimeGlobals: { FuelLedgerModel: {}, FuelLocationPrivacy: {}, FuelPeriodClosing: {}, FuelTestLab: {}, permissionHelpers: {} }
   });
-  assert.equal(JSON.stringify(scenarios.map((item) => item.id)), JSON.stringify(['ledger', 'payments', 'permissions', 'backup', 'privacy', 'bookings', 'sync', 'security', 'runtime']));
+  assert.equal(JSON.stringify(scenarios.map((item) => item.id)), JSON.stringify(['ledger', 'payments', 'permissions', 'backup', 'privacy', 'bookings', 'fuel-capacity', 'sync', 'security', 'runtime']));
   assert.equal(scenarios.every((scenario) => scenario.failedCount === 0), true, JSON.stringify(scenarios));
   const flattened = lab.flattenScenarioChecks(scenarios);
   assert.equal(flattened.length > scenarios.length, true);
   assert.equal(flattened.every((check) => check.scenario), true);
+}
+
+function testFuelCapacityChecksCatchBadFuelData() {
+  const lab = loadHelpers();
+  const checks = lab.runFuelCapacityChecks({
+    state: {
+      members: ['Christian'],
+      fuelTankCapacity: 40,
+      fuelConsumption: 8,
+      fuel: [
+        { id: 'fuel-too-large', payer: 'Christian', liters: 45, odometer: 1000 },
+        { id: 'fuel-negative-odo', payer: 'Christian', liters: 10, odometer: -1 }
+      ]
+    }
+  });
+  assert.equal(checks.some((check) => !check.ok && check.name === 'Fuel logs do not exceed tank capacity'), true, JSON.stringify(checks));
+  assert.equal(checks.some((check) => !check.ok && check.name === 'Fuel odometers are non-negative'), true, JSON.stringify(checks));
 }
 
 const tests = [
@@ -179,7 +198,8 @@ const tests = [
   testReportRenderingEscapesHtml,
   testReportIncludesSyncMetadata,
   testRuntimePwaUnavailableCacheMetadataIsNotHardFailure,
-  testScenarioMatrixCoversExpandedLogic
+  testScenarioMatrixCoversExpandedLogic,
+  testFuelCapacityChecksCatchBadFuelData
 ];
 
 for (const test of tests) {
