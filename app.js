@@ -3177,12 +3177,18 @@ function getFuelWarningUsedPercent(source = state) {
   return Math.min(100, Math.max(1, Number(source?.fuelWarningThreshold) || defaults.fuelWarningThreshold));
 }
 
+function getTankLowRangeThresholdPercent(source = state) {
+  return Math.min(100, Math.max(1, Number(source?.fuelWarningThreshold) || defaults.fuelWarningThreshold));
+}
+
 function buildRefuelPlanning(distanceKm = 0) {
   const insights = buildStationInsights();
   const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
   const tankCapacity = getFuelTankCapacity();
   const warningUsedPercent = getFuelWarningUsedPercent();
+  const tankLowRangeThresholdPercent = getTankLowRangeThresholdPercent();
   const warningLitersUsed = tankCapacity * warningUsedPercent / 100;
+  const warningLitersRemaining = tankCapacity * tankLowRangeThresholdPercent / 100;
   const plannedLiters = distanceKm > 0 ? distanceKm * consumption / 100 : 100 * consumption / 100;
   const latestFuelOdometer = Number(insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0);
   const currentOdometer = Number(getLatestRangeOdometer(latestFuelOdometer) || 0);
@@ -3207,20 +3213,20 @@ function buildRefuelPlanning(distanceKm = 0) {
       if (projectedLiters >= tankCapacity) {
         tone = "warning";
         recommendation += " Refuel before or during this trip.";
-      } else if (projectedLiters >= warningLitersUsed) {
+      } else if (projectedLitersRemaining <= warningLitersRemaining) {
         tone = "warning";
-        recommendation += " This crosses the configured low-range warning threshold; plan a refuel stop.";
+        recommendation += " This leaves the tank below the configured low-range warning threshold; plan a refuel stop.";
       } else {
         recommendation += ` Current estimate: ${remainingText}.`;
       }
     } else {
       recommendation = `Current estimate since the last logged fuel odometer: ${remainingText}. Full-tank range is about ${formatNumber(fullTankRange)} km.`;
-      if (litersSinceFuel >= warningLitersUsed) tone = "warning";
+      if (estimatedLitersRemaining <= warningLitersRemaining) tone = "warning";
     }
   } else if (distanceKm > 0) {
     recommendation = `This trip is expected to use about ${formatNumber(plannedLiters)} L. A full ${formatNumber(tankCapacity)} L tank gives about ${formatNumber(fullTankRange)} km at ${formatNumber(consumption)} L/100 km. Add full-tank odometer logs to make remaining-range predictions smarter.`;
   }
-  return { insights, consumption, tankCapacity, warningUsedPercent, warningLitersUsed, plannedLiters, kmSinceFuel, litersSinceFuel, projectedLiters, estimatedLitersRemaining, projectedLitersRemaining, estimatedRangeRemaining, projectedRangeRemaining, fullTankRange, latestFuelOdometer, stationCandidates, recommendation, tone };
+  return { insights, consumption, tankCapacity, warningUsedPercent, tankLowRangeThresholdPercent, warningLitersUsed, warningLitersRemaining, plannedLiters, kmSinceFuel, litersSinceFuel, projectedLiters, estimatedLitersRemaining, projectedLitersRemaining, estimatedRangeRemaining, projectedRangeRemaining, fullTankRange, latestFuelOdometer, stationCandidates, recommendation, tone };
 }
 
 function renderStationInsights() {

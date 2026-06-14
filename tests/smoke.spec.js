@@ -826,6 +826,7 @@ test("trip planner subtracts planned distance from full-tank baseline without st
   await expect(page.locator("#tripEstimateResult")).toContainText(/65[0-5][,.][0-9] km left|65[0-5] km left/);
   await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip: about 35[,.]2 L \/ 65[0-5][,.][0-9] km remaining|After the trip: about 35[,.]2 L \/ 65[0-5] km remaining/);
   await expect(page.locator("#tripEstimateResult")).not.toContainText("Add full-tank odometer logs to make remaining-range predictions smarter");
+  await expect(page.locator("#tripEstimateResult")).not.toContainText(/low-range warning threshold|plan a refuel stop|leaves the tank below/i);
 });
 
 test("trip planner warns when planned trip crosses configured tank range threshold", async ({ page, request }) => {
@@ -864,7 +865,7 @@ test("trip planner warns when planned trip crosses configured tank range thresho
   await expect(page.locator("#tripEstimateResult")).toContainText("Tank capacity");
   await expect(page.locator("#tripEstimateResult")).toContainText("55 L");
   await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip/i);
-  await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop/i);
+  await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop|leaves the tank below/i);
 });
 
 test("smart tank range uses actual data, not unsaved plan estimate", async ({ page, request }) => {
