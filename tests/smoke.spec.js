@@ -765,7 +765,7 @@ test("tank capacity settings persist and drive trip planner output", async ({ pa
   await page.locator("#fuelConsumption").fill("5.5");
   await page.locator("#fuelTankCapacity").fill("60");
   await page.locator("#fuelWarningThreshold").fill("75");
-  await page.locator('#settingsForm button[type="submit"]').click();
+  await page.locator("#settingsForm").evaluate((form) => form.requestSubmit());
   await expect.poll(async () => {
     const response = await request.get('/api/state');
     const saved = await response.json();
@@ -863,4 +863,67 @@ test("trip planner warns when planned trip crosses configured tank range thresho
   await expect(page.locator("#tripEstimateResult")).toContainText("55 L");
   await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip/i);
   await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop/i);
+});
+
+test("smart tank range uses actual data, not unsaved plan estimate", async ({ page, request }) => {
+  const seeded = makeCleanState();
+  seeded.fuelConsumption = 5.4;
+  seeded.fuelTankCapacity = 55;
+  seeded.fuelWarningThreshold = 25;
+  seeded.fuel = [{
+    id: "full-tank-smart-anchor",
+    payer: "Christian",
+    date: "2026-06-01",
+    amount: 500,
+    liters: 40,
+    odometer: 10000,
+    fullTank: true
+  }];
+  seeded.trips = [{
+    id: "actual-trip-before-plan",
+    driver: "Christian",
+    date: "2026-06-02",
+    startKm: 10000,
+    endKm: 10200,
+    note: "Actual trip before unsaved plan",
+    participants: ["Christian", "Marie"]
+  }];
+  seeded.lastOdometer = 10200;
+  await request.put("/api/state", { data: seeded });
+
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="book"]').click();
+  await page.locator("#tripEstimateDistance").fill("366");
+  await page.locator("#tripEstimatorParticipants input").first().check();
+  await expect(page.locator("#tripEstimateResult")).toContainText(/45[0-5][,.][0-9] km left|45[0-5] km left/);
+
+  await page.locator('[data-view-tab="insights"]').click();
+  await expect(page.locator("#smartPredictions")).toContainText("Tank range now");
+  await expect(page.locator("#smartPredictions")).toContainText(/81[5-9][,.][0-9] km now|81[5-9] km now/);
+  await expect(page.locator("#smartPredictions")).not.toContainText("after plan");
+});
+
+test("plan estimate can be copied into a real booking", async ({ page, request }) => {
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="book"]').click();
+  await page.locator("#tripEstimateDistance").fill("123");
+  await page.locator("#tripEstimateStart").fill("Roskilde");
+  await page.locator("#tripEstimateDestination").fill("Aarhus");
+  await page.locator("#tripEstimatorParticipants input").first().check();
+  await page.getByRole("button", { name: "Use this estimate for booking" }).click();
+
+  await expect(page.locator("#bookingPurpose")).toHaveValue(/Roskilde.*Aarhus.*123/);
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#bookingCalendar")).toContainText(/123 km estimate|123 km/);
+
+  let booking;
+  await expect.poll(async () => {
+    const response = await request.get("/api/state");
+    const saved = await response.json();
+    booking = saved.bookings.find((item) => Number(item.plannedDistanceKm) === 123);
+    return Boolean(booking);
+  }, { timeout: 5000 }).toBe(true);
+  expect(booking).toBeTruthy();
+  expect(booking.routeFrom).toBe("Roskilde");
+  expect(booking.routeTo).toBe("Aarhus");
 });

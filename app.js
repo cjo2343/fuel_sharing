@@ -210,6 +210,7 @@ const bookingCalendarViewStorageKey = "fuel-ledger-booking-calendar-view";
 let bookingCalendarView = localStorage.getItem(bookingCalendarViewStorageKey) || "list";
 const historySectionStorageKey = "fuel-ledger-history-section";
 let activeHistorySection = localStorage.getItem(historySectionStorageKey) || "booking";
+let tripPlannerBookingDraft = null;
 const paymentSectionStorageKey = "fuel-ledger-payment-section";
 let activePaymentSection = localStorage.getItem(paymentSectionStorageKey) || "all";
 
@@ -376,6 +377,7 @@ const bookingCalendarController = window.FuelBookingCalendar.createBookingCalend
   canCreateTripFromBooking,
   describeBookingPermissionMessage: (...args) => describeBookingPermissionMessage(...args),
   describeCurrentActor,
+  formatNumber,
   formatTypedLogRef
 });
 
@@ -474,7 +476,11 @@ if (els.bookingForm) {
       start: normalizeBookingDateTime(els.bookingStart.value),
       end: normalizeBookingDateTime(els.bookingEnd.value),
       purpose: els.bookingPurpose.value.trim(),
-      createdBy: currentUser || els.bookingMember.value
+      createdBy: currentUser || els.bookingMember.value,
+      plannedDistanceKm: tripPlannerBookingDraft?.distanceKm || existingBooking?.plannedDistanceKm || null,
+      routeFrom: tripPlannerBookingDraft?.routeFrom || existingBooking?.routeFrom || "",
+      routeTo: tripPlannerBookingDraft?.routeTo || existingBooking?.routeTo || "",
+      plannedParticipants: Array.isArray(tripPlannerBookingDraft?.participants) ? tripPlannerBookingDraft.participants : (Array.isArray(existingBooking?.plannedParticipants) ? existingBooking.plannedParticipants : [])
     };
 
     const validation = validateBookingInput(bookingPayload, editingBookingId);
@@ -506,10 +512,15 @@ if (els.bookingForm) {
 
     setBookingCalendarAnchor(bookingPayload.start);
     editingBookingId = null;
+    tripPlannerBookingDraft = null;
     els.bookingForm.reset();
     setDefaultBookingTimes();
     clearBookingAvailabilityPreview(previousBooking ? "Booking updated. Choose another time to check availability." : "Booking saved. Choose another time to check availability.");
     saveState();
+    if (!supabaseClient) {
+      if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+      await saveRemoteState();
+    }
     updateEditUi();
     render();
     if (isNewBooking) sendBookingPush(bookingPayload).catch((error) => console.warn("Booking push notification failed", error));
@@ -644,6 +655,14 @@ if (els.tripEstimateDestination) {
 
 if (els.tripEstimatorParticipants) {
   els.tripEstimatorParticipants.addEventListener("change", renderTripEstimate);
+}
+
+if (els.tripEstimateResult) {
+  els.tripEstimateResult.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-use-plan-for-booking]");
+    if (!button) return;
+    useTripPlanForBooking();
+  });
 }
 
 els.fuelForm.addEventListener("submit", async (event) => {
@@ -2834,8 +2853,12 @@ function renderTripEstimate() {
     </div>
     <p>${escapeHtml(estimate.explanation)}</p>
     <div class="trip-refuel-note ${refuel.tone === "warning" ? "is-warning" : ""}">
-      <strong>Refuel planning</strong>
+      <strong>Hypothetical refuel planning</strong>
       <span>${escapeHtml(refuel.recommendation)}</span>
+    </div>
+    <div class="trip-plan-actions">
+      <button class="subtle-button compact-button" type="button" data-use-plan-for-booking="true">Use this estimate for booking</button>
+      <small>This stays a calculator until you save it as an actual booking.</small>
     </div>
     <div class="trip-route-note">
       <strong>${route.hasRoute ? "Route helper" : "Optional route helper"}</strong>
@@ -2993,6 +3016,34 @@ function getTripPlannerRoute() {
 function getRouteMapUrl(route) {
   if (!route?.hasRoute) return "";
   return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(route.start)}&destination=${encodeURIComponent(route.destination)}&travelmode=driving`;
+}
+
+function useTripPlanForBooking() {
+  if (!els.tripEstimateDistance || !els.bookingPurpose || !els.bookingStart || !els.bookingEnd) return;
+  const distanceKm = Number(els.tripEstimateDistance.value || 0);
+  if (!(distanceKm > 0)) {
+    showAppMessage("Enter a planned distance before turning the plan into a booking.");
+    return;
+  }
+  const route = getTripPlannerRoute();
+  const participants = getTripEstimatorParticipants();
+  const routeLabel = route.hasRoute ? `${route.start} → ${route.destination}` : "Planned trip";
+  tripPlannerBookingDraft = {
+    distanceKm,
+    routeFrom: route.start || "",
+    routeTo: route.destination || "",
+    participants
+  };
+  const existingPurpose = els.bookingPurpose.value.trim();
+  const estimateText = `${routeLabel} · ${formatNumber(distanceKm)} km estimate`;
+  els.bookingPurpose.value = existingPurpose || estimateText;
+  setBookingCalendarAnchor(els.bookingStart.value || localDateString());
+  updateBookingAvailabilityPreview();
+  renderBookings();
+  render();
+  els.bookingPurpose.scrollIntoView({ behavior: "smooth", block: "center" });
+  els.bookingPurpose.focus({ preventScroll: true });
+  showAppMessage("Plan copied to the booking form. Choose the booking time and click Add booking to save it.");
 }
 
 function buildRouteRefuelGuidance(route, refuel) {
@@ -3734,6 +3785,16 @@ function getLatestMonthlySignal() {
   };
 }
 
+function getUpcomingEstimatedBookingDistance() {
+  const now = new Date();
+  return (state.bookings || []).reduce((sum, booking) => {
+    const end = parseBookingDate(booking.end);
+    const distance = Number(booking.plannedDistanceKm || 0);
+    if (!end || end < now || !(distance > 0)) return sum;
+    return sum + distance;
+  }, 0);
+}
+
 function buildSmartPredictions(ledger) {
   const intel = buildFuelIntelligence(ledger);
   const health = getCurrentPeriodHealthPrediction(ledger);
@@ -3741,11 +3802,14 @@ function buildSmartPredictions(ledger) {
   const participants = Math.max(1, getTripEstimatorParticipants().length || 1);
   const planDistance = distance > 0 ? distance : 100;
   const planEstimate = calculateTripCostEstimate(planDistance, participants);
+  const actualRefuel = buildRefuelPlanning(0);
+  const upcomingBookingDistance = getUpcomingEstimatedBookingDistance();
+  const upcomingBookingRefuel = upcomingBookingDistance > 0 ? buildRefuelPlanning(upcomingBookingDistance) : null;
   const monthlySignal = intel.consumptionLooksRealistic ? getLatestMonthlySignal() : null;
   const historicalQuality = intel.consumptionLooksRealistic && intel.confidence !== "Low" ? "Good" : intel.confidence === "Low" ? "Limited" : "Needs cleanup";
   const planningConfidence = intel.canUseHistoricalForPlanning ? intel.confidence : latestFuelPrice?.price || intel.effectivePrice ? "Medium" : "Low";
   const planningNote = distance > 0 ? "Using your booking estimate distance." : "Using a 100 km reference because no planned booking distance is entered.";
-  return { intel, health, planDistance, participants, planEstimate, monthlySignal, historicalQuality, planningConfidence, planningNote };
+  return { intel, health, planDistance, participants, planEstimate, actualRefuel, upcomingBookingDistance, upcomingBookingRefuel, monthlySignal, historicalQuality, planningConfidence, planningNote };
 }
 
 function renderSmartPredictions(ledger) {
@@ -3784,6 +3848,16 @@ function renderSmartPredictions(ledger) {
     : "No current-period outlier found.";
   const historicalTone = prediction.historicalQuality === "Good" ? "ok" : "warning";
   const planningTone = prediction.planningConfidence === "High" ? "ok" : prediction.planningConfidence === "Low" ? "issue" : "warning";
+  const tankNow = prediction.actualRefuel;
+  const tankNowText = tankNow.latestFuelOdometer
+    ? `${formatNumber(tankNow.estimatedRangeRemaining)} km now`
+    : `${formatNumber(tankNow.fullTankRange)} km full`;
+  const upcomingBookingCard = prediction.upcomingBookingRefuel ? `
+      <article class="smart-card smart-card-${prediction.upcomingBookingRefuel.tone === "warning" ? "warning" : "ok"}">
+        <span>Booked trip range</span>
+        <strong>${formatNumber(prediction.upcomingBookingRefuel.projectedRangeRemaining)} km after bookings</strong>
+        <small>Saved bookings include ${formatNumber(prediction.upcomingBookingDistance)} km of estimated driving. ${escapeHtml(prediction.upcomingBookingRefuel.recommendation)}</small>
+      </article>` : "";
 
   els.smartPredictions.className = "smart-predictions";
   els.smartPredictions.innerHTML = `
@@ -3808,11 +3882,12 @@ function renderSmartPredictions(ledger) {
         <strong><span class="status-pill status-${planningTone}">${prediction.planningConfidence}</span></strong>
         <small>${prediction.intel.canUseHistoricalForPlanning ? "Uses clean historical cost/km." : "Uses car setting because historical data is not trusted for planning."}</small>
       </article>
-      <article class="smart-card smart-card-${prediction.planEstimate.refuel.tone === "warning" ? "warning" : "ok"}">
-        <span>Tank range</span>
-        <strong>${prediction.planEstimate.refuel.latestFuelOdometer ? `${formatNumber(prediction.planEstimate.refuel.projectedRangeRemaining)} km after plan` : `${formatNumber(prediction.planEstimate.refuel.fullTankRange)} km full`}</strong>
-        <small>${escapeHtml(prediction.planEstimate.refuel.recommendation)}</small>
+      <article class="smart-card smart-card-${tankNow.tone === "warning" ? "warning" : "ok"}">
+        <span>Tank range now</span>
+        <strong>${tankNowText}</strong>
+        <small>${escapeHtml(tankNow.recommendation)} Unsaved Plan Trip estimates are only shown in the Plan panel.</small>
       </article>
+      ${upcomingBookingCard}
       <article>
         <span>Historical data quality</span>
         <strong><span class="status-pill status-${historicalTone}">${prediction.historicalQuality}</span></strong>

@@ -14,6 +14,7 @@
       canManageBookingEntry,
       canCreateTripFromBooking,
       describeCurrentActor,
+      formatNumber = (value) => String(value),
       formatTypedLogRef = (entry) => (entry && entry.logRef) || "bok-unknown"
     } = deps;
 
@@ -278,6 +279,7 @@
           <strong>${escapeHtml(booking.member || "Booked")}</strong>
           <span>${escapeHtml(time)}</span>
           ${booking.purpose ? `<span class="booking-month-chip-purpose">${escapeHtml(booking.purpose)}</span>` : ""}
+          ${Number(booking.plannedDistanceKm || 0) > 0 ? `<span class="booking-month-chip-purpose">${escapeHtml(formatNumber(Number(booking.plannedDistanceKm)))} km estimate</span>` : ""}
           ${logTripButton}
         </div>
       `;
