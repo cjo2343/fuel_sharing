@@ -191,6 +191,46 @@ function testFuelCapacityChecksCatchBadFuelData() {
   assert.equal(checks.some((check) => !check.ok && check.name === 'Fuel odometers are non-negative'), true, JSON.stringify(checks));
 }
 
+
+function testFuelCapacityChecksReportChronologicalOdometerBackwardsClearly() {
+  const lab = loadHelpers();
+  const checks = lab.runFuelCapacityChecks({
+    state: {
+      members: ['Christian'],
+      fuelTankCapacity: 55,
+      fuelConsumption: 5.4,
+      fuel: [
+        { id: '1A87A4', payer: 'Christian', liters: 55, odometer: 10780, date: '2026-06-14', fullTank: true },
+        { id: '5F4741', payer: 'Christian', liters: 40, odometer: 10566, date: '2026-06-21', fullTank: true },
+        { id: 'auto-test-high', payer: 'Christian', liters: 20, odometer: 172244, date: '2026-06-22', fullTank: true, testRunId: 'auto-test-run' }
+      ]
+    }
+  });
+  const backwards = checks.find((check) => check.name === 'Fuel odometers do not go backwards over time');
+  assert.equal(backwards && backwards.ok, false, JSON.stringify(checks));
+  assert.equal(backwards.detail.includes('#1A87A4'), true, backwards.detail);
+  assert.equal(backwards.detail.includes('#5F4741'), true, backwards.detail);
+  assert.equal(backwards.detail.includes('172244'), false, backwards.detail);
+}
+
+function testFullTankCapacityGapIsWarningNotHardFailure() {
+  const lab = loadHelpers();
+  const checks = lab.runFuelCapacityChecks({
+    state: {
+      members: ['Christian'],
+      fuelTankCapacity: 55,
+      fuelConsumption: 5.4,
+      fuel: [
+        { id: 'first', payer: 'Christian', liters: 40, odometer: 10000, date: '2026-06-14', fullTank: true },
+        { id: 'later', payer: 'Christian', liters: 40, odometer: 11300, date: '2026-06-21', fullTank: true }
+      ]
+    }
+  });
+  const gap = checks.find((check) => check.name === 'Full-tank odometer gaps fit configured capacity');
+  assert.equal(gap && gap.ok, true, JSON.stringify(checks));
+  assert.equal(gap.warning, true, JSON.stringify(gap));
+}
+
 const tests = [
   testGeneratedSummaryAndDetection,
   testInvariantChecksPassForBalancedLedger,
@@ -199,7 +239,9 @@ const tests = [
   testReportIncludesSyncMetadata,
   testRuntimePwaUnavailableCacheMetadataIsNotHardFailure,
   testScenarioMatrixCoversExpandedLogic,
-  testFuelCapacityChecksCatchBadFuelData
+  testFuelCapacityChecksCatchBadFuelData,
+  testFuelCapacityChecksReportChronologicalOdometerBackwardsClearly,
+  testFullTankCapacityGapIsWarningNotHardFailure
 ];
 
 for (const test of tests) {

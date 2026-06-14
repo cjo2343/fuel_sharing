@@ -256,48 +256,80 @@
 
 
 
+  function fuelLogDateMs(fuel) {
+    const raw = fuel && (fuel.date || fuel.createdAt || fuel.created_at || fuel.updatedAt || fuel.updated_at);
+    const parsed = Date.parse(raw || "");
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function formatFuelLogRef(fuel) {
+    const source = asObject(fuel);
+    const id = String(source.id || "fuel").slice(0, 8);
+    const date = String(source.date || "unknown date");
+    const odometer = safeNumber(source.odometer);
+    return `#${id} ${date} ${odometer} km`;
+  }
+
   function runFuelCapacityChecks(input = {}) {
     const state = asObject(input.state);
     const checks = [];
     const tankCapacity = Math.max(1, safeNumber(state.fuelTankCapacity, 55));
     const consumption = Math.max(0.1, safeNumber(state.fuelConsumption, 5.3));
     const toleranceLiters = Math.max(0.25, tankCapacity * 0.02);
-    const fuelLogs = asArray(state.fuel);
+    const rawFuelLogs = asArray(state.fuel);
+    const productionFuelLogs = rawFuelLogs.filter((fuel) => !isTestLabEntry(fuel));
+    const fuelLogs = input.includeGeneratedFuelLogs
+      ? rawFuelLogs
+      : (productionFuelLogs.length ? productionFuelLogs : rawFuelLogs);
 
     checks.push(tankCapacity > 0 ? pass("Fuel tank capacity is configured", `${tankCapacity} L`) : fail("Fuel tank capacity is configured"));
     checks.push(consumption > 0 ? pass("Fuel consumption setting is configured", `${consumption} L/100 km`) : fail("Fuel consumption setting is configured"));
 
     const overCapacityFuel = fuelLogs.filter((fuel) => safeNumber(fuel && fuel.liters) > tankCapacity + toleranceLiters);
     checks.push(overCapacityFuel.length
-      ? fail("Fuel logs do not exceed tank capacity", `${overCapacityFuel.length} fuel log(s) exceed ${tankCapacity} L.`)
+      ? fail("Fuel logs do not exceed tank capacity", `${overCapacityFuel.length} fuel log(s) exceed ${tankCapacity} L: ${overCapacityFuel.slice(0, 3).map(formatFuelLogRef).join(", ")}`)
       : pass("Fuel logs do not exceed tank capacity"));
 
     const invalidFuelOdometers = fuelLogs.filter((fuel) => fuel && fuel.odometer !== "" && fuel.odometer != null && safeNumber(fuel.odometer, -1) < 0);
     checks.push(invalidFuelOdometers.length
-      ? fail("Fuel odometers are non-negative", `${invalidFuelOdometers.length} fuel log(s) have negative odometers.`)
+      ? fail("Fuel odometers are non-negative", `${invalidFuelOdometers.length} fuel log(s) have negative odometers: ${invalidFuelOdometers.slice(0, 3).map(formatFuelLogRef).join(", ")}`)
       : pass("Fuel odometers are non-negative"));
 
-    const fullTankLogs = fuelLogs
-      .map((fuel) => ({ ...asObject(fuel), odometerValue: safeNumber(fuel && fuel.odometer) }))
-      .filter((fuel) => (fuel.fullTank || fuel.full_tank) && fuel.odometerValue > 0)
-      .sort((a, b) => a.odometerValue - b.odometerValue);
+    const chronologicalFuelLogs = fuelLogs
+      .map((fuel, index) => ({ ...asObject(fuel), odometerValue: safeNumber(fuel && fuel.odometer), dateMs: fuelLogDateMs(fuel), originalIndex: index }))
+      .filter((fuel) => fuel.odometerValue > 0)
+      .sort((a, b) => (a.dateMs - b.dateMs) || (a.originalIndex - b.originalIndex));
 
+    const backwardsSegments = [];
+    for (let i = 1; i < chronologicalFuelLogs.length; i += 1) {
+      const previous = chronologicalFuelLogs[i - 1];
+      const current = chronologicalFuelLogs[i];
+      if (current.odometerValue < previous.odometerValue) {
+        backwardsSegments.push(`${formatFuelLogRef(previous)} -> ${formatFuelLogRef(current)}`);
+      }
+    }
+    checks.push(backwardsSegments.length
+      ? fail("Fuel odometers do not go backwards over time", backwardsSegments.slice(0, 3).join("; "))
+      : pass("Fuel odometers do not go backwards over time"));
+
+    const fullTankLogs = chronologicalFuelLogs.filter((fuel) => fuel.fullTank || fuel.full_tank);
+    const partialFuelLogs = chronologicalFuelLogs.filter((fuel) => !(fuel.fullTank || fuel.full_tank));
     const impossibleSegments = [];
     for (let i = 1; i < fullTankLogs.length; i += 1) {
       const previous = fullTankLogs[i - 1];
       const current = fullTankLogs[i];
-      const km = Math.max(0, current.odometerValue - previous.odometerValue);
+      if (current.odometerValue <= previous.odometerValue) continue;
+      const km = current.odometerValue - previous.odometerValue;
       const estimatedUsed = km * consumption / 100;
-      const partialFuel = fuelLogs
-        .map((fuel) => ({ ...asObject(fuel), odometerValue: safeNumber(fuel && fuel.odometer) }))
-        .filter((fuel) => !(fuel.fullTank || fuel.full_tank) && fuel.odometerValue > previous.odometerValue && fuel.odometerValue <= current.odometerValue)
+      const partialFuel = partialFuelLogs
+        .filter((fuel) => fuel.odometerValue > previous.odometerValue && fuel.odometerValue <= current.odometerValue)
         .reduce((sum, fuel) => sum + Math.max(0, safeNumber(fuel.liters)), 0);
       if (estimatedUsed > tankCapacity + partialFuel + toleranceLiters) {
-        impossibleSegments.push(`${previous.odometerValue}-${current.odometerValue} km`);
+        impossibleSegments.push(`${formatFuelLogRef(previous)} -> ${formatFuelLogRef(current)} (${km} km, approx. ${estimatedUsed.toFixed(1)} L used)`);
       }
     }
     checks.push(impossibleSegments.length
-      ? fail("Full-tank odometer gaps fit configured capacity", impossibleSegments.slice(0, 3).join(", "))
+      ? warn("Full-tank odometer gaps fit configured capacity", `Large full-tank gap(s) may mean missing fuel logs or a typo: ${impossibleSegments.slice(0, 3).join("; ")}`)
       : pass("Full-tank odometer gaps fit configured capacity"));
 
     const syntheticTooLarge = tankCapacity + Math.max(1, toleranceLiters * 2);
