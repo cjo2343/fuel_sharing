@@ -4219,7 +4219,12 @@ body.auth-locked #authPanel .text-button {
 }
 
 .test-lab-report.warning {
+  border-color: rgba(220, 38, 38, 0.32);
+}
+
+.test-lab-report.caution {
   border-color: rgba(180, 83, 9, 0.32);
+  background: rgba(245, 158, 11, 0.06);
 }
 
 .test-lab-report strong {
@@ -4288,7 +4293,14 @@ body.auth-locked #authPanel .text-button {
   color: #b42318;
 }
 
+.test-lab-chip.caution {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(180, 83, 9, 0.20);
+  color: #92400e;
+}
+
 .test-lab-failures,
+.test-lab-warnings,
 .test-lab-errors {
   border-top: 1px solid var(--border);
   margin-top: 0.65rem;

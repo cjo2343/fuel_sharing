@@ -14,7 +14,15 @@
   }
 
   function fail(name, detail = "") {
-    return { ok: false, name, detail };
+    return { ok: false, name, detail, level: "error" };
+  }
+
+  function warn(name, detail = "") {
+    return { ok: true, name, detail, level: "warning", warning: true };
+  }
+
+  function isWarning(check) {
+    return Boolean(check && check.ok && (check.warning || check.level === "warning"));
   }
 
   function isMissingRpcError(error) {
@@ -47,12 +55,14 @@
   function summarizeSecurityStatus(status = {}) {
     const checks = asArray(status.checks);
     const failed = checks.filter((check) => !check.ok);
+    const warnings = checks.filter(isWarning);
     return {
       checked: Boolean(status.checked),
       ok: status.checked ? failed.length === 0 : false,
       checkedAt: status.checkedAt || "",
       mode: status.mode || "unknown",
       failedCount: failed.length,
+      warningCount: warnings.length,
       passedCount: checks.length - failed.length,
       checks
     };
@@ -68,11 +78,13 @@
     }
 
     checks.push(status.ok
-      ? pass("Supabase security health passed", `${status.passedCount} check(s) passed.`)
+      ? pass("Supabase security health passed", `${status.passedCount} check(s) passed${status.warningCount ? ` with ${status.warningCount} warning(s)` : ""}.`)
       : fail("Supabase security health passed", `${status.failedCount} check(s) need attention.`));
 
     for (const check of status.checks) {
-      checks.push(check.ok ? pass(check.name, check.detail || "") : fail(check.name, check.detail || ""));
+      if (!check.ok) checks.push(fail(check.name, check.detail || ""));
+      else if (isWarning(check)) checks.push(warn(check.name, check.detail || ""));
+      else checks.push(pass(check.name, check.detail || ""));
     }
 
     return checks;
@@ -101,13 +113,14 @@
   function renderSecurityStatusText(status = {}) {
     const summary = summarizeSecurityStatus(status);
     if (!summary.checked) return "Supabase security health has not been checked yet.";
-    const icon = summary.ok ? "OK" : "Needs review";
-    return `${icon}: ${summary.passedCount} passed, ${summary.failedCount} failed${summary.checkedAt ? ` at ${summary.checkedAt}` : ""}.`;
+    const icon = summary.ok ? (summary.warningCount ? "OK with warnings" : "OK") : "Needs review";
+    return `${icon}: ${summary.passedCount} passed, ${summary.warningCount || 0} warnings, ${summary.failedCount} failed${summary.checkedAt ? ` at ${summary.checkedAt}` : ""}.`;
   }
 
   window.FuelSecurityHealth = {
     pass,
     fail,
+    warn,
     isMissingRpcError,
     isExpectedClosePeriodProbeError,
     normalizeRpcProbeResult,

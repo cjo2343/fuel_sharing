@@ -82,7 +82,20 @@
   }
 
   function fail(name, detail = "") {
-    return { ok: false, name, detail };
+    return { ok: false, name, detail, level: "error" };
+  }
+
+  function warn(name, detail = "") {
+    return { ok: true, name, detail, level: "warning", warning: true };
+  }
+
+  function isWarning(check) {
+    return Boolean(check && check.ok && (check.warning || check.level === "warning"));
+  }
+
+  function checkIcon(check) {
+    if (!check || !check.ok) return "❌";
+    return isWarning(check) ? "⚠️" : "✅";
   }
 
   function runStateInvariantChecks(input = {}) {
@@ -295,12 +308,19 @@
       { id: "security", name: "Supabase security health", checks: runSupabaseSecurityHealthChecks(input) },
       { id: "runtime", name: "Runtime/PWA metadata", checks: runRuntimePwaChecks(input) }
     ];
-    return scenarios.map((scenario) => ({
-      ...scenario,
-      ok: asArray(scenario.checks).every((check) => check.ok),
-      passedCount: asArray(scenario.checks).filter((check) => check.ok).length,
-      failedCount: asArray(scenario.checks).filter((check) => !check.ok).length
-    }));
+    return scenarios.map((scenario) => {
+      const checks = asArray(scenario.checks);
+      const failedCount = checks.filter((check) => !check.ok).length;
+      const warningCount = checks.filter(isWarning).length;
+      return {
+        ...scenario,
+        ok: failedCount === 0,
+        hasWarnings: warningCount > 0,
+        passedCount: checks.length - failedCount,
+        failedCount,
+        warningCount
+      };
+    });
   }
 
   function flattenScenarioChecks(scenarios) {
@@ -313,13 +333,16 @@
   function buildTestLabReport(input = {}) {
     const checks = asArray(input.checks);
     const failed = checks.filter((check) => !check.ok);
+    const warnings = checks.filter(isWarning);
     return {
       id: input.id || createTestRunId(),
       scenario: input.scenario || "test-lab",
       startedAt: input.startedAt || new Date().toISOString(),
       finishedAt: input.finishedAt || new Date().toISOString(),
       ok: failed.length === 0,
+      hasWarnings: warnings.length > 0,
       failedCount: failed.length,
+      warningCount: warnings.length,
       passedCount: checks.length - failed.length,
       buildInfo: input.buildInfo || null,
       normalizedTableStatus: input.normalizedTableStatus || null,
@@ -338,24 +361,34 @@
 
   function renderReportHtml(report) {
     if (!report) return "";
-    const statusText = report.ok ? "Passed" : "Needs review";
-    const statusIcon = report.ok ? "✅" : "❌";
-    const reportClass = report.ok ? "ok" : "warning";
+    const warnings = asArray(report.checks).filter(isWarning);
+    const statusText = report.ok ? (warnings.length ? "Passed with warnings" : "Passed") : "Needs review";
+    const statusIcon = report.ok ? (warnings.length ? "⚠️" : "✅") : "❌";
+    const reportClass = report.ok ? (warnings.length ? "caution" : "ok") : "warning";
     const failedChecks = asArray(report.checks).filter((check) => !check.ok);
     const allChecks = asArray(report.checks);
     const scenarios = asArray(report.scenarios);
     const owner = report.createdBy ? ` · ${escapeHtml(report.createdBy)}` : "";
     const synced = report.syncedAt ? ` · synced ${escapeHtml(formatDateTime(report.syncedAt))}` : "";
     const runId = report.id ? escapeHtml(report.id) : "unknown run";
+    const warningCount = report.warningCount ?? warnings.length;
     const scenarioChips = scenarios.length
       ? `<div class="test-lab-scenario-chips">${scenarios.map((scenario) => {
           const total = (scenario.passedCount || 0) + (scenario.failedCount || 0);
-          return `<span class="test-lab-chip ${scenario.ok ? "ok" : "warning"}">${scenario.ok ? "✅" : "❌"} ${escapeHtml(scenario.name || scenario.id)} ${scenario.passedCount || 0}/${total}</span>`;
+          const scenarioWarnings = scenario.warningCount || 0;
+          const cls = scenario.ok ? (scenarioWarnings ? "caution" : "ok") : "warning";
+          const icon = scenario.ok ? (scenarioWarnings ? "⚠️" : "✅") : "❌";
+          const warningLabel = scenarioWarnings ? ` · ${scenarioWarnings} warning${scenarioWarnings === 1 ? "" : "s"}` : "";
+          return `<span class="test-lab-chip ${cls}">${icon} ${escapeHtml(scenario.name || scenario.id)} ${scenario.passedCount || 0}/${total}${warningLabel}</span>`;
         }).join("")}</div>`
       : "";
     const failedHtml = failedChecks.length
       ? `<div class="test-lab-failures"><strong>Failed checks</strong><ul>${failedChecks.map((check) => `<li>❌ ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></div>`
-      : `<p class="test-lab-success-note">All reported checks passed.</p>`;
+      : "";
+    const warningsHtml = warnings.length
+      ? `<div class="test-lab-warnings"><strong>Warnings</strong><ul>${warnings.map((check) => `<li>⚠️ ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></div>`
+      : "";
+    const successHtml = !failedChecks.length && !warnings.length ? `<p class="test-lab-success-note">All reported checks passed.</p>` : "";
     const generated = report.generated
       ? `<p><strong>Generated:</strong> ${report.generated.trips || 0} trips, ${report.generated.fuel || 0} fuel logs, ${report.generated.bookings || 0} bookings.</p>`
       : "";
@@ -366,17 +399,20 @@
       ? `<div class="test-lab-errors"><strong>Errors</strong><ul>${asArray(report.errors).map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul></div>`
       : "";
     const allChecksHtml = allChecks.length
-      ? `<details class="test-lab-details"><summary>Show all ${allChecks.length} checks</summary><ul>${allChecks.map((check) => `<li>${check.ok ? "✅" : "❌"} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></details>`
+      ? `<details class="test-lab-details"><summary>Show all ${allChecks.length} checks</summary><ul>${allChecks.map((check) => `<li>${checkIcon(check)} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></details>`
       : "";
+    const countText = `${report.passedCount || 0} passed · ${warningCount || 0} warning${warningCount === 1 ? "" : "s"} · ${report.failedCount || 0} failed`;
     return `
       <div class="test-lab-report ${reportClass}">
         <div class="test-lab-report-header">
           <strong>${statusIcon} ${statusText}: ${escapeHtml(report.scenario || "Test Lab")}</strong>
-          <span>${report.passedCount || 0} passed · ${report.failedCount || 0} failed</span>
+          <span>${countText}</span>
         </div>
         <p class="entry-meta">${runId}${owner}${synced}</p>
         ${scenarioChips}
         ${failedHtml}
+        ${warningsHtml}
+        ${successHtml}
         ${generated}
         ${cleanup}
         ${errors}
@@ -404,6 +440,7 @@
     DEFAULT_TEST_PREFIX,
     DEFAULT_TEST_MARKER,
     asArray,
+    warn,
     createTestRunId,
     isTestLabEntry,
     stateSummary,

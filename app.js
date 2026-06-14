@@ -1648,10 +1648,13 @@ function createSecurityHealthTimeoutStatus(timeoutMs = 8000) {
     ok: true,
     mode: hasSupabaseConfig ? "timeout" : "local",
     checkedAt: new Date().toISOString(),
-    message: `Security health backend probes did not finish within ${Math.round(timeoutMs / 1000)} seconds. Treated as skipped for Full Test Lab; run Security health directly if you want to diagnose the backend probe.`,
+    message: `Security health backend probes did not finish within ${Math.round(timeoutMs / 1000)} seconds. Treated as a warning/skipped probe; run Security health directly if you want to diagnose the backend probe.`,
+    warningCount: 1,
     checks: [{
       ok: true,
-      name: "Supabase security health backend probe completed or skipped",
+      level: "warning",
+      warning: true,
+      name: "Deep Supabase backend probe timed out",
       detail: `Backend probe timed out after ${Math.round(timeoutMs / 1000)} seconds. Full Test Lab continued; run Security health directly if this repeats.`
     }]
   };
@@ -2001,18 +2004,31 @@ async function runFullTestLabScenario() {
   try {
     cleanup = cleanupGeneratedTestEntriesFromState();
     await flushStressSave(`${report.ok && !errors.length ? "Test Lab passed" : "Test Lab finished with issues"} and cleaned up ${cleanup.removed?.total || 0} generated item(s).`);
+    if (supabaseClient && currentSession) {
+      await checkNormalizedTablesAgainstCurrentState().catch((error) => {
+        normalizedTableStatus = {
+          checked: true,
+          ok: false,
+          message: `Could not refresh normalized table health after Test Lab cleanup: ${error.message || error}`
+        };
+      });
+    }
   } catch (cleanupError) {
     console.warn("Test Lab cleanup failed", cleanupError);
     errors.push(`Cleanup failed: ${cleanupError.message || cleanupError}`);
   }
 
-  report = {
-    ...report,
-    finishedAt: new Date().toISOString(),
-    after: testLab.stateSummary(state),
+  report = buildCurrentTestLabReport({
+    id: runId,
+    scenario: "full-test-lab",
+    startedAt,
+    before,
+    generated: generatedBeforeCleanup,
     cleanup,
-    errors
-  };
+    errors,
+    securityStatus
+  });
+  report = { ...report, after: testLab.stateSummary(state) };
   if (errors.length && report.ok) {
     report = { ...report, ok: false, failedCount: report.failedCount + errors.length };
   }
