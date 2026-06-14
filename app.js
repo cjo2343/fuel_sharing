@@ -26,6 +26,7 @@ const dataStore = window.FuelDataStore;
 const notifications = window.FuelNotifications;
 const auditLog = window.FuelAuditLog;
 const testLab = window.FuelTestLab;
+const securityHealth = window.FuelSecurityHealth;
 let lastTestLabReport = null;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 let auditLogDirty = false;
@@ -195,6 +196,13 @@ let normalizedTableStatus = {
   ok: false,
   message: "Normalized tables have not been checked yet.",
   details: []
+};
+let supabaseSecurityStatus = {
+  checked: false,
+  ok: false,
+  mode: "pending",
+  message: "Supabase security health has not been checked yet.",
+  checks: []
 };
 let databaseDiagnosticsStatus = {
   checked: false,
@@ -369,6 +377,7 @@ const els = {
   runBackupScenario: document.querySelector("#runBackupScenario"),
   runPrivacyScenario: document.querySelector("#runPrivacyScenario"),
   runRuntimeScenario: document.querySelector("#runRuntimeScenario"),
+  runSecurityScenario: document.querySelector("#runSecurityScenario"),
   runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
   exportTestLabReport: document.querySelector("#exportTestLabReport"),
   cleanupTestLabData: document.querySelector("#cleanupTestLabData"),
@@ -1259,6 +1268,15 @@ els.runRuntimeScenario?.addEventListener("click", async () => {
   });
 });
 
+els.runSecurityScenario?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await runTestLabScenarioMatrix({
+    scenarioName: "supabase-security-health-checks",
+    scenarioFilter: ["security"],
+    confirmMessage: "Run live Supabase security health checks? This uses harmless read/probe calls and does not change production data."
+  });
+});
+
 els.exportTestLabReport?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   downloadLastTestLabReport();
@@ -1641,6 +1659,131 @@ function persistTestLabReport(report, { sync = true } = {}) {
   return lastTestLabReport;
 }
 
+async function refreshSupabaseSecurityHealth({ silent = false } = {}) {
+  const checks = [];
+  const checkedAt = new Date().toISOString();
+
+  function record(check) {
+    checks.push(check);
+  }
+
+  const helper = securityHealth || window.FuelSecurityHealth;
+  if (!helper) {
+    supabaseSecurityStatus = {
+      checked: true,
+      ok: false,
+      mode: "unavailable",
+      checkedAt,
+      message: "Security health helpers are not loaded.",
+      checks: [{ ok: false, name: "Security health helper is loaded", detail: "Refresh the app and try again." }]
+    };
+    return supabaseSecurityStatus;
+  }
+
+  const localChecks = helper.buildLocalSecurityChecks({
+    hasSupabaseConfig,
+    hasSession: Boolean(currentSession),
+    hasMemberProfile: Boolean(getCurrentMemberProfile()),
+    isAdmin: canManageSettings(),
+    normalizedTableStatus
+  });
+  localChecks.forEach(record);
+
+  if (!hasSupabaseConfig || !supabaseClient) {
+    supabaseSecurityStatus = {
+      checked: true,
+      ok: true,
+      mode: "local",
+      checkedAt,
+      message: "Local-only mode: Supabase backend security checks are not applicable.",
+      checks
+    };
+    if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
+    return supabaseSecurityStatus;
+  }
+
+  if (!currentSession) {
+    supabaseSecurityStatus = {
+      checked: true,
+      ok: false,
+      mode: "supabase",
+      checkedAt,
+      message: "Sign in before running live Supabase security checks.",
+      checks
+    };
+    if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
+    return supabaseSecurityStatus;
+  }
+
+  try {
+    if (!(await hasFreshSupabaseSession())) {
+      record(helper.fail("Supabase session is fresh", "The session could not be refreshed."));
+    } else {
+      record(helper.pass("Supabase session is fresh"));
+    }
+  } catch (error) {
+    record(helper.fail("Supabase session is fresh", error.message || String(error)));
+  }
+
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+
+  if (canManageSettings()) {
+    try {
+      const members = await supabaseClient
+        .from("ledger_members")
+        .select("id,name,email,role,is_active")
+        .eq("ledger_id", ledgerId)
+        .eq("is_active", true)
+        .limit(100);
+      if (members.error) throw members.error;
+      record(helper.pass("Active ledger members are readable", `${members.data?.length || 0} active member row(s).`));
+      const currentEmail = String(currentSession?.user?.email || "").toLowerCase();
+      const currentRow = (members.data || []).find((member) => String(member.email || "").toLowerCase() === currentEmail);
+      record(currentRow ? helper.pass("Current Supabase user is linked to an active ledger member", currentRow.name || currentEmail) : helper.fail("Current Supabase user is linked to an active ledger member", currentEmail || "No email found."));
+      record(currentRow?.role === "admin" ? helper.pass("Current linked member is admin in normalized tables") : helper.fail("Current linked member is admin in normalized tables", "Admin role is required for backend security checks."));
+    } catch (error) {
+      record(helper.fail("Active ledger members are readable", error.message || String(error)));
+    }
+
+    try {
+      const probe = await supabaseClient.rpc("close_settlement_period", {
+        target_ledger_id: ledgerId,
+        target_period_id: "00000000-0000-0000-0000-000000000000",
+        period_snapshot: {
+          label: "Security health probe",
+          entryFingerprint: `security-probe-${Date.now()}`,
+          closedAt: new Date().toISOString()
+        }
+      });
+      record(helper.normalizeRpcProbeResult({
+        name: "close_settlement_period RPC is installed and guarded",
+        ok: !probe.error,
+        error: probe.error,
+        detail: "RPC call returned without an error for the harmless zero-period probe."
+      }));
+    } catch (error) {
+      record(helper.normalizeRpcProbeResult({
+        name: "close_settlement_period RPC is installed and guarded",
+        error
+      }));
+    }
+  } else {
+    record(helper.pass("Admin-only RPC probes were skipped", "The current user is not an admin."));
+  }
+
+  const failed = checks.filter((check) => !check.ok);
+  supabaseSecurityStatus = {
+    checked: true,
+    ok: failed.length === 0,
+    mode: "supabase",
+    checkedAt,
+    message: failed.length ? `${failed.length} Supabase security health check(s) need attention.` : "Supabase security health checks passed.",
+    checks
+  };
+  if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
+  return supabaseSecurityStatus;
+}
+
 function renderTestLabReport(report = null, { persist = true } = {}) {
   if (report) {
     lastTestLabReport = persist ? persistTestLabReport(report) : report;
@@ -1664,6 +1807,8 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     permissionHelpers: window.permissionHelpers,
     locationPrivacy: window.FuelLocationPrivacy,
     dataStore,
+    securityHealthHelper: securityHealth,
+    supabaseSecurityStatus,
     transition: typeof isValidPaymentStatusTransition === "function" ? isValidPaymentStatusTransition : null
   };
   let scenarios = testLab?.runScenarioMatrixChecks ? testLab.runScenarioMatrixChecks(matrixInput) : [];
@@ -1683,6 +1828,7 @@ function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated,
     createdBy: describeCurrentActor(),
     browser: navigator.userAgent || "",
     normalizedTableStatus,
+    supabaseSecurityStatus,
     before,
     after: testLab.stateSummary(state),
     generated,
@@ -1703,6 +1849,7 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
   const startedAt = new Date().toISOString();
   const id = testLab.createTestRunId();
   setDataToolsMessage(`Test Lab ${id}: running ${scenarioName}...`);
+  await refreshSupabaseSecurityHealth({ silent: true });
   const report = buildCurrentTestLabReport({
     id,
     scenario: scenarioName,

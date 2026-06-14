@@ -663,3 +663,8 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 ### Test Lab scenario matrix
 
 The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.
+
+
+### Security health checks
+
+Admins can run the Test Lab Security health scenario to verify live Supabase/session/member mapping and the transactional period-close RPC after deploy.

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v128";
-const BUILD_LABEL = "test-lab-scenario-matrix";
-const BUILD_UPDATED_AT = "2026-06-14T19:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v129";
+const BUILD_LABEL = "supabase-security-health-rpc";
+const BUILD_UPDATED_AT = "2026-06-14T19:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -13,6 +13,7 @@ const CORE_ASSETS = [
   "/settlement-calculations.js",
   "/period-closing-helpers.js",
   "/stress-test-helpers.js",
+  "/security-health-helpers.js",
   "/ui-messages.js",
   "/sync-status-helpers.js",
   "/location-privacy-helpers.js",

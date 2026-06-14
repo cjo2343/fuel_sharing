@@ -152,9 +152,11 @@ function testScenarioMatrixCoversExpandedLogic() {
     dataStore,
     transition: (previous, next) => previous === 'open' && next === 'paid' ? false : !(previous === 'paid' && next === 'requested'),
     buildInfo: { version: 'test', serviceWorkerCache: 'cache', expectedServiceWorkerCache: 'cache' },
+    securityHealthHelper: { buildSupabaseSecurityChecks: ({ status }) => status.checked ? [{ ok: true, name: 'Security checked' }] : [{ ok: false, name: 'Security missing' }] },
+    supabaseSecurityStatus: { checked: true, checks: [{ ok: true, name: 'RPC available' }] },
     runtimeGlobals: { FuelLedgerModel: {}, FuelLocationPrivacy: {}, FuelPeriodClosing: {}, FuelTestLab: {}, permissionHelpers: {} }
   });
-  assert.equal(JSON.stringify(scenarios.map((item) => item.id)), JSON.stringify(['ledger', 'payments', 'permissions', 'backup', 'privacy', 'bookings', 'sync', 'runtime']));
+  assert.equal(JSON.stringify(scenarios.map((item) => item.id)), JSON.stringify(['ledger', 'payments', 'permissions', 'backup', 'privacy', 'bookings', 'sync', 'security', 'runtime']));
   assert.equal(scenarios.every((scenario) => scenario.failedCount === 0), true, JSON.stringify(scenarios));
   const flattened = lab.flattenScenarioChecks(scenarios);
   assert.equal(flattened.length > scenarios.length, true);

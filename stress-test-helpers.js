@@ -264,6 +264,16 @@
     return checks;
   }
 
+  function runSupabaseSecurityHealthChecks(input = {}) {
+    const helper = input.securityHealthHelper || window.FuelSecurityHealth;
+    if (!helper || typeof helper.buildSupabaseSecurityChecks !== "function") {
+      return [fail("Supabase security health helper is available", "window.FuelSecurityHealth was not found.")];
+    }
+    return helper.buildSupabaseSecurityChecks({
+      status: input.supabaseSecurityStatus || input.securityStatus || {}
+    });
+  }
+
   function runScenarioMatrixChecks(input = {}) {
     const scenarios = [
       { id: "ledger", name: "Ledger invariants", checks: runStateInvariantChecks(input) },
@@ -273,6 +283,7 @@
       { id: "privacy", name: "Location privacy", checks: runLocationPrivacyChecks(input) },
       { id: "bookings", name: "Booking edge checks", checks: runBookingEdgeChecks(input) },
       { id: "sync", name: "Sync/report storage", checks: runSyncReportChecks(input) },
+      { id: "security", name: "Supabase security health", checks: runSupabaseSecurityHealthChecks(input) },
       { id: "runtime", name: "Runtime/PWA metadata", checks: runRuntimePwaChecks(input) }
     ];
     return scenarios.map((scenario) => ({
