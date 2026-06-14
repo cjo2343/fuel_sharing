@@ -409,6 +409,7 @@ const els = {
   startKm: document.querySelector("#startKm"),
   endKm: document.querySelector("#endKm"),
   tripNote: document.querySelector("#tripNote"),
+  tripCorrectionPanel: document.querySelector("#tripCorrectionPanel"),
   fuelAmount: document.querySelector("#fuelAmount"),
   fuelLiters: document.querySelector("#fuelLiters"),
   fuelOdometer: document.querySelector("#fuelOdometer"),
@@ -736,10 +737,7 @@ els.tripForm.addEventListener("submit", async (event) => {
   const end = Number(els.endKm.value);
   const participants = getSelectedParticipants();
 
-  if (end <= start) {
-    showUserError("End odometer must be higher than start odometer.");
-    return;
-  }
+  if (!validateTripOdometerChronology(start, end)) return;
 
   if (participants.length === 0) {
     showUserError("Choose at least one person to split the trip with.");
@@ -2675,12 +2673,24 @@ if (els.cancelTripEdit) {
   els.cancelTripEdit.addEventListener("click", () => {
     editingTripId = null;
     clearTripLoggingContext();
+    clearTripCorrectionPanel();
     els.tripForm.reset();
     setDefaultDates();
     updateEditUi();
     render();
   });
 }
+
+els.tripCorrectionPanel?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-trip-correction-action]");
+  if (!button) return;
+  applyTripCorrection(button.dataset.tripCorrectionAction);
+});
+
+[els.startKm, els.endKm, els.tripDate, els.tripNote].forEach((control) => {
+  control?.addEventListener("input", clearTripCorrectionPanel);
+  control?.addEventListener("change", clearTripCorrectionPanel);
+});
 
 if (els.cancelBookingEdit) {
   els.cancelBookingEdit.addEventListener("click", () => {
@@ -4534,6 +4544,99 @@ function estimateTankStateAtOdometer(targetOdometer = 0, options = {}) {
     estimatedRangeRemaining,
     kmSinceFuel
   };
+}
+
+
+function extractEstimatedDistanceFromText(text = "") {
+  const match = String(text || "").match(/(\d+(?:[.,]\d+)?)\s*km\s*estimate/i);
+  return match ? Number(match[1].replace(",", ".")) || 0 : 0;
+}
+
+function getActiveTripEstimateDistanceKm() {
+  const context = getActiveTripLogContext();
+  if (Number(context?.plannedDistanceKm || 0) > 0) return Number(context.plannedDistanceKm);
+  if (context?.purpose) {
+    const contextDistance = extractEstimatedDistanceFromText(context.purpose);
+    if (contextDistance > 0) return contextDistance;
+  }
+  const noteDistance = extractEstimatedDistanceFromText(els.tripNote?.value || "");
+  if (noteDistance > 0) return noteDistance;
+  const distance = Number(els.endKm?.value || 0) - Number(els.startKm?.value || 0);
+  return distance > 0 ? round(distance) : 0;
+}
+
+function clearTripCorrectionPanel() {
+  if (!els.tripCorrectionPanel) return;
+  els.tripCorrectionPanel.classList.add("hidden");
+  els.tripCorrectionPanel.replaceChildren();
+  delete els.tripCorrectionPanel.dataset.suggestedStart;
+  delete els.tripCorrectionPanel.dataset.suggestedEnd;
+}
+
+function buildTripOdometerCorrection(startKm = 0, endKm = 0) {
+  const start = Number(startKm) || 0;
+  const end = Number(endKm) || 0;
+  if (!(start > 0) || !(end > 0) || end > start) return null;
+  const estimateDistance = getActiveTripEstimateDistanceKm();
+  const safeDistance = estimateDistance > 0 ? estimateDistance : Math.max(1, Math.abs(end - start));
+  const suggestedEnd = round(start + safeDistance);
+  const suggestedStart = Math.max(0, round(end - safeDistance));
+  return {
+    start,
+    end,
+    distance: round(end - start),
+    estimateDistance: round(safeDistance),
+    suggestedEnd,
+    suggestedStart,
+    hasBookingEstimate: estimateDistance > 0
+  };
+}
+
+function showTripOdometerCorrection(correction) {
+  if (!els.tripCorrectionPanel || !correction) return;
+  els.tripCorrectionPanel.dataset.suggestedStart = String(correction.suggestedStart);
+  els.tripCorrectionPanel.dataset.suggestedEnd = String(correction.suggestedEnd);
+  const estimateLabel = correction.hasBookingEstimate ? "booking estimate" : "current odometer gap";
+  els.tripCorrectionPanel.innerHTML = `
+    <strong>Trip odometer needs a correction</strong>
+    <p>End odometer ${formatNumber(correction.end)} km is lower than start odometer ${formatNumber(correction.start)} km. Use the ${escapeHtml(estimateLabel)} of about ${formatNumber(correction.estimateDistance)} km to choose a safe adjustment, or edit manually.</p>
+    <div class="fuel-correction-math">
+      <strong>Why these suggestions?</strong>
+      <ul>
+        <li>Current entry would calculate ${formatNumber(correction.distance)} km, which is not valid for a trip.</li>
+        <li>Keeping the start odometer ${formatNumber(correction.start)} km means the end odometer should be about ${formatNumber(correction.suggestedEnd)} km.</li>
+        <li>Keeping the end odometer ${formatNumber(correction.end)} km means the start odometer should be about ${formatNumber(correction.suggestedStart)} km.</li>
+      </ul>
+    </div>
+    <div class="fuel-correction-actions">
+      <button type="button" class="subtle-button compact-button" data-trip-correction-action="set-end">Keep ${formatNumber(correction.start)} km → set end to ${formatNumber(correction.suggestedEnd)} km</button>
+      <button type="button" class="subtle-button compact-button" data-trip-correction-action="set-start">Keep ${formatNumber(correction.end)} km → set start to ${formatNumber(correction.suggestedStart)} km</button>
+      <button type="button" class="subtle-button compact-button" data-trip-correction-action="manual">Edit manually</button>
+    </div>
+  `;
+  els.tripCorrectionPanel.classList.remove("hidden");
+  els.tripCorrectionPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function applyTripCorrection(action) {
+  if (!els.tripCorrectionPanel) return;
+  if (action === "set-end") {
+    const value = Number(els.tripCorrectionPanel.dataset.suggestedEnd || 0);
+    if (value > 0 && els.endKm) els.endKm.value = String(value);
+  } else if (action === "set-start") {
+    const value = Number(els.tripCorrectionPanel.dataset.suggestedStart || 0);
+    if (value >= 0 && els.startKm) els.startKm.value = String(value);
+  }
+  clearTripCorrectionPanel();
+  els.endKm?.focus();
+}
+
+function validateTripOdometerChronology(startKm = 0, endKm = 0) {
+  const correction = buildTripOdometerCorrection(startKm, endKm);
+  if (!correction) return true;
+  showTripOdometerCorrection(correction);
+  showUserWarning("Trip odometer needs a correction before saving.");
+  return false;
 }
 
 function buildTripFuelRangeImpact(startKm = 0, endKm = 0, options = {}) {
@@ -7833,6 +7936,7 @@ function startTripEdit(id) {
   editingFuelId = null;
   editingBookingId = null;
   clearTripLoggingContext();
+  clearTripCorrectionPanel();
   editingTripId = id;
   syncTripDateBounds();
   renderPeopleSelectors();
@@ -7863,6 +7967,7 @@ function getActiveTripLogContext() {
         logRef: trip.logRef || createLogRef(trip.id),
         bookingStart: trip.bookingStart || null,
         bookingEnd: trip.bookingEnd || null,
+        plannedDistanceKm: Number(state.bookings.find((entry) => entry.id === trip.sourceBookingId)?.plannedDistanceKm || extractEstimatedDistanceFromText(trip.note || "") || 0),
         member: trip.driver || "",
         purpose: String(trip.note || "").replace(/^Booking:\s*/i, "")
       };
@@ -8491,11 +8596,13 @@ function startTripFromBooking(id) {
   editingFuelId = null;
   editingBookingId = null;
   clearFuelLoggingContext();
+  clearTripCorrectionPanel();
   pendingTripBookingContext = {
     bookingId: booking.id,
     logRef: booking.logRef || createLogRef(booking.id),
     bookingStart: booking.start || null,
     bookingEnd: booking.end || null,
+    plannedDistanceKm: Number(booking.plannedDistanceKm || extractEstimatedDistanceFromText(booking.purpose || "") || 0),
     member: booking.member || "",
     purpose: booking.purpose || ""
   };
@@ -9671,14 +9778,19 @@ function renderClosedPeriodFuel(fuel, currency) {
 }
 
 function getTripDateLimitForActiveContext() {
-  const context = pendingTripBookingContext;
+  const context = getActiveTripLogContext();
   const bookingEnd = context?.bookingEnd ? parseBookingDate(context.bookingEnd) : null;
-  return bookingEnd ? localDateString(bookingEnd) : localDateString();
+  if (bookingEnd) return localDateString(bookingEnd);
+  // Standalone trips can be corrected independently of the current calendar date.
+  // Cross-period safety is enforced by explicit period and odometer validation.
+  return "";
 }
 
 function syncTripDateBounds() {
   if (!els.tripDate) return;
-  els.tripDate.max = getTripDateLimitForActiveContext();
+  const maxDate = getTripDateLimitForActiveContext();
+  if (maxDate) els.tripDate.max = maxDate;
+  else els.tripDate.removeAttribute("max");
 }
 
 function clearTripLoggingContext() {

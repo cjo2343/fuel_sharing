@@ -689,3 +689,10 @@ When a fuel receipt would overfill the configured tank, the app now shows the ma
 ### JSON mirror write reduction
 
 Normalized Supabase tables are now the primary persistence path for normal app edits. The legacy `car_share_ledgers.state` JSON mirror is retained as a backup/export/fallback snapshot, but it is no longer overwritten on every small save. The app refreshes normalized tables immediately, then writes the JSON mirror only on a scheduled backup interval or when audit-history durability requires a forced backup. The Supabase load monitor reports `JSON mirror saves` and the latest JSON mirror timestamp so high write volume can be diagnosed quickly.
+
+
+### Trip date and odometer guided corrections
+
+- Trip dates for booking completion/edit flows now allow the booking end date instead of incorrectly capping at the current day.
+- Trip saves block backwards odometer entries and show guided corrections using the booking estimate where available.
+- Suggested actions can keep the start odometer and set the end odometer, or keep the end odometer and set the start odometer.

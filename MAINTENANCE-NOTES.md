@@ -479,3 +479,10 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 ## JSON mirror write reduction
 
 Normal Supabase saves now synchronize normalized tables first and defer the large `car_share_ledgers.state` JSON mirror. The mirror remains available for fallback recovery, exports, reminders, and audit-history durability, but routine trip/fuel/booking edits should not cause a full-state JSON write every time. Watch the Supabase load monitor for `JSON mirror saves`; frequent mirror writes should be treated as a regression unless they come from explicit backup/audit flows.
+
+
+### Trip date and odometer guided corrections
+
+- Trip dates for booking completion/edit flows now allow the booking end date instead of incorrectly capping at the current day.
+- Trip saves block backwards odometer entries and show guided corrections using the booking estimate where available.
+- Suggested actions can keep the start odometer and set the end odometer, or keep the end odometer and set the start odometer.
