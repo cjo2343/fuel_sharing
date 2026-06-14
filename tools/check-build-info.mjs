@@ -10,6 +10,7 @@ const runtimeFiles = new Set([
   "data-store.js",
   "settlement-calculations.js",
   "ui-messages.js",
+  "sync-status-helpers.js",
   "audit-log.js",
   "notifications.js",
   "admin-tools.js",

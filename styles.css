@@ -136,8 +136,14 @@ legend {
   color: var(--red);
 }
 
-.sync-status[data-status="cloud"] + .sync-detail {
+.sync-status[data-status="cloud"] + .sync-detail,
+.sync-status[data-status="tables"] + .sync-detail,
+.sync-status[data-status="shared"] + .sync-detail {
   color: var(--green-dark);
+}
+
+.sync-status[data-status="queued"] + .sync-detail {
+  color: #8a6500;
 }
 .topbar h1,
 .panel h2,
@@ -198,6 +204,11 @@ legend {
 .sync-status[data-status="local"] {
   background: #f3f0e8;
   color: #776336;
+}
+
+.sync-status[data-status="queued"] {
+  background: #fff3cc;
+  color: #8a6500;
 }
 
 .sync-status[data-status="saving"],

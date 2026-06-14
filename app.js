@@ -183,6 +183,8 @@ let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
 let lastJsonMirrorSaveAt = "";
 let lastSyncError = "";
+let pendingLocalChanges = 0;
+let lastLocalSaveAt = "";
 const jsonMirrorBackupIntervalMs = 30 * 60 * 1000;
 let normalizedTableStatus = {
   checked: false,
@@ -8433,7 +8435,14 @@ function loadState() {
 
 function saveState() {
   state.updatedAt = new Date().toISOString();
-  dataStore.saveLocalState({ storageKey, state, afterSave: queueRemoteSave });
+  dataStore.saveLocalState({
+    storageKey,
+    state,
+    afterSave: () => {
+      markLocalChangeQueued();
+      queueRemoteSave();
+    }
+  });
 }
 
 function writeLocalState() {
@@ -9893,10 +9902,14 @@ async function loadRemoteState() {
     writeLocalState();
     setDefaultDates();
     render();
-    if (state === localState) queueRemoteSave();
-    setSyncStatus("Shared");
-  } catch {
-    setSyncStatus("Local");
+    if (state === localState) {
+      markLocalChangeQueued();
+      queueRemoteSave();
+    } else {
+      markRemoteSaveSucceeded("Shared");
+    }
+  } catch (error) {
+    markRemoteSaveFailed(error);
   }
 }
 
@@ -9916,9 +9929,9 @@ async function saveRemoteState() {
     if (!response.ok) throw new Error("State save failed");
     state = normalizeState(await response.json());
     writeLocalState();
-    setSyncStatus("Shared");
-  } catch {
-    setSyncStatus("Local");
+    markRemoteSaveSucceeded("Shared");
+  } catch (error) {
+    markRemoteSaveFailed(error);
   }
 }
 
@@ -10009,7 +10022,7 @@ async function saveSupabaseState() {
 
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
-    setSyncStatus("Tables");
+    markRemoteSaveSucceeded("Tables");
     checkNormalizedTablesAgainstCurrentState().catch((error) => {
       normalizedTableStatus = {
         checked: true,
@@ -10020,9 +10033,8 @@ async function saveSupabaseState() {
     });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState();
   } catch (error) {
-    lastSyncError = error.message || "Could not save table data.";
+    markRemoteSaveFailed(error, "Could not save table data.");
     els.authMessage.textContent = `${lastSyncError} Changes on this device may not be saved to the cloud.`;
-    setSyncStatus("Local");
   }
 }
 
@@ -10092,49 +10104,43 @@ function unsubscribeFromSupabaseState() {
   supabaseStateChannel = null;
 }
 
+function markLocalChangeQueued() {
+  pendingLocalChanges += 1;
+  lastLocalSaveAt = state.updatedAt || new Date().toISOString();
+  if (!supabaseClient || currentSession) {
+    setSyncStatus("Queued");
+  } else {
+    setSyncStatus("Login");
+  }
+}
+
+function markRemoteSaveSucceeded(label) {
+  pendingLocalChanges = 0;
+  lastSyncError = "";
+  setSyncStatus(label);
+}
+
+function markRemoteSaveFailed(error, fallbackMessage = "Could not save shared data.") {
+  lastSyncError = error?.message || fallbackMessage;
+  setSyncStatus("Local");
+}
+
 function setSyncStatus(label) {
-  els.syncStatus.textContent = label === "Tables" ? "Database" : label;
-  els.syncStatus.dataset.status = label.toLowerCase();
+  const display = window.FuelSyncStatus?.syncDisplayForStatus
+    ? window.FuelSyncStatus.syncDisplayForStatus(label, {
+        pendingCount: pendingLocalChanges,
+        lastCloudSaveAt,
+        lastLocalSaveAt,
+        lastSyncError
+      })
+    : { text: label === "Tables" ? "Database" : label, status: String(label || "").toLowerCase(), detail: "" };
 
-  if (!els.syncDetail) return;
+  els.syncStatus.textContent = display.text;
+  els.syncStatus.dataset.status = display.status;
 
-  if (label === "Tables") {
-    els.syncDetail.textContent = lastCloudSaveAt
-      ? `Saved to database ${new Date(lastCloudSaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-      : "Saved/read through normalized database tables";
-    return;
+  if (els.syncDetail) {
+    els.syncDetail.textContent = display.detail;
   }
-
-  if (label === "Cloud") {
-    els.syncDetail.textContent = lastCloudSaveAt
-      ? `Saved to cloud ${new Date(lastCloudSaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-      : "Saved to Supabase";
-    return;
-  }
-
-  if (label === "Saving") {
-    els.syncDetail.textContent = "Saving changes...";
-    return;
-  }
-
-  if (label === "Syncing") {
-    els.syncDetail.textContent = "Loading shared data...";
-    return;
-  }
-
-  if (label === "Login") {
-    els.syncDetail.textContent = "Sign in to save changes";
-    return;
-  }
-
-  if (label === "Local") {
-    els.syncDetail.textContent = lastSyncError
-      ? `Not saved: ${lastSyncError}`
-      : "Not saved to cloud";
-    return;
-  }
-
-  els.syncDetail.textContent = "";
 }
 
 function hasLedgerData(candidate) {

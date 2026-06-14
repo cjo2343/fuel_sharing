@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v117";
-const BUILD_LABEL = "ui-feedback-hardening";
-const BUILD_UPDATED_AT = "2026-06-14T15:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v118";
+const BUILD_LABEL = "sync-reliability-feedback";
+const BUILD_UPDATED_AT = "2026-06-14T16:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -11,6 +11,7 @@ const CORE_ASSETS = [
   "/data-store.js",
   "/settlement-calculations.js",
   "/ui-messages.js",
+  "/sync-status-helpers.js",
   "/audit-log.js",
   "/notifications.js",
   "/admin-tools.js",
