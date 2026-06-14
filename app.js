@@ -180,6 +180,10 @@ let editingBookingId = null;
 let pendingTripBookingContext = null;
 let pendingFuelTripContext = null;
 let supabaseStateChannel = null;
+let ledgerEventsChannel = null;
+const ledgerEventNotificationIds = new Set();
+let lastLedgerEventPublishAt = 0;
+const ledgerEventPublishCooldownMs = 30000;
 let ignoreRealtimeUntil = 0;
 const liveSyncStorageKey = `${storageKey}:liveSyncEnabled`;
 let liveSyncEnabled = localStorage.getItem(liveSyncStorageKey) === "true";
@@ -483,6 +487,7 @@ els.otpForm.addEventListener("submit", async (event) => {
 els.signOut.addEventListener("click", async () => {
   if (supabaseClient) await supabaseClient.auth.signOut();
   currentSession = null;
+  unsubscribeFromLedgerEvents();
   updateAuthUi();
 });
 
@@ -1802,6 +1807,11 @@ function supabaseLoadLabel(label) {
     "security-health": "Security health checks",
     "security-health-live": "Live security probes",
     "realtime-ledger-event": "Realtime ledger events",
+    "ledger-event-publish": "Ledger event publishes",
+    "ledger-event-notification": "In-app event notifications",
+    "ledger-event-failed": "Ledger event failures",
+    "ledger-event-skip": "Ledger event skips",
+    "ledger-events-subscription": "Event notification channel",
     "realtime-disabled": "Realtime disabled",
     "live-sync-toggle": "Live sync toggle",
     "focus-sync-skip": "Focus sync skipped",
@@ -1827,6 +1837,7 @@ function buildSupabaseLoadReport() {
       hasSession: Boolean(currentSession),
       liveSyncEnabled,
       realtimeChannelActive: Boolean(supabaseStateChannel),
+      ledgerEventsRealtimeActive: Boolean(ledgerEventsChannel),
       supabaseLoadInFlight,
       normalizedReadModeActive,
       pendingLocalChanges,
@@ -1862,7 +1873,8 @@ function renderSupabaseLoadMonitor() {
       <strong>${summary.total} event${summary.total === 1 ? "" : "s"} in 10 min</strong>
       <span>${summary.lastMinute} in the last minute · ${summary.lastFiveMinutes} in the last 5 minutes</span>
       <p>${escapeHtml(statusText)}</p>
-      <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · Realtime channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
+      <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · broad table channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
+      <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime.</p>
       <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
     </div>
     ${topLabels.length ? `
@@ -3496,14 +3508,17 @@ async function initializeSupabase() {
     }
     updateAuthUi();
     if (session) {
+      subscribeToLedgerEvents();
       subscribeToSupabaseState();
       await loadSupabaseState({ force: true, reason: "auth-change" });
     } else {
+      unsubscribeFromLedgerEvents();
       unsubscribeFromSupabaseState();
     }
   });
 
   if (currentSession) {
+    subscribeToLedgerEvents();
     subscribeToSupabaseState();
     await loadSupabaseStateWithTimeout(
       { force: true, reason: "startup" },
@@ -11290,6 +11305,14 @@ async function saveSupabaseState(options = {}) {
     lastSyncError = "";
     markRemoteSaveSucceeded("Tables");
     scheduleNormalizedTableCheck({ delayMs: 180000, reason: "save" });
+    if (reason !== "member-bootstrap" && !reason.startsWith("test-lab")) {
+      publishLedgerEvent({
+        type: "ledger_updated",
+        title: "Shared ledger updated",
+        body: `${ledgerEventActorName()} saved new shared ledger changes.`,
+        metadata: { reason }
+      }).catch((error) => console.warn("Ledger event publish failed", error));
+    }
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
   } catch (error) {
     markRemoteSaveFailed(error, "Could not save table data.");
@@ -11340,6 +11363,101 @@ function applyIncomingState(nextState, status = "Live") {
   render();
   setSyncStatus(status);
   updateAuthUi();
+}
+
+
+function currentSessionEmail() {
+  return String(currentSession?.user?.email || "").trim().toLowerCase();
+}
+
+function ledgerEventActorName() {
+  return currentUser || currentSessionEmail() || "Someone";
+}
+
+function rememberLedgerEventId(id) {
+  if (!id) return false;
+  if (ledgerEventNotificationIds.has(id)) return false;
+  ledgerEventNotificationIds.add(id);
+  if (ledgerEventNotificationIds.size > 200) {
+    const first = ledgerEventNotificationIds.values().next().value;
+    ledgerEventNotificationIds.delete(first);
+  }
+  return true;
+}
+
+async function publishLedgerEvent(event = {}) {
+  if (!supabaseClient || !currentSession) return false;
+  const now = Date.now();
+  if (!event.force && now - lastLedgerEventPublishAt < ledgerEventPublishCooldownMs) {
+    recordSupabaseLoadEvent("ledger-event-skip", "event publish cooldown");
+    return false;
+  }
+
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const actorEmail = currentSessionEmail();
+  const title = String(event.title || "Shared ledger updated").slice(0, 120);
+  const body = String(event.body || `${ledgerEventActorName()} updated the shared fuel ledger.`).slice(0, 500);
+  const eventType = String(event.type || "ledger_updated").slice(0, 80);
+
+  try {
+    recordSupabaseLoadEvent("ledger-event-publish", eventType);
+    const { error } = await supabaseClient.from("ledger_events").insert({
+      ledger_id: ledgerId,
+      event_type: eventType,
+      title,
+      body,
+      actor_email: actorEmail,
+      target_email: event.targetEmail ? String(event.targetEmail).trim().toLowerCase() : null,
+      metadata: event.metadata || {}
+    });
+    if (error) throw error;
+    lastLedgerEventPublishAt = now;
+    return true;
+  } catch (error) {
+    // Event notifications are intentionally best-effort. A missing table or RLS
+    // mismatch must never block saving trips, fuel, bookings, or payments.
+    recordSupabaseLoadEvent("ledger-event-failed", error.message || "event insert failed");
+    console.warn("Ledger event notification failed", error);
+    return false;
+  }
+}
+
+function handleLedgerEventNotification(row) {
+  if (!row || !rememberLedgerEventId(row.id)) return;
+  const actorEmail = String(row.actor_email || "").trim().toLowerCase();
+  const targetEmail = String(row.target_email || "").trim().toLowerCase();
+  const me = currentSessionEmail();
+  if (actorEmail && me && actorEmail === me) return;
+  if (targetEmail && me && targetEmail !== me) return;
+
+  const title = row.title || "New shared update";
+  const body = row.body || "Someone updated the shared fuel ledger.";
+  recordSupabaseLoadEvent("ledger-event-notification", row.event_type || "ledger_events");
+  showAppMessage(`${title}: ${body} Use Sync now to refresh shared data.`, "info");
+  setSyncStatus("Cloud");
+}
+
+function subscribeToLedgerEvents() {
+  if (!supabaseClient || !currentSession || ledgerEventsChannel) return;
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  ledgerEventsChannel = supabaseClient
+    .channel(`ledger-events:${ledgerId}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "ledger_events", filter: `ledger_id=eq.${ledgerId}` },
+      (payload) => handleLedgerEventNotification(payload.new)
+    )
+    .subscribe((status) => {
+      recordSupabaseLoadEvent("ledger-events-subscription", status || "subscribe");
+      renderSupabaseLoadMonitor();
+    });
+}
+
+function unsubscribeFromLedgerEvents() {
+  if (!supabaseClient || !ledgerEventsChannel) return;
+  supabaseClient.removeChannel(ledgerEventsChannel);
+  ledgerEventsChannel = null;
+  renderSupabaseLoadMonitor();
 }
 
 function subscribeToSupabaseState({ force = false } = {}) {

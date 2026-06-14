@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v150";
-const BUILD_LABEL = "rpc-guard-startup-offline";
-const BUILD_UPDATED_AT = "2026-06-15T03:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v151";
+const BUILD_LABEL = "event-notifications-channel";
+const BUILD_UPDATED_AT = "2026-06-15T03:25:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

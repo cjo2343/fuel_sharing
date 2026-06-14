@@ -402,9 +402,6 @@ The Test Lab now includes a scenario matrix for ledger invariants, payment lifec
 Supabase Realtime is off by default. Use **Sync now** to refresh shared data on demand. Critical actions such as closing periods or updating payment status warn and offer a refresh when the local copy may be stale.
 
 
-### Build 2026.06.14.51 — rpc-guard-startup-offline
+### Narrow event notifications
 
-- Hardened `close_settlement_period` so invalid or already-closed period calls are rejected before taking the advisory lock.
-- The RPC now uses a non-blocking advisory lock attempt so duplicate close requests fail fast instead of queueing.
-- Startup cloud loading now falls back to local cached data after a short timeout, so the app can open even while Supabase is unhealthy.
-- The frontend blocks `close_settlement_period` calls outside the real close-period flow.
+Build `event-notifications-channel` keeps broad normalized-table Realtime off by default, but adds a small `ledger_events` table for in-app notifications. The frontend subscribes only to this event stream, shows “new update” messages, and asks users to press Sync now instead of automatically reloading all shared data. Existing mobile/PWA push notification support remains in `notifications.js`, `service-worker.js`, and `server.py` for payment requests and reminders.

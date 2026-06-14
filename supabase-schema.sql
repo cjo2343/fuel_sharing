@@ -155,6 +155,29 @@ create unique index if not exists settlement_requests_current_pair_idx
 on public.settlement_requests (period_id, from_member_id, to_member_id)
 where status <> 'cancelled';
 
+
+create table if not exists public.ledger_events (
+  id uuid primary key default gen_random_uuid(),
+  ledger_id text not null references public.ledgers(id) on delete cascade,
+  event_type text not null default 'ledger_updated',
+  title text not null,
+  body text not null,
+  actor_member_id uuid references public.ledger_members(id) on delete set null,
+  actor_email text,
+  target_member_id uuid references public.ledger_members(id) on delete set null,
+  target_email text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '30 days')
+);
+
+create index if not exists ledger_events_ledger_created_idx
+on public.ledger_events (ledger_id, created_at desc);
+
+create index if not exists ledger_events_target_email_idx
+on public.ledger_events (ledger_id, lower(target_email), created_at desc)
+where target_email is not null;
+
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   member_id uuid references public.ledger_members(id) on delete set null,
@@ -670,6 +693,7 @@ alter table public.fuel_payments enable row level security;
 alter table public.car_bookings enable row level security;
 alter table public.settlement_requests enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.ledger_events enable row level security;
 
 -- Drop broad/test policies and recreate member-restricted policies.
 drop policy if exists "Authenticated friends can read ledgers" on public.car_share_ledgers;
@@ -766,6 +790,33 @@ create policy "Booking creators members and admins can update car bookings" on p
 create policy "Ledger members can read settlement requests" on public.settlement_requests for select to authenticated using (public.is_ledger_member(ledger_id));
 create policy "Settlement parties and admins can insert settlement requests" on public.settlement_requests for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id)));
 create policy "Settlement parties and admins can update settlement requests" on public.settlement_requests for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or from_member_id = public.current_ledger_member_id(ledger_id) or to_member_id = public.current_ledger_member_id(ledger_id) or requested_by_member_id = public.current_ledger_member_id(ledger_id)));
+
+
+drop policy if exists "Ledger members can read ledger events" on public.ledger_events;
+drop policy if exists "Ledger members can insert ledger events" on public.ledger_events;
+drop policy if exists "Ledger admins can delete ledger events" on public.ledger_events;
+create policy "Ledger members can read ledger events" on public.ledger_events for select to authenticated using (public.is_ledger_member(ledger_id));
+create policy "Ledger members can insert ledger events" on public.ledger_events for insert to authenticated with check (public.is_ledger_member(ledger_id));
+create policy "Ledger admins can delete ledger events" on public.ledger_events for delete to authenticated using (public.is_ledger_admin(ledger_id));
+
+-- Keep Supabase Realtime narrow: only the tiny event stream should be needed
+-- for in-app notifications. Broad table Realtime remains off in the app.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1
+       from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'ledger_events'
+     ) then
+    execute 'alter publication supabase_realtime add table public.ledger_events';
+  end if;
+exception
+  when duplicate_object then null;
+  when insufficient_privilege then null;
+end $$;
 
 drop policy if exists "Users can read own push subscriptions" on public.push_subscriptions;
 drop policy if exists "Users can insert own push subscriptions" on public.push_subscriptions;
