@@ -2606,18 +2606,20 @@ function renderSettings() {
     if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.value = fuelPriceRange.maxDkkPerLiter;
     if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
   }
-  if (els.paymentRemindersEnabled && !isEditingSettings) els.paymentRemindersEnabled.checked = state.paymentRemindersEnabled !== false;
-  if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.value = Number.isFinite(Number(state.paymentReminderAfterDays)) ? Number(state.paymentReminderAfterDays) : defaults.paymentReminderAfterDays;
-  if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.value = Math.max(1, Number(state.paymentReminderRepeatDays) || defaults.paymentReminderRepeatDays);
-  if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.value = Math.max(1, Number(state.paymentReminderMaxCount) || defaults.paymentReminderMaxCount);
-  els.members.value = state.members
-    .map((name) => {
-      const profile = getMemberProfile(name);
-      return [name, profile.email, profile.role === "admin" ? "admin" : ""]
-        .filter(Boolean)
-        .join(" | ");
-    })
-    .join("\n");
+  if (!isEditingSettings) {
+    if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.checked = state.paymentRemindersEnabled !== false;
+    if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.value = Number.isFinite(Number(state.paymentReminderAfterDays)) ? Number(state.paymentReminderAfterDays) : defaults.paymentReminderAfterDays;
+    if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.value = Math.max(1, Number(state.paymentReminderRepeatDays) || defaults.paymentReminderRepeatDays);
+    if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.value = Math.max(1, Number(state.paymentReminderMaxCount) || defaults.paymentReminderMaxCount);
+    els.members.value = state.members
+      .map((name) => {
+        const profile = getMemberProfile(name);
+        return [name, profile.email, profile.role === "admin" ? "admin" : ""]
+          .filter(Boolean)
+          .join(" | ");
+      })
+      .join("\n");
+  }
 
   els.currency.disabled = !canManage;
   if (els.fuelType) els.fuelType.disabled = !canManage;
@@ -9871,6 +9873,7 @@ async function maybeSaveJsonMirrorBackup() {
 
 async function saveJsonMirrorBackup({ force = false } = {}) {
   if (!supabaseClient || !currentSession) return false;
+  if (!canManageSettings()) return false;
   if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
 
   const savedAt = new Date().toISOString();
@@ -9882,7 +9885,12 @@ async function saveJsonMirrorBackup({ force = false } = {}) {
       updated_at: savedAt
     });
 
-  if (error) throw error;
+  if (error) {
+    if (String(error.code || "") === "42501" || /permission|policy|rls/i.test(String(error.message || ""))) {
+      return false;
+    }
+    throw error;
+  }
 
   lastJsonMirrorSaveAt = savedAt;
   localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));

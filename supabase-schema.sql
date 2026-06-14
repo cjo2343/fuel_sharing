@@ -472,6 +472,8 @@ drop policy if exists "Authenticated users can read settlement requests" on publ
 drop policy if exists "Ledger members can read JSON ledger" on public.car_share_ledgers;
 drop policy if exists "Ledger members can insert JSON ledger" on public.car_share_ledgers;
 drop policy if exists "Ledger members can update JSON ledger" on public.car_share_ledgers;
+drop policy if exists "Ledger admins can insert JSON ledger" on public.car_share_ledgers;
+drop policy if exists "Ledger admins can update JSON ledger" on public.car_share_ledgers;
 drop policy if exists "Ledger members can read ledgers" on public.ledgers;
 drop policy if exists "Ledger admins can update ledgers" on public.ledgers;
 drop policy if exists "Bootstrap users can update ledgers" on public.ledgers;
@@ -512,8 +514,8 @@ drop policy if exists "Settlement parties and admins can insert settlement reque
 drop policy if exists "Settlement parties and admins can update settlement requests" on public.settlement_requests;
 
 create policy "Ledger members can read JSON ledger" on public.car_share_ledgers for select to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
-create policy "Ledger members can insert JSON ledger" on public.car_share_ledgers for insert to authenticated with check (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
-create policy "Ledger members can update JSON ledger" on public.car_share_ledgers for update to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id)) with check (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
+create policy "Ledger admins can insert JSON ledger" on public.car_share_ledgers for insert to authenticated with check (public.is_ledger_admin(id) or public.is_ledger_bootstrap_open(id));
+create policy "Ledger admins can update JSON ledger" on public.car_share_ledgers for update to authenticated using (public.is_ledger_admin(id) or public.is_ledger_bootstrap_open(id)) with check (public.is_ledger_admin(id) or public.is_ledger_bootstrap_open(id));
 
 create policy "Ledger members can read ledgers" on public.ledgers for select to authenticated using (public.is_ledger_member(id) or public.is_ledger_bootstrap_open(id));
 create policy "Ledger admins can update ledgers" on public.ledgers for update to authenticated using (public.is_ledger_admin(id)) with check (public.is_ledger_admin(id));

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "validate": "node --check utils.js && node --check supabase-helpers.js && node --check data-store.js && node --check settlement-calculations.js && node --check ui-messages.js && node --check audit-log.js && node --check notifications.js && node --check admin-tools.js && node --check build-info.js && node --check booking-calendar.js && node --check app.js && node --check service-worker.js && node --check tools/check-app-references.mjs && python3 -m py_compile server.py && python3 -m json.tool ledger-data.json > /dev/null && node tools/check-app-references.mjs && node --check tools/check-tracked-artifacts.mjs && node --check tools/check-build-info.mjs && node tools/check-build-info.mjs && node tools/check-tracked-artifacts.mjs",
+    "validate": "python3 -m unittest tests.test_server_auth && node --check utils.js && node --check supabase-helpers.js && node --check data-store.js && node --check settlement-calculations.js && node --check ui-messages.js && node --check audit-log.js && node --check notifications.js && node --check admin-tools.js && node --check build-info.js && node --check booking-calendar.js && node --check app.js && node --check service-worker.js && node --check tools/check-app-references.mjs && python3 -m py_compile server.py && python3 -m json.tool ledger-data.json > /dev/null && node tools/check-app-references.mjs && node --check tools/check-tracked-artifacts.mjs && node --check tools/check-build-info.mjs && node tools/check-build-info.mjs && node tools/check-tracked-artifacts.mjs",
     "test:e2e": "playwright test",
     "reminders:run": "python3 server.py --run-reminders",
     "reminders:dry-run": "python3 server.py --dry-run-reminders"
