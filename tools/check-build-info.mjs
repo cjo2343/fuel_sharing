@@ -11,6 +11,7 @@ const runtimeFiles = new Set([
   "settlement-calculations.js",
   "ui-messages.js",
   "sync-status-helpers.js",
+  "location-privacy-helpers.js",
   "audit-log.js",
   "notifications.js",
   "admin-tools.js",

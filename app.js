@@ -253,6 +253,7 @@ const els = {
   fuelLiters: document.querySelector("#fuelLiters"),
   fuelOdometer: document.querySelector("#fuelOdometer"),
   fuelStation: document.querySelector("#fuelStation"),
+  fuelLocationPrivacyMode: document.querySelector("#fuelLocationPrivacyMode"),
   useFuelLocation: document.querySelector("#useFuelLocation"),
   nearbyFuelStations: document.querySelector("#nearbyFuelStations"),
   stationResults: document.querySelector("#stationResults"),
@@ -685,6 +686,15 @@ els.fuelForm.addEventListener("submit", async (event) => {
   const stationLatitude = Number(els.fuelStationLatitude?.value || 0);
   const stationLongitude = Number(els.fuelStationLongitude?.value || 0);
   const stationBrand = els.fuelStationBrand?.value.trim() || "";
+  const locationPrivacy = window.FuelLocationPrivacy?.buildFuelLocationPayload?.({
+    mode: els.fuelLocationPrivacyMode?.value,
+    userLatitude: latitude,
+    userLongitude: longitude,
+    stationLatitude,
+    stationLongitude,
+    stationName: station,
+    stationBrand
+  }) || { location: latitude && longitude ? { latitude, longitude } : null, stationInfo: stationLatitude && stationLongitude ? { name: station, brand: stationBrand, latitude: stationLatitude, longitude: stationLongitude } : null };
   const fullTank = Boolean(els.fuelFullTank?.checked);
 
   const validation = validateFuelLogInput({ amount, liters });
@@ -722,10 +732,9 @@ els.fuelForm.addEventListener("submit", async (event) => {
     pricePerLiter: roundMoney(amount / normalizedLiters),
     odometer: odometer > 0 ? round(odometer) : "",
     station,
-    location: latitude && longitude ? { latitude, longitude } : null,
-    stationInfo: stationLatitude && stationLongitude
-      ? { name: station, brand: stationBrand, latitude: stationLatitude, longitude: stationLongitude }
-      : null,
+    location: locationPrivacy.location,
+    stationInfo: locationPrivacy.stationInfo,
+    locationPrivacyMode: locationPrivacy.mode || els.fuelLocationPrivacyMode?.value || "station-only",
     fullTank
   };
 
@@ -882,7 +891,12 @@ function selectFuelStation(station) {
   if (els.fuelStationLatitude) els.fuelStationLatitude.value = String(Number(station.latitude).toFixed(6));
   if (els.fuelStationLongitude) els.fuelStationLongitude.value = String(Number(station.longitude).toFixed(6));
   if (els.fuelStationBrand) els.fuelStationBrand.value = station.brand || "";
-  if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = `${station.name} selected.`;
+  if (els.fuelLocationStatus) {
+    const mode = window.FuelLocationPrivacy?.normalizeLocationPrivacyMode?.(els.fuelLocationPrivacyMode?.value) || "station-only";
+    els.fuelLocationStatus.textContent = mode === "no-coordinates"
+      ? `${station.name} selected. Coordinates will not be saved.`
+      : `${station.name} selected.`;
+  }
 
   if (els.stationResults) {
     for (const option of els.stationResults.querySelectorAll(".station-option")) {
@@ -897,6 +911,7 @@ function clearFuelLocation() {
   if (els.fuelStationLatitude) els.fuelStationLatitude.value = "";
   if (els.fuelStationLongitude) els.fuelStationLongitude.value = "";
   if (els.fuelStationBrand) els.fuelStationBrand.value = "";
+  if (els.fuelLocationPrivacyMode) els.fuelLocationPrivacyMode.value = "station-only";
   if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "";
   if (els.stationResults) {
     els.stationResults.dataset.stations = "[]";
@@ -6877,6 +6892,9 @@ function startFuelEdit(id) {
   if (els.fuelStationLatitude) els.fuelStationLatitude.value = fuel.stationInfo?.latitude || "";
   if (els.fuelStationLongitude) els.fuelStationLongitude.value = fuel.stationInfo?.longitude || "";
   if (els.fuelStationBrand) els.fuelStationBrand.value = fuel.stationInfo?.brand || "";
+  if (els.fuelLocationPrivacyMode) {
+    els.fuelLocationPrivacyMode.value = fuel.locationPrivacyMode || window.FuelLocationPrivacy?.inferFuelLocationPrivacyMode?.(fuel) || "station-only";
+  }
   if (els.fuelFullTank) els.fuelFullTank.checked = Boolean(fuel.fullTank);
   const details = document.querySelector("#fuelDetails");
   if (details) details.open = true;
@@ -8586,6 +8604,7 @@ function normalizeFuelEntries(fuelEntries) {
       pricePerLiter: liters ? roundMoney(amount / liters) : (Number(fuel.pricePerLiter || 0) > 0 ? roundMoney(Number(fuel.pricePerLiter)) : ""),
       odometer: Number(fuel.odometer || 0) > 0 ? round(Number(fuel.odometer || 0)) : "",
       station: fuel.station ? String(fuel.station).trim() : "",
+      locationPrivacyMode: window.FuelLocationPrivacy?.normalizeLocationPrivacyMode?.(fuel.locationPrivacyMode) || (fuel.location ? "full" : (fuel.stationInfo ? "station-only" : "no-coordinates")),
       location: normalizeFuelLocation(fuel.location),
       stationInfo: normalizeFuelLocation(fuel.stationInfo)
         ? {

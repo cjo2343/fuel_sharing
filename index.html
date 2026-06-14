@@ -271,6 +271,15 @@
                   Station / place
                   <input id="fuelStation" type="text" maxlength="80" placeholder="Type manually or pick nearby" />
                 </label>
+                <label class="wide">
+                  Location privacy
+                  <select id="fuelLocationPrivacyMode">
+                    <option value="station-only" selected>Save selected station GPS only</option>
+                    <option value="no-coordinates">Save station name only</option>
+                    <option value="full">Save my GPS and station GPS</option>
+                  </select>
+                  <span class="field-hint">Nearby search uses your current location when tapped. By default, only the selected station coordinate is saved with the receipt.</span>
+                </label>
                 <div class="wide fuel-location-actions">
                   <button id="useFuelLocation" class="subtle-button compact-button" type="button">Find nearby stations</button>
                   <a id="nearbyFuelStations" class="text-link hidden" href="#" target="_blank" rel="noopener">Open map search</a>
@@ -287,7 +296,7 @@
                   <span>Filled to full tank</span>
                 </label>
               </div>
-              <p class="section-note">Odometer, station and full-tank status are optional, but adding them makes real consumption and future trip-cost estimates much better over time. Nearby stations use your phone location only when you tap the button.</p>
+              <p class="section-note">Odometer, station and full-tank status are optional, but adding them makes real consumption and future trip-cost estimates much better over time. Nearby stations use your phone location only when you tap the button. Choose the privacy mode above before saving the receipt.</p>
             </details>
             <button id="fuelSubmit" class="action-button wide" type="submit">Add fuel</button>
             <button id="cancelFuelEdit" class="subtle-button wide hidden" type="button">Cancel editing fuel payment</button>
@@ -707,6 +716,7 @@
     <script src="settlement-calculations.js"></script>
     <script src="ui-messages.js"></script>
     <script src="sync-status-helpers.js"></script>
+    <script src="location-privacy-helpers.js"></script>
     <script src="audit-log.js"></script>
     <script src="notifications.js"></script>
     <script src="admin-tools.js"></script>

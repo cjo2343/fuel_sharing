@@ -4193,3 +4193,11 @@ body.auth-locked #authPanel .text-button {
     grid-template-columns: 1fr;
   }
 }
+
+.field-hint {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted-text);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
