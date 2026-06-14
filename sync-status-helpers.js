@@ -21,6 +21,7 @@
     const lastCloudSyncAt = options.lastCloudSyncAt || lastCloudSaveAt || "";
     const lastLocalSaveAt = options.lastLocalSaveAt || "";
     const lastSyncError = options.lastSyncError || "";
+    const lastCloudRetryAt = options.lastCloudRetryAt || "";
     const normalizedLabel = String(label || "").trim() || "Local";
     const status = normalizedLabel.toLowerCase();
     const pendingText = pendingCount ? pluralizeChange(pendingCount) : "";
@@ -79,6 +80,15 @@
         detail: pendingText
           ? `Sign in to sync ${pendingText}; saved on this device only.`
           : "Sign in to save changes"
+      };
+    }
+
+    if (normalizedLabel === "Delayed") {
+      const retryText = lastCloudRetryAt ? ` Retrying since ${formatSaveTime(lastCloudRetryAt)}.` : " Retrying in the background.";
+      return {
+        text: "Cloud delayed",
+        status: "delayed",
+        detail: `${lastSyncError || "Cloud sync is taking longer than expected."}${retryText}`
       };
     }
 

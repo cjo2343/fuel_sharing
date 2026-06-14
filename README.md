@@ -668,3 +668,7 @@ The Test Lab now includes a scenario matrix for ledger invariants, payment lifec
 ### Sync clarity update
 
 Supabase Realtime is off by default. Use **Sync now** to refresh shared data on demand. Critical actions such as closing periods or updating payment status warn and offer a refresh when the local copy may be stale.
+
+### Sync recovery behavior
+
+The app uses cached local data if the initial Supabase load is slow, but this is now treated as a recoverable delayed-cloud state. The startup timeout is 15 seconds, background retry continues, and a successful background or manual sync clears the warning automatically.

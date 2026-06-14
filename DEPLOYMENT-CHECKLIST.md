@@ -400,3 +400,9 @@ The Test Lab now includes a scenario matrix for ledger invariants, payment lifec
 ### Sync clarity update
 
 Supabase Realtime is off by default. Use **Sync now** to refresh shared data on demand. Critical actions such as closing periods or updating payment status warn and offer a refresh when the local copy may be stale.
+
+### Sync recovery UX deployment note
+
+- After deploying `2026.06.14.54 / sync-recovery-ux`, reload once so the active service worker cache is `fuel-ledger-v153`.
+- If a device still shows the old red `Local only` startup timeout, clear site data or remove/reinstall the PWA to force the new runtime.
+- Confirm that a successful `Sync now` clears `Cloud delayed` and returns the badge to `Database`/`Cloud`.

@@ -197,7 +197,7 @@ let supabaseLoadInFlight = false;
 let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
-const supabaseStartupLoadTimeoutMs = 8000;
+const supabaseStartupLoadTimeoutMs = 15000;
 let periodCloseRpcArmUntil = 0;
 let deferredInstallPrompt = null;
 let pushSupported = false;
@@ -208,6 +208,7 @@ let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
 let lastJsonMirrorSaveAt = "";
 let lastSyncError = "";
+let lastCloudRetryAt = "";
 let pendingLocalChanges = 0;
 let lastLocalSaveAt = "";
 const jsonMirrorBackupIntervalMs = 30 * 60 * 1000;
@@ -3530,7 +3531,7 @@ async function initializeSupabase() {
     await loadSupabaseStateWithTimeout(
       { force: true, reason: "startup" },
       supabaseStartupLoadTimeoutMs,
-      "Startup cloud load timed out. Showing local cached data while cloud sync retries in the background."
+      "Startup cloud sync is delayed. Retrying in the background."
     );
   }
 }
@@ -3540,8 +3541,9 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const timeout = new Promise((resolve) => {
     window.setTimeout(() => {
       timedOut = true;
-      lastSyncError = timeoutMessage || "Cloud sync timed out.";
-      setSyncStatus("Local");
+      lastSyncError = timeoutMessage || "Cloud sync is delayed.";
+      lastCloudRetryAt = new Date().toISOString();
+      setSyncStatus("Delayed");
       render();
       resolve(false);
     }, timeoutMs);
@@ -3555,7 +3557,7 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
 
   const result = await Promise.race([load, timeout]);
   if (timedOut) {
-    recordSupabaseLoadEvent("startup-offline-fallback", timeoutMessage || "cloud load timeout");
+    recordSupabaseLoadEvent("startup-delayed-fallback", timeoutMessage || "cloud sync delayed");
   }
   return result;
 }
@@ -3608,7 +3610,7 @@ function updateAuthUi() {
           : "Enter your email to sign in or join the shared car. After the first login, this device will stay signed in.";
   if (!currentSession) {
     setSyncStatus("Login");
-  } else if (!["saving", "syncing", "local"].includes(els.syncStatus.dataset.status || "")) {
+  } else if (!["saving", "syncing", "local", "delayed"].includes(els.syncStatus.dataset.status || "")) {
     setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
   }
   updateLoginCooldown();
@@ -11241,6 +11243,8 @@ async function loadSupabaseState(options = {}) {
     lastCloudSyncAt = new Date().toISOString();
     lastJsonMirrorSaveAt = data.updated_at || "";
     lastSyncError = "";
+    lastCloudRetryAt = "";
+    if (els.authMessage && currentSession) els.authMessage.textContent = `Signed in as ${currentSession.user.email}.`;
     const jsonState = normalizeState(data.state);
     let loadedFromTables = false;
 
@@ -11275,8 +11279,9 @@ async function loadSupabaseState(options = {}) {
     return true;
   } catch (error) {
     lastSyncError = error.message || "Could not load cloud data.";
+    lastCloudRetryAt = new Date().toISOString();
     els.authMessage.textContent = `${lastSyncError} The app could not load the shared cloud data.`;
-    setSyncStatus("Local");
+    setSyncStatus("Delayed");
     return false;
   } finally {
     supabaseLoadInFlight = false;
@@ -11310,6 +11315,7 @@ async function saveSupabaseState(options = {}) {
     lastCloudSaveAt = new Date().toISOString();
     lastCloudSyncAt = lastCloudSaveAt;
     lastSyncError = "";
+    lastCloudRetryAt = "";
     markRemoteSaveSucceeded("Tables");
     scheduleNormalizedTableCheck({ delayMs: 180000, reason: "save" });
     if (reason !== "member-bootstrap" && !reason.startsWith("test-lab")) {
@@ -11544,11 +11550,13 @@ function markLocalChangeQueued() {
 function markRemoteSaveSucceeded(label) {
   pendingLocalChanges = 0;
   lastSyncError = "";
+  lastCloudRetryAt = "";
   setSyncStatus(label);
 }
 
 function markRemoteSaveFailed(error, fallbackMessage = "Could not save shared data.") {
   lastSyncError = error?.message || fallbackMessage;
+  lastCloudRetryAt = new Date().toISOString();
   setSyncStatus("Local");
 }
 
@@ -11559,7 +11567,8 @@ function setSyncStatus(label) {
         lastCloudSaveAt,
         lastCloudSyncAt,
         lastLocalSaveAt,
-        lastSyncError
+        lastSyncError,
+        lastCloudRetryAt
       })
     : { text: label === "Tables" ? "Database" : label, status: String(label || "").toLowerCase(), detail: "" };
 

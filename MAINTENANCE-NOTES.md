@@ -445,3 +445,10 @@ The Test Lab now includes a scenario matrix for ledger invariants, payment lifec
 ### Sync clarity update
 
 Supabase Realtime is off by default. Use **Sync now** to refresh shared data on demand. Critical actions such as closing periods or updating payment status warn and offer a refresh when the local copy may be stale.
+
+### Sync recovery UX pass — 2026-06-14
+
+- Increased the startup Supabase load timeout to 15 seconds to avoid premature local-only fallback during cold or recovering Supabase sessions.
+- Startup cloud timeouts now show a recoverable `Cloud delayed` status instead of a red/sticky local-only error.
+- Successful background or manual cloud sync clears the delayed warning and removes the local/degraded state automatically.
+- The sync badge now shows retry timing so operators can distinguish a temporary delayed startup from true unsaved local changes.

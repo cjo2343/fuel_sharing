@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v152";
-const BUILD_LABEL = "event-auto-sync-notifications";
-const BUILD_UPDATED_AT = "2026-06-15T03:40:00.000Z";
+const CACHE_NAME = "fuel-ledger-v153";
+const BUILD_LABEL = "sync-recovery-ux";
+const BUILD_UPDATED_AT = "2026-06-15T04:05:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

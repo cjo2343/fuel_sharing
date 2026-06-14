@@ -142,7 +142,8 @@ legend {
   color: var(--green-dark);
 }
 
-.sync-status[data-status="queued"] + .sync-detail {
+.sync-status[data-status="queued"] + .sync-detail,
+.sync-status[data-status="delayed"] + .sync-detail {
   color: #8a6500;
 }
 .topbar h1,
@@ -206,7 +207,8 @@ legend {
   color: #776336;
 }
 
-.sync-status[data-status="queued"] {
+.sync-status[data-status="queued"],
+.sync-status[data-status="delayed"] {
   background: #fff3cc;
   color: #8a6500;
 }
