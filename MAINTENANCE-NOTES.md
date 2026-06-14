@@ -475,3 +475,11 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 - Kept the one-click correction actions for setting safe liters or a plausible odometer.
 - Added smoke coverage that the overfill panel renders the explanation text.
 - Build metadata bumped to `2026.06.14.58 / fuel-correction-math-explainer` with cache `fuel-ledger-v157`.
+
+## 2026-06-15 — CSP + server security headers
+
+- Added security headers to the local Python server for all responses: Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, Cross-Origin-Opener-Policy, and Cross-Origin-Resource-Policy.
+- Removed inline build-info refresh handlers from `index.html`; build-info refresh buttons are now wired from `build-info.js` so the app can run without `script-src 'unsafe-inline'`.
+- CSP intentionally allows the app origin, the Supabase project REST/Auth/Realtime endpoints, the CDN-hosted Supabase client, and Overpass API station lookup. Broad table Realtime remains off in app code; the policy only permits the narrow event-notification channel.
+- Added production hosting templates: `_headers` for Netlify/Cloudflare-style static hosting and `vercel.json` for Vercel.
+- PWA/service-worker and push notification flows remain allowed via `worker-src 'self'`, `manifest-src 'self'`, and same-origin service worker assets.

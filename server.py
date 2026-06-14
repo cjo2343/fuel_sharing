@@ -247,6 +247,65 @@ def fetch_fuel_price(path):
         "source": "Configured fallback",
     }
 
+def configured_supabase_origin():
+    return (supabase_url() or "").rstrip("/")
+
+
+def configured_supabase_realtime_origin():
+    origin = configured_supabase_origin()
+    if origin.startswith("https://"):
+        return "wss://" + origin[len("https://"):]
+    if origin.startswith("http://"):
+        return "ws://" + origin[len("http://"):]
+    return ""
+
+
+def content_security_policy():
+    # Keep this CSP compatible with the static PWA, Supabase Auth/PostgREST/Realtime,
+    # the CDN-hosted Supabase client, Overpass station search, service workers, and
+    # browser notification flows. Broad table Realtime is still disabled in the app;
+    # this only permits the narrow ledger_events channel when enabled.
+    connect_sources = [
+        "'self'",
+        "https://overpass-api.de",
+    ]
+    supabase_origin = configured_supabase_origin()
+    supabase_realtime = configured_supabase_realtime_origin()
+    if supabase_origin:
+        connect_sources.append(supabase_origin)
+    if supabase_realtime:
+        connect_sources.append(supabase_realtime)
+
+    directives = [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        "script-src 'self' https://cdn.jsdelivr.net",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "manifest-src 'self'",
+        "worker-src 'self'",
+        "connect-src " + " ".join(dict.fromkeys(connect_sources)),
+        "upgrade-insecure-requests",
+    ]
+    return "; ".join(directives)
+
+
+def security_headers():
+    return {
+        "Content-Security-Policy": content_security_policy(),
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    }
+
+
 def read_request_body(handler):
     length = int(handler.headers.get("Content-Length", "0"))
     if length <= 0:
@@ -945,6 +1004,8 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         if self.path.endswith("service-worker.js"):
             self.send_header("Service-Worker-Allowed", "/")
+        for name, value in security_headers().items():
+            self.send_header(name, value)
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 

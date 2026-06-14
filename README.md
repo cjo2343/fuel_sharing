@@ -685,3 +685,7 @@ When a fuel receipt would overfill the configured tank, the app now offers one-c
 
 ### Fuel correction math explainer
 When a fuel receipt would overfill the configured tank, the app now shows the math behind the suggested correction. It compares the current odometer with the previous full-tank odometer, estimates liters used from the configured L/100 km value, and shows the odometer that would match the entered liters.
+
+### Security headers / CSP
+
+The local Python server sends a restrictive baseline Content Security Policy and standard browser hardening headers. Static-host deployments can use the included `_headers` or `vercel.json` templates. The policy keeps the app compatible with Supabase Auth/PostgREST/narrow Realtime events, the CDN Supabase client, Overpass station lookup, PWA/service worker assets, and existing push notification flows.

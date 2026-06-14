@@ -415,3 +415,11 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 ## Fuel correction math explainer deployment note
 - Deploy build `2026.06.14.58 / fuel-correction-math-explainer` with service-worker cache `fuel-ledger-v157`.
 - After deployment, reload the PWA once and confirm the overfill panel shows the "Why these suggestions?" calculation block.
+
+## CSP + security headers deployment check
+
+- Confirm the deployed response for `/` includes `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy`.
+- Confirm the CSP allows the configured Supabase project (`https://kdudfqzglhydmzntqosb.supabase.co` and `wss://kdudfqzglhydmzntqosb.supabase.co`), `https://cdn.jsdelivr.net`, and `https://overpass-api.de`.
+- Confirm the PWA can still install/reload and the service worker reports `fuel-ledger-v159`.
+- Confirm login/Auth, Sync now, event-based in-app notifications, nearby station search, and push notification enablement still work after deployment.
+- For static hosts, copy/use `_headers` or `vercel.json` as appropriate. For Python-hosted deployments, `server.py` now sends the same security headers directly.

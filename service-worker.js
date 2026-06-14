@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v158";
-const BUILD_LABEL = "fuel-price-guided-correction";
-const BUILD_UPDATED_AT = "2026-06-15T05:08:00.000Z";
+const CACHE_NAME = "fuel-ledger-v159";
+const BUILD_LABEL = "csp-security-headers";
+const BUILD_UPDATED_AT = "2026-06-15T06:00:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
