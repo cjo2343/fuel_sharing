@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v144";
-const BUILD_LABEL = "supabase-load-safety";
-const BUILD_UPDATED_AT = "2026-06-15T00:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v145";
+const BUILD_LABEL = "supabase-load-monitor";
+const BUILD_UPDATED_AT = "2026-06-15T01:05:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

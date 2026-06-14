@@ -393,6 +393,9 @@ const els = {
   exportTestLabReport: document.querySelector("#exportTestLabReport"),
   cleanupTestLabData: document.querySelector("#cleanupTestLabData"),
   testLabReport: document.querySelector("#testLabReport"),
+  supabaseLoadMonitor: document.querySelector("#supabaseLoadMonitor"),
+  refreshSupabaseLoadMonitor: document.querySelector("#refreshSupabaseLoadMonitor"),
+  exportSupabaseLoadReport: document.querySelector("#exportSupabaseLoadReport"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -1296,6 +1299,17 @@ els.cleanupTestLabData?.addEventListener("click", async () => {
   await cleanupGeneratedTestDataWithReport();
 });
 
+els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  renderSupabaseLoadMonitor();
+  setDataToolsMessage("Supabase load monitor refreshed.");
+});
+
+els.exportSupabaseLoadReport?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  downloadSupabaseLoadReport();
+});
+
 els.memberManagementForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
@@ -1654,22 +1668,140 @@ function getCurrentTestLabReport() {
   return lastTestLabReport || getLatestSyncedTestLabReport();
 }
 
-function recordSupabaseLoadEvent(label) {
+function recordSupabaseLoadEvent(label, detail = "", extra = {}) {
   const now = Date.now();
+  const event = {
+    at: now,
+    iso: new Date(now).toISOString(),
+    label: String(label || "supabase"),
+    detail: String(detail || ""),
+    ...extra
+  };
   supabaseLoadSafety.requests = (supabaseLoadSafety.requests || [])
-    .filter((entry) => now - Number(entry.at || 0) < 5 * 60 * 1000);
-  supabaseLoadSafety.requests.push({ at: now, label: String(label || "supabase") });
+    .filter((entry) => now - Number(entry.at || 0) < 30 * 60 * 1000)
+    .slice(-299);
+  supabaseLoadSafety.requests.push(event);
+  return event;
 }
 
-function getSupabaseLoadSummary() {
+function getSupabaseLoadEvents(windowMs = 10 * 60 * 1000) {
   const now = Date.now();
-  const recent = (supabaseLoadSafety.requests || []).filter((entry) => now - Number(entry.at || 0) < 60 * 1000);
-  const byLabel = recent.reduce((acc, entry) => {
+  return (supabaseLoadSafety.requests || [])
+    .filter((entry) => now - Number(entry.at || 0) <= windowMs)
+    .sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+}
+
+function summarizeSupabaseLoadEvents(events) {
+  const byLabel = {};
+  for (const entry of events || []) {
     const label = entry.label || "supabase";
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {});
-  return { lastMinute: recent.length, byLabel };
+    byLabel[label] = (byLabel[label] || 0) + 1;
+  }
+  return byLabel;
+}
+
+function getSupabaseLoadSummary({ windowMinutes = 10 } = {}) {
+  const now = Date.now();
+  const events = getSupabaseLoadEvents(windowMinutes * 60 * 1000);
+  const lastMinute = events.filter((entry) => now - Number(entry.at || 0) <= 60 * 1000).length;
+  const lastFiveMinutes = events.filter((entry) => now - Number(entry.at || 0) <= 5 * 60 * 1000).length;
+  const byLabel = summarizeSupabaseLoadEvents(events);
+  const highActivity = lastMinute >= 20 || lastFiveMinutes >= 50;
+  return {
+    windowMinutes,
+    total: events.length,
+    lastMinute,
+    lastFiveMinutes,
+    highActivity,
+    byLabel,
+    latest: events.slice(0, 25)
+  };
+}
+
+function supabaseLoadLabel(label) {
+  const map = {
+    "local-save": "Local saves",
+    "server-load": "Local server loads",
+    "server-save": "Local server saves",
+    "supabase-load": "Supabase loads",
+    "supabase-save": "Supabase saves",
+    "json-mirror-save": "JSON mirror saves",
+    "normalized-table-load": "Normalized table loads",
+    "normalized-health-check": "Normalized health checks",
+    "security-health": "Security health checks",
+    "security-health-live": "Live security probes",
+    "realtime-ledger-event": "Realtime ledger events",
+    "realtime-ignored-self-save": "Ignored self realtime events",
+    "trip-table-write": "Trip table writes",
+    "fuel-table-write": "Fuel table writes",
+    "booking-table-write": "Booking table writes",
+    "settlement-table-write": "Settlement table writes",
+    "test-lab-report-save": "Test Lab report saves"
+  };
+  return map[label] || String(label || "Supabase activity").replace(/-/g, " ");
+}
+
+function buildSupabaseLoadReport() {
+  const summary = getSupabaseLoadSummary({ windowMinutes: 10 });
+  return {
+    createdAt: new Date().toISOString(),
+    buildInfo: window.FUEL_LEDGER_BUILD || null,
+    browser: navigator.userAgent,
+    appState: {
+      hasSupabaseClient: Boolean(supabaseClient),
+      hasSession: Boolean(currentSession),
+      normalizedReadModeActive,
+      pendingLocalChanges,
+      lastCloudSaveAt,
+      lastJsonMirrorSaveAt,
+      lastLocalSaveAt,
+      lastSyncError
+    },
+    summary,
+    events: getSupabaseLoadEvents(30 * 60 * 1000),
+    normalizedTableStatus,
+    supabaseSecurityStatus
+  };
+}
+
+function renderSupabaseLoadMonitor() {
+  if (!els.supabaseLoadMonitor) return;
+  const summary = getSupabaseLoadSummary({ windowMinutes: 10 });
+  const topLabels = Object.entries(summary.byLabel)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const latest = summary.latest.slice(0, 8);
+  const statusClass = summary.highActivity ? "has-warning" : "";
+  const statusText = summary.highActivity
+    ? "High app-side Supabase activity detected. Export a load report if Supabase CPU is elevated."
+    : "No high app-side Supabase activity detected in the last 10 minutes.";
+  els.supabaseLoadMonitor.innerHTML = `
+    <div class="test-lab-report-summary ${statusClass}">
+      <strong>${summary.total} event${summary.total === 1 ? "" : "s"} in 10 min</strong>
+      <span>${summary.lastMinute} in the last minute · ${summary.lastFiveMinutes} in the last 5 minutes</span>
+      <p>${escapeHtml(statusText)}</p>
+    </div>
+    ${topLabels.length ? `
+      <ul class="included-fuel-list compact-diagnostics-list">
+        ${topLabels.map(([label, count]) => `<li><span>${escapeHtml(supabaseLoadLabel(label))}</span><b>${count}</b></li>`).join("")}
+      </ul>
+    ` : `<p class="entry-meta">No tracked Supabase/app-sync activity yet in this browser session.</p>`}
+    ${latest.length ? `
+      <details class="test-lab-action-group">
+        <summary>Latest activity</summary>
+        <ul class="test-lab-check-list">
+          ${latest.map((entry) => `<li><strong>${escapeHtml(new Date(entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(supabaseLoadLabel(entry.label))}${entry.detail ? ` — ${escapeHtml(entry.detail)}` : ""}</li>`).join("")}
+        </ul>
+      </details>
+    ` : ""}
+  `;
+}
+
+function downloadSupabaseLoadReport() {
+  const report = buildSupabaseLoadReport();
+  const stamp = localDateString().replace(/[^0-9-]/g, "") || "today";
+  downloadTextFile(`fuel-ledger-supabase-load-report-${stamp}.json`, JSON.stringify(report, null, 2), "application/json");
+  setDataToolsMessage("Supabase load report downloaded.");
 }
 
 function scheduleNormalizedTableCheck({ delayMs = 30000, reason = "scheduled" } = {}) {
@@ -1677,6 +1809,7 @@ function scheduleNormalizedTableCheck({ delayMs = 30000, reason = "scheduled" } 
   if (supabaseLoadSafety.normalizedCheckTimer) return;
   supabaseLoadSafety.normalizedCheckTimer = window.setTimeout(() => {
     supabaseLoadSafety.normalizedCheckTimer = null;
+    recordSupabaseLoadEvent("normalized-health-check", reason);
     checkNormalizedTablesAgainstCurrentState({ reason, silent: true }).catch((error) => {
       normalizedTableStatus = {
         checked: true,
@@ -1811,6 +1944,7 @@ function persistTestLabReport(report, { sync = true } = {}) {
 }
 
 function saveTestLabReportState() {
+  recordSupabaseLoadEvent("test-lab-report-save", "Saved synced Test Lab report metadata");
   state.updatedAt = new Date().toISOString();
   writeLocalState();
   markLocalChangeQueued();
@@ -3210,6 +3344,7 @@ function render() {
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
+  renderSupabaseLoadMonitor();
   renderTestLabReport(null, { persist: false });
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
@@ -9324,6 +9459,7 @@ function loadState() {
 }
 
 function saveState() {
+  recordSupabaseLoadEvent("local-save", "saveState queued a local change");
   state.updatedAt = new Date().toISOString();
   dataStore.saveLocalState({
     storageKey,
@@ -9782,6 +9918,7 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
 }
 
 async function saveTripToNormalizedTablesFirst(trip) {
+  recordSupabaseLoadEvent("trip-table-write", trip?.id ? `trip ${String(trip.id).slice(0, 8)}` : "trip");
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
@@ -9842,6 +9979,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
 }
 
 async function saveFuelToNormalizedTablesFirst(fuel) {
+  recordSupabaseLoadEvent("fuel-table-write", fuel?.id ? `fuel ${String(fuel.id).slice(0, 8)}` : "fuel");
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
@@ -9897,6 +10035,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
 }
 
 async function saveBookingToNormalizedTablesFirst(booking) {
+  recordSupabaseLoadEvent("booking-table-write", booking?.id ? `booking ${String(booking.id).slice(0, 8)}` : "booking");
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
@@ -9983,6 +10122,7 @@ async function pruneStaleSettlementRequests(context) {
 }
 
 async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus) {
+  recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
@@ -10443,6 +10583,7 @@ async function syncNormalizedTablesFromJson() {
 
 
 async function loadStateFromNormalizedTables(jsonFallbackState) {
+  recordSupabaseLoadEvent("normalized-table-load", "loadStateFromNormalizedTables");
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
@@ -10803,6 +10944,7 @@ async function checkNormalizedTablesAgainstCurrentState({ force = false, silent 
 }
 
 async function loadRemoteState() {
+  recordSupabaseLoadEvent(supabaseClient ? "supabase-load" : "server-load", "loadRemoteState");
   if (supabaseClient) {
     await loadSupabaseState();
     return;
@@ -10834,6 +10976,7 @@ async function loadRemoteState() {
 }
 
 async function saveRemoteState() {
+  recordSupabaseLoadEvent(supabaseClient ? "supabase-save" : "server-save", "saveRemoteState");
   if (supabaseClient) {
     await saveSupabaseState();
     return;
@@ -10856,6 +10999,7 @@ async function saveRemoteState() {
 }
 
 async function loadSupabaseState() {
+  recordSupabaseLoadEvent("supabase-load", "loadSupabaseState");
   if (!currentSession) {
     setSyncStatus("Login");
     return;
@@ -10913,6 +11057,7 @@ async function loadSupabaseState() {
 }
 
 async function saveSupabaseState() {
+  recordSupabaseLoadEvent("supabase-save", "saveSupabaseState");
   if (!currentSession) {
     setSyncStatus("Login");
     return;
@@ -10951,6 +11096,7 @@ async function maybeSaveJsonMirrorBackup() {
 }
 
 async function saveJsonMirrorBackup({ force = false } = {}) {
+  recordSupabaseLoadEvent("json-mirror-save", force ? "forced JSON mirror backup" : "scheduled JSON mirror backup");
   if (!supabaseClient || !currentSession) return false;
   if (!canManageSettings()) return false;
   if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
@@ -10997,7 +11143,11 @@ function subscribeToSupabaseState() {
       "postgres_changes",
       { event: "*", schema: "public", table: "car_share_ledgers", filter: `id=eq.${ledgerId}` },
       (payload) => {
-        if (Date.now() < ignoreRealtimeUntil) return;
+        if (Date.now() < ignoreRealtimeUntil) {
+          recordSupabaseLoadEvent("realtime-ignored-self-save", payload.eventType || "ledger");
+          return;
+        }
+        recordSupabaseLoadEvent("realtime-ledger-event", payload.eventType || "ledger");
         if (payload.new?.state) applyIncomingState(payload.new.state);
       }
     )

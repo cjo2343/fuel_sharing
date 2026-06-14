@@ -641,6 +641,15 @@
               </details>
               <div id="testLabReport" class="section-note test-lab-report-host" aria-live="polite"></div>
             </article>
+            <article class="data-tool-card">
+              <strong>Supabase load monitor</strong>
+              <p>Shows recent app-side saves, reloads, health checks, and Supabase calls so CPU spikes can be traced back to app activity.</p>
+              <div class="button-row">
+                <button id="refreshSupabaseLoadMonitor" class="subtle-button" type="button">Refresh load monitor</button>
+                <button id="exportSupabaseLoadReport" class="subtle-button" type="button">Export load report</button>
+              </div>
+              <div id="supabaseLoadMonitor" class="section-note supabase-load-monitor" aria-live="polite"></div>
+            </article>
           </div>
           <p id="dataToolsMessage" class="section-note"></p>
         </section>
