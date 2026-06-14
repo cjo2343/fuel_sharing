@@ -164,6 +164,7 @@ const defaults = {
 
 let state = loadState();
 let closingPeriodInProgress = false;
+let suppressNormalizedBookingWrites = false;
 let currentUser = localStorage.getItem(userKey) || "";
 let currentSession = null;
 let loginCooldownTimer;
@@ -1901,7 +1902,12 @@ async function runFullTestLabScenario() {
     for (let i = 0; i < 18; i += 1) state.trips.push(tagGeneratedEntry(makeGeneratedTestTrip(200 + i), runId));
     for (let i = 0; i < 10; i += 1) state.fuel.push(tagGeneratedEntry(makeGeneratedTestFuel(200 + i), runId));
     state.lastOdometer = getLatestOdometer();
-    await flushStressSave(`Test Lab ${runId}: saved generated data; checking invariants...`);
+    suppressNormalizedBookingWrites = true;
+    try {
+      await flushStressSave(`Test Lab ${runId}: saved generated data locally and synced generated trips/fuel; checking invariants...`);
+    } finally {
+      suppressNormalizedBookingWrites = false;
+    }
   } catch (error) {
     console.warn("Test Lab generation failed", error);
     errors.push(error.message || String(error));
@@ -1913,6 +1919,14 @@ async function runFullTestLabScenario() {
     await refreshSupabaseSecurityHealth({ silent: true });
   } catch (securityError) {
     console.warn("Test Lab security health check failed", securityError);
+    supabaseSecurityStatus = {
+      checked: true,
+      ok: false,
+      mode: hasSupabaseConfig ? "supabase" : "local",
+      checkedAt: new Date().toISOString(),
+      message: `Security health check could not complete: ${securityError.message || securityError}`,
+      checks: [{ ok: false, name: "Supabase security health completed", detail: securityError.message || String(securityError) }]
+    };
     errors.push(`Security health failed: ${securityError.message || securityError}`);
   }
   let report = buildCurrentTestLabReport({ id: runId, scenario: "full-test-lab", startedAt, before, generated: generatedBeforeCleanup, errors });
@@ -9986,7 +10000,13 @@ async function syncNormalizedTablesFromJson() {
       if (deleted.error) throw deleted.error;
     }
 
-    const bookingPayloads = state.bookings.map((booking) => ({
+    let skippedBookingSyncForTestLab = false;
+    let existingBookings = [];
+    if (suppressNormalizedBookingWrites) {
+      skippedBookingSyncForTestLab = true;
+    }
+
+    const bookingPayloads = skippedBookingSyncForTestLab ? [] : state.bookings.map((booking) => ({
       legacy_id: booking.id,
       ledger_id: ledgerId,
       member_id: memberIdsByName[booking.member] || null,
@@ -9998,12 +10018,15 @@ async function syncNormalizedTablesFromJson() {
       updated_at: new Date().toISOString()
     })).filter((booking) => booking.legacy_id && booking.member_id && booking.start_at && booking.end_at);
 
-    const existingBookingsResult = await supabaseClient
-      .from("car_bookings")
-      .select("id,legacy_id,member_id,start_at,end_at,purpose")
-      .eq("ledger_id", ledgerId)
-      .is("deleted_at", null);
-    if (existingBookingsResult.error) throw existingBookingsResult.error;
+    if (!skippedBookingSyncForTestLab) {
+      const existingBookingsResult = await supabaseClient
+        .from("car_bookings")
+        .select("id,legacy_id,member_id,start_at,end_at,purpose")
+        .eq("ledger_id", ledgerId)
+        .is("deleted_at", null);
+      if (existingBookingsResult.error) throw existingBookingsResult.error;
+      existingBookings = existingBookingsResult.data || [];
+    }
 
     const isoKey = (value) => {
       const date = new Date(value);
@@ -10015,7 +10038,6 @@ async function syncNormalizedTablesFromJson() {
       isoKey(booking.end_at),
       String(booking.purpose || "")
     ].join("|");
-    const existingBookings = existingBookingsResult.data || [];
     const existingByLegacyId = new Map(existingBookings.filter((booking) => booking.legacy_id).map((booking) => [booking.legacy_id, booking]));
     const existingBySignature = new Map(existingBookings.map((booking) => [bookingSignature(booking), booking]));
     const sameBookingFields = (pair) => {
@@ -10105,7 +10127,9 @@ async function syncNormalizedTablesFromJson() {
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.bookings.length} bookings, ${state.fuel.length} fuel logs).`
+      message: skippedBookingSyncForTestLab
+        ? `Dual-write sync is active. Normalized members/trips/fuel were updated from JSON; booking writes were skipped for a temporary Test Lab run (${getMemberNames().length} members, ${state.trips.length} trips, ${state.fuel.length} fuel logs).`
+        : `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.bookings.length} bookings, ${state.fuel.length} fuel logs).`
     };
   } catch (error) {
     console.warn("Normalized table dual-write failed", error);
