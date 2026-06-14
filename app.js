@@ -1271,11 +1271,7 @@ els.runRuntimeScenario?.addEventListener("click", async () => {
 
 els.runSecurityScenario?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runTestLabScenarioMatrix({
-    scenarioName: "supabase-security-health-checks",
-    scenarioFilter: ["security"],
-    confirmMessage: "Run live Supabase security health checks? This uses harmless read/probe calls and does not change production data."
-  });
+  await runStandaloneSecurityHealthScenario();
 });
 
 els.exportTestLabReport?.addEventListener("click", () => {
@@ -1901,6 +1897,45 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
   });
   renderTestLabReport(report);
   setDataToolsMessage(`${scenarioName} complete: ${report.passedCount} passed, ${report.failedCount} failed.`);
+}
+
+
+async function runStandaloneSecurityHealthScenario() {
+  if (!testLab) {
+    showUserError("Test Lab helpers are not loaded. Refresh the app and try again.");
+    return;
+  }
+  if (!confirmUserAction("Run live Supabase security health checks? This uses harmless read/probe calls and does not change production data.")) return;
+  const startedAt = new Date().toISOString();
+  const id = testLab.createTestRunId();
+  setDataToolsMessage(`Test Lab ${id}: running Security health checks...`);
+
+  let securityStatus;
+  try {
+    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 15000 });
+  } catch (error) {
+    securityStatus = {
+      checked: true,
+      ok: false,
+      mode: "supabase",
+      checkedAt: new Date().toISOString(),
+      message: `Security health check failed: ${error.message || error}`,
+      checks: [{ ok: false, name: "Supabase security health completed", detail: error.message || String(error) }]
+    };
+    supabaseSecurityStatus = securityStatus;
+  }
+
+  const report = buildCurrentTestLabReport({
+    id,
+    scenario: "supabase-security-health-checks",
+    startedAt,
+    before: testLab.stateSummary(state),
+    generated: testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker }),
+    scenarioFilter: ["security"],
+    securityStatus
+  });
+  renderTestLabReport(report);
+  setDataToolsMessage(`Security health complete: ${report.passedCount} passed, ${report.failedCount} failed.`);
 }
 
 async function cleanupGeneratedTestDataWithReport() {
