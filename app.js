@@ -183,6 +183,8 @@ let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
 const liveSyncStorageKey = `${storageKey}:liveSyncEnabled`;
 let liveSyncEnabled = localStorage.getItem(liveSyncStorageKey) === "true";
+const testLabReportCloudStorageKey = `${storageKey}:testLabCloudReportOptIn`;
+let testLabCloudReportOptIn = localStorage.getItem(testLabReportCloudStorageKey) === "true";
 let supabaseLoadInFlight = false;
 let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
@@ -399,6 +401,7 @@ const els = {
   runSecurityScenario: document.querySelector("#runSecurityScenario"),
   runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
   exportTestLabReport: document.querySelector("#exportTestLabReport"),
+  saveTestLabReportCloud: document.querySelector("#saveTestLabReportCloud"),
   cleanupTestLabData: document.querySelector("#cleanupTestLabData"),
   testLabReport: document.querySelector("#testLabReport"),
   supabaseLoadMonitor: document.querySelector("#supabaseLoadMonitor"),
@@ -1304,6 +1307,11 @@ els.exportTestLabReport?.addEventListener("click", () => {
   downloadLastTestLabReport();
 });
 
+els.saveTestLabReportCloud?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await saveCurrentTestLabReportToCloud();
+});
+
 els.cleanupTestLabData?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await cleanupGeneratedTestDataWithReport();
@@ -1358,10 +1366,10 @@ els.toggleLiveSync?.addEventListener("click", async () => {
   recordSupabaseLoadEvent("live-sync-toggle", liveSyncEnabled ? "enabled" : "disabled");
   if (liveSyncEnabled) {
     subscribeToSupabaseState({ force: true });
-    setDataToolsMessage("Live Realtime sync enabled for this browser. Use only while debugging; it can increase Supabase CPU.");
+    setDataToolsMessage("Live Realtime sync enabled for this browser. Use briefly for in-app live updates; leave off if Supabase CPU rises.");
   } else {
     unsubscribeFromSupabaseState();
-    setDataToolsMessage("Live Realtime sync disabled. The app will sync on load, save, manual refresh, and throttled tab focus.");
+    setDataToolsMessage("Live Realtime sync disabled. In-app notifications use manual/throttled sync for now; mobile push needs a separate push service.");
   }
   render();
 });
@@ -1533,7 +1541,7 @@ function removeGeneratedTestData() {
       generated: cleanup.after,
       cleanup
     });
-    renderTestLabReport(report);
+    renderTestLabReport(report, { persist: false });
   }
 }
 
@@ -2003,7 +2011,7 @@ async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000, deep 
   return supabaseSecurityStatus;
 }
 
-function persistTestLabReport(report, { sync = true } = {}) {
+function persistTestLabReport(report, { sync = false } = {}) {
   if (!report || typeof report !== "object") return null;
   const enriched = {
     ...report,
@@ -2013,12 +2021,12 @@ function persistTestLabReport(report, { sync = true } = {}) {
   const existing = normalizeTestLabReports(state.testLabReports).filter((item) => item.id !== enriched.id);
   state.testLabReports = normalizeTestLabReports([enriched, ...existing]);
   lastTestLabReport = state.testLabReports[0];
-  if (sync) saveTestLabReportState();
+  if (sync || testLabCloudReportOptIn) saveTestLabReportState();
   return lastTestLabReport;
 }
 
 function saveTestLabReportState() {
-  recordSupabaseLoadEvent("test-lab-report-save", "Saved synced Test Lab report metadata");
+  recordSupabaseLoadEvent("test-lab-report-save", "Manually saved Test Lab report metadata to cloud");
   state.updatedAt = new Date().toISOString();
   writeLocalState();
   markLocalChangeQueued();
@@ -2032,6 +2040,37 @@ function saveTestLabReportState() {
   } else {
     queueRemoteSave();
   }
+}
+
+async function saveCurrentTestLabReportToCloud() {
+  const report = getCurrentTestLabReport();
+  if (!report) {
+    showUserWarning("Run or export a Test Lab report before saving it to cloud.");
+    return;
+  }
+  if (!confirmUserAction("Save the latest Test Lab report to shared cloud storage? Routine Test Lab reports stay local to protect Supabase from diagnostic load.")) return;
+  testLabCloudReportOptIn = true;
+  localStorage.setItem(testLabReportCloudStorageKey, "true");
+  persistTestLabReport(report, { sync: true });
+  setDataToolsMessage("Latest Test Lab report queued for cloud save. Routine future reports still stay local unless you use this button again.");
+  window.setTimeout(() => {
+    testLabCloudReportOptIn = false;
+    localStorage.removeItem(testLabReportCloudStorageKey);
+  }, 1000);
+}
+
+function startTestLabLoadGuard(label) {
+  const startAt = Date.now();
+  const startEvents = getSupabaseLoadEvents(5 * 60 * 1000).length;
+  recordSupabaseLoadEvent("test-lab-local-run", `${label || "Test Lab"} started in local-only mode`);
+  return function finishTestLabLoadGuard() {
+    const recentEvents = getSupabaseLoadEvents(5 * 60 * 1000);
+    const delta = Math.max(0, recentEvents.length - startEvents);
+    if (delta > 8) {
+      showUserWarning(`Test Lab noticed ${delta} app-side Supabase event(s) while running. Reports stayed local; avoid cloud diagnostics until CPU is calm.`);
+    }
+    return { startAt, delta };
+  };
 }
 
 async function refreshSupabaseSecurityHealth({ silent = false, force = false } = {}) {
@@ -2161,7 +2200,7 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
   return supabaseSecurityStatus;
 }
 
-function renderTestLabReport(report = null, { persist = true } = {}) {
+function renderTestLabReport(report = null, { persist = false } = {}) {
   if (report) {
     lastTestLabReport = persist ? persistTestLabReport(report) : report;
   } else {
@@ -2169,7 +2208,7 @@ function renderTestLabReport(report = null, { persist = true } = {}) {
   }
   if (!els.testLabReport || !testLab?.renderReportHtml) return;
   if (!lastTestLabReport) {
-    els.testLabReport.innerHTML = `<p class="entry-meta">No Test Lab report yet. Run the Test Lab here or in another synced browser, then refresh status/export the latest report.</p>`;
+    els.testLabReport.innerHTML = `<p class="entry-meta">No Test Lab report yet. Routine Test Lab reports stay local. Run a check, export it, or manually save the report to cloud.</p>`;
     return;
   }
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
@@ -2277,8 +2316,9 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
   if (!confirmUserAction(confirmMessage)) return;
   const startedAt = new Date().toISOString();
   const id = testLab.createTestRunId();
-  setDataToolsMessage(`Test Lab ${id}: running ${scenarioName}...`);
-  const securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 5000 });
+  const finishLoadGuard = startTestLabLoadGuard(scenarioName);
+  setDataToolsMessage(`Test Lab ${id}: running ${scenarioName} locally...`);
+  const securityStatus = buildLightweightSecurityHealthStatus("Targeted Test Lab checks run local-only; live backend probe skipped.");
   const report = buildCurrentTestLabReport({
     id,
     scenario: scenarioName,
@@ -2288,8 +2328,9 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
     scenarioFilter,
     securityStatus
   });
-  renderTestLabReport(report);
-  setDataToolsMessage(`${scenarioName} complete: ${report.passedCount} passed, ${report.failedCount} failed.`);
+  const loadGuard = finishLoadGuard();
+  renderTestLabReport(report, { persist: false });
+  setDataToolsMessage(`${scenarioName} complete locally: ${report.passedCount} passed, ${report.failedCount} failed. Cloud events during run: ${loadGuard.delta}.`);
 }
 
 
@@ -2327,8 +2368,8 @@ async function runStandaloneSecurityHealthScenario() {
     scenarioFilter: ["security"],
     securityStatus
   });
-  renderTestLabReport(report);
-  setDataToolsMessage(`Security health complete: ${report.passedCount} passed, ${report.failedCount} failed.`);
+  renderTestLabReport(report, { persist: false });
+  setDataToolsMessage(`Security health complete: ${report.passedCount} passed, ${report.failedCount} failed. Report stayed local unless you save it to cloud.`);
 }
 
 async function cleanupGeneratedTestDataWithReport() {
@@ -2342,7 +2383,7 @@ async function cleanupGeneratedTestDataWithReport() {
     generated: cleanup.after,
     cleanup
   });
-  renderTestLabReport(report);
+  renderTestLabReport(report, { persist: false });
 }
 
 function cloneForTestLab(value) {
@@ -2400,6 +2441,7 @@ async function runFullTestLabScenario() {
   }
 
   const runId = testLab.createTestRunId();
+  const finishLoadGuard = startTestLabLoadGuard("safe-full-test-lab");
   const startedAt = new Date().toISOString();
   const before = testLab.stateSummary(state);
   const errors = [];
@@ -2420,11 +2462,8 @@ async function runFullTestLabScenario() {
     generated = testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker });
   }
 
-  setDataToolsMessage(`Test Lab ${runId}: running lightweight security health checks...`);
-  const securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 5000 });
-  if (securityStatus && securityStatus.ok === false) {
-    errors.push(securityStatus.message || "Security health needs review.");
-  }
+  setDataToolsMessage(`Test Lab ${runId}: running local-only checks. Live backend probe skipped to protect Supabase.`);
+  const securityStatus = buildLightweightSecurityHealthStatus("Safe Test Lab is local-only; live Supabase probes are skipped. Use Security health manually when CPU is calm.");
 
   const cleanup = {
     before: generated,
@@ -2446,12 +2485,13 @@ async function runFullTestLabScenario() {
     sourceState: testState,
     sourceLedger: testLedger
   });
-  renderTestLabReport(report);
+  const loadGuard = finishLoadGuard();
+  renderTestLabReport(report, { persist: false });
 
   if (report.ok) {
-    setDataToolsMessage(`Safe Test Lab passed with ${report.warningCount || 0} warning(s). Temporary data was not synced to Supabase.`);
+    setDataToolsMessage(`Safe Test Lab passed locally with ${report.warningCount || 0} warning(s). Cloud events during run: ${loadGuard.delta}. Temporary data/report were not synced to Supabase.`);
   } else {
-    setDataToolsMessage(`Safe Test Lab found ${report.failedCount} issue(s). Export the report for details.`);
+    setDataToolsMessage(`Safe Test Lab found ${report.failedCount} issue(s). Export the local report for details.`);
   }
 }
 

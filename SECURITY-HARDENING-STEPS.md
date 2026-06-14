@@ -86,3 +86,11 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
+
+
+## Test Lab quarantine and notifications plan
+
+- Routine Test Lab and targeted checks are local-only by default; reports are not written to shared cloud state unless an admin explicitly uses **Save report to cloud**.
+- Live Supabase Security Health remains a separate manual action for calm periods; routine checks use lightweight/local status to avoid backend load.
+- Supabase Realtime stays off by default while CPU recovers. In-app live updates can be temporarily enabled from Admin for debugging only.
+- Product direction: keep in-app notifications and real-time updates, but rebuild them on a narrow low-volume event channel rather than broad table subscriptions. Mobile push notifications should use a proper push service/Edge Function path instead of relying on Supabase Realtime.
