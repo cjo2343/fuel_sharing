@@ -401,6 +401,8 @@ const bookingCalendarController = window.FuelBookingCalendar.createBookingCalend
   renderPermissionNote,
   canManageBookingEntry,
   canCreateTripFromBooking,
+  findTripForBooking,
+  findFullTankFuelForTrip,
   describeBookingPermissionMessage: (...args) => describeBookingPermissionMessage(...args),
   describeCurrentActor,
   formatNumber,

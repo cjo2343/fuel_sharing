@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v140";
-const BUILD_LABEL = "fuel-odometer-check-clarity";
-const BUILD_UPDATED_AT = "2026-06-14T23:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v141";
+const BUILD_LABEL = "booking-calendar-status-clarity";
+const BUILD_UPDATED_AT = "2026-06-14T23:25:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

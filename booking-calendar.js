@@ -13,6 +13,8 @@
       renderPermissionNote,
       canManageBookingEntry,
       canCreateTripFromBooking,
+      findTripForBooking = () => null,
+      findFullTankFuelForTrip = () => null,
       describeCurrentActor,
       formatNumber = (value) => String(value),
       formatTypedLogRef = (entry) => (entry && entry.logRef) || "bok-unknown"
@@ -247,9 +249,11 @@
     function renderBookingMonthDay(date, key, items, outsideMonth, isToday, year, month) {
       const status = items.length ? "booked" : "free";
       const label = date.toLocaleDateString("en-DK", { weekday: "long", day: "2-digit", month: "long" });
-      const bookingText = items.length ? `${items.length} booking${items.length === 1 ? "" : "s"}` : "Free";
+      const statusSummary = summarizeBookingDayStatus(items);
+      const bookingText = items.length ? statusSummary.label : "Free";
+      const dayStatusClass = items.length ? ` ${escapeHtml(statusSummary.className)}` : "";
       return `
-        <article class="booking-month-day ${status}${outsideMonth ? " outside-month" : ""}${isToday ? " today" : ""}" aria-label="${escapeHtml(`${label}: ${bookingText}`)}">
+        <article class="booking-month-day ${status}${dayStatusClass}${outsideMonth ? " outside-month" : ""}${isToday ? " today" : ""}" aria-label="${escapeHtml(`${label}: ${bookingText}`)}">
           <header>
             <strong>${escapeHtml(date.toLocaleDateString("en-DK", { day: "2-digit" }))}</strong>
             <small>${escapeHtml(bookingText)}</small>
@@ -269,15 +273,17 @@
         ? `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}-${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
         : "Time missing";
       const isFinalBookingDay = String(booking.end || "").slice(0, 10) === dateKey;
-      const logTripButton = isFinalBookingDay && canCreateTripFromBooking(booking)
+      const statusInfo = getBookingStatusInfo(booking);
+      const logTripButton = isFinalBookingDay && statusInfo.canLogTrip
         ? `<button class="subtle-button compact-button booking-month-log-button" type="button" data-convert-booking-to-trip="${escapeHtml(booking.id)}">Log trip</button>`
         : "";
       const bookingRef = formatTypedLogRef(booking, "booking");
       return `
-        <div class="booking-month-chip ${escapeHtml(getBookingStatus(booking))}" data-booking-ref="${escapeHtml(bookingRef)}">
+        <div class="booking-month-chip ${escapeHtml(statusInfo.status)} ${statusInfo.attention ? "needs-attention" : ""}" data-booking-ref="${escapeHtml(bookingRef)}" title="${escapeHtml(statusInfo.description)}">
           <span class="log-ref booking-month-chip-ref">${escapeHtml(bookingRef)}</span>
           <strong>${escapeHtml(booking.member || "Booked")}</strong>
           <span>${escapeHtml(time)}</span>
+          <span class="booking-status-badge ${escapeHtml(statusInfo.level)}">${escapeHtml(statusInfo.label)}</span>
           ${booking.purpose ? `<span class="booking-month-chip-purpose">${escapeHtml(booking.purpose)}</span>` : ""}
           ${Number(booking.plannedDistanceKm || 0) > 0 ? `<span class="booking-month-chip-purpose">${escapeHtml(formatNumber(Number(booking.plannedDistanceKm)))} km estimate</span>` : ""}
           ${logTripButton}
@@ -305,9 +311,10 @@
     }
 
     function renderBookingCard(booking) {
-      const status = getBookingStatus(booking);
+      const statusInfo = getBookingStatusInfo(booking);
+      const status = statusInfo.status;
       const actionButtons = [
-        canCreateTripFromBooking(booking) ? `<button class="subtle-button compact-button" type="button" data-convert-booking-to-trip="${escapeHtml(booking.id)}">Log trip</button>` : "",
+        statusInfo.canLogTrip ? `<button class="subtle-button compact-button" type="button" data-convert-booking-to-trip="${escapeHtml(booking.id)}">Log trip</button>` : "",
         canManageBookingEntry(booking) ? `<button class="subtle-button compact-button" type="button" data-edit="bookings:${escapeHtml(booking.id)}">Edit</button>` : "",
         canManageBookingEntry(booking) ? `<button class="text-button compact-button" type="button" data-delete="bookings:${escapeHtml(booking.id)}">Delete</button>` : ""
       ].filter(Boolean).join("");
@@ -322,7 +329,9 @@
             <div class="entry-actions">${actionButtons}</div>
           </header>
           ${!canManageBookingEntry(booking) ? renderPermissionNote(describeBookingPermissionMessage(booking, "edit or delete")) : ""}
-          <p>${escapeHtml(formatBookingRange(booking))} <span class="category-chip">${escapeHtml(statusLabelForBooking(status))}</span></p>
+          <p>${escapeHtml(formatBookingRange(booking))} <span class="booking-status-badge ${escapeHtml(statusInfo.level)}">${escapeHtml(statusInfo.label)}</span></p>
+          <p class="entry-meta booking-status-detail">${escapeHtml(statusInfo.description)}</p>
+          ${statusInfo.secondaryLabel ? `<p class="entry-meta booking-status-detail">${escapeHtml(statusInfo.secondaryLabel)}</p>` : ""}
           ${booking.purpose ? `<p>${escapeHtml(booking.purpose)}</p>` : ""}
         </article>
       `;
@@ -513,6 +522,26 @@
       return `Only ${booking.member}, the person who booked the car, or an admin can ${action} this booking. You are signed in as ${actor}.`;
     }
 
+    function getBookingStatusInfo(booking) {
+      return describeBookingStatus(booking, {
+        nowMs: Date.now(),
+        trip: findTripForBooking(booking?.id),
+        fullTankFuel: findFullTankFuelForTrip(findTripForBooking(booking?.id)),
+        canLogTrip: canCreateTripFromBooking(booking)
+      });
+    }
+
+    function summarizeBookingDayStatus(items) {
+      const infos = items.map(getBookingStatusInfo);
+      const attention = infos.filter((info) => info.attention).length;
+      const logged = infos.filter((info) => info.status.includes("trip-logged") || info.status === "closed").length;
+      const active = infos.filter((info) => info.status === "active").length;
+      if (attention > 0) return { label: `${items.length} booking${items.length === 1 ? "" : "s"} · ${attention} needs log`, className: "needs-attention" };
+      if (logged > 0 && logged === items.length) return { label: `${items.length} logged`, className: "all-logged" };
+      if (active > 0) return { label: `${items.length} booking${items.length === 1 ? "" : "s"} · active`, className: "active-booking" };
+      return { label: `${items.length} booking${items.length === 1 ? "" : "s"}`, className: "has-booking" };
+    }
+
     return {
       renderBookings,
       setBookingCalendarView,
@@ -539,16 +568,84 @@
   }
 
   function getBookingStatus(booking) {
-    const now = Date.now();
-    if (bookingEndMs(booking) < now) return "past";
-    if (bookingStartMs(booking) <= now && bookingEndMs(booking) >= now) return "active";
-    return "upcoming";
+    return describeBookingStatus(booking, { nowMs: Date.now() }).status;
   }
 
   function statusLabelForBooking(status) {
-    if (status === "active") return "In use";
-    if (status === "past") return "Past";
-    return "Upcoming";
+    return describeBookingStatus({ start: new Date(Date.now() + 60000).toISOString(), end: new Date(Date.now() + 120000).toISOString() }, { statusOverride: status }).label;
+  }
+
+  function describeBookingStatus(booking, options = {}) {
+    if (options.statusOverride) return statusDescriptor(options.statusOverride);
+    const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
+    const startMs = bookingStartMs(booking);
+    const endMs = bookingEndMs(booking);
+    const trip = options.trip || null;
+    const fullTankFuel = options.fullTankFuel || null;
+    const canLogTrip = Boolean(options.canLogTrip);
+
+    if (!booking || !Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      return { ...statusDescriptor("invalid"), canLogTrip: false };
+    }
+    if (trip?.archivedPeriodId) {
+      return {
+        ...statusDescriptor("closed"),
+        description: `Trip logged in closed archive${trip.archivedPeriodLabel ? ` ${trip.archivedPeriodLabel}` : ""}.`,
+        trip,
+        canLogTrip: false
+      };
+    }
+    if (trip) {
+      const isMultiDay = String(booking.start || "").slice(0, 10) !== String(booking.end || "").slice(0, 10);
+      if (fullTankFuel) {
+        return {
+          ...statusDescriptor("trip-logged-fuel-linked"),
+          description: `Trip ${trip.logRef || shortRef(trip.id, "trip")} logged and full-tank fuel is linked.`,
+          trip,
+          fullTankFuel,
+          canLogTrip: false
+        };
+      }
+      if (isMultiDay) {
+        return {
+          ...statusDescriptor("trip-logged-missing-fuel"),
+          description: `Trip ${trip.logRef || shortRef(trip.id, "trip")} logged; full-tank fuel is still required before closing.`,
+          trip,
+          canLogTrip: false
+        };
+      }
+      return {
+        ...statusDescriptor("trip-logged"),
+        description: `Trip ${trip.logRef || shortRef(trip.id, "trip")} logged.`,
+        trip,
+        canLogTrip: false
+      };
+    }
+    if (endMs < nowMs) {
+      return { ...statusDescriptor("completed-needs-trip"), canLogTrip, description: canLogTrip ? "Booking is complete and needs a trip log." : "Booking is complete; trip log still missing." };
+    }
+    if (startMs <= nowMs && endMs >= nowMs) {
+      return { ...statusDescriptor("active"), canLogTrip: false, description: "Booking is currently active." };
+    }
+    return { ...statusDescriptor("upcoming"), canLogTrip: false, description: "Booking is upcoming." };
+  }
+
+  function statusDescriptor(status) {
+    const descriptors = {
+      upcoming: { status: "upcoming", label: "Upcoming", level: "neutral", attention: false, description: "Booking is upcoming." },
+      active: { status: "active", label: "In use", level: "info", attention: false, description: "Booking is currently active." },
+      "completed-needs-trip": { status: "completed-needs-trip", label: "Needs trip log", level: "warning", attention: true, description: "Booking is complete and needs a trip log." },
+      "trip-logged": { status: "trip-logged", label: "Trip logged", level: "success", attention: false, description: "Trip has been logged." },
+      "trip-logged-fuel-linked": { status: "trip-logged-fuel-linked", label: "Trip + fuel linked", level: "success", attention: false, description: "Trip and full-tank fuel are linked." },
+      "trip-logged-missing-fuel": { status: "trip-logged-missing-fuel", label: "Missing fuel", level: "warning", attention: true, description: "Trip logged; full-tank fuel is required." },
+      closed: { status: "closed", label: "Closed archive", level: "neutral", attention: false, description: "Booking trip is in a closed archive." },
+      invalid: { status: "invalid", label: "Needs review", level: "warning", attention: true, description: "Booking time is invalid or incomplete." }
+    };
+    return descriptors[status] || descriptors.upcoming;
+  }
+
+  function shortRef(id, prefix) {
+    return `${prefix || "ref"}-${String(id || "unknown").slice(0, 6).toUpperCase()}`;
   }
 
   function bookingStartMs(booking) {
@@ -612,5 +709,9 @@
     return changes.join("; ");
   }
 
-  window.FuelBookingCalendar = { createBookingCalendarController };
+  window.FuelBookingCalendar = {
+    createBookingCalendarController,
+    describeBookingStatus,
+    statusLabelForBooking
+  };
 }());

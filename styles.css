@@ -4340,3 +4340,84 @@ body.auth-locked #authPanel .text-button {
 .test-lab-action-group[open] summary {
   margin-bottom: 0.45rem;
 }
+
+.booking-card.completed-needs-trip,
+.booking-card.trip-logged-missing-fuel,
+.booking-month-chip.needs-attention {
+  border-left-color: var(--red);
+  background: #fff8f5;
+}
+
+.booking-card.trip-logged,
+.booking-card.trip-logged-fuel-linked,
+.booking-month-chip.trip-logged,
+.booking-month-chip.trip-logged-fuel-linked,
+.booking-month-day.all-logged {
+  border-left-color: var(--green);
+  background: #f5fbf7;
+}
+
+.booking-card.closed,
+.booking-month-chip.closed {
+  border-left-color: var(--line-strong);
+  background: #f7f8f8;
+}
+
+.booking-month-day.needs-attention {
+  background: #fff8f5;
+  border-color: rgba(176, 79, 55, 0.32);
+}
+
+.booking-month-day.all-logged {
+  background: #f4fbf7;
+  border-color: rgba(47, 125, 99, 0.28);
+}
+
+.booking-month-day.active-booking {
+  background: #f6fbff;
+  border-color: rgba(57, 111, 163, 0.28);
+}
+
+.booking-status-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #eef5f1;
+  color: var(--green-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.booking-status-badge.success::before { content: "✓"; }
+.booking-status-badge.warning::before { content: "!"; }
+.booking-status-badge.info::before { content: "•"; }
+
+.booking-status-badge.success {
+  background: #e8f5ed;
+  color: var(--green-dark);
+}
+
+.booking-status-badge.warning {
+  background: #fdebea;
+  color: var(--red);
+}
+
+.booking-status-badge.info {
+  background: #eef5ff;
+  color: var(--blue);
+}
+
+.booking-status-badge.neutral {
+  background: #f2f4f3;
+  color: var(--muted);
+}
+
+.booking-status-detail {
+  margin-top: 4px;
+}

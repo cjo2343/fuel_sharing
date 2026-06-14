@@ -987,6 +987,11 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   await page.getByRole("button", { name: "Use this estimate for booking" }).click();
 
   await expect(page.locator("#bookingPurpose")).toHaveValue(/Roskilde.*Aarhus.*123/);
+  // The booking-status UI only shows the Log trip action for completed bookings.
+  // Keep this scenario focused on copying the plan estimate into a real booking,
+  // then converting that completed booking into a trip.
+  await page.locator("#bookingStart").fill("2026-06-12T15:00");
+  await page.locator("#bookingEnd").fill("2026-06-12T17:00");
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
   await expect(page.locator("#bookingCalendar")).toContainText(/123 km estimate|123 km/);
 
