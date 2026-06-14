@@ -211,6 +211,33 @@ function testFuelCapacityChecksReportChronologicalOdometerBackwardsClearly() {
   assert.equal(backwards.detail.includes('#1A87A4'), true, backwards.detail);
   assert.equal(backwards.detail.includes('#5F4741'), true, backwards.detail);
   assert.equal(backwards.detail.includes('172244'), false, backwards.detail);
+  assert.equal(Array.isArray(backwards.refs), true, JSON.stringify(backwards));
+  assert.equal(backwards.refs.length, 2, JSON.stringify(backwards.refs));
+  assert.equal(backwards.refs[0].type, 'fuel');
+  assert.equal(backwards.refs[1].id, '5F4741');
+}
+
+function testReportRendersEntryInspectActions() {
+  const lab = loadHelpers();
+  const report = lab.buildTestLabReport({
+    id: 'test-report',
+    scenario: 'safe-full-test-lab',
+    checks: [
+      {
+        ok: false,
+        name: 'Fuel odometers do not go backwards over time',
+        detail: '#first -> #second',
+        refs: [
+          { type: 'fuel', id: 'first-fuel-id', label: 'Open previous fuel log', summary: '#first 100 km' },
+          { type: 'fuel', id: 'second-fuel-id', label: 'Open next fuel log', summary: '#second 90 km' }
+        ]
+      }
+    ]
+  });
+  const html = lab.renderReportHtml(report);
+  assert.equal(html.includes('data-testlab-open-entry="fuel:first-fuel-id"'), true, html);
+  assert.equal(html.includes('Open previous fuel log'), true, html);
+  assert.equal(html.includes('data-testlab-open-entry="fuel:second-fuel-id"'), true, html);
 }
 
 function testFullTankCapacityGapIsWarningNotHardFailure() {
@@ -241,6 +268,7 @@ const tests = [
   testScenarioMatrixCoversExpandedLogic,
   testFuelCapacityChecksCatchBadFuelData,
   testFuelCapacityChecksReportChronologicalOdometerBackwardsClearly,
+  testReportRendersEntryInspectActions,
   testFullTankCapacityGapIsWarningNotHardFailure
 ];
 

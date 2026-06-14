@@ -81,12 +81,12 @@
     return { ok: true, name, detail };
   }
 
-  function fail(name, detail = "") {
-    return { ok: false, name, detail, level: "error" };
+  function fail(name, detail = "", refs = []) {
+    return { ok: false, name, detail, level: "error", refs: asArray(refs) };
   }
 
-  function warn(name, detail = "") {
-    return { ok: true, name, detail, level: "warning", warning: true };
+  function warn(name, detail = "", refs = []) {
+    return { ok: true, name, detail, level: "warning", warning: true, refs: asArray(refs) };
   }
 
   function isWarning(check) {
@@ -262,12 +262,27 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  function shortEntryId(entry) {
+    return String(asObject(entry).id || "entry").slice(0, 8);
+  }
+
   function formatFuelLogRef(fuel) {
     const source = asObject(fuel);
-    const id = String(source.id || "fuel").slice(0, 8);
+    const id = shortEntryId(source);
     const date = String(source.date || "unknown date");
     const odometer = safeNumber(source.odometer);
     return `#${id} ${date} ${odometer} km`;
+  }
+
+  function fuelLogRef(fuel, label = "Fuel log") {
+    const source = asObject(fuel);
+    return {
+      type: "fuel",
+      id: String(source.id || ""),
+      shortId: shortEntryId(source),
+      label,
+      summary: formatFuelLogRef(source)
+    };
   }
 
   function runFuelCapacityChecks(input = {}) {
@@ -287,12 +302,12 @@
 
     const overCapacityFuel = fuelLogs.filter((fuel) => safeNumber(fuel && fuel.liters) > tankCapacity + toleranceLiters);
     checks.push(overCapacityFuel.length
-      ? fail("Fuel logs do not exceed tank capacity", `${overCapacityFuel.length} fuel log(s) exceed ${tankCapacity} L: ${overCapacityFuel.slice(0, 3).map(formatFuelLogRef).join(", ")}`)
+      ? fail("Fuel logs do not exceed tank capacity", `${overCapacityFuel.length} fuel log(s) exceed ${tankCapacity} L: ${overCapacityFuel.slice(0, 3).map(formatFuelLogRef).join(", ")}`, overCapacityFuel.slice(0, 3).map((fuel) => fuelLogRef(fuel, "Open fuel log")))
       : pass("Fuel logs do not exceed tank capacity"));
 
     const invalidFuelOdometers = fuelLogs.filter((fuel) => fuel && fuel.odometer !== "" && fuel.odometer != null && safeNumber(fuel.odometer, -1) < 0);
     checks.push(invalidFuelOdometers.length
-      ? fail("Fuel odometers are non-negative", `${invalidFuelOdometers.length} fuel log(s) have negative odometers: ${invalidFuelOdometers.slice(0, 3).map(formatFuelLogRef).join(", ")}`)
+      ? fail("Fuel odometers are non-negative", `${invalidFuelOdometers.length} fuel log(s) have negative odometers: ${invalidFuelOdometers.slice(0, 3).map(formatFuelLogRef).join(", ")}`, invalidFuelOdometers.slice(0, 3).map((fuel) => fuelLogRef(fuel, "Open fuel log")))
       : pass("Fuel odometers are non-negative"));
 
     const chronologicalFuelLogs = fuelLogs
@@ -301,15 +316,17 @@
       .sort((a, b) => (a.dateMs - b.dateMs) || (a.originalIndex - b.originalIndex));
 
     const backwardsSegments = [];
+    const backwardsRefs = [];
     for (let i = 1; i < chronologicalFuelLogs.length; i += 1) {
       const previous = chronologicalFuelLogs[i - 1];
       const current = chronologicalFuelLogs[i];
       if (current.odometerValue < previous.odometerValue) {
         backwardsSegments.push(`${formatFuelLogRef(previous)} -> ${formatFuelLogRef(current)}`);
+        backwardsRefs.push(fuelLogRef(previous, "Open previous fuel log"), fuelLogRef(current, "Open next fuel log"));
       }
     }
     checks.push(backwardsSegments.length
-      ? fail("Fuel odometers do not go backwards over time", backwardsSegments.slice(0, 3).join("; "))
+      ? fail("Fuel odometers do not go backwards over time", backwardsSegments.slice(0, 3).join("; "), backwardsRefs.slice(0, 6))
       : pass("Fuel odometers do not go backwards over time"));
 
     const fullTankLogs = chronologicalFuelLogs.filter((fuel) => fuel.fullTank || fuel.full_tank);
@@ -446,6 +463,24 @@
     };
   }
 
+
+  function renderCheckRefs(check) {
+    const refs = asArray(check && check.refs).filter((ref) => ref && ref.type && ref.id);
+    if (!refs.length) return "";
+    return `<div class="test-lab-ref-actions">${refs.map((ref) => {
+      const type = escapeHtml(ref.type);
+      const id = escapeHtml(ref.id);
+      const label = escapeHtml(ref.label || `Open ${ref.type}`);
+      const summary = ref.summary ? ` title="${escapeHtml(ref.summary)}"` : "";
+      return `<button class="subtle-button compact-button" type="button" data-testlab-open-entry="${type}:${id}"${summary}>${label}</button>`;
+    }).join("")}</div>`;
+  }
+
+  function renderCheckListItem(check, icon = null) {
+    const marker = icon || checkIcon(check);
+    return `<li>${marker} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}${renderCheckRefs(check)}</li>`;
+  }
+
   function renderReportHtml(report) {
     if (!report) return "";
     const warnings = asArray(report.checks).filter(isWarning);
@@ -470,10 +505,10 @@
         }).join("")}</div>`
       : "";
     const failedHtml = failedChecks.length
-      ? `<div class="test-lab-failures"><strong>Failed checks</strong><ul>${failedChecks.map((check) => `<li>❌ ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></div>`
+      ? `<div class="test-lab-failures"><strong>Failed checks</strong><ul>${failedChecks.map((check) => renderCheckListItem(check, "❌")).join("")}</ul></div>`
       : "";
     const warningsHtml = warnings.length
-      ? `<div class="test-lab-warnings"><strong>Warnings</strong><ul>${warnings.map((check) => `<li>⚠️ ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></div>`
+      ? `<div class="test-lab-warnings"><strong>Warnings</strong><ul>${warnings.map((check) => renderCheckListItem(check, "⚠️")).join("")}</ul></div>`
       : "";
     const successHtml = !failedChecks.length && !warnings.length ? `<p class="test-lab-success-note">All reported checks passed.</p>` : "";
     const generated = report.generated
@@ -486,7 +521,7 @@
       ? `<div class="test-lab-errors"><strong>Errors</strong><ul>${asArray(report.errors).map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul></div>`
       : "";
     const allChecksHtml = allChecks.length
-      ? `<details class="test-lab-details"><summary>Show all ${allChecks.length} checks</summary><ul>${allChecks.map((check) => `<li>${checkIcon(check)} ${check.scenario ? `<small>${escapeHtml(check.scenario)}:</small> ` : ""}${escapeHtml(check.name)}${check.detail ? ` — <small>${escapeHtml(check.detail)}</small>` : ""}</li>`).join("")}</ul></details>`
+      ? `<details class="test-lab-details"><summary>Show all ${allChecks.length} checks</summary><ul>${allChecks.map((check) => renderCheckListItem(check)).join("")}</ul></details>`
       : "";
     const countText = `${report.passedCount || 0} passed · ${warningCount || 0} warning${warningCount === 1 ? "" : "s"} · ${report.failedCount || 0} failed`;
     return `

@@ -1838,6 +1838,56 @@ function renderTestLabReport(report = null, { persist = true } = {}) {
   els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
 }
 
+function inspectTestLabEntry(value) {
+  const [type, id] = String(value || "").split(":");
+  if (!type || !id) return;
+  if (type === "fuel") {
+    showLogViewForEditing();
+    render();
+    window.setTimeout(() => {
+      const card = document.querySelector(`[data-entry-type="fuel"][data-entry-id="${CSS.escape(id)}"]`);
+      if (!card) {
+        showUserWarning("That fuel log is not visible in the current period. It may be archived or deleted.");
+        return;
+      }
+      const group = card.closest("details.history-group");
+      if (group) group.open = true;
+      card.classList.add("entry-card-highlight");
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
+    }, 0);
+    return;
+  }
+  if (type === "trips" || type === "trip") {
+    showLogViewForEditing();
+    render();
+    window.setTimeout(() => {
+      const card = document.querySelector(`[data-entry-type="trip"][data-entry-id="${CSS.escape(id)}"]`);
+      if (!card) {
+        showUserWarning("That trip log is not visible in the current period. It may be archived or deleted.");
+        return;
+      }
+      card.classList.add("entry-card-highlight");
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
+    }, 0);
+    return;
+  }
+  if (type === "bookings" || type === "booking") {
+    setActiveView("book");
+    window.setTimeout(() => {
+      const card = document.querySelector(`[data-entry-type="booking"][data-entry-id="${CSS.escape(id)}"]`);
+      if (!card) {
+        showUserWarning("That booking is not visible in the current calendar view. It may be archived or deleted.");
+        return;
+      }
+      card.classList.add("entry-card-highlight");
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => card.classList.remove("entry-card-highlight"), 4000);
+    }, 0);
+  }
+}
+
 function buildCurrentTestLabReport({ id, scenario, startedAt, before, generated, cleanup = null, errors = [], scenarioFilter = null, securityStatus = null, sourceState = null, sourceLedger = null, after = null }) {
   const reportState = sourceState || state;
   const ledger = sourceLedger || calculateLedger();
@@ -2287,6 +2337,12 @@ document.addEventListener("click", async (event) => {
   const reviewPeriodButton = event.target.closest("[data-review-period]");
   if (reviewPeriodButton) {
     showHistoryForPeriodReview();
+    return;
+  }
+
+  const inspectButton = event.target.closest("[data-testlab-open-entry]");
+  if (inspectButton) {
+    inspectTestLabEntry(inspectButton.dataset.testlabOpenEntry);
     return;
   }
 
@@ -7735,14 +7791,14 @@ function renderTripEntryCard(trip, ledger = null) {
   const category = getTripCategory(trip);
   const reviewSignal = getTripEntryReviewSignal(trip, ledger);
   return `
-    <article class="entry-card">
+    <article class="entry-card" data-entry-type="trip" data-entry-id="${escapeHtml(trip.id)}" data-entry-short-id="${escapeHtml(String(trip.id || "").slice(0, 8))}">
       <header>
         <strong>${escapeHtml(trip.driver)}</strong>
         ${canManageTripEntry(trip) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="trips:${trip.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="trips:${trip.id}">Delete</button></div>` : ""}
       </header>
       ${!canManageTripEntry(trip) ? renderPermissionNote(describeTripPermissionMessage(trip, "edit or delete")) : ""}
       <p>${formatNumber(km)} km · Total ${formatNumber(trip.endKm)} km <span class="category-chip">${escapeHtml(category)}</span></p>
-      <p class="entry-meta"><strong>${escapeHtml(formatLogRef(trip))}</strong> · ${escapeHtml(getTripPeriodLabel(trip))} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
+      <p class="entry-meta"><strong title="Full id: ${escapeHtml(trip.id || "")}">#${escapeHtml(String(trip.id || "").slice(0, 8))}</strong> · ${escapeHtml(getTripPeriodLabel(trip))} · ${formatNumber(trip.startKm)} to ${formatNumber(trip.endKm)} km</p>
       <p class="entry-meta">Split between ${participants.map(escapeHtml).join(", ")}</p>
       ${trip.note ? `<p>${escapeHtml(trip.note)}</p>` : ""}
       ${renderEntryReviewSignal(reviewSignal)}
@@ -7787,14 +7843,14 @@ function renderCategorizedFuel(fuelLogs) {
 function renderFuelEntryCard(fuel, ledger = null) {
   const reviewSignal = getFuelEntryReviewSignal(fuel, ledger);
   return `
-    <article class="entry-card">
+    <article class="entry-card" data-entry-type="fuel" data-entry-id="${escapeHtml(fuel.id)}" data-entry-short-id="${escapeHtml(String(fuel.id || "").slice(0, 8))}">
       <header>
         <strong>${escapeHtml(fuel.payer)}</strong>
         ${canManageFuelEntry(fuel) ? `<div class="entry-actions"><button class="subtle-button compact-button" type="button" data-edit="fuel:${fuel.id}">Edit</button><button class="text-button compact-button" type="button" data-delete="fuel:${fuel.id}">Delete</button></div>` : ""}
       </header>
       ${!canManageFuelEntry(fuel) ? renderPermissionNote(describeFuelPermissionMessage(fuel, "edit or delete")) : ""}
       <p>${formatFuelAmountLitersAndPrice(fuel)}</p>
-      <p class="entry-meta"><strong>${escapeHtml(formatLogRef(fuel))}</strong> · ${formatDate(fuel.date)}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
+      <p class="entry-meta"><strong title="Full id: ${escapeHtml(fuel.id || "")}">#${escapeHtml(String(fuel.id || "").slice(0, 8))}</strong> · ${formatDate(fuel.date)}${fuel.odometer ? ` · ${formatNumber(fuel.odometer)} km` : ""}${fuel.station ? ` · ${escapeHtml(fuel.station)}` : ""}${fuel.location?.latitude && fuel.location?.longitude ? ` · GPS saved` : ""}${fuel.fullTank ? " · full tank" : ""}</p>
       ${fuel.sourceTripId ? `<p class="entry-meta">Linked to trip ${escapeHtml(formatLogRef(fuel))}</p>` : ""}
       ${renderEntryReviewSignal(reviewSignal)}
     </article>

@@ -4421,3 +4421,17 @@ body.auth-locked #authPanel .text-button {
 .booking-status-detail {
   margin-top: 4px;
 }
+
+.test-lab-ref-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.entry-card-highlight,
+.booking-month-chip.entry-card-highlight {
+  outline: 3px solid var(--accent, #1f6f5b);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(31, 111, 91, 0.16);
+}

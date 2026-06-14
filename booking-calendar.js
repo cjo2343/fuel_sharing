@@ -279,7 +279,7 @@
         : "";
       const bookingRef = formatTypedLogRef(booking, "booking");
       return `
-        <div class="booking-month-chip ${escapeHtml(statusInfo.status)} ${statusInfo.attention ? "needs-attention" : ""}" data-booking-ref="${escapeHtml(bookingRef)}" title="${escapeHtml(statusInfo.description)}">
+        <div class="booking-month-chip ${escapeHtml(statusInfo.status)} ${statusInfo.attention ? "needs-attention" : ""}" data-entry-type="booking" data-entry-id="${escapeHtml(booking.id)}" data-entry-short-id="${escapeHtml(String(booking.id || "").slice(0, 8))}" data-booking-ref="${escapeHtml(bookingRef)}" title="${escapeHtml(statusInfo.description)}">
           <span class="log-ref booking-month-chip-ref">${escapeHtml(bookingRef)}</span>
           <strong>${escapeHtml(booking.member || "Booked")}</strong>
           <span>${escapeHtml(time)}</span>
@@ -320,7 +320,7 @@
       ].filter(Boolean).join("");
       const bookingRef = formatTypedLogRef(booking, "booking");
       return `
-        <article class="entry-card booking-card ${escapeHtml(status)}" data-booking-ref="${escapeHtml(bookingRef)}">
+        <article class="entry-card booking-card ${escapeHtml(status)}" data-entry-type="booking" data-entry-id="${escapeHtml(booking.id)}" data-entry-short-id="${escapeHtml(String(booking.id || "").slice(0, 8))}" data-booking-ref="${escapeHtml(bookingRef)}">
           <header>
             <div>
               <span class="log-ref">${escapeHtml(bookingRef)}</span>
