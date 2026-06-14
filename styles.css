@@ -4435,3 +4435,16 @@ body.auth-locked #authPanel .text-button {
   outline-offset: 3px;
   box-shadow: 0 0 0 6px rgba(31, 111, 91, 0.16);
 }
+
+.booking-status-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.booking-month-chip.active .booking-status-hint,
+.booking-card.active .booking-status-detail {
+  color: var(--blue);
+}

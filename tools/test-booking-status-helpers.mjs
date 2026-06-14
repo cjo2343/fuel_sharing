@@ -63,9 +63,22 @@ function testFuelLinkedStatus() {
   assert.equal(status.attention, false);
 }
 
-function testUpcomingAndActiveStatuses() {
-  assert.equal(describe(booking({ start: '2026-06-15T10:00:00Z', end: '2026-06-15T11:00:00Z' }), { nowMs: now }).status, 'upcoming');
-  assert.equal(describe(booking({ start: '2026-06-14T11:00:00Z', end: '2026-06-14T13:00:00Z' }), { nowMs: now }).status, 'active');
+function testUpcomingAndActiveStatusesExplainTripTiming() {
+  const upcoming = describe(booking({ start: '2026-06-15T10:00:00Z', end: '2026-06-15T11:00:00Z' }), { nowMs: now });
+  const active = describe(booking({ start: '2026-06-14T11:00:00Z', end: '2026-06-14T13:00:00Z' }), { nowMs: now });
+  assert.equal(upcoming.status, 'upcoming');
+  assert.match(upcoming.secondaryLabel, /log trip after/i);
+  assert.equal(active.status, 'active');
+  assert.equal(active.label, 'In use');
+  assert.equal(active.canLogTrip, false);
+  assert.match(active.secondaryLabel, /Log trip after/);
+}
+
+function testCompletedBookingExplainsWhereToLog() {
+  const canLog = describe(booking(), { nowMs: now, canLogTrip: true });
+  const cannotLog = describe(booking(), { nowMs: now, canLogTrip: false });
+  assert.match(canLog.secondaryLabel, /Ready to log/);
+  assert.match(cannotLog.secondaryLabel, /Booking activity|owner\/admin/);
 }
 
 for (const test of [
@@ -73,7 +86,8 @@ for (const test of [
   testLoggedBookingHidesLogAction,
   testMultiDayLoggedBookingRequiresFuel,
   testFuelLinkedStatus,
-  testUpcomingAndActiveStatuses
+  testUpcomingAndActiveStatusesExplainTripTiming,
+  testCompletedBookingExplainsWhereToLog
 ]) {
   test();
   console.log(`ok - ${test.name}`);

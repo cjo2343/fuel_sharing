@@ -284,6 +284,7 @@
           <strong>${escapeHtml(booking.member || "Booked")}</strong>
           <span>${escapeHtml(time)}</span>
           <span class="booking-status-badge ${escapeHtml(statusInfo.level)}">${escapeHtml(statusInfo.label)}</span>
+          ${statusInfo.secondaryLabel ? `<span class="booking-status-hint">${escapeHtml(statusInfo.secondaryLabel)}</span>` : ""}
           ${booking.purpose ? `<span class="booking-month-chip-purpose">${escapeHtml(booking.purpose)}</span>` : ""}
           ${Number(booking.plannedDistanceKm || 0) > 0 ? `<span class="booking-month-chip-purpose">${escapeHtml(formatNumber(Number(booking.plannedDistanceKm)))} km estimate</span>` : ""}
           ${logTripButton}
@@ -622,12 +623,36 @@
       };
     }
     if (endMs < nowMs) {
-      return { ...statusDescriptor("completed-needs-trip"), canLogTrip, description: canLogTrip ? "Booking is complete and needs a trip log." : "Booking is complete; trip log still missing." };
+      return {
+        ...statusDescriptor("completed-needs-trip"),
+        canLogTrip,
+        description: canLogTrip ? "Booking is complete and needs a trip log." : "Booking is complete; trip log still missing.",
+        secondaryLabel: canLogTrip ? "Ready to log from this booking." : "Needs trip log; use Booking activity or ask the owner/admin."
+      };
     }
     if (startMs <= nowMs && endMs >= nowMs) {
-      return { ...statusDescriptor("active"), canLogTrip: false, description: "Booking is currently active." };
+      const endText = formatBookingTime(endMs);
+      return {
+        ...statusDescriptor("active"),
+        canLogTrip: false,
+        description: "Booking is currently active.",
+        secondaryLabel: `Log trip after ${endText}.`
+      };
     }
-    return { ...statusDescriptor("upcoming"), canLogTrip: false, description: "Booking is upcoming." };
+    const startText = formatBookingTime(startMs);
+    const endText = formatBookingTime(endMs);
+    return {
+      ...statusDescriptor("upcoming"),
+      canLogTrip: false,
+      description: "Booking is upcoming.",
+      secondaryLabel: `Starts ${startText}; log trip after ${endText}.`
+    };
+  }
+
+  function formatBookingTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "the booking ends";
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
   function statusDescriptor(status) {
