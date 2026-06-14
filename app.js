@@ -189,6 +189,8 @@ let supabaseLoadInFlight = false;
 let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
+const supabaseStartupLoadTimeoutMs = 8000;
+let periodCloseRpcArmUntil = 0;
 let deferredInstallPrompt = null;
 let pushSupported = false;
 let pushEnabled = false;
@@ -3503,8 +3505,37 @@ async function initializeSupabase() {
 
   if (currentSession) {
     subscribeToSupabaseState();
-    await loadSupabaseState({ force: true, reason: "startup" });
+    await loadSupabaseStateWithTimeout(
+      { force: true, reason: "startup" },
+      supabaseStartupLoadTimeoutMs,
+      "Startup cloud load timed out. Showing local cached data while cloud sync retries in the background."
+    );
   }
+}
+
+async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) {
+  let timedOut = false;
+  const timeout = new Promise((resolve) => {
+    window.setTimeout(() => {
+      timedOut = true;
+      lastSyncError = timeoutMessage || "Cloud sync timed out.";
+      setSyncStatus("Local");
+      render();
+      resolve(false);
+    }, timeoutMs);
+  });
+
+  const load = loadSupabaseState(options).catch((error) => {
+    if (!timedOut) throw error;
+    console.warn("Background cloud load failed after startup timeout", error);
+    return false;
+  });
+
+  const result = await Promise.race([load, timeout]);
+  if (timedOut) {
+    recordSupabaseLoadEvent("startup-offline-fallback", timeoutMessage || "cloud load timeout");
+  }
+  return result;
 }
 
 
@@ -5583,6 +5614,7 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
     const context = await getNormalizedWriteContext();
     if (!context?.openPeriodId) return true;
 
+    periodCloseRpcArmUntil = Date.now() + 5000;
     const rpcResult = await closeNormalizedPeriodWithRpc(context, periodSnapshot);
     if (rpcResult.ok) {
       normalizedTableStatus = {
@@ -5620,6 +5652,12 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
 }
 
 async function closeNormalizedPeriodWithRpc(context, periodSnapshot) {
+  if (Date.now() > periodCloseRpcArmUntil) {
+    throw new Error("Blocked close_settlement_period RPC outside the real close-period flow.");
+  }
+  if (!context?.openPeriodId || !periodSnapshot || typeof periodSnapshot !== "object") {
+    throw new Error("Blocked close_settlement_period RPC because the open period or snapshot is missing.");
+  }
   const { data, error } = await supabaseClient.rpc("close_settlement_period", {
     target_ledger_id: context.ledgerId,
     target_period_id: context.openPeriodId,

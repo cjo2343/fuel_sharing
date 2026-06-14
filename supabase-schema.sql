@@ -480,6 +480,7 @@ declare
   closed_period_id uuid;
   new_open_period_id uuid;
   requested_closed_at timestamptz;
+  lock_acquired boolean;
 begin
   if target_ledger_id is null or target_ledger_id = '' then
     raise exception 'Missing ledger id' using errcode = '22023';
@@ -502,7 +503,24 @@ begin
     raise exception 'Could not match the current user to an active ledger member' using errcode = '42501';
   end if;
 
-  perform pg_advisory_xact_lock(hashtext(target_ledger_id));
+  -- Guard before taking the advisory lock. Older frontend builds and health probes
+  -- may call this RPC with a fake or already-closed period id. Reject those
+  -- immediately so they cannot queue behind the lock and burn database CPU.
+  if not exists (
+    select 1
+    from public.settlement_periods sp
+    where sp.id = target_period_id
+      and sp.ledger_id = target_ledger_id
+      and sp.status = 'open'
+      and sp.closed_at is null
+  ) then
+    raise exception 'Open settlement period was not found or was already closed' using errcode = '22023';
+  end if;
+
+  lock_acquired := pg_try_advisory_xact_lock(hashtext(target_ledger_id));
+  if lock_acquired is not true then
+    raise exception 'Another settlement close is already in progress for this ledger' using errcode = '55P03';
+  end if;
 
   snapshot_fingerprint := nullif(period_snapshot->>'entryFingerprint', '');
   if snapshot_fingerprint is not null then
