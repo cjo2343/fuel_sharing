@@ -159,6 +159,7 @@ const defaults = {
 };
 
 let state = loadState();
+let closingPeriodInProgress = false;
 let currentUser = localStorage.getItem(userKey) || "";
 let currentSession = null;
 let loginCooldownTimer;
