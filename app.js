@@ -1434,33 +1434,6 @@ function addGeneratedTestFuel() {
   render();
 }
 
-function buildCleanupOnlyTestLabReport(cleanup, scenario = "remove-test-data") {
-  const removedTotal = cleanup?.removed?.total || 0;
-  const remainingTotal = cleanup?.after?.total || 0;
-  return testLab.buildTestLabReport({
-    id: testLab.createTestRunId(),
-    scenario,
-    startedAt: new Date().toISOString(),
-    finishedAt: new Date().toISOString(),
-    buildInfo: window.FuelBuildInfo?.BUILD_INFO || null,
-    createdBy: describeCurrentActor(),
-    browser: navigator.userAgent || "",
-    normalizedTableStatus,
-    before: cleanup?.before || null,
-    after: testLab.stateSummary(state),
-    generated: cleanup?.after || null,
-    cleanup,
-    checks: [
-      remainingTotal === 0
-        ? { ok: true, name: "Generated Test Lab data is cleaned up", detail: cleanup?.message || "No generated data remains." }
-        : { ok: false, name: "Generated Test Lab data is cleaned up", detail: `${remainingTotal} generated item(s) still remain.` },
-      removedTotal >= 0
-        ? { ok: true, name: "Cleanup completed safely", detail: `${removedTotal} generated item(s) removed.` }
-        : { ok: false, name: "Cleanup completed safely", detail: "Cleanup result was malformed." }
-    ]
-  });
-}
-
 function removeGeneratedTestData() {
   const cleanup = cleanupGeneratedTestEntriesFromState();
   setDataToolsMessage(`${cleanup.message} Triggered save + normalized sync.`);
@@ -1468,7 +1441,15 @@ function removeGeneratedTestData() {
   setDefaultDates();
   render();
   if (testLab) {
-    renderTestLabReport(buildCleanupOnlyTestLabReport(cleanup, "remove-test-data"));
+    const report = buildCurrentTestLabReport({
+      id: testLab.createTestRunId(),
+      scenario: "remove-test-data",
+      startedAt: new Date().toISOString(),
+      before: cleanup.before,
+      generated: cleanup.after,
+      cleanup
+    });
+    renderTestLabReport(report);
   }
 }
 
@@ -1884,9 +1865,15 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
 async function cleanupGeneratedTestDataWithReport() {
   const cleanup = cleanupGeneratedTestEntriesFromState();
   await flushStressSave(`${cleanup.message} Triggered save + normalized sync.`);
-  if (testLab) {
-    renderTestLabReport(buildCleanupOnlyTestLabReport(cleanup, "cleanup-test-data"));
-  }
+  const report = buildCurrentTestLabReport({
+    id: testLab?.createTestRunId ? testLab.createTestRunId() : `testlab-${Date.now()}`,
+    scenario: "cleanup-test-data",
+    startedAt: new Date().toISOString(),
+    before: cleanup.before,
+    generated: cleanup.after,
+    cleanup
+  });
+  renderTestLabReport(report);
 }
 
 async function runFullTestLabScenario() {
@@ -10057,45 +10044,51 @@ async function syncNormalizedTablesFromJson() {
         (!allowedExistingId || booking.id !== allowedExistingId) && bookingRangesOverlap({ left: payload, right: booking })
       ));
     };
-    const bookingPayloadsToUpsert = [];
+    const bookingPayloadsToInsert = [];
+    const bookingPayloadsToUpdate = [];
 
     for (const payload of bookingPayloads) {
       const existingByLegacy = existingByLegacyId.get(payload.legacy_id);
       if (existingByLegacy) {
         if (sameBookingFields({ left: existingByLegacy, right: payload })) continue;
         if (findOverlappingExistingBooking({ payload, allowedExistingId: existingByLegacy.id })) continue;
-        bookingPayloadsToUpsert.push(payload);
+        bookingPayloadsToUpdate.push({ id: existingByLegacy.id, payload });
         continue;
       }
 
       const matchingExisting = existingBySignature.get(bookingSignature(payload));
       if (matchingExisting) {
-        const adoptResult = await supabaseClient
-          .from("car_bookings")
-          .update({
-            legacy_id: payload.legacy_id,
-            member_id: payload.member_id,
-            start_at: payload.start_at,
-            end_at: payload.end_at,
-            purpose: payload.purpose,
-            updated_at: payload.updated_at
-          })
-          .eq("id", matchingExisting.id);
-        if (adoptResult.error) throw adoptResult.error;
+        bookingPayloadsToUpdate.push({ id: matchingExisting.id, payload });
         existingByLegacyId.set(payload.legacy_id, { ...matchingExisting, ...payload, id: matchingExisting.id });
         continue;
       }
 
       if (findOverlappingExistingBooking({ payload })) continue;
-      bookingPayloadsToUpsert.push(payload);
+      bookingPayloadsToInsert.push(payload);
     }
 
-    if (bookingPayloadsToUpsert.length) {
-      const upsertBookings = await supabaseClient
+    for (const item of bookingPayloadsToUpdate) {
+      const updateResult = await supabaseClient
         .from("car_bookings")
-        .upsert(bookingPayloadsToUpsert, { onConflict: "ledger_id,legacy_id" });
-      if (upsertBookings.error) {
-        if (!isBookingOverlapError(upsertBookings.error)) throw upsertBookings.error;
+        .update({
+          legacy_id: item.payload.legacy_id,
+          member_id: item.payload.member_id,
+          start_at: item.payload.start_at,
+          end_at: item.payload.end_at,
+          purpose: item.payload.purpose,
+          updated_at: item.payload.updated_at,
+          deleted_at: null
+        })
+        .eq("id", item.id);
+      if (updateResult.error) throw updateResult.error;
+    }
+
+    for (const payload of bookingPayloadsToInsert) {
+      const insertResult = await supabaseClient
+        .from("car_bookings")
+        .insert(payload);
+      if (insertResult.error) {
+        if (!isBookingOverlapError(insertResult.error)) throw insertResult.error;
       }
     }
 
