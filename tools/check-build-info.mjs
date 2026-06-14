@@ -13,6 +13,7 @@ const runtimeFiles = new Set([
   "audit-log.js",
   "notifications.js",
   "admin-tools.js",
+  "permission-helpers.js",
   "booking-calendar.js",
   "app.js",
   "server.py",

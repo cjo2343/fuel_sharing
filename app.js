@@ -6179,24 +6179,15 @@ function describePaymentPermissionMessage(settlement, nextStatus) {
 }
 
 function canManageTripEntry(trip) {
-  if (!trip) return false;
-  if (canManageSettings()) return true;
-  const profile = getCurrentMemberProfile();
-  return Boolean(profile && trip.driver === profile.name);
+  return permissionHelpers.canManageTripEntryForProfile(trip, getCurrentMemberProfile(), { noMemberEmailsConfigured: canManageSettings() });
 }
 
 function canManageFuelEntry(fuel) {
-  if (!fuel) return false;
-  if (canManageSettings()) return true;
-  const profile = getCurrentMemberProfile();
-  return Boolean(profile && fuel.payer === profile.name);
+  return permissionHelpers.canManageFuelEntryForProfile(fuel, getCurrentMemberProfile(), { noMemberEmailsConfigured: canManageSettings() });
 }
 
 function canManageBookingEntry(booking) {
-  if (!booking) return false;
-  if (canManageSettings()) return true;
-  const profile = getCurrentMemberProfile();
-  return Boolean(profile && booking.member === profile.name);
+  return permissionHelpers.canManageBookingEntryForProfile(booking, getCurrentMemberProfile(), { noMemberEmailsConfigured: canManageSettings() });
 }
 
 function showLogViewForEditing() {
@@ -8326,17 +8317,13 @@ function canManageSettings() {
 
 function canManageSettlementRequest(settlement) {
   if (!supabaseClient) return true;
-  const profile = getCurrentMemberProfile();
-  return Boolean(profile && settlement?.to === profile.name);
+  return permissionHelpers.canManageSettlementRequestForProfile(settlement, getCurrentMemberProfile());
 }
 
 function canMarkSettlementPaid(settlement) {
   if (!settlement) return false;
   if (!supabaseClient) return true;
-  const profile = getCurrentMemberProfile();
-  if (!profile) return false;
-  if (profile.role === "admin") return true;
-  return settlement.from === profile.name;
+  return permissionHelpers.canMarkSettlementPaidForProfile(settlement, getCurrentMemberProfile());
 }
 
 function noMemberEmailsConfigured() {

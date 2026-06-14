@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v115";
-const BUILD_LABEL = "backup-import-validation";
-const BUILD_UPDATED_AT = "2026-06-14T15:10:00.000Z";
+const CACHE_NAME = "fuel-ledger-v116";
+const BUILD_LABEL = "permission-hardening";
+const BUILD_UPDATED_AT = "2026-06-14T15:25:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -14,6 +14,7 @@ const CORE_ASSETS = [
   "/audit-log.js",
   "/notifications.js",
   "/admin-tools.js",
+  "/permission-helpers.js",
   "/build-info.js",
   "/booking-calendar.js",
   "/app.js",
