@@ -47,8 +47,16 @@ function testPeriodCloseRpcExists() {
   console.log("ok - testPeriodCloseRpcExists");
 }
 
+function testFuelLedgerHealthcheckExists() {
+  assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
+  assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
+  assert.match(schema, /grant execute on function public\.fuel_ledger_healthcheck\(text\) to authenticated/);
+  console.log("ok - testFuelLedgerHealthcheckExists");
+}
+
 testSettlementRequestTransitionGuardExists();
 testSettlementRequestPartyGuardsExist();
 testSettlementRequestSameLedgerGuardExists();
 testSettlementRequestTriggerIsInstalled();
 testPeriodCloseRpcExists();
+testFuelLedgerHealthcheckExists();

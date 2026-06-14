@@ -2055,24 +2055,18 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
     }
 
     try {
-      const probe = await supabaseClient.rpc("close_settlement_period", {
-        target_ledger_id: ledgerId,
-        target_period_id: "00000000-0000-0000-0000-000000000000",
-        period_snapshot: {
-          label: "Security health probe",
-          entryFingerprint: `security-probe-${Date.now()}`,
-          closedAt: new Date().toISOString()
-        }
+      const probe = await supabaseClient.rpc("fuel_ledger_healthcheck", {
+        target_ledger_id: ledgerId
       });
-      record(helper.normalizeRpcProbeResult({
-        name: "close_settlement_period RPC is installed and guarded",
+      record(helper.normalizeHealthcheckRpcResult({
+        name: "Fuel Ledger healthcheck RPC is available",
         ok: !probe.error,
-        error: probe.error,
-        detail: "RPC call returned without an error for the harmless zero-period probe."
+        data: probe.data,
+        error: probe.error
       }));
     } catch (error) {
-      record(helper.normalizeRpcProbeResult({
-        name: "close_settlement_period RPC is installed and guarded",
+      record(helper.normalizeHealthcheckRpcResult({
+        name: "Fuel Ledger healthcheck RPC is available",
         error
       }));
     }

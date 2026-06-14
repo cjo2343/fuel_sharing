@@ -759,6 +759,29 @@ create policy "Users can update own push subscriptions" on public.push_subscript
 create policy "Users can delete own push subscriptions" on public.push_subscriptions for delete to authenticated using (lower(user_email) = public.current_user_email());
 
 
+-- Lightweight read-only healthcheck for frontend Security Health.
+-- Important: this must not call close_settlement_period because that RPC takes an advisory lock.
+create or replace function public.fuel_ledger_healthcheck(target_ledger_id text default 'main-car')
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'ok', true,
+    'ledger_id', target_ledger_id,
+    'close_settlement_period_exists',
+      to_regprocedure('public.close_settlement_period(text, uuid, jsonb)') is not null,
+    'checked_at', now()
+  );
+$$;
+
+revoke all on function public.fuel_ledger_healthcheck(text) from public;
+revoke all on function public.fuel_ledger_healthcheck(text) from anon;
+grant execute on function public.fuel_ledger_healthcheck(text) to authenticated;
+
+
 -- Scheduled backend reminder helpers.
 -- These RPC functions are called by the Render cron endpoint with the service-role key.
 -- They let the backend process the same Supabase production JSON mirror used by the app,

@@ -25,31 +25,46 @@
     return Boolean(check && check.ok && (check.warning || check.level === "warning"));
   }
 
-  function isMissingRpcError(error) {
-    const code = String(error && error.code || "");
-    if (code === "40001" || code === "42501" || code === "22023" || code === "23505") return false;
-    const message = String(error && (error.message || error.details || error.hint) || error || "");
-    return code === "PGRST202" || /close_settlement_period/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+  function errorMessage(error) {
+    return String(error && (error.message || error.details || error.hint) || error || "");
   }
 
-  function isExpectedClosePeriodProbeError(error) {
+  function isMissingHealthcheckRpcError(error) {
     const code = String(error && error.code || "");
-    const message = String(error && (error.message || error.details || error.hint) || error || "");
-    return code === "40001" || /not found or was already closed|open settlement period/i.test(message);
+    const message = errorMessage(error);
+    return code === "PGRST202" || /fuel_ledger_healthcheck/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+  }
+
+  function normalizeHealthcheckRpcResult(input = {}) {
+    const name = input.name || "Fuel Ledger healthcheck RPC is available";
+    if (input.skipped) return pass(name, input.detail || "Skipped.");
+    const error = input.error || null;
+    if (error) {
+      if (isMissingHealthcheckRpcError(error)) {
+        return fail(name, "fuel_ledger_healthcheck is missing. Run the latest supabase-schema.sql before using live backend health checks.");
+      }
+      return fail(name, errorMessage(error) || "Healthcheck RPC failed.");
+    }
+    const data = input.data && typeof input.data === "object" ? input.data : {};
+    if (input.ok === false || data.ok === false) {
+      return fail(name, data.message || input.detail || "Healthcheck RPC returned an unhealthy result.");
+    }
+    const closeRpc = data.close_settlement_period_exists;
+    if (closeRpc === false) {
+      return fail("close_settlement_period RPC is installed", "The lightweight healthcheck ran, but close_settlement_period is missing from the schema.");
+    }
+    const details = [];
+    if (closeRpc === true) details.push("close_settlement_period exists");
+    if (data.ledger_id) details.push(`ledger ${data.ledger_id}`);
+    return pass(name, details.length ? details.join("; ") : input.detail || "Healthcheck RPC returned successfully.");
+  }
+
+  function isMissingRpcError(error) {
+    return isMissingHealthcheckRpcError(error);
   }
 
   function normalizeRpcProbeResult(input = {}) {
-    const name = input.name || "close_settlement_period RPC is available";
-    if (input.skipped) return pass(name, input.detail || "Skipped.");
-    if (input.ok) return pass(name, input.detail || "RPC probe succeeded.");
-    const error = input.error || null;
-    if (isExpectedClosePeriodProbeError(error)) {
-      return pass(name, "RPC exists and rejected the harmless probe because the test period id is not an open period.");
-    }
-    if (isMissingRpcError(error)) {
-      return fail(name, "RPC is missing from the Supabase schema. Run the latest supabase-schema.sql before relying on transactional period close.");
-    }
-    return fail(name, String(error && (error.message || error.details || error.hint) || error || "RPC probe failed."));
+    return normalizeHealthcheckRpcResult(input);
   }
 
   function summarizeSecurityStatus(status = {}) {
@@ -122,7 +137,8 @@
     fail,
     warn,
     isMissingRpcError,
-    isExpectedClosePeriodProbeError,
+    isMissingHealthcheckRpcError,
+    normalizeHealthcheckRpcResult,
     normalizeRpcProbeResult,
     summarizeSecurityStatus,
     buildSupabaseSecurityChecks,

@@ -13,19 +13,23 @@ function loadHelpers() {
 
 function testMissingRpcErrorDetection() {
   const helper = loadHelpers();
-  assert.equal(helper.isMissingRpcError({ code: 'PGRST202', message: 'Could not find the function' }), true);
-  assert.equal(helper.isMissingRpcError({ code: '40001', message: 'Open settlement period was not found' }), false);
+  assert.equal(helper.isMissingHealthcheckRpcError({ code: 'PGRST202', message: 'Could not find the function' }), true);
+  assert.equal(helper.isMissingHealthcheckRpcError({ code: '40001', message: 'Open settlement period was not found' }), false);
 }
 
 function testRpcProbeNormalization() {
   const helper = loadHelpers();
-  const expected = helper.normalizeRpcProbeResult({ error: { code: '40001', message: 'Open settlement period was not found or was already closed' } });
+  const expected = helper.normalizeHealthcheckRpcResult({ data: { ok: true, close_settlement_period_exists: true, ledger_id: 'main-car' } });
   assert.equal(expected.ok, true);
-  assert.match(expected.detail, /RPC exists/);
+  assert.match(expected.detail, /close_settlement_period exists/);
 
-  const missing = helper.normalizeRpcProbeResult({ error: { code: 'PGRST202', message: 'Could not find close_settlement_period' } });
-  assert.equal(missing.ok, false);
-  assert.match(missing.detail, /missing/);
+  const missingHealthcheck = helper.normalizeHealthcheckRpcResult({ error: { code: 'PGRST202', message: 'Could not find fuel_ledger_healthcheck' } });
+  assert.equal(missingHealthcheck.ok, false);
+  assert.match(missingHealthcheck.detail, /fuel_ledger_healthcheck is missing/);
+
+  const missingClose = helper.normalizeHealthcheckRpcResult({ data: { ok: true, close_settlement_period_exists: false } });
+  assert.equal(missingClose.ok, false);
+  assert.match(missingClose.detail, /close_settlement_period is missing/);
 }
 
 function testLocalSecurityChecks() {
