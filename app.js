@@ -703,6 +703,9 @@ els.fuelForm.addEventListener("submit", async (event) => {
   }
 
   const normalizedLiters = round(liters);
+  if (!validateFuelAgainstEstimatedTankCapacity({ liters: normalizedLiters, odometer, fullTank }, { excludeFuelId: editingFuelId })) {
+    return;
+  }
   const fuelPayload = {
     id: editingFuelId || crypto.randomUUID(),
     logRef: editingFuelId ? state.fuel.find((fuel) => fuel.id === editingFuelId)?.logRef || pendingFuelTripContext?.logRef || createLogRef(editingFuelId) : pendingFuelTripContext?.logRef || createLogRef(editingFuelId || crypto.randomUUID()),
@@ -3185,6 +3188,78 @@ function getTankLowRangeThresholdPercent(source = state) {
   return Math.min(100, Math.max(1, Number(source?.fuelWarningThreshold) || defaults.fuelWarningThreshold));
 }
 
+function isFullTankFuelLog(fuel) {
+  return Boolean(fuel?.fullTank || fuel?.full_tank);
+}
+
+function getFuelOdometerValue(fuel) {
+  const value = Number(fuel?.odometer ?? fuel?.odometer_km ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function getTankTimelineFuelLogs(options = {}) {
+  const excludeFuelId = options.excludeFuelId || null;
+  return getAllFuelLogsForInsights()
+    .filter((fuel) => !excludeFuelId || fuel.id !== excludeFuelId)
+    .map((fuel) => ({ ...fuel, odometerValue: getFuelOdometerValue(fuel) }))
+    .filter((fuel) => fuel.odometerValue > 0)
+    .sort((a, b) => a.odometerValue - b.odometerValue);
+}
+
+function getLatestFullTankFuelBeforeOdometer(targetOdometer = 0, options = {}) {
+  const target = Number(targetOdometer) || 0;
+  if (target <= 0) return null;
+  return getTankTimelineFuelLogs(options)
+    .filter((fuel) => isFullTankFuelLog(fuel) && fuel.odometerValue <= target)
+    .sort((a, b) => b.odometerValue - a.odometerValue)[0] || null;
+}
+
+function estimateTankStateAtOdometer(targetOdometer = 0, options = {}) {
+  const odometer = Number(targetOdometer) || 0;
+  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const tankCapacity = getFuelTankCapacity();
+  const baseline = getLatestFullTankFuelBeforeOdometer(odometer, options);
+  if (!baseline || odometer <= 0) {
+    return {
+      enforced: false,
+      odometer,
+      consumption,
+      tankCapacity,
+      latestFuelOdometer: Number(baseline?.odometerValue || 0),
+      litersAddedSinceFull: 0,
+      litersUsedSinceFull: 0,
+      estimatedLitersRemainingRaw: tankCapacity,
+      estimatedLitersRemaining: tankCapacity,
+      estimatedRangeRemaining: tankCapacity / consumption * 100,
+      kmSinceFuel: 0
+    };
+  }
+
+  const latestFuelOdometer = Number(baseline.odometerValue || 0);
+  const kmSinceFuel = Math.max(0, odometer - latestFuelOdometer);
+  const litersUsedSinceFull = kmSinceFuel * consumption / 100;
+  const litersAddedSinceFull = getTankTimelineFuelLogs(options)
+    .filter((fuel) => !isFullTankFuelLog(fuel) && fuel.odometerValue > latestFuelOdometer && fuel.odometerValue <= odometer)
+    .reduce((sum, fuel) => sum + (Number(fuel.liters) || 0), 0);
+  const estimatedLitersRemainingRaw = tankCapacity - litersUsedSinceFull + litersAddedSinceFull;
+  const estimatedLitersRemaining = Math.min(tankCapacity, estimatedLitersRemainingRaw);
+  const estimatedRangeRemaining = Math.max(0, estimatedLitersRemaining) / consumption * 100;
+
+  return {
+    enforced: true,
+    odometer,
+    consumption,
+    tankCapacity,
+    latestFuelOdometer,
+    litersAddedSinceFull,
+    litersUsedSinceFull,
+    estimatedLitersRemainingRaw,
+    estimatedLitersRemaining,
+    estimatedRangeRemaining,
+    kmSinceFuel
+  };
+}
+
 function buildTripFuelRangeImpact(startKm = 0, endKm = 0, options = {}) {
   const insights = buildStationInsights();
   const latestFuelOdometer = Number(insights.latestFullTank?.odometer || 0);
@@ -3211,13 +3286,14 @@ function buildTripFuelRangeImpact(startKm = 0, endKm = 0, options = {}) {
 
   const currentRangeOdometer = Number(getLatestRangeOdometer(latestFuelOdometer, { excludeTripId: options.excludeTripId }) || latestFuelOdometer);
   const projectedOdometer = Math.max(currentRangeOdometer, proposedEndKm);
-  const projectedKmSinceFuel = Math.max(0, projectedOdometer - latestFuelOdometer);
-  const projectedLiters = projectedKmSinceFuel * consumption / 100;
-  const projectedLitersRemaining = tankCapacity - projectedLiters;
-  const projectedRangeRemaining = Math.max(0, projectedLitersRemaining) / consumption * 100;
+  const projectedState = estimateTankStateAtOdometer(projectedOdometer, { excludeFuelId: options.excludeFuelId });
+  const projectedKmSinceFuel = Math.max(0, projectedOdometer - Number(projectedState.latestFuelOdometer || latestFuelOdometer));
+  const projectedLiters = projectedState.litersUsedSinceFull - projectedState.litersAddedSinceFull;
+  const projectedLitersRemaining = projectedState.estimatedLitersRemainingRaw;
+  const projectedRangeRemaining = Math.max(0, projectedState.estimatedLitersRemaining) / consumption * 100;
   return {
     enforced: true,
-    latestFuelOdometer,
+    latestFuelOdometer: projectedState.latestFuelOdometer || latestFuelOdometer,
     currentRangeOdometer,
     projectedOdometer,
     projectedKmSinceFuel,
@@ -3242,6 +3318,48 @@ function validateTripAgainstEstimatedTankRange(startKm = 0, endKm = 0, options =
   return true;
 }
 
+function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) {
+  const liters = Number(fuelInput.liters) || 0;
+  const odometer = Number(fuelInput.odometer) || 0;
+  const fullTank = Boolean(fuelInput.fullTank);
+  const tankCapacity = getFuelTankCapacity();
+  const toleranceLiters = 0.5;
+
+  if (liters > tankCapacity + toleranceLiters) {
+    const message = `This fuel log is ${formatNumber(liters)} L, but the configured tank capacity is ${formatNumber(tankCapacity)} L. Check the receipt or update the tank capacity before saving.`;
+    alert(message);
+    showAppMessage(message, "error");
+    return false;
+  }
+
+  if (odometer <= 0) return true;
+
+  const tankBeforeFuel = estimateTankStateAtOdometer(odometer, { excludeFuelId: options.excludeFuelId });
+  if (!tankBeforeFuel.enforced) return true;
+
+  const estimatedBefore = Math.max(0, Math.min(tankCapacity, tankBeforeFuel.estimatedLitersRemaining));
+  const availableSpace = Math.max(0, tankCapacity - estimatedBefore);
+  const projectedAfter = fullTank ? tankCapacity : estimatedBefore + liters;
+
+  if (liters > availableSpace + toleranceLiters) {
+    const message = fullTank
+      ? `This full-tank fuel log adds ${formatNumber(liters)} L, but the tank is estimated to have about ${formatNumber(estimatedBefore)} L already. Only about ${formatNumber(availableSpace)} L should fit. Check the odometer/liters, or add the missing trip before this fuel log.`
+      : `This fuel log would overfill the tank. The tank is estimated to have about ${formatNumber(estimatedBefore)} L already, so only about ${formatNumber(availableSpace)} L should fit before reaching the configured ${formatNumber(tankCapacity)} L capacity.`;
+    alert(message);
+    showAppMessage(message, "error");
+    return false;
+  }
+
+  if (!fullTank && projectedAfter > tankCapacity + toleranceLiters) {
+    const message = `This fuel log would raise the estimated tank level to ${formatNumber(projectedAfter)} L, above the configured ${formatNumber(tankCapacity)} L capacity.`;
+    alert(message);
+    showAppMessage(message, "error");
+    return false;
+  }
+
+  return true;
+}
+
 function buildRefuelPlanning(distanceKm = 0) {
   const insights = buildStationInsights();
   const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
@@ -3252,12 +3370,13 @@ function buildRefuelPlanning(distanceKm = 0) {
   const warningLitersRemaining = tankCapacity * tankLowRangeThresholdPercent / 100;
   const plannedLiters = distanceKm > 0 ? distanceKm * consumption / 100 : 100 * consumption / 100;
   const latestFuelOdometer = Number(insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0);
-  const currentOdometer = Number(getLatestRangeOdometer(latestFuelOdometer) || 0);
-  const kmSinceFuel = currentOdometer > 0 && latestFuelOdometer > 0 ? Math.max(0, currentOdometer - latestFuelOdometer) : 0;
-  const litersSinceFuel = kmSinceFuel > 0 ? kmSinceFuel * consumption / 100 : 0;
+  const currentOdometer = Number(getLatestRangeOdometer(latestFuelOdometer) || latestFuelOdometer || 0);
+  const currentTankState = estimateTankStateAtOdometer(currentOdometer);
+  const kmSinceFuel = currentTankState.enforced ? currentTankState.kmSinceFuel : 0;
+  const litersSinceFuel = currentTankState.enforced ? Math.max(0, currentTankState.litersUsedSinceFull - currentTankState.litersAddedSinceFull) : 0;
   const projectedLiters = litersSinceFuel + plannedLiters;
-  const estimatedLitersRemaining = Math.max(0, tankCapacity - litersSinceFuel);
-  const projectedLitersRemaining = Math.max(0, tankCapacity - projectedLiters);
+  const estimatedLitersRemaining = currentTankState.enforced ? Math.max(0, currentTankState.estimatedLitersRemaining) : Math.max(0, tankCapacity - litersSinceFuel);
+  const projectedLitersRemaining = Math.max(0, estimatedLitersRemaining - plannedLiters);
   const estimatedRangeRemaining = estimatedLitersRemaining > 0 ? estimatedLitersRemaining / consumption * 100 : 0;
   const projectedRangeRemaining = projectedLitersRemaining > 0 ? projectedLitersRemaining / consumption * 100 : 0;
   const fullTankRange = tankCapacity / consumption * 100;

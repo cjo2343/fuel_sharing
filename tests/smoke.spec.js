@@ -994,3 +994,76 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
     return trip?.participants || [];
   }, { timeout: 5000 }).toEqual(["Christian", "Marie"]);
 });
+
+test("fuel log is blocked when liters exceed configured tank capacity", async ({ page, request }) => {
+  const seeded = makeCleanState();
+  seeded.fuelTankCapacity = 55;
+  seeded.fuelConsumption = 5.4;
+  await request.put("/api/state", { data: seeded });
+
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="log"]').click();
+  await expect(page.locator("#fuelForm")).toBeVisible();
+  await page.locator("#fuelPayer").selectOption("Christian");
+  await page.locator("#fuelDate").fill("2026-06-01");
+  await page.locator("#fuelAmount").fill("900");
+  await page.locator("#fuelLiters").fill("60");
+  await page.locator("#fuelDetails").evaluate((details) => { details.open = true; });
+  await page.locator("#fuelOdometer").fill("10000");
+
+  const dialogPromise = page.waitForEvent("dialog");
+  await page.locator("#fuelForm").evaluate((form) => {
+    window.setTimeout(() => form.requestSubmit(), 0);
+  });
+  const dialog = await dialogPromise;
+  expect(dialog.message()).toContain("tank capacity");
+  await dialog.accept();
+
+  await expect.poll(async () => {
+    const response = await request.get("/api/state");
+    const saved = await response.json();
+    return saved.fuel.length;
+  }).toBe(0);
+});
+
+test("fuel log is blocked when it would overfill estimated tank level", async ({ page, request }) => {
+  const seeded = makeCleanState();
+  seeded.fuelTankCapacity = 55;
+  seeded.fuelConsumption = 5.4;
+  seeded.fuel = [{
+    id: "full-tank-before-overfill-fuel",
+    payer: "Christian",
+    date: "2026-06-01",
+    amount: 500,
+    liters: 40,
+    odometer: 10000,
+    fullTank: true
+  }];
+  seeded.lastOdometer = 10000;
+  await request.put("/api/state", { data: seeded });
+
+  await openLocalApp(page);
+  await page.locator('[data-view-tab="log"]').click();
+  await expect(page.locator("#fuelForm")).toBeVisible();
+  await page.locator("#fuelPayer").selectOption("Christian");
+  await page.locator("#fuelDate").fill("2026-06-02");
+  await page.locator("#fuelAmount").fill("600");
+  await page.locator("#fuelLiters").fill("40");
+  await page.locator("#fuelDetails").evaluate((details) => { details.open = true; });
+  await page.locator("#fuelOdometer").fill("10100");
+  await page.locator("#fuelFullTank").check();
+
+  const dialogPromise = page.waitForEvent("dialog");
+  await page.locator("#fuelForm").evaluate((form) => {
+    window.setTimeout(() => form.requestSubmit(), 0);
+  });
+  const dialog = await dialogPromise;
+  expect(dialog.message()).toMatch(/Only about|overfill|should fit/i);
+  await dialog.accept();
+
+  await expect.poll(async () => {
+    const response = await request.get("/api/state");
+    const saved = await response.json();
+    return saved.fuel.length;
+  }).toBe(1);
+});
