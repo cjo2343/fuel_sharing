@@ -38,6 +38,34 @@ For production or existing Supabase projects, see [`DEPLOYMENT-CHECKLIST.md`](DE
 
 For architecture notes, the current RLS/security model, known legacy compromises, and the safest refactor order, see [`MAINTENANCE-NOTES.md`](MAINTENANCE-NOTES.md).
 
+
+## Hardening helpers and validation
+
+The app now has several small helper modules that keep high-risk logic testable outside the UI:
+
+- `settlement-calculations.js` — ledger, settlement, fuel-estimate, historical statistics, and balanced money rounding.
+- `permission-helpers.js` — trip/fuel/booking/payment permission checks and last-admin protection summaries.
+- `ui-messages.js` — toast-style feedback, warnings, errors, and centralized confirmation prompts.
+- `sync-status-helpers.js` — user-visible save/sync status text, including unsynced local-change feedback.
+- `location-privacy-helpers.js` — fuel-location privacy mode normalization and saved coordinate payloads.
+- `ledger-model.js` — JSDoc ledger data shapes plus safe state-shape helpers.
+- `period-closing-helpers.js` — close-period readiness checks, duplicate snapshot detection, and period fingerprints.
+- `audit-log.js` — normalized current and closed-period change-log entries.
+
+Run the fast validation suite before every deploy:
+
+```sh
+npm run validate
+```
+
+For larger changes, especially anything touching trips, fuel, payments, period closing, persistence, service workers, or permissions, also run:
+
+```sh
+npm run test:e2e
+```
+
+When runtime files change, update both `build-info.js` and `service-worker.js` in the same patch. The validation checks intentionally fail if cached runtime assets, build metadata, or app-shell script references drift out of sync.
+
 ## Supabase Setup
 
 1. Create a Supabase project.
@@ -201,7 +229,7 @@ This version makes cloud saving more explicit. The top bar now shows both the sy
 
 In **Log fuel payment -> More fuel details**, users can tap **Find nearby stations**. The app asks for the phone's location, looks up nearby `amenity=fuel` stations from OpenStreetMap via Overpass, and lets the user pick the correct station. The manual Station/place field remains available because map data can be incomplete or inaccurate.
 
-The fuel log stores the selected station name, brand/operator when available, station coordinates, and the user's GPS location for that fuel log.
+The fuel log stores the selected station name and brand/operator when available. By default it stores selected station coordinates only; users can choose station-name-only or explicitly opt in to saving their own GPS coordinates for that receipt.
 
 ## Settlement validation
 

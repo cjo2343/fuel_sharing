@@ -58,9 +58,16 @@ After the SQL update succeeds, deploy the matching app files:
 - `supabase-helpers.js`
 - `data-store.js`
 - `settlement-calculations.js`
+- `permission-helpers.js`
 - `ui-messages.js`
+- `sync-status-helpers.js`
+- `location-privacy-helpers.js`
+- `ledger-model.js`
+- `period-closing-helpers.js`
+- `audit-log.js`
 - `notifications.js`
 - `admin-tools.js`
+- `build-info.js`
 - `service-worker.js`
 - `manifest.json`
 - icons
@@ -71,23 +78,22 @@ After the SQL update succeeds, deploy the matching app files:
 Before deploying app files, run:
 
 ```bash
-node --check utils.js
-node --check supabase-helpers.js
-node --check data-store.js
-node --check settlement-calculations.js
-node --check ui-messages.js
-node --check notifications.js
-node --check admin-tools.js
-node --check app.js
-node --check service-worker.js
-node --check tools/check-app-references.mjs
-python3 -m py_compile server.py
-python3 -m json.tool ledger-data.json
-node tools/check-app-references.mjs
+npm run validate
+```
+
+For browser-level coverage before larger changes, also run:
+
+```bash
+npm run test:e2e
 ```
 
 
 ## Runtime module/cache consistency
+
+### Build metadata and service-worker rule
+
+If any runtime file changes, update both `build-info.js` and `service-worker.js` in the same patch. Keep `BUILD_INFO.expectedServiceWorkerCache` equal to the service worker `CACHE_NAME`, and keep cached runtime assets aligned with scripts loaded by `index.html`. Test-only and documentation-only changes do not need this bump.
+
 
 Before deployment, `node tools/check-app-references.mjs` must pass. It now checks all three of these stay aligned:
 
@@ -125,7 +131,7 @@ If the app breaks after deployment:
 
 ## Home-screen / PWA deployment check
 
-After changing `app.js`, `utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, `ui-messages.js`, `notifications.js`, `admin-tools.js`, `styles.css`, icons, or `index.html`:
+After changing `app.js`, `utils.js`, `supabase-helpers.js`, `data-store.js`, `settlement-calculations.js`, `permission-helpers.js`, `ui-messages.js`, `sync-status-helpers.js`, `location-privacy-helpers.js`, `ledger-model.js`, `period-closing-helpers.js`, `audit-log.js`, `notifications.js`, `admin-tools.js`, `styles.css`, icons, `manifest.json`, or `index.html`:
 
 1. Confirm the changed files are listed in `service-worker.js` under `CORE_ASSETS`.
 2. Bump the `CACHE_NAME` value in `service-worker.js`.

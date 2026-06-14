@@ -4,7 +4,7 @@
 
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.
 
-`app.js` still contains most application behavior. Pure formatting/date/number helpers have been extracted to `utils.js`, persistence helpers to `data-store.js`, settlement/balance calculations to `settlement-calculations.js`, toast-style feedback helpers to `ui-messages.js`, push helpers to `notifications.js`, and admin diagnostics helpers to `admin-tools.js`. Keep those helper files focused and avoid moving sensitive event wiring unnecessarily.
+`app.js` still contains most application behavior and event wiring, but high-risk reusable logic has been extracted into focused helper modules. Formatting/date/number helpers live in `utils.js`; persistence helpers in `data-store.js`; settlement/balance/rounding logic in `settlement-calculations.js`; permission rules in `permission-helpers.js`; toast/confirmation helpers in `ui-messages.js`; sync status copy in `sync-status-helpers.js`; fuel-location privacy logic in `location-privacy-helpers.js`; data-shape helpers and JSDoc typedefs in `ledger-model.js`; period-close readiness/fingerprint logic in `period-closing-helpers.js`; push helpers in `notifications.js`; audit normalization in `audit-log.js`; and admin diagnostics in `admin-tools.js`. Keep those helper files focused and avoid moving sensitive event wiring unnecessarily.
 
 ## Security model
 
@@ -18,7 +18,7 @@ The app is mostly frontend-driven and uses Supabase for authentication, storage,
 
 `car_share_ledgers` remains a broad JSON backup/state table. Ledger members can update it for compatibility with the current app architecture. The normalized tables now have stricter RLS than this legacy JSON state.
 
-Long-term goal: move fully to normalized tables and either remove `car_share_ledgers` writes from normal app flows or make that table admin-only.
+Long-term goal: move fully to normalized tables and either remove `car_share_ledgers` writes from normal app flows or make that table admin-only. For payment requests, frontend rules are mirrored by database trigger/RLS hardening in `supabase-schema.sql`; keep frontend permission helpers and SQL transition guards aligned.
 
 ## Safe refactor order
 
@@ -26,30 +26,30 @@ The first extraction pass is complete. Current extracted modules:
 
 1. `utils.js` — pure formatting/date/escaping helpers.
 2. `supabase-helpers.js` — Supabase config/client/session/open-period helpers.
-3. `data-store.js` — local persistence and remote-save queue helpers.
-4. `settlement-calculations.js` — settlement/fuel-estimate calculations.
-5. `ui-messages.js` — toast/save-message helpers.
-6. `notifications.js` — push-notification helper logic.
-7. `admin-tools.js` — diagnostics and settlement-request cleanup helpers.
+3. `data-store.js` — local persistence, backup validation, and remote-save queue helpers.
+4. `settlement-calculations.js` — settlement/fuel-estimate calculations and balanced money rounding.
+5. `permission-helpers.js` — trip/fuel/booking/payment permission rules and admin protection summaries.
+6. `ui-messages.js` — toast/save-message/error/warning/confirmation helpers.
+7. `sync-status-helpers.js` — sync badge labels and unsynced local-change details.
+8. `location-privacy-helpers.js` — fuel-location privacy modes and coordinate payload shaping.
+9. `ledger-model.js` — JSDoc typedefs and safe state-shape helpers.
+10. `period-closing-helpers.js` — period-close readiness, open-payment checks, busy-state checks, and snapshot fingerprints.
+11. `audit-log.js` — audit entry normalization and display metadata.
+12. `notifications.js` — push-notification helper logic.
+13. `admin-tools.js` — diagnostics and settlement-request cleanup helpers.
 
 Next refactors should stay small and target cohesive sections such as trip rendering, fuel rendering, payment action handlers, or settings/admin event wiring. Leave destructive production-reset confirmation flow easy to audit.
 
 After each step, run:
 
 ```sh
-node --check utils.js
-node --check supabase-helpers.js
-node --check data-store.js
-node --check settlement-calculations.js
-node --check ui-messages.js
-node --check notifications.js
-node --check admin-tools.js
-node --check app.js
-node --check service-worker.js
-node --check tools/check-app-references.mjs
-python3 -m py_compile server.py
-python3 -m json.tool ledger-data.json
-node tools/check-app-references.mjs
+npm run validate
+```
+
+For larger changes or UI/write-path changes, also run:
+
+```sh
+npm run test:e2e
 ```
 
 ## Files that should not be committed
@@ -80,7 +80,13 @@ Current app-shell files include:
 - `supabase-helpers.js`
 - `data-store.js`
 - `settlement-calculations.js`
+- `permission-helpers.js`
 - `ui-messages.js`
+- `sync-status-helpers.js`
+- `location-privacy-helpers.js`
+- `ledger-model.js`
+- `period-closing-helpers.js`
+- `audit-log.js`
 - `notifications.js`
 - `admin-tools.js`
 - `app.js`
@@ -405,3 +411,27 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
+
+
+## Recent hardening summary
+
+The current maintenance baseline includes these safety improvements:
+
+- Settlement math tests cover participant filtering, malformed imported values, unknown payers, historical statistics, and balanced cent allocation so rounded member costs sum back to total fuel paid.
+- Backup import validation rejects malformed core collections and dangerous trip/fuel values before state replacement, while warning on recoverable unknown-member cases.
+- Permission helpers and tests lock down who can edit trips, fuel logs, bookings, payment requests, and paid status transitions.
+- UI feedback is centralized through toast/message helpers and confirmation wrappers. Browser tests should assert app messages instead of native `alert()` dialogs.
+- Sync feedback tracks pending local changes and makes failed/deferred cloud saves visible to users.
+- Fuel-location privacy defaults to station coordinates only. Saving the user's own GPS coordinates requires explicit opt-in.
+- `ledger-model.js` documents the core state shape and provides lightweight validation helpers without converting the app to TypeScript.
+- Supabase settlement-request triggers enforce transition rules and party/ledger integrity on the database side.
+- Period closing uses snapshot fingerprints, duplicate-close checks, and busy-state protection. Smoke tests should await the async close helper instead of assuming a synchronous button click.
+
+## Deployment metadata rule
+
+When any runtime/app-shell file changes, update both of these together:
+
+- `build-info.js` — bump the version/build label/updated timestamp and expected service-worker cache.
+- `service-worker.js` — bump `CACHE_NAME` and keep `CORE_ASSETS` aligned with scripts loaded by `index.html`.
+
+This rule applies to `app.js`, helper modules, CSS, icons, `index.html`, `manifest.json`, and the service worker itself. Documentation-only or test-only changes do not require a cache/build metadata bump.
