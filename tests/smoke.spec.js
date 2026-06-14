@@ -912,7 +912,14 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   await page.locator("#tripEstimateDistance").fill("123");
   await page.locator("#tripEstimateStart").fill("Roskilde");
   await page.locator("#tripEstimateDestination").fill("Aarhus");
-  await page.locator("#tripEstimatorParticipants input").first().check();
+  await page.locator("#tripEstimatorParticipants input").evaluateAll((inputs) => {
+    inputs.forEach((input) => {
+      input.checked = false;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
+  await page.locator('#tripEstimatorParticipants input[value="Christian"]').check();
+  await page.locator('#tripEstimatorParticipants input[value="Marie"]').check();
   await page.getByRole("button", { name: "Use this estimate for booking" }).click();
 
   await expect(page.locator("#bookingPurpose")).toHaveValue(/Roskilde.*Aarhus.*123/);
@@ -929,4 +936,21 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   expect(booking).toBeTruthy();
   expect(booking.routeFrom).toBe("Roskilde");
   expect(booking.routeTo).toBe("Aarhus");
+  expect(booking.plannedParticipants).toEqual(["Christian", "Marie"]);
+
+  await page.locator(`[data-convert-booking-to-trip="${booking.id}"]`).first().click();
+  await expect(page.locator("#tripForm")).toBeVisible();
+  await expect(page.locator('#tripParticipants input[value="Christian"]')).toBeChecked();
+  await expect(page.locator('#tripParticipants input[value="Marie"]')).toBeChecked();
+
+  await page.locator("#startKm").fill("10000");
+  await page.locator("#endKm").fill("10123");
+  await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
+
+  await expect.poll(async () => {
+    const response = await request.get("/api/state");
+    const saved = await response.json();
+    const trip = saved.trips.find((item) => item.sourceBookingId === booking.id);
+    return trip?.participants || [];
+  }, { timeout: 5000 }).toEqual(["Christian", "Marie"]);
 });

@@ -6766,8 +6766,10 @@ function startTripFromBooking(id) {
   els.endKm.value = "";
   els.tripNote.value = booking.purpose ? `Booking: ${booking.purpose}` : "Booking";
   renderTripBookingContext();
+  const plannedParticipants = Array.isArray(booking.plannedParticipants) ? booking.plannedParticipants : [];
+  const tripParticipants = new Set([booking.member, ...plannedParticipants].filter(Boolean));
   for (const input of els.tripParticipants.querySelectorAll("input")) {
-    input.checked = input.value === booking.member;
+    input.checked = tripParticipants.has(input.value);
   }
   updateEditUi();
   setActiveView("log");
