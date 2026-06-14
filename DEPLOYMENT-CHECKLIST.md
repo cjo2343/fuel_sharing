@@ -411,3 +411,7 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 
 - After deploying `2026.06.14.55 / testlab-inspect-edit-prefill`, reload once so the active service worker cache is `fuel-ledger-v154`.
 - Verify a Test Lab fuel odometer failure button opens the referenced fuel log in edit mode with the odometer/date fields pre-filled.
+
+## Fuel correction math explainer deployment note
+- Deploy build `2026.06.14.58 / fuel-correction-math-explainer` with service-worker cache `fuel-ledger-v157`.
+- After deployment, reload the PWA once and confirm the overfill panel shows the "Why these suggestions?" calculation block.

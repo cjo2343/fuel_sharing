@@ -682,3 +682,6 @@ Test Lab failure buttons open matching current-period entries directly in edit m
 
 #### Fuel overfill guided corrections
 When a fuel receipt would overfill the configured tank, the app now offers one-click correction suggestions for liters or odometer instead of only blocking the save.
+
+### Fuel correction math explainer
+When a fuel receipt would overfill the configured tank, the app now shows the math behind the suggested correction. It compares the current odometer with the previous full-tank odometer, estimates liters used from the configured L/100 km value, and shows the odometer that would match the entered liters.

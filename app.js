@@ -4551,19 +4551,32 @@ function buildFuelOverfillCorrection(fuelInput = {}, tankBeforeFuel = null, opti
   const estimatedBefore = Math.max(0, Math.min(tankCapacity, Number(tankBeforeFuel?.estimatedLitersRemaining || 0)));
   const availableSpace = Math.max(0, tankCapacity - estimatedBefore);
   const safeLiters = Math.max(0, round(availableSpace));
+  const latestFuelOdometer = Number(tankBeforeFuel?.latestFuelOdometer || 0);
+  const kmSinceFuel = latestFuelOdometer > 0 && odometer > latestFuelOdometer
+    ? Math.max(0, odometer - latestFuelOdometer)
+    : Math.max(0, Number(tankBeforeFuel?.kmSinceFuel || 0));
+  const expectedLitersFromOdometer = Math.max(0, round(kmSinceFuel * consumption / 100));
   const extraLitersNeeded = Math.max(0, liters - availableSpace);
   const extraKmNeeded = extraLitersNeeded > 0 ? extraLitersNeeded * 100 / consumption : 0;
   const suggestedOdometer = odometer > 0 && extraKmNeeded > 0 ? Math.ceil(odometer + extraKmNeeded) : 0;
+  const expectedKmFromEnteredLiters = liters > 0 ? liters * 100 / consumption : 0;
+  const expectedOdometerFromEnteredLiters = latestFuelOdometer > 0 && expectedKmFromEnteredLiters > 0
+    ? Math.ceil(latestFuelOdometer + expectedKmFromEnteredLiters)
+    : suggestedOdometer;
   return {
     tankCapacity,
     consumption,
     estimatedBefore,
     availableSpace,
     safeLiters,
+    kmSinceFuel,
+    expectedLitersFromOdometer,
+    expectedKmFromEnteredLiters,
+    expectedOdometerFromEnteredLiters,
     extraLitersNeeded,
     extraKmNeeded,
     suggestedOdometer,
-    latestFuelOdometer: Number(tankBeforeFuel?.latestFuelOdometer || 0),
+    latestFuelOdometer,
     currentOdometer: odometer,
     currentLiters: liters,
     fullTank: Boolean(fuelInput.fullTank)
@@ -4576,6 +4589,24 @@ function renderFuelCorrectionPanel(message, correction) {
   const suggestedOdometer = Math.max(0, Number(correction.suggestedOdometer) || 0);
   els.fuelCorrectionPanel.dataset.suggestedLiters = String(safeLiters);
   els.fuelCorrectionPanel.dataset.suggestedOdometer = String(suggestedOdometer);
+  const expectedLiters = Math.max(0, Number(correction.expectedLitersFromOdometer) || 0);
+  const expectedKmFromLiters = Math.max(0, Number(correction.expectedKmFromEnteredLiters) || 0);
+  const expectedOdometer = Math.max(0, Number(correction.expectedOdometerFromEnteredLiters || correction.suggestedOdometer) || 0);
+  const previousOdometerLine = correction.latestFuelOdometer > 0
+    ? `<li>Previous full-tank odometer: <strong>${formatNumber(correction.latestFuelOdometer)} km</strong></li>`
+    : "";
+  const odometerMathLine = correction.latestFuelOdometer > 0 && correction.currentOdometer > 0
+    ? `<li>Current odometer ${formatNumber(correction.currentOdometer)} km is <strong>${formatNumber(correction.kmSinceFuel)} km</strong> after that full tank.</li>`
+    : "";
+  const litersMathLine = correction.kmSinceFuel > 0
+    ? `<li>At ${formatNumber(correction.consumption)} L/100 km, that distance uses about <strong>${formatNumber(expectedLiters)} L</strong>.</li>`
+    : "";
+  const enteredLitersMathLine = correction.currentLiters > 0 && expectedOdometer > 0
+    ? `<li>${formatNumber(correction.currentLiters)} L at ${formatNumber(correction.consumption)} L/100 km means about <strong>${formatNumber(expectedKmFromLiters)} km</strong> of driving, so the odometer would be about <strong>${formatNumber(expectedOdometer)} km</strong>.</li>`
+    : "";
+  const differenceLine = correction.currentLiters > 0 && expectedLiters > 0
+    ? `<li>Entered fuel is <strong>${formatNumber(Math.max(0, correction.currentLiters - expectedLiters))} L</strong> above the odometer-based estimate.</li>`
+    : "";
   const litersAction = safeLiters > 0
     ? `<button class="subtle-button compact-button" type="button" data-fuel-correction-action="set-liters">Keep ${formatNumber(correction.currentOdometer)} km → set liters to ${formatNumber(safeLiters)} L</button>`
     : "";
@@ -4586,6 +4617,16 @@ function renderFuelCorrectionPanel(message, correction) {
     <strong>Fuel log needs a correction</strong>
     <p>${escapeHtml(message)}</p>
     <small>Estimated before this receipt: ${formatNumber(correction.estimatedBefore)} L in a ${formatNumber(correction.tankCapacity)} L tank. At ${formatNumber(correction.consumption)} L/100 km, choose a safe adjustment below or edit manually.</small>
+    <div class="fuel-correction-math" aria-label="Fuel correction calculation">
+      <strong>Why these suggestions?</strong>
+      <ul>
+        ${previousOdometerLine}
+        ${odometerMathLine}
+        ${litersMathLine}
+        ${enteredLitersMathLine}
+        ${differenceLine}
+      </ul>
+    </div>
     <div class="fuel-correction-actions">
       ${litersAction}
       ${odometerAction}

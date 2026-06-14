@@ -469,3 +469,9 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 ### 2026-06-14.57 — Fuel overfill guided corrections
 - Added inline correction actions when a fuel log would overfill the configured tank.
 - Users can keep the current odometer and set liters to the maximum allowed value, or keep liters and set a minimum plausible odometer based on configured consumption.
+
+### 2026-06-14.58 — Fuel correction math explainer
+- Expanded the fuel overfill correction panel with the underlying math: previous full-tank odometer, distance driven, expected liters from odometer, expected kilometers/odometer from entered liters, and the liter difference.
+- Kept the one-click correction actions for setting safe liters or a plausible odometer.
+- Added smoke coverage that the overfill panel renders the explanation text.
+- Build metadata bumped to `2026.06.14.58 / fuel-correction-math-explainer` with cache `fuel-ledger-v157`.

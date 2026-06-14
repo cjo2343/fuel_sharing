@@ -1083,6 +1083,9 @@ test("fuel log is blocked when it would overfill estimated tank level", async ({
     window.setTimeout(() => form.requestSubmit(), 0);
   });
   await expectUserError(page, /Only about|overfill|should fit/i);
+  await expect(page.locator("#fuelCorrectionPanel")).toContainText("Why these suggestions?");
+  await expect(page.locator("#fuelCorrectionPanel")).toContainText("Previous full-tank odometer");
+  await expect(page.locator("#fuelCorrectionPanel")).toContainText(/At 5[,.]4 L\/100 km/);
 
   await expect.poll(async () => {
     const response = await request.get("/api/state");
