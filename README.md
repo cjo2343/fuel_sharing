@@ -686,9 +686,6 @@ When a fuel receipt would overfill the configured tank, the app now offers one-c
 ### Fuel correction math explainer
 When a fuel receipt would overfill the configured tank, the app now shows the math behind the suggested correction. It compares the current odometer with the previous full-tank odometer, estimates liters used from the configured L/100 km value, and shows the odometer that would match the entered liters.
 
+### JSON mirror write reduction
 
-## Supabase migrations
-
-The project now includes ordered Supabase migration files in `supabase/migrations/` plus `supabase/MIGRATIONS.md`. The root `supabase-schema.sql` remains the consolidated reference for fresh projects, while future database changes should be added as a new numbered migration first and then folded into the consolidated schema.
-
-For existing projects, review and apply only migrations that have not already been run. After applying database changes, run Safe Test Lab and check Supabase stats for unexpected Realtime/PostgREST activity.
+Normalized Supabase tables are now the primary persistence path for normal app edits. The legacy `car_share_ledgers.state` JSON mirror is retained as a backup/export/fallback snapshot, but it is no longer overwritten on every small save. The app refreshes normalized tables immediately, then writes the JSON mirror only on a scheduled backup interval or when audit-history durability requires a forced backup. The Supabase load monitor reports `JSON mirror saves` and the latest JSON mirror timestamp so high write volume can be diagnosed quickly.

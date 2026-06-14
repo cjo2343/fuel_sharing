@@ -416,14 +416,6 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 - Deploy build `2026.06.14.58 / fuel-correction-math-explainer` with service-worker cache `fuel-ledger-v157`.
 - After deployment, reload the PWA once and confirm the overfill panel shows the "Why these suggestions?" calculation block.
 
+## JSON mirror write reduction check
 
-## Database migration deployment check
-
-When a release includes files under `supabase/migrations/`:
-
-- Back up or export the Supabase project first.
-- Review `supabase/MIGRATIONS.md`.
-- Apply only the new migration files, in numeric order.
-- Confirm `ledger_members` emails/roles after schema work.
-- Run Safe Test Lab.
-- Reset and inspect `pg_stat_statements` to confirm no `close_settlement_period` spam, broad Realtime storm, or unexpected PostgREST write loop.
+After deployment, make one small trip/fuel/booking edit and verify the Supabase load monitor shows normalized table activity without repeated `JSON mirror saves`. A JSON mirror save may still occur when the backup interval has elapsed or an audit-critical flow forces a snapshot.

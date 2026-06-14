@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v160";
-const BUILD_LABEL = "csp-jsdelivr-connect-fix";
-const BUILD_UPDATED_AT = "2026-06-15T05:08:00.000Z";
+const CACHE_NAME = "fuel-ledger-v161";
+const BUILD_LABEL = "json-mirror-write-reduction";
+const BUILD_UPDATED_AT = "2026-06-15T05:22:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
