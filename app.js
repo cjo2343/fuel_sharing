@@ -184,6 +184,10 @@ let ledgerEventsChannel = null;
 const ledgerEventNotificationIds = new Set();
 let lastLedgerEventPublishAt = 0;
 const ledgerEventPublishCooldownMs = 30000;
+let ledgerEventAutoSyncTimer = null;
+let lastLedgerEventAutoSyncAt = 0;
+const ledgerEventAutoSyncDebounceMs = 2500;
+const ledgerEventAutoSyncCooldownMs = 20000;
 let ignoreRealtimeUntil = 0;
 const liveSyncStorageKey = `${storageKey}:liveSyncEnabled`;
 let liveSyncEnabled = localStorage.getItem(liveSyncStorageKey) === "true";
@@ -1376,7 +1380,7 @@ els.toggleLiveSync?.addEventListener("click", async () => {
     setDataToolsMessage("Live Realtime sync enabled for this browser. Use briefly for in-app live updates; leave off if Supabase CPU rises.");
   } else {
     unsubscribeFromSupabaseState();
-    setDataToolsMessage("Live Realtime sync disabled. In-app notifications use manual/throttled sync for now; mobile push needs a separate push service.");
+    setDataToolsMessage("Live Realtime sync disabled. In-app notifications use the lightweight event channel and safe auto-refresh; broad table Realtime remains off.");
   }
   render();
 });
@@ -1813,6 +1817,9 @@ function supabaseLoadLabel(label) {
     "ledger-event-skip": "Ledger event skips",
     "ledger-events-subscription": "Event notification channel",
     "realtime-disabled": "Realtime disabled",
+    "ledger-event-auto-sync": "Event auto-refresh",
+    "ledger-event-auto-sync-scheduled": "Event auto-refresh scheduled",
+    "ledger-event-auto-sync-skip": "Event auto-refresh skipped",
     "live-sync-toggle": "Live sync toggle",
     "focus-sync-skip": "Focus sync skipped",
     "supabase-load-skip": "Supabase load skipped",
@@ -1874,7 +1881,7 @@ function renderSupabaseLoadMonitor() {
       <span>${summary.lastMinute} in the last minute · ${summary.lastFiveMinutes} in the last 5 minutes</span>
       <p>${escapeHtml(statusText)}</p>
       <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · broad table channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
-      <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime.</p>
+      <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime, and auto-refreshes safely after events.</p>
       <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
     </div>
     ${topLabels.length ? `
@@ -11422,6 +11429,38 @@ async function publishLedgerEvent(event = {}) {
   }
 }
 
+function scheduleLedgerEventAutoSync(row = null) {
+  if (!supabaseClient || !currentSession) return;
+
+  if (pendingLocalChanges > 0) {
+    recordSupabaseLoadEvent("ledger-event-auto-sync-skip", "pending local changes");
+    showAppMessage("New shared update available, but this device has unsynced local changes. Save or sync before refreshing shared data.", "warning");
+    return;
+  }
+
+  const now = Date.now();
+  const elapsed = now - lastLedgerEventAutoSyncAt;
+  const delayMs = elapsed >= ledgerEventAutoSyncCooldownMs
+    ? ledgerEventAutoSyncDebounceMs
+    : Math.max(ledgerEventAutoSyncDebounceMs, ledgerEventAutoSyncCooldownMs - elapsed);
+
+  if (ledgerEventAutoSyncTimer) window.clearTimeout(ledgerEventAutoSyncTimer);
+  recordSupabaseLoadEvent("ledger-event-auto-sync-scheduled", `${row?.event_type || "ledger_events"}; ${Math.round(delayMs / 1000)}s`);
+
+  ledgerEventAutoSyncTimer = window.setTimeout(async () => {
+    ledgerEventAutoSyncTimer = null;
+    if (!supabaseClient || !currentSession) return;
+    if (pendingLocalChanges > 0) {
+      recordSupabaseLoadEvent("ledger-event-auto-sync-skip", "pending local changes at run");
+      return;
+    }
+    lastLedgerEventAutoSyncAt = Date.now();
+    recordSupabaseLoadEvent("ledger-event-auto-sync", row?.event_type || "ledger_events");
+    showAppMessage("New shared update detected. Refreshing shared data automatically...", "info");
+    await loadSupabaseState({ force: true, reason: "ledger-event-auto-sync" });
+  }, delayMs);
+}
+
 function handleLedgerEventNotification(row) {
   if (!row || !rememberLedgerEventId(row.id)) return;
   const actorEmail = String(row.actor_email || "").trim().toLowerCase();
@@ -11433,8 +11472,9 @@ function handleLedgerEventNotification(row) {
   const title = row.title || "New shared update";
   const body = row.body || "Someone updated the shared fuel ledger.";
   recordSupabaseLoadEvent("ledger-event-notification", row.event_type || "ledger_events");
-  showAppMessage(`${title}: ${body} Use Sync now to refresh shared data.`, "info");
+  showAppMessage(`${title}: ${body} Refreshing shared data automatically...`, "info");
   setSyncStatus("Cloud");
+  scheduleLedgerEventAutoSync(row);
 }
 
 function subscribeToLedgerEvents() {

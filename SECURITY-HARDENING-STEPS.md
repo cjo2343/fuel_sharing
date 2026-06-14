@@ -86,8 +86,3 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
-
-
-### Narrow event notifications
-
-Build `event-notifications-channel` keeps broad normalized-table Realtime off by default, but adds a small `ledger_events` table for in-app notifications. The frontend subscribes only to this event stream, shows “new update” messages, and asks users to press Sync now instead of automatically reloading all shared data. Existing mobile/PWA push notification support remains in `notifications.js`, `service-worker.js`, and `server.py` for payment requests and reminders.

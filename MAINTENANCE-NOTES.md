@@ -445,8 +445,3 @@ The Test Lab now includes a scenario matrix for ledger invariants, payment lifec
 ### Sync clarity update
 
 Supabase Realtime is off by default. Use **Sync now** to refresh shared data on demand. Critical actions such as closing periods or updating payment status warn and offer a refresh when the local copy may be stale.
-
-
-### Narrow event notifications
-
-Build `event-notifications-channel` keeps broad normalized-table Realtime off by default, but adds a small `ledger_events` table for in-app notifications. The frontend subscribes only to this event stream, shows “new update” messages, and asks users to press Sync now instead of automatically reloading all shared data. Existing mobile/PWA push notification support remains in `notifications.js`, `service-worker.js`, and `server.py` for payment requests and reminders.
