@@ -415,3 +415,15 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 ## Fuel correction math explainer deployment note
 - Deploy build `2026.06.14.58 / fuel-correction-math-explainer` with service-worker cache `fuel-ledger-v157`.
 - After deployment, reload the PWA once and confirm the overfill panel shows the "Why these suggestions?" calculation block.
+
+
+## Database migration deployment check
+
+When a release includes files under `supabase/migrations/`:
+
+- Back up or export the Supabase project first.
+- Review `supabase/MIGRATIONS.md`.
+- Apply only the new migration files, in numeric order.
+- Confirm `ledger_members` emails/roles after schema work.
+- Run Safe Test Lab.
+- Reset and inspect `pg_stat_statements` to confirm no `close_settlement_period` spam, broad Realtime storm, or unexpected PostgREST write loop.

@@ -475,3 +475,17 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 - Kept the one-click correction actions for setting safe liters or a plausible odometer.
 - Added smoke coverage that the overfill panel renders the explanation text.
 - Build metadata bumped to `2026.06.14.58 / fuel-correction-math-explainer` with cache `fuel-ledger-v157`.
+
+
+## Migration-based schema maintenance
+
+Schema changes should now follow this workflow:
+
+1. Add a new numbered file under `supabase/migrations/`.
+2. Keep the migration narrowly scoped and idempotent where practical.
+3. Add the same final schema state to `supabase-schema.sql`.
+4. Update `supabase/MIGRATIONS.md` if the migration list changes.
+5. Run `npm run validate`; this now includes `tools/test-migrations.mjs`.
+6. Apply migrations in numeric order and verify with Safe Test Lab plus Supabase stats.
+
+Do not use broad table Realtime migrations unless there is a specific reason. In-app realtime updates should continue to use the narrow `ledger_events` channel.

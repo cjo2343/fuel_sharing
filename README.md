@@ -685,3 +685,10 @@ When a fuel receipt would overfill the configured tank, the app now offers one-c
 
 ### Fuel correction math explainer
 When a fuel receipt would overfill the configured tank, the app now shows the math behind the suggested correction. It compares the current odometer with the previous full-tank odometer, estimates liters used from the configured L/100 km value, and shows the odometer that would match the entered liters.
+
+
+## Supabase migrations
+
+The project now includes ordered Supabase migration files in `supabase/migrations/` plus `supabase/MIGRATIONS.md`. The root `supabase-schema.sql` remains the consolidated reference for fresh projects, while future database changes should be added as a new numbered migration first and then folded into the consolidated schema.
+
+For existing projects, review and apply only migrations that have not already been run. After applying database changes, run Safe Test Lab and check Supabase stats for unexpected Realtime/PostgREST activity.

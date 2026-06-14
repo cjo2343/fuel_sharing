@@ -86,3 +86,8 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
+
+
+## Migration-based schema changes — completed
+
+Database schema changes are now organized under `supabase/migrations/`, with validation coverage for ordered migration files and critical schema markers. `supabase-schema.sql` remains as the consolidated fresh-project reference.
