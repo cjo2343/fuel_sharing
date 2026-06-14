@@ -5505,15 +5505,22 @@ async function importLedgerBackup() {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text);
-    const importedState = normalizeState(parsed.state || parsed);
+    const validation = dataStore.validateBackupPayload(parsed);
+    if (!validation.ok) {
+      throw new Error(validation.errors.slice(0, 5).join(" "));
+    }
+    const importedState = normalizeState(validation.state);
     const memberCount = importedState.members.length;
     const tripCount = importedState.trips.length;
     const fuelCount = importedState.fuel.length;
     const periodCount = importedState.closedPeriods.length;
+    const warningText = validation.warnings.length
+      ? `\n\nWarnings:\n- ${validation.warnings.slice(0, 5).join("\n- ")}${validation.warnings.length > 5 ? "\n- …" : ""}`
+      : "";
 
     if (
       !confirm(
-        `Restore this backup? This will replace the current ledger with ${memberCount} people, ${tripCount} current trips, ${fuelCount} current fuel payments, and ${periodCount} closed periods.`
+        `Restore this backup? This will replace the current ledger with ${memberCount} people, ${tripCount} current trips, ${fuelCount} current fuel payments, and ${periodCount} closed periods.${warningText}`
       )
     ) {
       return;
