@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v146";
-const BUILD_LABEL = "security-health-lightweight-rpc";
-const BUILD_UPDATED_AT = "2026-06-15T01:25:00.000Z";
+const CACHE_NAME = "fuel-ledger-v147";
+const BUILD_LABEL = "realtime-off-sync-throttle";
+const BUILD_UPDATED_AT = "2026-06-15T02:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

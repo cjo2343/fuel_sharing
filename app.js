@@ -181,6 +181,12 @@ let pendingTripBookingContext = null;
 let pendingFuelTripContext = null;
 let supabaseStateChannel = null;
 let ignoreRealtimeUntil = 0;
+const liveSyncStorageKey = `${storageKey}:liveSyncEnabled`;
+let liveSyncEnabled = localStorage.getItem(liveSyncStorageKey) === "true";
+let supabaseLoadInFlight = false;
+let lastSupabaseLoadAt = 0;
+const supabaseLoadCooldownMs = 60 * 1000;
+const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
 let deferredInstallPrompt = null;
 let pushSupported = false;
 let pushEnabled = false;
@@ -396,6 +402,7 @@ const els = {
   supabaseLoadMonitor: document.querySelector("#supabaseLoadMonitor"),
   refreshSupabaseLoadMonitor: document.querySelector("#refreshSupabaseLoadMonitor"),
   exportSupabaseLoadReport: document.querySelector("#exportSupabaseLoadReport"),
+  toggleLiveSync: document.querySelector("#toggleLiveSync"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -1305,6 +1312,21 @@ els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
 
+els.toggleLiveSync?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  liveSyncEnabled = !liveSyncEnabled;
+  localStorage.setItem(liveSyncStorageKey, liveSyncEnabled ? "true" : "false");
+  recordSupabaseLoadEvent("live-sync-toggle", liveSyncEnabled ? "enabled" : "disabled");
+  if (liveSyncEnabled) {
+    subscribeToSupabaseState({ force: true });
+    setDataToolsMessage("Live Realtime sync enabled for this browser. Use only while debugging; it can increase Supabase CPU.");
+  } else {
+    unsubscribeFromSupabaseState();
+    setDataToolsMessage("Live Realtime sync disabled. The app will sync on load, save, manual refresh, and throttled tab focus.");
+  }
+  render();
+});
+
 els.exportSupabaseLoadReport?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   downloadSupabaseLoadReport();
@@ -1731,6 +1753,10 @@ function supabaseLoadLabel(label) {
     "security-health": "Security health checks",
     "security-health-live": "Live security probes",
     "realtime-ledger-event": "Realtime ledger events",
+    "realtime-disabled": "Realtime disabled",
+    "live-sync-toggle": "Live sync toggle",
+    "focus-sync-skip": "Focus sync skipped",
+    "supabase-load-skip": "Supabase load skipped",
     "realtime-ignored-self-save": "Ignored self realtime events",
     "trip-table-write": "Trip table writes",
     "fuel-table-write": "Fuel table writes",
@@ -1750,6 +1776,9 @@ function buildSupabaseLoadReport() {
     appState: {
       hasSupabaseClient: Boolean(supabaseClient),
       hasSession: Boolean(currentSession),
+      liveSyncEnabled,
+      realtimeChannelActive: Boolean(supabaseStateChannel),
+      supabaseLoadInFlight,
       normalizedReadModeActive,
       pendingLocalChanges,
       lastCloudSaveAt,
@@ -1765,6 +1794,9 @@ function buildSupabaseLoadReport() {
 }
 
 function renderSupabaseLoadMonitor() {
+  if (els.toggleLiveSync) {
+    els.toggleLiveSync.textContent = liveSyncEnabled ? "Disable live sync" : "Enable live sync";
+  }
   if (!els.supabaseLoadMonitor) return;
   const summary = getSupabaseLoadSummary({ windowMinutes: 10 });
   const topLabels = Object.entries(summary.byLabel)
@@ -1780,6 +1812,7 @@ function renderSupabaseLoadMonitor() {
       <strong>${summary.total} event${summary.total === 1 ? "" : "s"} in 10 min</strong>
       <span>${summary.lastMinute} in the last minute · ${summary.lastFiveMinutes} in the last 5 minutes</span>
       <p>${escapeHtml(statusText)}</p>
+      <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · Realtime channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
     </div>
     ${topLabels.length ? `
       <ul class="included-fuel-list compact-diagnostics-list">
@@ -3381,7 +3414,7 @@ async function initializeSupabase() {
     updateAuthUi();
     if (session) {
       subscribeToSupabaseState();
-      await loadSupabaseState();
+      await loadSupabaseState({ force: true, reason: "auth-change" });
     } else {
       unsubscribeFromSupabaseState();
     }
@@ -3389,9 +3422,22 @@ async function initializeSupabase() {
 
   if (currentSession) {
     subscribeToSupabaseState();
-    await loadSupabaseState();
+    await loadSupabaseState({ force: true, reason: "startup" });
   }
 }
+
+
+window.addEventListener("focus", () => {
+  if (!supabaseClient || !currentSession || liveSyncEnabled) return;
+  const now = Date.now();
+  if (now - lastSupabaseLoadAt < supabaseFocusReloadCooldownMs) {
+    recordSupabaseLoadEvent("focus-sync-skip", "focus cooldown");
+    return;
+  }
+  loadSupabaseState({ reason: "window-focus" }).catch((error) => {
+    console.warn("Focus sync failed", error);
+  });
+});
 
 function updateAuthUi() {
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
@@ -3500,7 +3546,7 @@ async function verifyLoginCode() {
   els.authMessage.textContent = "Signed in.";
   updateAuthUi();
 
-  if (currentSession) await loadSupabaseState();
+  if (currentSession) await loadSupabaseState({ force: true, reason: "login" });
 }
 
 function startLoginCooldown() {
@@ -8444,7 +8490,7 @@ async function afterMemberManagementChange(message) {
   if (els.memberManagementMessage) els.memberManagementMessage.textContent = message;
   await refreshMemberManagement();
   memberManagementStatus.error = "";
-  await loadSupabaseState();
+  await loadSupabaseState({ force: true, reason: "member-management" });
   await refreshDatabaseDiagnostics().catch(() => {});
   await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
   render();
@@ -8501,7 +8547,7 @@ async function runProductionActivityReset() {
       ok: true,
       message: `Production activity reset complete. New open period ${shortId(data?.open_period_id || "")}.`
     };
-    await loadSupabaseState();
+    await loadSupabaseState({ force: true, reason: "production-reset" });
     await saveJsonMirrorBackup({ force: true }).catch((error) => console.warn("JSON backup after reset failed", error));
     await refreshDatabaseDiagnostics().catch(() => {});
     await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
@@ -10940,7 +10986,7 @@ async function checkNormalizedTablesAgainstCurrentState({ force = false, silent 
 async function loadRemoteState() {
   recordSupabaseLoadEvent(supabaseClient ? "supabase-load" : "server-load", "loadRemoteState");
   if (supabaseClient) {
-    await loadSupabaseState();
+    await loadSupabaseState({ reason: "loadRemoteState" });
     return;
   }
 
@@ -10992,12 +11038,26 @@ async function saveRemoteState() {
   }
 }
 
-async function loadSupabaseState() {
-  recordSupabaseLoadEvent("supabase-load", "loadSupabaseState");
+async function loadSupabaseState(options = {}) {
+  const { force = false, reason = "loadSupabaseState" } = options || {};
+  recordSupabaseLoadEvent("supabase-load", reason);
   if (!currentSession) {
     setSyncStatus("Login");
-    return;
+    return false;
   }
+
+  const now = Date.now();
+  if (supabaseLoadInFlight) {
+    recordSupabaseLoadEvent("supabase-load-skip", `already loading (${reason})`);
+    return false;
+  }
+  if (!force && now - lastSupabaseLoadAt < supabaseLoadCooldownMs) {
+    recordSupabaseLoadEvent("supabase-load-skip", `cooldown (${reason})`);
+    return false;
+  }
+
+  supabaseLoadInFlight = true;
+  lastSupabaseLoadAt = now;
 
   try {
     setSyncStatus("Syncing");
@@ -11041,17 +11101,23 @@ async function loadSupabaseState() {
       await syncNormalizedTablesFromJson();
     }
 
-    scheduleNormalizedTableCheck({ delayMs: 30000, reason: "load" });
-    if (ensureMemberForLoggedInUser()) await saveSupabaseState();
+    scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
+    if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
+    return true;
   } catch (error) {
     lastSyncError = error.message || "Could not load cloud data.";
     els.authMessage.textContent = `${lastSyncError} The app could not load the shared cloud data.`;
     setSyncStatus("Local");
+    return false;
+  } finally {
+    supabaseLoadInFlight = false;
+    renderSupabaseLoadMonitor();
   }
 }
 
-async function saveSupabaseState() {
-  recordSupabaseLoadEvent("supabase-save", "saveSupabaseState");
+async function saveSupabaseState(options = {}) {
+  const { reason = "saveSupabaseState" } = options || {};
+  recordSupabaseLoadEvent("supabase-save", reason);
   if (!currentSession) {
     setSyncStatus("Login");
     return;
@@ -11075,8 +11141,8 @@ async function saveSupabaseState() {
     lastCloudSaveAt = new Date().toISOString();
     lastSyncError = "";
     markRemoteSaveSucceeded("Tables");
-    scheduleNormalizedTableCheck({ delayMs: 60000, reason: "save" });
-    if (ensureMemberForLoggedInUser()) await saveSupabaseState();
+    scheduleNormalizedTableCheck({ delayMs: 180000, reason: "save" });
+    if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
   } catch (error) {
     markRemoteSaveFailed(error, "Could not save table data.");
     els.authMessage.textContent = `${lastSyncError} Changes on this device may not be saved to the cloud.`;
@@ -11127,8 +11193,12 @@ function applyIncomingState(nextState, status = "Live") {
   updateAuthUi();
 }
 
-function subscribeToSupabaseState() {
+function subscribeToSupabaseState({ force = false } = {}) {
   if (!supabaseClient || supabaseStateChannel) return;
+  if (!force && !liveSyncEnabled) {
+    recordSupabaseLoadEvent("realtime-disabled", "Realtime subscription skipped; live sync is off by default.");
+    return;
+  }
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   supabaseStateChannel = supabaseClient
