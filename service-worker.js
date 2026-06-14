@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v120";
-const BUILD_LABEL = "money-rounding-balance";
-const BUILD_UPDATED_AT = "2026-06-14T16:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v121";
+const BUILD_LABEL = "data-model-typedefs";
+const BUILD_UPDATED_AT = "2026-06-14T17:05:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -8,6 +8,7 @@ const CORE_ASSETS = [
   "/supabase-config.js",
   "/utils.js",
   "/supabase-helpers.js",
+  "/ledger-model.js",
   "/data-store.js",
   "/settlement-calculations.js",
   "/ui-messages.js",
