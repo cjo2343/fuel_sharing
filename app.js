@@ -109,7 +109,122 @@ function formatFuelAmountLitersAndPrice(fuel, currency = state.currency) {
   return parts.join(" · ");
 }
 
-function validateFuelLogInput({ amount, liters }) {
+
+function getFuelReceiptTimestamp(fuel = {}) {
+  const dateValue = fuel.date || fuel.payment_date || fuel.createdAt || fuel.created_at || "";
+  const time = new Date(dateValue).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getSuggestedFuelPricePerLiter({ amount = 0, liters = 0, excludeFuelId = "" } = {}) {
+  const range = getFuelPriceWarningRange(state);
+  const currentPrice = Number(amount) > 0 && Number(liters) > 0 ? Number(amount) / Number(liters) : 0;
+  if (currentPrice > 0 && !isFuelPriceOutsideWarningRange(currentPrice, state)) {
+    return {
+      price: roundMoney(currentPrice),
+      source: "current-form",
+      label: "current form price",
+      detail: "The current amount and liters already create a valid DKK/L value."
+    };
+  }
+
+  const historical = state.fuel
+    .filter((fuel) => !excludeFuelId || fuel.id !== excludeFuelId)
+    .map((fuel) => {
+      const fuelAmount = Number(fuel.amount || 0);
+      const fuelLiters = Number(fuel.liters || 0);
+      const price = fuelLiters > 0 ? fuelAmount / fuelLiters : Number(fuel.pricePerLiter || 0);
+      return { fuel, price, timestamp: getFuelReceiptTimestamp(fuel) };
+    })
+    .filter((item) => Number.isFinite(item.price) && item.price > 0 && !isFuelPriceOutsideWarningRange(item.price, state))
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  if (historical[0]) {
+    const item = historical[0];
+    return {
+      price: roundMoney(item.price),
+      source: "historical",
+      label: "latest valid historical receipt",
+      detail: `${formatDate(item.fuel.date || item.fuel.payment_date || "")} fuel log used ${formatMoneyFor(item.price, state.currency)}/L.`
+    };
+  }
+
+  const livePrice = Number(latestFuelPrice?.price || 0);
+  if (livePrice > 0 && !isFuelPriceOutsideWarningRange(livePrice, state)) {
+    return {
+      price: roundMoney(livePrice),
+      source: "live",
+      label: "live fuel price estimate",
+      detail: `Latest ${escapeHtml(latestFuelPrice?.source || "fuel price")} estimate is ${formatMoneyFor(livePrice, state.currency)}/L.`
+    };
+  }
+
+  const midpoint = (range.minDkkPerLiter + range.maxDkkPerLiter) / 2;
+  return {
+    price: roundMoney(midpoint),
+    source: "range-midpoint",
+    label: "configured warning-range midpoint",
+    detail: `Using midpoint of configured range ${formatFuelPriceWarningRange(state)}.`
+  };
+}
+
+function buildFuelPriceCorrection({ amount = 0, liters = 0, excludeFuelId = "" } = {}) {
+  const numericAmount = Number(amount) || 0;
+  const numericLiters = Number(liters) || 0;
+  const pricePerLiter = numericAmount > 0 && numericLiters > 0 ? numericAmount / numericLiters : 0;
+  const suggestedPrice = getSuggestedFuelPricePerLiter({ amount: numericAmount, liters: numericLiters, excludeFuelId });
+  const suggestedAmount = numericLiters > 0 && suggestedPrice.price > 0 ? roundMoney(numericLiters * suggestedPrice.price) : 0;
+  return {
+    amount: numericAmount,
+    liters: numericLiters,
+    pricePerLiter,
+    suggestedPricePerLiter: suggestedPrice.price,
+    suggestedPriceSource: suggestedPrice.source,
+    suggestedPriceLabel: suggestedPrice.label,
+    suggestedPriceDetail: suggestedPrice.detail,
+    suggestedAmount,
+    range: getFuelPriceWarningRange(state)
+  };
+}
+
+function renderFuelPriceCorrectionPanel(message, correction) {
+  if (!els.fuelCorrectionPanel || !correction) return;
+  const suggestedAmount = Math.max(0, Number(correction.suggestedAmount) || 0);
+  els.fuelCorrectionPanel.dataset.suggestedAmount = String(suggestedAmount);
+  delete els.fuelCorrectionPanel.dataset.suggestedLiters;
+  delete els.fuelCorrectionPanel.dataset.suggestedOdometer;
+  const priceMathLine = correction.amount > 0 && correction.liters > 0
+    ? `<li>${formatMoneyFor(correction.amount, state.currency)} ÷ ${formatNumber(correction.liters)} L = <strong>${formatMoneyFor(correction.pricePerLiter, state.currency)}/L</strong>.</li>`
+    : "";
+  const suggestedAmountLine = suggestedAmount > 0
+    ? `<li>${formatNumber(correction.liters)} L × ${formatMoneyFor(correction.suggestedPricePerLiter, state.currency)}/L = <strong>${formatMoneyFor(suggestedAmount, state.currency)}</strong>.</li>`
+    : "";
+  const suggestedAction = suggestedAmount > 0
+    ? `<button class="subtle-button compact-button" type="button" data-fuel-correction-action="set-amount">Keep ${formatNumber(correction.liters)} L → set amount to ${formatMoneyFor(suggestedAmount, state.currency)}</button>`
+    : "";
+  els.fuelCorrectionPanel.innerHTML = `
+    <strong>Fuel price needs a correction</strong>
+    <p>${escapeHtml(message)}</p>
+    <small>Suggested amount uses the first valid reference available: current valid form price, latest valid historical receipt, live fuel price estimate, then warning-range midpoint.</small>
+    <div class="fuel-correction-math" aria-label="Fuel price correction calculation">
+      <strong>Why this amount?</strong>
+      <ul>
+        ${priceMathLine}
+        <li>Reference price: <strong>${formatMoneyFor(correction.suggestedPricePerLiter, state.currency)}/L</strong> from ${escapeHtml(correction.suggestedPriceLabel)}.</li>
+        <li>${escapeHtml(correction.suggestedPriceDetail || "")}</li>
+        ${suggestedAmountLine}
+      </ul>
+    </div>
+    <div class="fuel-correction-actions">
+      ${suggestedAction}
+      <button class="subtle-button compact-button" type="button" data-fuel-correction-action="dismiss">Edit manually</button>
+    </div>
+  `;
+  els.fuelCorrectionPanel.classList.remove("hidden");
+  els.fuelCorrectionPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function validateFuelLogInput({ amount, liters }, options = {}) {
   if (!(amount > 0)) {
     return { ok: false, message: "Fuel amount must be higher than zero." };
   }
@@ -123,7 +238,8 @@ function validateFuelLogInput({ amount, liters }) {
   if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
     return {
       ok: false,
-      message: `${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the configured fuel price range (${formatFuelPriceWarningRange()}). Check the amount/liters or ask an admin to adjust the warning range in Group settings.`
+      message: `${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the configured fuel price range (${formatFuelPriceWarningRange()}). Check the amount/liters or ask an admin to adjust the warning range in Group settings.`,
+      correction: buildFuelPriceCorrection({ amount, liters, excludeFuelId: options.excludeFuelId })
     };
   }
   return { ok: true, pricePerLiter };
@@ -762,8 +878,10 @@ els.fuelForm.addEventListener("submit", async (event) => {
   }) || { location: latitude && longitude ? { latitude, longitude } : null, stationInfo: stationLatitude && stationLongitude ? { name: station, brand: stationBrand, latitude: stationLatitude, longitude: stationLongitude } : null };
   const fullTank = Boolean(els.fuelFullTank?.checked);
 
-  const validation = validateFuelLogInput({ amount, liters });
+  const validation = validateFuelLogInput({ amount, liters }, { excludeFuelId: editingFuelId });
   if (!validation.ok) {
+    if (validation.correction) renderFuelPriceCorrectionPanel(validation.message, validation.correction);
+    else clearFuelCorrectionPanel();
     showUserError(validation.message);
     showAppMessage(validation.message, "error");
     return;
@@ -4541,7 +4659,9 @@ function clearFuelCorrectionPanel() {
   els.fuelCorrectionPanel.innerHTML = "";
   delete els.fuelCorrectionPanel.dataset.suggestedLiters;
   delete els.fuelCorrectionPanel.dataset.suggestedOdometer;
+  delete els.fuelCorrectionPanel.dataset.suggestedAmount;
 }
+
 
 function buildFuelOverfillCorrection(fuelInput = {}, tankBeforeFuel = null, options = {}) {
   const liters = Number(fuelInput.liters) || 0;
@@ -4654,6 +4774,13 @@ function applyFuelCorrection(action) {
       if (details) details.open = true;
       els.fuelOdometer.focus();
       showAppMessage(`Odometer adjusted to about ${formatNumber(suggested)} km. Review and save again.`, "info");
+    }
+  } else if (action === "set-amount") {
+    const suggested = Number(els.fuelCorrectionPanel.dataset.suggestedAmount || 0);
+    if (suggested > 0 && els.fuelAmount) {
+      els.fuelAmount.value = String(suggested);
+      els.fuelAmount.focus();
+      showAppMessage(`Amount adjusted to ${formatMoneyFor(suggested, state.currency)}. Review and save again.`, "info");
     }
   }
   clearFuelCorrectionPanel();
