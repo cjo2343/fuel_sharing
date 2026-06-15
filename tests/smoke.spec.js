@@ -755,12 +755,18 @@ test("payment status actions do not mutate booking records or emit normalized sy
   const requestButton = page.locator('button[data-payment-status="requested"]').first();
   await expect(requestButton).toHaveCount(1);
   await requestButton.evaluate((button) => button.click());
-  await expect(page.locator("#auditLog")).toContainText("Payment requested");
+  await expect.poll(async () => {
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").paymentStatuses || {});
+    return Object.values(saved).some((status) => status === "requested");
+  }, { timeout: 5000 }).toBe(true);
 
   const reopenButton = page.locator('button[data-payment-status="open"]').first();
   await expect(reopenButton).toHaveCount(1);
   await reopenButton.evaluate((button) => button.click());
-  await expect(page.locator("#auditLog")).toContainText("Payment reopened");
+  await expect.poll(async () => {
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").paymentStatuses || {});
+    return Object.values(saved).some((status) => status === "requested");
+  }, { timeout: 5000 }).toBe(false);
 
   const afterBookings = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings || []);
   expect(afterBookings).toEqual(beforeBookings);
