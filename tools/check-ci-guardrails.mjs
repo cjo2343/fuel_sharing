@@ -26,6 +26,7 @@ for (const requiredCheck of [
   "tools/check-tracked-artifacts.mjs",
   "tools/check-runtime-assets.mjs",
   "tools/check-ci-guardrails.mjs",
+  "tools/test-release-readiness-guardrails.mjs",
   "tools/test-security-headers.mjs",
   "tools/test-admin-rpc-fail-closed.mjs",
   "tools/test-supabase-schema-hardening.mjs",
@@ -64,7 +65,12 @@ for (const marker of [
   "DEPLOYMENT-CHECKLIST.md",
   "supabase/migrations/",
   "supabase-schema.sql",
-  "tools/test-migrations.mjs"
+  "supabase/MIGRATIONS.md",
+  "tools/test-migrations.mjs",
+  "Runtime app files",
+  "Runtime metadata files",
+  "Security header/CSP files",
+  "CI/pre-push/release guardrail files"
 ]) {
   assertIncludes("tools/check-release-readiness.mjs", readiness, marker);
 }

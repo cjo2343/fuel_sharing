@@ -511,7 +511,12 @@ Operational watch item: after normal use, inspect Supabase Query Performance. `r
 
 Debug and Test Lab reports are operational records. Keep redaction broad for secrets and precise personal data, but avoid over-redacting build versions and timestamps because they are needed to debug deployments.
 
-### CI/pre-push validation maintenance
-- Keep `tools/check-ci-guardrails.mjs` in `npm run validate` when adding or renaming validation scripts.
-- If a new hardening check is added, wire it into `npm run validate` and update the CI guardrail test so it cannot silently drop out of local or GitHub checks.
+## CI/pre-push guardrails and release-readiness companion checks
+
+The local and GitHub checks now include a checker that checks the checkers. Keep these rules in sync when changing validation, workflow, release, or hook files:
+
+- `npm run validate` must include the CI guardrail checker and the release-readiness guardrail regression test.
+- `npm run prepush` must run validation, `node tools/check-release-readiness.mjs`, and Playwright.
+- GitHub Actions must run validation, `node tools/check-release-readiness.mjs`, install Chromium, and run Playwright.
+- Release-readiness companion checks should stay actionable: runtime file changes require build/cache metadata, migrations require schema/docs/tests, CSP changes require header tests/docs, and CI guardrail changes require maintenance notes/tests.
 

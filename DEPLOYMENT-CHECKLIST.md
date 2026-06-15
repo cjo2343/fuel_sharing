@@ -479,8 +479,12 @@ After applying migrations through `019_immutable_test_lab_report_history.sql` an
 
 Post-deploy performance check: after 15-30 minutes of normal use, review Supabase Top Queries and compare `realtime.list_changes` against the pre-cleanup baseline.
 
-## CI/pre-push gate
-- Before deploy, run `npm run release:check`.
-- Before push, run `npm run prepush` or rely on the installed `.githooks/pre-push` hook.
-- GitHub Actions must run `npm run validate`, `node tools/check-release-readiness.mjs`, install Playwright Chromium, and run `npm run test:e2e`.
+## Release-readiness companion checks
+
+Before pushing a release, run `npm run release:check`. The release-readiness companion checks are intentionally strict:
+
+- Runtime app file changes must include both `build-info.js` and `service-worker.js` so the deployed app and PWA cache report the same version.
+- Supabase migration changes must include `supabase-schema.sql`, `supabase/MIGRATIONS.md`, migration tests, and this deployment checklist.
+- Security header/CSP changes must update `tools/test-security-headers.mjs` and `SECURITY-HARDENING-STEPS.md`.
+- CI/pre-push/release guardrail changes must update `tools/check-ci-guardrails.mjs`, `tools/test-release-readiness-guardrails.mjs`, and `MAINTENANCE-NOTES.md`.
 

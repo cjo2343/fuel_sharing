@@ -135,8 +135,7 @@ The result should have `ok: true`, all values under `critical_rpcs` set to `true
 - Build metadata such as app versions and ISO timestamps should remain readable; phone redaction must not turn release versions or dates into false phone matches.
 - Validation should fail if these diagnostic redaction markers or checks are removed.
 
-### CI/pre-push guardrails
-- `npm run validate` now includes `tools/check-ci-guardrails.mjs`, which verifies that critical validation, runtime, CSP, migration, and release-readiness checks stay wired into the project.
-- `npm run prepush` runs validation, release readiness, and Playwright smoke tests before allowing a local push.
-- GitHub Actions runs validation, release-readiness checks, installs Chromium, and then runs Playwright smoke tests so CI matches the local push gate.
+## Release-readiness companion checks
+
+The release-readiness companion checks enforce security-hardening hygiene before deploys. runtime file changes must update both `build-info.js` and `service-worker.js`; migration changes must update schema, migration docs, tests, and the deployment checklist; security header/CSP changes must update header tests and this hardening guide; CI/pre-push changes must update the CI guardrail checker, release-readiness guardrail tests, and maintenance notes.
 
