@@ -82,6 +82,27 @@ function testAdminReconciliationSafetyGateExists() {
   console.log("ok - testAdminReconciliationSafetyGateExists");
 }
 
+function testAdminToolsGuardrailRpcsExist() {
+  const app = readFileSync("app.js", "utf8");
+  const adminTools = readFileSync("admin-tools.js", "utf8");
+  assert.match(schema, /create or replace function public\.upsert_ledger_member_admin\(/);
+  assert.match(schema, /Admins cannot demote or deactivate themselves/);
+  assert.match(schema, /At least one active admin is required/);
+  assert.match(schema, /create or replace function public\.set_ledger_member_active_admin\(/);
+  assert.match(schema, /create or replace function public\.purge_generated_test_rows\(/);
+  assert.match(schema, /Only ledger admins can purge generated test rows/);
+  assert.match(schema, /grant execute on function public\.upsert_ledger_member_admin\(text, uuid, text, text, text, text, boolean\) to authenticated/);
+  assert.match(schema, /push_subscription_scope/);
+  assert.match(app, /upsertManagedMemberRpc/);
+  assert.match(app, /setManagedMemberActiveRpc/);
+  assert.match(app, /RESET CURRENT PERIOD/);
+  assert.match(app, /RESET ALL LOCAL DATA/);
+  assert.match(app, /IMPORT BACKUP/);
+  assert.match(app, /redactTestLabReportForCloud/);
+  assert.match(adminTools, /purge_generated_test_rows/);
+  console.log("ok - testAdminToolsGuardrailRpcsExist");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -97,4 +118,5 @@ testPeriodCloseRpcExists();
 testTripTransactionRpcExists();
 testBookingTransactionRpcsExist();
 testAdminReconciliationSafetyGateExists();
+testAdminToolsGuardrailRpcsExist();
 testFuelLedgerHealthcheckExists();

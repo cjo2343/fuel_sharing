@@ -91,11 +91,32 @@
       String(row.station_name || "").includes(generatedTestMarker);
   }
 
+  function isMissingTestRowPurgeRpcError(error) {
+    const code = String(error?.code || "");
+    const message = String(error?.message || error || "");
+    return code === "PGRST202" || /purge_generated_test_rows/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+  }
+
+  function normalizePurgeSummary(data, dryRun) {
+    const trips = Number(data?.trips || data?.trip_rows || 0);
+    const fuel = Number(data?.fuel || data?.fuel_rows || 0);
+    return { trips, fuel, total: trips + fuel, dryRun: Boolean(dryRun) };
+  }
+
   async function purgeSoftDeletedGeneratedTestRows({ dryRun = true } = {}) {
     if (!supabaseClient || !currentSession) throw new Error("Sign in before purging test rows.");
     if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
 
     const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+    const rpcResult = await supabaseClient.rpc("purge_generated_test_rows", {
+      target_ledger_id: ledgerId,
+      dry_run: Boolean(dryRun)
+    });
+    if (!rpcResult.error) return normalizePurgeSummary(rpcResult.data, dryRun);
+    if (!isMissingTestRowPurgeRpcError(rpcResult.error)) throw rpcResult.error;
+
+    console.warn("Generated test row purge RPC is unavailable; falling back to guarded client-side cleanup. Apply the latest Supabase schema to enforce this cleanup server-side.", rpcResult.error);
+
     const [tripsResult, fuelResult] = await Promise.all([
       supabaseClient
         .from("trips")

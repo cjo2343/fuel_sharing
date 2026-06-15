@@ -1266,7 +1266,7 @@ els.settingsForm.addEventListener("submit", async (event) => {
   render();
 });
 
-els.resetPeriod.addEventListener("click", () => {
+els.resetPeriod.addEventListener("click", async () => {
   if (!canManageSettings()) {
     showUserError("Only an admin can reset the current period.");
     return;
@@ -1275,12 +1275,22 @@ els.resetPeriod.addEventListener("click", () => {
     showUserError("There is no current period data to reset.");
     return;
   }
-  if (!confirmUserAction("Remove all trips, fuel payments, and request statuses from the current open period? Settings and archived periods stay unchanged.")) return;
   const resetLedger = calculateLedger();
   const resetTripCount = state.trips.length;
   const resetFuelCount = state.fuel.length;
   const resetPeriodLabel = resetLedger?.period?.label || "Current period";
   const resetTotalCost = resetLedger?.totalCost || 0;
+  if (!requireTypedAdminConfirmation({
+    phrase: "RESET CURRENT PERIOD",
+    title: "Reset current period?",
+    detail: `This removes ${resetTripCount} current trip${resetTripCount === 1 ? "" : "s"}, ${resetFuelCount} fuel log${resetFuelCount === 1 ? "" : "s"}, and current payment request statuses for ${resetPeriodLabel}. Settings and archived periods stay unchanged. A backup is exported first.`
+  })) return;
+  try {
+    await exportAdminSafetyBackup("reset current period");
+  } catch (error) {
+    showUserError(error.message || String(error));
+    return;
+  }
   state.trips = [];
   state.fuel = [];
   state.paymentStatuses = {};
@@ -1294,12 +1304,22 @@ els.resetPeriod.addEventListener("click", () => {
   render();
 });
 
-els.resetData.addEventListener("click", () => {
+els.resetData.addEventListener("click", async () => {
   if (!canManageSettings()) {
     showUserError("Only an admin can reset data.");
     return;
   }
-  if (!confirmUserAction("Reset all trips, fuel payments, and settings?")) return;
+  if (!requireTypedAdminConfirmation({
+    phrase: "RESET ALL LOCAL DATA",
+    title: "Reset all local data?",
+    detail: "This replaces local members, settings, trips, fuel logs, bookings, payment statuses, and closed periods with defaults. A backup is exported first. In Supabase mode, prefer production activity reset when you only want to clear activity."
+  })) return;
+  try {
+    await exportAdminSafetyBackup("reset all local data");
+  } catch (error) {
+    showUserError(error.message || String(error));
+    return;
+  }
   state = structuredClone(defaults);
   clearTripLoggingContext();
   clearFuelLoggingContext();
@@ -1403,6 +1423,38 @@ function requireTypedAdminConfirmation({ phrase, title, detail }) {
   ].join("\n");
   const typed = prompt(message);
   return typed === phrase;
+}
+
+async function exportAdminSafetyBackup(reason = "admin action") {
+  exportLedgerBackup();
+  if (supabaseClient && currentSession && canManageSettings()) {
+    try {
+      await saveJsonMirrorBackup({ force: true });
+    } catch (error) {
+      console.warn(`Cloud JSON safety backup failed before ${reason}`, error);
+      throw new Error(`Cloud backup failed before ${reason}: ${error.message || error}`);
+    }
+  }
+  return true;
+}
+
+function redactTestLabReportForCloud(value) {
+  if (Array.isArray(value)) return value.map((item) => redactTestLabReportForCloud(item));
+  if (!value || typeof value !== "object") {
+    if (typeof value !== "string") return value;
+    return value
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+      .replace(/\+?\d[0-9 ().-]{7,}\d/g, "[redacted-phone]");
+  }
+  const redacted = {};
+  Object.entries(value).forEach(([key, item]) => {
+    if (/email|phone|mobilepay|latitude|longitude|lat|lng|coordinate|location/i.test(key)) {
+      redacted[key] = "[redacted]";
+      return;
+    }
+    redacted[key] = redactTestLabReportForCloud(item);
+  });
+  return redacted;
 }
 
 function updateAdvancedAdminToolsUi() {
@@ -2218,8 +2270,9 @@ async function fetchRetentionCleanupPreview() {
     result.cloud = {
       available: true,
       ledgerEvents: Number(data?.ledger_events || 0),
-      stalePushSubscriptions: Number(data?.stale_push_subscriptions || 0),
-      message: "Cloud preview completed."
+      stalePushSubscriptions: Number(data?.global_stale_push_subscriptions || data?.stale_push_subscriptions || 0),
+      pushSubscriptionScope: data?.push_subscription_scope || "global_user_device_records",
+      message: "Cloud preview completed. Stale push subscriptions are global user/device records, not ledger accounting rows."
     };
   } catch (error) {
     result.cloud = {
@@ -2244,7 +2297,7 @@ function renderRetentionCleanupSummary(preview = lastRetentionCleanupPreview) {
       <p>Deletes only temporary/debug/privacy-sensitive records. Ledger accounting history is kept.</p>
       <ul class="included-fuel-list compact-diagnostics-list">
         <li><span>Old in-app notification events (${retentionPolicy.ledgerEventDays}+ days or expired)</span><b>${Number(preview.cloud?.ledgerEvents || 0)}</b></li>
-        <li><span>Stale push subscriptions (${retentionPolicy.stalePushSubscriptionDays}+ days)</span><b>${Number(preview.cloud?.stalePushSubscriptions || 0)}</b></li>
+        <li><span>Global stale push subscriptions (${retentionPolicy.stalePushSubscriptionDays}+ days, user/device scoped)</span><b>${Number(preview.cloud?.stalePushSubscriptions || 0)}</b></li>
         <li><span>Old/local Test Lab reports</span><b>${Number(preview.local?.testLabReports || 0)}</b></li>
         <li><span>Old load-monitor events in this browser</span><b>${Number(preview.local?.loadMonitorEvents || 0)}</b></li>
       </ul>
@@ -2479,7 +2532,7 @@ async function saveCurrentTestLabReportToCloud() {
   })) return;
   testLabCloudReportOptIn = true;
   localStorage.setItem(testLabReportCloudStorageKey, "true");
-  persistTestLabReport(report, { sync: true });
+  persistTestLabReport(redactTestLabReportForCloud(report), { sync: true });
   setDataToolsMessage("Latest Test Lab report queued for cloud save. Routine future reports still stay local unless you use this button again.");
   window.setTimeout(() => {
     testLabCloudReportOptIn = false;
@@ -7497,13 +7550,17 @@ async function importLedgerBackup() {
       ? `\n\nWarnings:\n- ${validation.warnings.slice(0, 5).join("\n- ")}${validation.warnings.length > 5 ? "\n- …" : ""}`
       : "";
 
-    if (
-      !confirmUserAction(
-        `Restore this backup? This will replace the current ledger with ${memberCount} people, ${tripCount} current trips, ${fuelCount} current fuel payments, and ${periodCount} closed periods.${warningText}`
-      )
-    ) {
+    if (!requireTypedAdminConfirmation({
+      phrase: "IMPORT BACKUP",
+      title: "Import backup and replace current state?",
+      detail: `This will replace the current ledger with ${memberCount} people, ${tripCount} current trips, ${fuelCount} current fuel payments, and ${periodCount} closed periods.${warningText}
+
+A backup of the current state is exported first.`
+    })) {
       return;
     }
+
+    await exportAdminSafetyBackup("import backup");
 
     state = importedState;
     state.lastOdometer = getLatestOdometer();
@@ -9324,6 +9381,38 @@ function protectAgainstAdminLockout(payload, existingMember, nextActive = existi
   return true;
 }
 
+function isMissingMemberManagementRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || /upsert_ledger_member_admin|set_ledger_member_active_admin/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+}
+
+async function upsertManagedMemberRpc(payload) {
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const { data, error } = await supabaseClient.rpc("upsert_ledger_member_admin", {
+    target_ledger_id: ledgerId,
+    target_member_id: payload.id || null,
+    member_name: payload.name,
+    member_email: payload.email || null,
+    member_mobilepay_phone: payload.mobilepay_phone || null,
+    member_role: payload.role,
+    member_is_active: payload.is_active !== false
+  });
+  if (!error) return { ok: true, data };
+  return { ok: false, error, shouldFallback: isMissingMemberManagementRpcError(error) };
+}
+
+async function setManagedMemberActiveRpc(memberId, isActive) {
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const { data, error } = await supabaseClient.rpc("set_ledger_member_active_admin", {
+    target_ledger_id: ledgerId,
+    target_member_id: memberId,
+    member_is_active: Boolean(isActive)
+  });
+  if (!error) return { ok: true, data };
+  return { ok: false, error, shouldFallback: isMissingMemberManagementRpcError(error) };
+}
+
 async function saveManagedMember(row) {
   const payload = getManagedMemberPayloadFromRow(row);
   if (!payload.name) {
@@ -9334,19 +9423,27 @@ async function saveManagedMember(row) {
   if (!protectAgainstAdminLockout(payload, existing, existing?.is_active !== false)) return;
   if (!confirmManagedMemberRoleChange(existing, payload.role)) return;
 
-  const { error } = await supabaseClient
-    .from("ledger_members")
-    .update({
-      name: payload.name,
-      email: payload.email,
-      mobilepay_phone: payload.mobilepay_phone,
-      role: payload.role,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", payload.id);
-  if (error) {
-    showUserError(`Could not save member: ${error.message || error}`);
-    return;
+  const result = await upsertManagedMemberRpc({ ...payload, is_active: existing?.is_active !== false });
+  if (!result.ok) {
+    if (!result.shouldFallback) {
+      showUserError(`Could not save member: ${result.error?.message || result.error}`);
+      return;
+    }
+    console.warn("Member management RPC is unavailable; falling back to direct table update. Apply the latest Supabase schema to enable server-side member guardrails.", result.error);
+    const { error } = await supabaseClient
+      .from("ledger_members")
+      .update({
+        name: payload.name,
+        email: payload.email,
+        mobilepay_phone: payload.mobilepay_phone,
+        role: payload.role,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", payload.id);
+    if (error) {
+      showUserError(`Could not save member: ${error.message || error}`);
+      return;
+    }
   }
   await afterMemberManagementChange(`${payload.name} saved as ${memberRoleLabel(payload.role)}.`);
 }
@@ -9357,13 +9454,21 @@ async function setManagedMemberActive(row, isActive) {
   if (!isActive && !confirmUserAction(`Deactivate ${describeManagedMember(existing)}? They will no longer be able to access the app.`)) return;
   if (!protectAgainstAdminLockout(payload, existing, isActive)) return;
 
-  const { error } = await supabaseClient
-    .from("ledger_members")
-    .update({ is_active: isActive, updated_at: new Date().toISOString() })
-    .eq("id", payload.id);
-  if (error) {
-    showUserError(`Could not update member: ${error.message || error}`);
-    return;
+  const result = await setManagedMemberActiveRpc(payload.id, isActive);
+  if (!result.ok) {
+    if (!result.shouldFallback) {
+      showUserError(`Could not update member: ${result.error?.message || result.error}`);
+      return;
+    }
+    console.warn("Member activation RPC is unavailable; falling back to direct table update. Apply the latest Supabase schema to enable server-side member guardrails.", result.error);
+    const { error } = await supabaseClient
+      .from("ledger_members")
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq("id", payload.id);
+    if (error) {
+      showUserError(`Could not update member: ${error.message || error}`);
+      return;
+    }
   }
   await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
 }
@@ -9382,21 +9487,36 @@ async function addManagedMember() {
     return;
   }
 
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const { error } = await supabaseClient
-    .from("ledger_members")
-    .upsert({
-      ledger_id: ledgerId,
-      name,
-      email,
-      mobilepay_phone: mobilepayPhone || null,
-      role,
-      is_active: true,
-      updated_at: new Date().toISOString()
-    }, { onConflict: "ledger_id,name" });
-  if (error) {
-    showUserError(`Could not add member: ${error.message || error}`);
-    return;
+  const result = await upsertManagedMemberRpc({
+    id: null,
+    name,
+    email,
+    mobilepay_phone: mobilepayPhone || null,
+    role,
+    is_active: true
+  });
+  if (!result.ok) {
+    if (!result.shouldFallback) {
+      showUserError(`Could not add member: ${result.error?.message || result.error}`);
+      return;
+    }
+    console.warn("Member management RPC is unavailable; falling back to direct table upsert. Apply the latest Supabase schema to enable server-side member guardrails.", result.error);
+    const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+    const { error } = await supabaseClient
+      .from("ledger_members")
+      .upsert({
+        ledger_id: ledgerId,
+        name,
+        email,
+        mobilepay_phone: mobilepayPhone || null,
+        role,
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "ledger_id,name" });
+    if (error) {
+      showUserError(`Could not add member: ${error.message || error}`);
+      return;
+    }
   }
   if (els.newMemberName) els.newMemberName.value = "";
   if (els.newMemberEmail) els.newMemberEmail.value = "";

@@ -492,7 +492,12 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
 
 test("period-aware audit log clears current history and freezes closed-period history", async ({ page }) => {
   await openLocalApp(page);
-  page.on("dialog", (dialog) => dialog.accept());
+  page.on("dialog", (dialog) => {
+    if (dialog.type() === "prompt" && dialog.message().includes("RESET CURRENT PERIOD")) {
+      return dialog.accept("RESET CURRENT PERIOD");
+    }
+    return dialog.accept();
+  });
 
   await createBasicTripAndFuel(page, { note: "Audit reset smoke trip", fuelAmount: "111.11" });
   await expect(page.locator("#auditLog")).toContainText("Trip created");
