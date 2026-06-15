@@ -1,12 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.78",
-    buildLabel: "release-about-panel",
-    updatedAt: "2026-06-15T14:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v177",
+    version: "2026.06.15.79",
+    buildLabel: "render-port-startup",
+    updatedAt: "2026-06-15T14:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v178",
     releaseNotes: Object.freeze([
-      "Admin diagnostics and build visibility are available from About and Admin.",
+      "Render startup now has an explicit npm start command and PORT binding diagnostics.",
       "Realtime performance guardrails pause subscriptions while the tab is hidden.",
       "Security hardening baseline is complete; future work is polish and maintenance."
     ])

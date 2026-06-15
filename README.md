@@ -38,8 +38,6 @@ For production or existing Supabase projects, see [`DEPLOYMENT-CHECKLIST.md`](DE
 
 For architecture notes, the current RLS/security model, known legacy compromises, and the safest refactor order, see [`MAINTENANCE-NOTES.md`](MAINTENANCE-NOTES.md).
 
-For quarterly backup/restore verification and emergency restore practice, see [`BACKUP-RESTORE-DRILL.md`](BACKUP-RESTORE-DRILL.md).
-
 
 ## Hardening helpers and validation
 
