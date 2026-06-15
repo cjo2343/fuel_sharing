@@ -426,3 +426,8 @@ After deployment, make one small trip/fuel/booking edit and verify the Supabase 
 - Confirm Security Health is labeled cloud-touching and requires typed confirmation.
 - Confirm Advanced stress tools are hidden until “Unlock advanced admin tools” is confirmed.
 - Confirm non-admin members cannot access Admin/Test Lab tools.
+
+
+### Data retention/privacy cleanup
+
+Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.

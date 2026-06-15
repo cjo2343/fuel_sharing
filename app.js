@@ -348,6 +348,13 @@ const supabaseLoadSafety = {
   securityHealthCooldownMs: 2 * 60 * 1000,
   requests: []
 };
+const retentionPolicy = Object.freeze({
+  ledgerEventDays: 30,
+  testLabReportDays: 30,
+  keepLatestTestLabReports: 3,
+  stalePushSubscriptionDays: 180
+});
+let lastRetentionCleanupPreview = null;
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -545,6 +552,9 @@ const els = {
   exportSupabaseLoadReport: document.querySelector("#exportSupabaseLoadReport"),
   syncNowAdmin: document.querySelector("#syncNowAdmin"),
   toggleLiveSync: document.querySelector("#toggleLiveSync"),
+  previewRetentionCleanup: document.querySelector("#previewRetentionCleanup"),
+  runRetentionCleanup: document.querySelector("#runRetentionCleanup"),
+  retentionCleanupSummary: document.querySelector("#retentionCleanupSummary"),
   refreshAboutBuildInfo: document.querySelector("#refreshAboutBuildInfo"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
@@ -1607,6 +1617,14 @@ els.exportSupabaseLoadReport?.addEventListener("click", () => {
   downloadSupabaseLoadReport();
 });
 
+els.previewRetentionCleanup?.addEventListener("click", () => {
+  previewRetentionCleanup();
+});
+
+els.runRetentionCleanup?.addEventListener("click", () => {
+  runRetentionCleanup();
+});
+
 els.memberManagementForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
@@ -2122,6 +2140,174 @@ function downloadSupabaseLoadReport() {
   const stamp = localDateString().replace(/[^0-9-]/g, "") || "today";
   downloadTextFile(`fuel-ledger-supabase-load-report-${stamp}.json`, JSON.stringify(report, null, 2), "application/json");
   setDataToolsMessage("Supabase load report downloaded.");
+}
+
+
+function retentionCutoffIso(days) {
+  return new Date(Date.now() - Math.max(0, Number(days) || 0) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function reportRetentionTimestamp(report) {
+  const value = report?.syncedAt || report?.finishedAt || report?.startedAt || report?.createdAt || "";
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildLocalRetentionPreview() {
+  const reports = normalizeTestLabReports(state.testLabReports);
+  const cutoff = Date.now() - retentionPolicy.testLabReportDays * 24 * 60 * 60 * 1000;
+  const removableReports = reports.filter((report, index) => {
+    const timestamp = reportRetentionTimestamp(report);
+    return index >= retentionPolicy.keepLatestTestLabReports || (timestamp > 0 && timestamp < cutoff);
+  });
+  const oldLoadEvents = getSupabaseLoadEvents(24 * 60 * 60 * 1000).filter((entry) => {
+    const timestamp = Date.parse(entry.at || "");
+    return Number.isFinite(timestamp) && timestamp < Date.now() - 60 * 60 * 1000;
+  });
+  return {
+    testLabReports: removableReports.length,
+    loadMonitorEvents: oldLoadEvents.length,
+    keptTestLabReports: Math.max(0, reports.length - removableReports.length)
+  };
+}
+
+function applyLocalRetentionCleanup() {
+  const reports = normalizeTestLabReports(state.testLabReports);
+  const cutoff = Date.now() - retentionPolicy.testLabReportDays * 24 * 60 * 60 * 1000;
+  const keptReports = reports.filter((report, index) => {
+    const timestamp = reportRetentionTimestamp(report);
+    return index < retentionPolicy.keepLatestTestLabReports && !(timestamp > 0 && timestamp < cutoff);
+  });
+  const removedReports = Math.max(0, reports.length - keptReports.length);
+  state.testLabReports = keptReports;
+  if (lastTestLabReport && !keptReports.some((report) => report.id === lastTestLabReport.id)) {
+    lastTestLabReport = keptReports[0] || null;
+  }
+  const beforeEvents = (supabaseLoadSafety.requests || []).length;
+  supabaseLoadSafety.requests = (supabaseLoadSafety.requests || []).filter((entry) => {
+    const timestamp = Date.parse(entry.at || "");
+    return !Number.isFinite(timestamp) || timestamp >= Date.now() - 60 * 60 * 1000;
+  });
+  return {
+    testLabReports: removedReports,
+    loadMonitorEvents: Math.max(0, beforeEvents - supabaseLoadSafety.requests.length)
+  };
+}
+
+async function fetchRetentionCleanupPreview() {
+  const local = buildLocalRetentionPreview();
+  const result = {
+    local,
+    cloud: {
+      available: false,
+      ledgerEvents: 0,
+      stalePushSubscriptions: 0,
+      message: "Sign in as admin to preview cloud retention cleanup."
+    }
+  };
+  if (!supabaseClient || !currentSession || !canManageSettings()) return result;
+
+  try {
+    recordSupabaseLoadEvent("retention-preview", "preview retention cleanup");
+    const { data, error } = await supabaseClient.rpc("preview_retention_cleanup", {
+      target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
+      event_retention_days: retentionPolicy.ledgerEventDays,
+      stale_push_days: retentionPolicy.stalePushSubscriptionDays
+    });
+    if (error) throw error;
+    result.cloud = {
+      available: true,
+      ledgerEvents: Number(data?.ledger_events || 0),
+      stalePushSubscriptions: Number(data?.stale_push_subscriptions || 0),
+      message: "Cloud preview completed."
+    };
+  } catch (error) {
+    result.cloud = {
+      available: false,
+      ledgerEvents: 0,
+      stalePushSubscriptions: 0,
+      message: `Cloud retention preview unavailable: ${error.message || error}`
+    };
+  }
+  return result;
+}
+
+function renderRetentionCleanupSummary(preview = lastRetentionCleanupPreview) {
+  if (!els.retentionCleanupSummary) return;
+  if (!preview) {
+    els.retentionCleanupSummary.innerHTML = `<p class="entry-meta">Preview cleanup before deleting temporary/privacy-sensitive records. Real trips, fuel logs, bookings, settlements, and closed periods are never part of this cleanup.</p>`;
+    return;
+  }
+  els.retentionCleanupSummary.innerHTML = `
+    <div class="test-lab-report-summary ${preview.cloud?.available === false ? "has-warning" : "ok"}">
+      <strong>Retention cleanup preview</strong>
+      <p>Deletes only temporary/debug/privacy-sensitive records. Ledger accounting history is kept.</p>
+      <ul class="included-fuel-list compact-diagnostics-list">
+        <li><span>Old in-app notification events (${retentionPolicy.ledgerEventDays}+ days or expired)</span><b>${Number(preview.cloud?.ledgerEvents || 0)}</b></li>
+        <li><span>Stale push subscriptions (${retentionPolicy.stalePushSubscriptionDays}+ days)</span><b>${Number(preview.cloud?.stalePushSubscriptions || 0)}</b></li>
+        <li><span>Old/local Test Lab reports</span><b>${Number(preview.local?.testLabReports || 0)}</b></li>
+        <li><span>Old load-monitor events in this browser</span><b>${Number(preview.local?.loadMonitorEvents || 0)}</b></li>
+      </ul>
+      <small>${escapeHtml(preview.cloud?.message || "")}</small>
+    </div>
+  `;
+}
+
+async function previewRetentionCleanup() {
+  if (!canManageSettings()) return;
+  if (els.previewRetentionCleanup) els.previewRetentionCleanup.disabled = true;
+  try {
+    lastRetentionCleanupPreview = await fetchRetentionCleanupPreview();
+    renderRetentionCleanupSummary(lastRetentionCleanupPreview);
+    setDataToolsMessage("Retention cleanup preview refreshed.");
+  } finally {
+    if (els.previewRetentionCleanup) els.previewRetentionCleanup.disabled = false;
+  }
+}
+
+async function runRetentionCleanup() {
+  if (!canManageSettings()) return;
+  if (!lastRetentionCleanupPreview) {
+    await previewRetentionCleanup();
+  }
+  const total = Number(lastRetentionCleanupPreview?.cloud?.ledgerEvents || 0)
+    + Number(lastRetentionCleanupPreview?.cloud?.stalePushSubscriptions || 0)
+    + Number(lastRetentionCleanupPreview?.local?.testLabReports || 0)
+    + Number(lastRetentionCleanupPreview?.local?.loadMonitorEvents || 0);
+  if (!total) {
+    setDataToolsMessage("No eligible retention cleanup items found.");
+    return;
+  }
+  if (!requireTypedAdminConfirmation({
+    phrase: "CLEAN RETENTION DATA",
+    title: "Run retention cleanup?",
+    detail: "This deletes old notification events, stale push subscriptions, old local Test Lab reports, and old local load-monitor entries only. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history."
+  })) return;
+
+  if (els.runRetentionCleanup) els.runRetentionCleanup.disabled = true;
+  try {
+    const local = applyLocalRetentionCleanup();
+    let cloud = { ledger_events: 0, stale_push_subscriptions: 0 };
+    if (supabaseClient && currentSession && canManageSettings()) {
+      recordSupabaseLoadEvent("retention-cleanup", "run retention cleanup");
+      const { data, error } = await supabaseClient.rpc("run_retention_cleanup", {
+        target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
+        event_retention_days: retentionPolicy.ledgerEventDays,
+        stale_push_days: retentionPolicy.stalePushSubscriptionDays
+      });
+      if (error) throw error;
+      cloud = data || cloud;
+    }
+    writeLocalState();
+    render();
+    lastRetentionCleanupPreview = await fetchRetentionCleanupPreview();
+    renderRetentionCleanupSummary(lastRetentionCleanupPreview);
+    setDataToolsMessage(`Retention cleanup complete: removed ${Number(cloud.ledger_events || 0)} old event(s), ${Number(cloud.stale_push_subscriptions || 0)} stale push subscription(s), ${local.testLabReports} local Test Lab report(s), and ${local.loadMonitorEvents} local load-monitor event(s).`);
+  } catch (error) {
+    setDataToolsMessage(`Retention cleanup failed: ${error.message || error}`);
+  } finally {
+    if (els.runRetentionCleanup) els.runRetentionCleanup.disabled = false;
+  }
 }
 
 function scheduleNormalizedTableCheck({ delayMs = 30000, reason = "scheduled" } = {}) {
@@ -3733,6 +3919,7 @@ function render() {
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
   renderSupabaseLoadMonitor();
+  renderRetentionCleanupSummary();
   renderTestLabReport(null, { persist: false });
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());

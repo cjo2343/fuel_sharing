@@ -53,3 +53,8 @@ Recommended manual process:
 - Do not use Security Health probes that call `close_settlement_period`; use `fuel_ledger_healthcheck`.
 - Keep broad Supabase table Realtime off. Realtime should use the narrow `ledger_events` stream only.
 - Reminder RPCs are for the backend service role only and should not be executable by `anon` or `authenticated`.
+
+
+### Data retention/privacy cleanup
+
+Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.

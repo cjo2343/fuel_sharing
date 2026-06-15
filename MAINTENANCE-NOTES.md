@@ -486,3 +486,8 @@ Normal Supabase saves now synchronize normalized tables first and defer the larg
 - Cloud-touching Security Health is separated from routine Test Lab and protected by typed confirmation plus a cooldown.
 - Advanced stress/debug tools are hidden behind an explicit admin unlock and require typed confirmation before running.
 - Generated data cleanup requires typed confirmation to reduce accidental destructive actions.
+
+
+### Data retention/privacy cleanup
+
+Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.

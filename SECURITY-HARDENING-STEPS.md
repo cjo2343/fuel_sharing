@@ -90,3 +90,8 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 ## Completed: reducing full-state JSON writes
 
 The app now treats normalized Supabase tables as the primary write path and keeps the full JSON state mirror as a periodic/manual safety backup. This reduces write volume, event noise, and the chance of sync feedback loops while preserving recovery/export fallback behavior.
+
+
+### Data retention/privacy cleanup
+
+Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.
