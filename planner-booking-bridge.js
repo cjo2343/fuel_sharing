@@ -32,7 +32,8 @@
       bookingEnd: booking.end || null,
       plannedDistanceKm: Number(booking.plannedDistanceKm || extractEstimatedDistanceFromText(booking.purpose || "") || 0),
       member: booking.member || "",
-      purpose: booking.purpose || ""
+      purpose: booking.purpose || "",
+      plannedParticipants: plannedTripParticipantsFromBooking(booking)
     };
   }
 

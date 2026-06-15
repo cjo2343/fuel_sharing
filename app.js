@@ -813,7 +813,8 @@ els.tripForm.addEventListener("submit", async (event) => {
   const start = Number(els.startKm.value);
   const end = Number(els.endKm.value);
   ensureSelectedTripDriverParticipant();
-  const participants = getSelectedParticipants();
+  const activeTripBookingContext = getActiveTripLogContext() || getTripFormBookingContextDataset();
+  const participants = getSelectedTripParticipantsForSubmit(activeTripBookingContext);
 
   if (!validateTripOdometerChronology(start, end)) return;
 
@@ -826,7 +827,6 @@ els.tripForm.addEventListener("submit", async (event) => {
 
   const tripId = editingTripId || crypto.randomUUID();
   const existingTrip = editingTripId ? state.trips.find((trip) => trip.id === editingTripId) : null;
-  const activeTripBookingContext = getActiveTripLogContext() || getTripFormBookingContextDataset();
   const tripPayload = {
     id: tripId,
     logRef: existingTrip?.logRef || activeTripBookingContext?.logRef || createLogRef(tripId),
@@ -9610,10 +9610,8 @@ function startTripFromBooking(id) {
   renderTripBookingContext();
   updateEditUi();
   setActiveView("log");
-  const tripParticipants = new Set(PlannerBookingBridge.plannedTripParticipantsFromBooking(booking));
-  for (const input of els.tripParticipants.querySelectorAll("input")) {
-    input.checked = tripParticipants.has(input.value);
-  }
+  const tripParticipants = PlannerBookingBridge.plannedTripParticipantsFromBooking(booking);
+  TripActions.setCheckboxSelection(els.tripParticipants, tripParticipants);
   setTimeout(() => {
     els.tripForm.scrollIntoView({ behavior: "smooth", block: "start" });
     els.endKm.focus();
@@ -10737,12 +10735,14 @@ function setTripFormBookingContextDataset(context) {
     delete els.tripForm.dataset.sourceBookingLogRef;
     delete els.tripForm.dataset.sourceBookingStart;
     delete els.tripForm.dataset.sourceBookingEnd;
+    delete els.tripForm.dataset.sourceBookingParticipants;
     return;
   }
   els.tripForm.dataset.sourceBookingId = context.bookingId || "";
   els.tripForm.dataset.sourceBookingLogRef = context.logRef || "";
   els.tripForm.dataset.sourceBookingStart = context.bookingStart || "";
   els.tripForm.dataset.sourceBookingEnd = context.bookingEnd || "";
+  els.tripForm.dataset.sourceBookingParticipants = JSON.stringify(normalizeBookingTripParticipants(context.plannedParticipants || []));
 }
 
 function getTripFormBookingContextDataset() {
@@ -10751,8 +10751,42 @@ function getTripFormBookingContextDataset() {
     bookingId: els.tripForm.dataset.sourceBookingId,
     logRef: els.tripForm.dataset.sourceBookingLogRef || "",
     bookingStart: els.tripForm.dataset.sourceBookingStart || null,
-    bookingEnd: els.tripForm.dataset.sourceBookingEnd || null
+    bookingEnd: els.tripForm.dataset.sourceBookingEnd || null,
+    plannedParticipants: parseTripFormBookingParticipantsDataset()
   };
+}
+
+function parseTripFormBookingParticipantsDataset() {
+  if (!els.tripForm?.dataset?.sourceBookingParticipants) return [];
+  try {
+    const parsed = JSON.parse(els.tripForm.dataset.sourceBookingParticipants);
+    return normalizeBookingTripParticipants(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBookingTripParticipants(participants = []) {
+  return TripActions.normalizeTripParticipantSelection(getMemberNames(), participants, []);
+}
+
+function getSelectedTripParticipantsForSubmit(context = null) {
+  const selected = getSelectedParticipants();
+  const planned = normalizeBookingTripParticipants(context?.plannedParticipants || []);
+  if (!planned.length) return selected;
+
+  const members = getMemberNames();
+  const selectedSet = new Set(selected);
+  const plannedSet = new Set(planned);
+  const selectedAllMembers = members.length > planned.length
+    && selected.length === members.length
+    && members.every((member) => selectedSet.has(member));
+  const plannedDiffersFromAllMembers = members.some((member) => !plannedSet.has(member));
+
+  // If a booking-planned trip form is re-rendered back to the default all-member
+  // checkbox state before submit, keep the booking estimate's participant list.
+  if (selectedAllMembers && plannedDiffersFromAllMembers) return planned;
+  return selected;
 }
 
 function clearTripLoggingContext() {

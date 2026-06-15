@@ -186,6 +186,20 @@ function testLocalTripSubmitFlushesServerState() {
 }
 
 
+
+function testBookingPlannedParticipantsSurviveTripSubmit() {
+  const app = readFileSync("app.js", "utf8");
+  const bridge = readFileSync("planner-booking-bridge.js", "utf8");
+  assert.match(bridge, /plannedParticipants: plannedTripParticipantsFromBooking\(booking\)/);
+  assert.match(app, /function getSelectedTripParticipantsForSubmit\(context = null\)/);
+  assert.match(app, /parseTripFormBookingParticipantsDataset\(\)/);
+  assert.match(app, /sourceBookingParticipants/);
+  assert.match(app, /selectedAllMembers && plannedDiffersFromAllMembers/);
+  assert.match(app, /TripActions\.setCheckboxSelection\(els\.tripParticipants, tripParticipants\)/);
+  assert.match(app, /const participants = getSelectedTripParticipantsForSubmit\(activeTripBookingContext\)/);
+  console.log("ok - testBookingPlannedParticipantsSurviveTripSubmit");
+}
+
 function testSupabaseLoadTimeoutGuardExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /let supabaseLoadStartedAt = 0/);
@@ -411,6 +425,7 @@ testAdminTestLabProtectionsExist();
 testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
 testLocalTripSubmitFlushesServerState();
+testBookingPlannedParticipantsSurviveTripSubmit();
 testSupabaseLoadTimeoutGuardExists();
 testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
