@@ -439,7 +439,7 @@ This rule applies to `app.js`, helper modules, CSS, icons, `index.html`, `manife
 
 ### Test Lab scenario matrix
 
-The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.
+The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Cloud-saved reports are stored in the normalized `test_lab_reports` history table as immutable rows. The legacy JSON report list is retained only as a local/fallback view.
 
 
 ### Sync clarity update
@@ -493,8 +493,15 @@ Normal Supabase saves now synchronize normalized tables first and defer the larg
 Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.
 
 
-### Immutable Test Lab report history (2026-06-15)
+## 2026-06-15 - Production hardening consolidation baseline
 
-- Cloud-saved Test Lab/Security Health reports are now inserted as immutable normalized history rows.
-- The report store no longer relies on a unique `(ledger_id, report_id)` upsert, so a fresh cloud save cannot overwrite the previous saved report row.
-- Apply `supabase/migrations/019_immutable_test_lab_report_history.sql` before relying on report history for audit/review.
+Final known-good baseline after the security/performance/reporting work:
+
+- Runtime baseline: `2026.06.15.97` / `fuel-ledger-v196` / `immutable-test-lab-report-history`.
+- Apply migrations through `019_immutable_test_lab_report_history.sql`.
+- Security Health is expected to be green with all critical RPCs installed.
+- Realtime publication is intentionally narrow: only `public.ledger_events` should be published. If `public.car_share_ledgers` reappears in `supabase_realtime`, run/check migration `018_realtime_publication_cleanup.sql`.
+- The normalized report store is the source of cloud-saved Test Lab/Security Health history. `test_lab_reports` should append immutable rows; matching `created_at` and `synced_at` on new saves confirms this.
+- If Admin cards show `Not checked yet` after running Security Health, verify the deployed app is at least build `admin-diagnostics-health-propagation` / cache `fuel-ledger-v194`; newer builds include the formatter fix and immutable report history.
+
+Operational watch item: after normal use, inspect Supabase Query Performance. `realtime.list_changes` should be materially lower than the earlier broad-publication baseline where it dominated query time.

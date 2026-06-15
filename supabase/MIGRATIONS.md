@@ -63,10 +63,3 @@ Admins can preview and run retention cleanup from Admin -> Data retention & priv
 
 Narrows the Supabase Realtime publication to the lightweight `public.ledger_events` table by removing the broad legacy `public.car_share_ledgers` table when it is present. The migration is defensive: it only runs when the `supabase_realtime` publication exists, only drops `car_share_ledgers` if published, and ensures `ledger_events` remains published.
 
-
-
-### Immutable Test Lab report history (2026-06-15)
-
-- Cloud-saved Test Lab/Security Health reports are now inserted as immutable normalized history rows.
-- The report store no longer relies on a unique `(ledger_id, report_id)` upsert, so a fresh cloud save cannot overwrite the previous saved report row.
-- Apply `supabase/migrations/019_immutable_test_lab_report_history.sql` before relying on report history for audit/review.

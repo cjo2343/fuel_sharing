@@ -97,8 +97,19 @@ The app now treats normalized Supabase tables as the primary write path and keep
 Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.
 
 
-### Immutable Test Lab report history (2026-06-15)
+## 2026-06-15 final hardening state
 
-- Cloud-saved Test Lab/Security Health reports are now inserted as immutable normalized history rows.
-- The report store no longer relies on a unique `(ledger_id, report_id)` upsert, so a fresh cloud save cannot overwrite the previous saved report row.
-- Apply `supabase/migrations/019_immutable_test_lab_report_history.sql` before relying on report history for audit/review.
+The current target state is:
+
+- Normalized tables are the primary write/read path for trips, bookings, fuel payments, members, settlements, and report history.
+- Critical write/admin actions are protected by RPCs and surfaced through `fuel_ledger_healthcheck('main-car')`.
+- Supabase Realtime is narrowed to `public.ledger_events` only. The broad JSON table `public.car_share_ledgers` remains as backup/fallback storage but should not be in the Realtime publication.
+- Cloud-saved Test Lab/Security Health reports are immutable rows in `public.test_lab_reports`; old saved reports are historical audit records and should not be treated as current health.
+
+Use this SQL as the quick health gate:
+
+```sql
+select public.fuel_ledger_healthcheck('main-car');
+```
+
+The result should have `ok: true`, all values under `critical_rpcs` set to `true`, and `realtime_publication.extra_tables` as an empty array.

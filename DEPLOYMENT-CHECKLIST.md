@@ -417,7 +417,7 @@ Before deploying this build to Render, set `FUEL_LEDGER_API_SECRET` to a separat
 
 ### Test Lab scenario matrix
 
-The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Reports are saved to shared ledger state and capped to the latest five reports.
+The Test Lab now includes a scenario matrix for ledger invariants, payment lifecycle checks, permission boundaries, backup/import validation, location privacy, booking edge checks, synced report storage, and runtime/PWA metadata. Cloud-saved reports are stored in the normalized `test_lab_reports` history table as immutable rows. The legacy JSON report list is retained only as a local/fallback view.
 
 
 ### Sync clarity update
@@ -456,8 +456,17 @@ After deployment, make one small trip/fuel/booking edit and verify the Supabase 
 Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.
 
 
-### Immutable Test Lab report history (2026-06-15)
+## Final hardening baseline deploy verification
 
-- Cloud-saved Test Lab/Security Health reports are now inserted as immutable normalized history rows.
-- The report store no longer relies on a unique `(ledger_id, report_id)` upsert, so a fresh cloud save cannot overwrite the previous saved report row.
-- Apply `supabase/migrations/019_immutable_test_lab_report_history.sql` before relying on report history for audit/review.
+After applying migrations through `019_immutable_test_lab_report_history.sql` and deploying the current app files, verify:
+
+1. About/Admin build metadata shows `2026.06.15.97`, build `immutable-test-lab-report-history`, cache `fuel-ledger-v196` or newer.
+2. Admin -> Security Health passes with no failed checks.
+3. Admin diagnostics show RPC availability healthy and Realtime publication narrow.
+4. SQL `select public.fuel_ledger_healthcheck('main-car');` returns `ok: true`, all `critical_rpcs` values `true`, and `realtime_publication.extra_tables: []`.
+5. Supabase Realtime publication includes only `public.ledger_events`.
+6. Saving a Security Health/Test Lab report to cloud creates a new `public.test_lab_reports` row instead of updating the previous row.
+7. Historical saved reports are collapsed/marked historical and do not replace the latest live run in the Admin panel.
+8. `npm run validate`, `npm run test:e2e`, and `npm run release:check` pass before pushing.
+
+Post-deploy performance check: after 15-30 minutes of normal use, review Supabase Top Queries and compare `realtime.list_changes` against the pre-cleanup baseline.
