@@ -236,6 +236,11 @@ function testTestLabReportStoreExists() {
   assert.match(app, /function loadCloudTestLabReports\(\{ force = false, reason = "load normalized Test Lab report history" \} = \{\}\)/);
   assert.match(app, /testLabReportLoadCooldownMs: 10 \* 1000/);
   assert.match(app, /test-lab-report-local-merge/);
+  assert.match(app, /function isHistoricalTestLabReport\(report\)/);
+  assert.match(app, /markHistoricalTestLabReport/);
+  assert.match(app, /mergeTestLabReportsIntoState\(reports, \{ promote: !lastTestLabReport \}\)/);
+  assert.match(app, /Historical saved report/);
+  assert.match(app, /Historical saved report was not re-saved/);
   assert.match(app, /from\("test_lab_reports"\)/);
   console.log("ok - testTestLabReportStoreExists");
 }

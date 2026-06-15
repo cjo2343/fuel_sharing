@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.92",
-    buildLabel: "test-lab-report-load-optimization",
-    updatedAt: "2026-06-15T19:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v191",
+    version: "2026.06.15.93",
+    buildLabel: "stale-report-guard",
+    updatedAt: "2026-06-15T20:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v192",
     releaseNotes: Object.freeze([
-      "Test Lab report cloud saves now merge locally after the RPC save instead of reloading report history immediately.",
-      "Normalized Test Lab report history loads are debounced to reduce repeated Admin load-monitor activity.",
-      "Report-history activity is tracked separately from broad ledger reload pressure.",
-      "Realtime publication health diagnostics remain active."
+      "Saved cloud Test Lab reports are clearly marked as historical when shown in Admin.",
+      "Fresh Security Health/Test Lab runs stay visible instead of being replaced by cloud report-history reloads.",
+      "Saving a historical report is blocked; run a fresh check before saving to cloud.",
+      "Realtime publication cleanup keeps only the lightweight ledger_events stream published."
     ])
   });
 

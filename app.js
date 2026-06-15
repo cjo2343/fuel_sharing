@@ -2750,7 +2750,30 @@ function isMissingTestLabReportStoreError(error) {
   return code === "PGRST202" || /test_lab_reports|upsert_test_lab_report/i.test(message) && /not found|schema cache|could not find|does not exist|relation/i.test(message);
 }
 
-function mergeTestLabReportsIntoState(reports = []) {
+function isHistoricalTestLabReport(report) {
+  return Boolean(report?.historicalReport || report?.reportSource === "cloud-history");
+}
+
+function markHistoricalTestLabReport(report, reason = "Loaded from saved cloud report history.") {
+  if (!report || typeof report !== "object") return report;
+  return {
+    ...report,
+    historicalReport: true,
+    historicalReportReason: report.historicalReportReason || reason,
+    reportSource: report.reportSource || "cloud-history"
+  };
+}
+
+function markCurrentTestLabReport(report, source = "current-run") {
+  if (!report || typeof report !== "object") return report;
+  const { historicalReport, historicalReportReason, ...rest } = report;
+  return {
+    ...rest,
+    reportSource: source
+  };
+}
+
+function mergeTestLabReportsIntoState(reports = [], { promote = true } = {}) {
   const existing = normalizeTestLabReports(state.testLabReports);
   const mergedById = new Map();
   [...reports, ...existing].forEach((report) => {
@@ -2760,7 +2783,9 @@ function mergeTestLabReportsIntoState(reports = []) {
     mergedById.set(normalized.id, normalized);
   });
   state.testLabReports = normalizeTestLabReports([...mergedById.values()]);
-  lastTestLabReport = state.testLabReports[0] || lastTestLabReport;
+  if (promote || !lastTestLabReport) {
+    lastTestLabReport = state.testLabReports[0] || lastTestLabReport;
+  }
   return state.testLabReports;
 }
 
@@ -2786,11 +2811,11 @@ async function loadCloudTestLabReports({ force = false, reason = "load normalize
       .order("synced_at", { ascending: false })
       .limit(5);
     if (error) throw error;
-    const reports = (data || []).map((row) => ({
+    const reports = (data || []).map((row) => markHistoricalTestLabReport({
       ...(row.report_payload || {}),
       syncedAt: row.report_payload?.syncedAt || row.synced_at
     }));
-    mergeTestLabReportsIntoState(reports);
+    mergeTestLabReportsIntoState(reports, { promote: !lastTestLabReport });
     writeLocalState();
     return true;
   } catch (error) {
@@ -2821,7 +2846,7 @@ async function saveTestLabReportToCloudStore(report) {
     report_payload_value: storedReport
   });
   if (!error) {
-    mergeTestLabReportsIntoState([storedReport]);
+    mergeTestLabReportsIntoState([markCurrentTestLabReport(storedReport, "cloud-save")]);
     writeLocalState();
     recordSupabaseLoadEvent("test-lab-report-local-merge", "merged saved Test Lab report locally without reloading report history");
     return true;
@@ -2833,11 +2858,11 @@ async function saveTestLabReportToCloudStore(report) {
 function persistTestLabReport(report, { sync = false } = {}) {
   if (!report || typeof report !== "object") return null;
   const reportToStore = sync ? redactSensitiveDiagnostics(report) : report;
-  const enriched = {
+  const enriched = markCurrentTestLabReport({
     ...reportToStore,
     createdBy: reportToStore.createdBy || describeCurrentActor(),
     syncedAt: new Date().toISOString()
-  };
+  }, sync ? "cloud-save" : "local-run");
   mergeTestLabReportsIntoState([enriched]);
   if (sync || testLabCloudReportOptIn) saveTestLabReportState(enriched);
   return lastTestLabReport;
@@ -2873,6 +2898,11 @@ async function saveCurrentTestLabReportToCloud() {
   const report = getCurrentTestLabReport();
   if (!report) {
     showUserWarning("Run or export a Test Lab report before saving it to cloud.");
+    return;
+  }
+  if (isHistoricalTestLabReport(report)) {
+    showUserWarning("This is a historical saved report. Run Security health or Test Lab again before saving a fresh cloud report.");
+    setDataToolsMessage("Historical saved report was not re-saved. Run a fresh check, then save the new report to cloud.");
     return;
   }
   if (!requireTypedAdminConfirmation({
@@ -3045,7 +3075,18 @@ function renderTestLabReport(report = null, { persist = false } = {}) {
     els.testLabReport.innerHTML = `<p class="entry-meta">No Test Lab report yet. Routine Test Lab reports stay local. Run a check, export it, or manually save the report to cloud.</p>`;
     return;
   }
-  els.testLabReport.innerHTML = testLab.renderReportHtml(lastTestLabReport);
+  const buildInfo = window.FUEL_LEDGER_BUILD || {};
+  const reportBuild = lastTestLabReport.buildInfo || {};
+  const buildMismatch = reportBuild.expectedServiceWorkerCache && buildInfo.expectedServiceWorkerCache
+    && reportBuild.expectedServiceWorkerCache !== buildInfo.expectedServiceWorkerCache;
+  const historical = isHistoricalTestLabReport(lastTestLabReport);
+  const banner = historical || buildMismatch
+    ? `<div class="test-lab-stale-report-banner">
+        <strong>Historical saved report</strong>
+        <span>${escapeHtml(lastTestLabReport.historicalReportReason || "This report was loaded from saved cloud report history. Run Security health again to replace it with a fresh result.")}${buildMismatch ? ` Current build expects ${escapeHtml(buildInfo.expectedServiceWorkerCache)}; this report used ${escapeHtml(reportBuild.expectedServiceWorkerCache)}.` : ""}</span>
+      </div>`
+    : "";
+  els.testLabReport.innerHTML = `${banner}${testLab.renderReportHtml(lastTestLabReport)}`;
 }
 
 function highlightVisibleEntryCard(type, id, missingMessage) {

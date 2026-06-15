@@ -4314,6 +4314,26 @@ body.auth-locked #authPanel .text-button {
   margin-top: 0.75rem;
 }
 
+.test-lab-stale-report-banner {
+  border: 1px dashed rgba(180, 83, 9, 0.45);
+  border-radius: 0.9rem;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--muted);
+  padding: 0.75rem 0.9rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.test-lab-stale-report-banner strong {
+  display: block;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+
+.test-lab-stale-report-banner span {
+  display: block;
+  line-height: 1.35;
+}
+
 .test-lab-report {
   border: 1px solid var(--border);
   border-radius: 1rem;
