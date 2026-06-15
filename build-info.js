@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.107",
-    buildLabel: "auth-refresh-sync-cooldown",
-    updatedAt: "2026-06-16T01:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v206",
+    version: "2026.06.15.108",
+    buildLabel: "background-auth-sync-no-delay",
+    updatedAt: "2026-06-16T02:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v207",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -14,7 +14,8 @@
       "Startup cloud sync now times out cleanly and unlocks manual Sync now retries instead of leaving the app stuck in Syncing.",
       "CSP style rules now use style-src self without unsafe-inline; helper positioning moved to stylesheet classes and header tests block regressions.",
       "Cloud sync timeout recovery now covers manual Sync now, login/auth refresh, focus refresh, member/admin refreshes, and ledger-event auto-sync, and successful loads clear their timeout timer.",
-      "Auth token refresh events now skip redundant forced cloud loads for the same user during a short cooldown, preventing refresh loops from showing false Cloud delayed warnings."
+      "Auth token refresh events now skip redundant forced cloud loads for the same user during a short cooldown, preventing refresh loops from showing false Cloud delayed warnings.",
+      "Background auth refresh syncs no longer overwrite a healthy synced state with Cloud delayed; duplicate signed-in/auth-change events are cooldown-skipped."
     ])
   });
 

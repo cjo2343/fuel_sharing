@@ -326,6 +326,7 @@ const supabaseStartupLoadTimeoutMs = 15000;
 const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
 let lastAuthCloudSyncUserKey = "";
 let lastAuthCloudSyncAt = 0;
+let lastAuthCloudSyncEventAt = 0;
 const supabaseStaleLoadMs = 45000;
 let periodCloseRpcArmUntil = 0;
 let deferredInstallPrompt = null;
@@ -4516,22 +4517,26 @@ async function initializeSupabase() {
       const userKey = String(session.user?.id || session.user?.email || "");
       const now = Date.now();
       const isSameUser = userKey && userKey === lastAuthCloudSyncUserKey;
-      const isRefreshOnly = /token_refreshed|user_updated|session_updated/.test(authEvent);
+      const isRefreshOnly = /token_refreshed|user_updated|session_updated|initial_session/.test(authEvent);
+      const isSignedInEvent = /signed_in/.test(authEvent);
       const isWithinAuthCooldown = now - Number(lastAuthCloudSyncAt || 0) < supabaseAuthRefreshSyncCooldownMs;
-      if (isRefreshOnly && isSameUser && isWithinAuthCooldown) {
+      const isDuplicateAuthEvent = isSameUser && isWithinAuthCooldown && (isRefreshOnly || isSignedInEvent || authEvent === "auth-change");
+      if (isDuplicateAuthEvent) {
         recordSupabaseLoadEvent("auth-sync-skip", `${authEvent} cooldown`);
         return;
       }
       lastAuthCloudSyncUserKey = userKey;
       lastAuthCloudSyncAt = now;
+      lastAuthCloudSyncEventAt = now;
       await loadSupabaseStateWithTimeout(
-        { force: true, reason: `auth-${authEvent}` },
+        { force: true, reason: `auth-${authEvent}`, background: Boolean(lastCloudSyncAt) },
         supabaseStartupLoadTimeoutMs,
         "Cloud sync after sign-in is delayed. Retrying in the background."
       );
     } else {
       lastAuthCloudSyncUserKey = "";
       lastAuthCloudSyncAt = 0;
+      lastAuthCloudSyncEventAt = 0;
       unsubscribeFromLedgerEvents();
       unsubscribeFromSupabaseState();
     }
@@ -4553,15 +4558,27 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   let completed = false;
   let timeoutId = null;
   const reason = String(options?.reason || "cloud-sync");
+  const startedAt = Date.now();
+  const isBackgroundSync = Boolean(options?.background);
+  const shouldShowDelayedStatus = () => {
+    if (!isBackgroundSync) return true;
+    const lastHealthySyncMs = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
+    return !Number.isFinite(lastHealthySyncMs) || lastHealthySyncMs < startedAt;
+  };
   const timeout = new Promise((resolve) => {
     timeoutId = window.setTimeout(() => {
       if (completed) return;
       timedOut = true;
-      lastSyncError = timeoutMessage || "Cloud sync is delayed.";
-      lastCloudRetryAt = new Date().toISOString();
       markSupabaseLoadTimedOut(`${reason}-timeout`);
-      setSyncStatus("Delayed");
-      render();
+      if (shouldShowDelayedStatus()) {
+        lastSyncError = timeoutMessage || "Cloud sync is delayed.";
+        lastCloudRetryAt = new Date().toISOString();
+        setSyncStatus("Delayed");
+        render();
+        recordSupabaseLoadEvent("cloud-sync-delayed-fallback", timeoutMessage || "cloud sync delayed");
+      } else {
+        recordSupabaseLoadEvent("cloud-sync-delayed-background", `${reason} timed out after a healthy sync`);
+      }
       resolve(false);
     }, timeoutMs);
   });
@@ -4575,9 +4592,6 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const result = await Promise.race([load, timeout]);
   completed = true;
   if (timeoutId) window.clearTimeout(timeoutId);
-  if (timedOut) {
-    recordSupabaseLoadEvent("cloud-sync-delayed-fallback", timeoutMessage || "cloud sync delayed");
-  }
   return result;
 }
 
