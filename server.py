@@ -301,10 +301,13 @@ def security_headers():
         "Content-Security-Policy": content_security_policy(),
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()",
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Resource-Policy": "same-origin",
+        "Origin-Agent-Cluster": "?1",
+        "X-Permitted-Cross-Domain-Policies": "none",
     }
 
 def read_request_body(handler):
