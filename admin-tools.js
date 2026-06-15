@@ -113,45 +113,10 @@
       dry_run: Boolean(dryRun)
     });
     if (!rpcResult.error) return normalizePurgeSummary(rpcResult.data, dryRun);
-    if (!isMissingTestRowPurgeRpcError(rpcResult.error)) throw rpcResult.error;
-
-    console.warn("Generated test row purge RPC is unavailable; falling back to guarded client-side cleanup. Apply the latest Supabase schema to enforce this cleanup server-side.", rpcResult.error);
-
-    const [tripsResult, fuelResult] = await Promise.all([
-      supabaseClient
-        .from("trips")
-        .select("id,legacy_id,note,deleted_at")
-        .eq("ledger_id", ledgerId)
-        .not("deleted_at", "is", null),
-      supabaseClient
-        .from("fuel_payments")
-        .select("id,legacy_id,station_name,deleted_at")
-        .eq("ledger_id", ledgerId)
-        .not("deleted_at", "is", null)
-    ]);
-
-    const firstError = [tripsResult, fuelResult].find((result) => result.error)?.error;
-    if (firstError) throw firstError;
-
-    const tripIds = (tripsResult.data || []).filter(isGeneratedSoftDeletedTripRow).map((row) => row.id);
-    const fuelIds = (fuelResult.data || []).filter(isGeneratedSoftDeletedFuelRow).map((row) => row.id);
-
-    const summary = { trips: tripIds.length, fuel: fuelIds.length, total: tripIds.length + fuelIds.length, dryRun: Boolean(dryRun) };
-    if (dryRun || summary.total === 0) return summary;
-
-    if (tripIds.length) {
-      const deleteParticipants = await supabaseClient.from("trip_participants").delete().in("trip_id", tripIds);
-      if (deleteParticipants.error) throw deleteParticipants.error;
-      const deleteTrips = await supabaseClient.from("trips").delete().in("id", tripIds).eq("ledger_id", ledgerId);
-      if (deleteTrips.error) throw deleteTrips.error;
+    if (isMissingTestRowPurgeRpcError(rpcResult.error)) {
+      throw new Error("Required purge_generated_test_rows RPC is missing. Apply the latest Supabase schema before purging generated test rows in production.");
     }
-
-    if (fuelIds.length) {
-      const deleteFuel = await supabaseClient.from("fuel_payments").delete().in("id", fuelIds).eq("ledger_id", ledgerId);
-      if (deleteFuel.error) throw deleteFuel.error;
-    }
-
-    return summary;
+    throw rpcResult.error;
   }
 
   async function refreshDatabaseDiagnostics() {

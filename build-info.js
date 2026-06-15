@@ -1,16 +1,16 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.97",
-    buildLabel: "immutable-test-lab-report-history",
-    updatedAt: "2026-06-15T21:15:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v196",
+    version: "2026.06.15.98",
+    buildLabel: "production-admin-hardening",
+    updatedAt: "2026-06-15T22:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v197",
     releaseNotes: Object.freeze([
-      "Cloud-saved Test Lab reports are stored as immutable history rows instead of overwriting the previous saved report.",
-      "Each report cloud save gets a unique report id while preserving the source report id for traceability.",
-      "Admin diagnostics cards update immediately after live Security Health completes.",
-      "Historical saved Test Lab reports stay collapsed so stale failures do not look current.",
-      "Realtime publication cleanup keeps only the lightweight ledger_events stream published."
+      "Member management now fails closed when required admin RPCs are missing instead of using direct table fallbacks.",
+      "Generated test row purges require the server-side purge RPC in production.",
+      "Advanced admin tools unlock only for the current tab and automatically relock after 15 minutes.",
+      "Supabase browser client CDN URL is pinned to an exact v2 release instead of floating on @2.",
+      "RPC availability diagnostics now direct admins to apply the latest schema before using production write/admin tools."
     ])
   });
 

@@ -16,7 +16,6 @@ const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
-const advancedAdminToolsKey = "fuel-ledger-advanced-admin-tools-unlocked";
 const securityHealthCooldownMs = 2 * 60 * 1000;
 const generatedTestPrefix = "auto-test-";
 const generatedTestMarker = "[AUTO TEST]";
@@ -30,7 +29,9 @@ const auditLog = window.FuelAuditLog;
 const testLab = window.FuelTestLab;
 const securityHealth = window.FuelSecurityHealth;
 let lastTestLabReport = null;
-let advancedAdminToolsUnlocked = localStorage.getItem(advancedAdminToolsKey) === "true";
+let advancedAdminToolsUnlocked = false;
+let advancedAdminToolsRelockTimer = null;
+const advancedAdminToolsUnlockTtlMs = 15 * 60 * 1000;
 let lastStandaloneSecurityHealthAt = 0;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 let auditLogDirty = false;
@@ -1517,11 +1518,22 @@ function redactTestLabReportForCloud(value) {
   return redactSensitiveDiagnostics(value);
 }
 
+function scheduleAdvancedAdminToolsRelock() {
+  if (advancedAdminToolsRelockTimer) window.clearTimeout(advancedAdminToolsRelockTimer);
+  if (!advancedAdminToolsUnlocked) return;
+  advancedAdminToolsRelockTimer = window.setTimeout(() => {
+    advancedAdminToolsUnlocked = false;
+    advancedAdminToolsRelockTimer = null;
+    updateAdvancedAdminToolsUi();
+    setDataToolsMessage("Advanced admin tools locked automatically after 15 minutes.");
+  }, advancedAdminToolsUnlockTtlMs);
+}
+
 function updateAdvancedAdminToolsUi() {
   if (els.advancedAdminToolsPanel) els.advancedAdminToolsPanel.classList.toggle("hidden", !advancedAdminToolsUnlocked);
   if (els.advancedAdminToolsStatus) {
     els.advancedAdminToolsStatus.textContent = advancedAdminToolsUnlocked
-      ? "Advanced stress tools unlocked for this browser session. Use only when diagnosing sync behavior."
+      ? "Advanced stress tools unlocked for this tab for 15 minutes. Use only when diagnosing sync behavior."
       : "Advanced stress tools are locked.";
   }
   if (els.unlockAdvancedAdminTools) {
@@ -1541,7 +1553,8 @@ els.unlockAdvancedAdminTools?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   if (advancedAdminToolsUnlocked) {
     advancedAdminToolsUnlocked = false;
-    localStorage.removeItem(advancedAdminToolsKey);
+    if (advancedAdminToolsRelockTimer) window.clearTimeout(advancedAdminToolsRelockTimer);
+    advancedAdminToolsRelockTimer = null;
     updateAdvancedAdminToolsUi();
     setDataToolsMessage("Advanced admin tools locked.");
     return;
@@ -1555,9 +1568,9 @@ els.unlockAdvancedAdminTools?.addEventListener("click", () => {
     return;
   }
   advancedAdminToolsUnlocked = true;
-  localStorage.setItem(advancedAdminToolsKey, "true");
+  scheduleAdvancedAdminToolsRelock();
   updateAdvancedAdminToolsUi();
-  setDataToolsMessage("Advanced admin tools unlocked for this browser.");
+  setDataToolsMessage("Advanced admin tools unlocked for this tab for 15 minutes.");
 });
 
 els.runStressTest?.addEventListener("click", async () => {
@@ -2377,7 +2390,7 @@ function getRpcAvailabilityDiagnostics() {
     return {
       status: healthcheck.ok ? "Legacy healthcheck passed" : "Needs review",
       detail: healthcheck?.ok
-        ? "Apply the RPC health visibility migration to show all critical RPCs before removing direct-table fallbacks."
+        ? "Apply the RPC health visibility migration to show all critical RPCs before relying on production write/admin tools."
         : (healthcheck?.detail || "Security Health reported an RPC issue."),
       level: "warning"
     };
@@ -2388,7 +2401,7 @@ function getRpcAvailabilityDiagnostics() {
   if (missing.length) {
     return {
       status: `${missing.length} RPC${missing.length === 1 ? "" : "s"} missing`,
-      detail: `Missing: ${missing.join(", ")}. Keep migration-safe table fallbacks enabled until this is resolved.`,
+      detail: `Missing: ${missing.join(", ")}. Apply the latest Supabase schema before using production write/admin tools.`,
       level: "warning"
     };
   }
@@ -9853,25 +9866,11 @@ async function saveManagedMember(row) {
 
   const result = await upsertManagedMemberRpc({ ...payload, is_active: existing?.is_active !== false });
   if (!result.ok) {
-    if (!result.shouldFallback) {
-      showUserError(`Could not save member: ${result.error?.message || result.error}`);
-      return;
-    }
-    console.warn("Member management RPC is unavailable; falling back to direct table update. Apply the latest Supabase schema to enable server-side member guardrails.", result.error);
-    const { error } = await supabaseClient
-      .from("ledger_members")
-      .update({
-        name: payload.name,
-        email: payload.email,
-        mobilepay_phone: payload.mobilepay_phone,
-        role: payload.role,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", payload.id);
-    if (error) {
-      showUserError(`Could not save member: ${error.message || error}`);
-      return;
-    }
+    const detail = result.shouldFallback
+      ? "Required member-management RPC is missing. Apply the latest Supabase schema before editing members in production."
+      : (result.error?.message || result.error);
+    showUserError(`Could not save member: ${detail}`);
+    return;
   }
   await afterMemberManagementChange(`${payload.name} saved as ${memberRoleLabel(payload.role)}.`);
 }
@@ -9884,19 +9883,11 @@ async function setManagedMemberActive(row, isActive) {
 
   const result = await setManagedMemberActiveRpc(payload.id, isActive);
   if (!result.ok) {
-    if (!result.shouldFallback) {
-      showUserError(`Could not update member: ${result.error?.message || result.error}`);
-      return;
-    }
-    console.warn("Member activation RPC is unavailable; falling back to direct table update. Apply the latest Supabase schema to enable server-side member guardrails.", result.error);
-    const { error } = await supabaseClient
-      .from("ledger_members")
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
-      .eq("id", payload.id);
-    if (error) {
-      showUserError(`Could not update member: ${error.message || error}`);
-      return;
-    }
+    const detail = result.shouldFallback
+      ? "Required member-activation RPC is missing. Apply the latest Supabase schema before changing member access in production."
+      : (result.error?.message || result.error);
+    showUserError(`Could not update member: ${detail}`);
+    return;
   }
   await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
 }
@@ -9924,27 +9915,11 @@ async function addManagedMember() {
     is_active: true
   });
   if (!result.ok) {
-    if (!result.shouldFallback) {
-      showUserError(`Could not add member: ${result.error?.message || result.error}`);
-      return;
-    }
-    console.warn("Member management RPC is unavailable; falling back to direct table upsert. Apply the latest Supabase schema to enable server-side member guardrails.", result.error);
-    const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-    const { error } = await supabaseClient
-      .from("ledger_members")
-      .upsert({
-        ledger_id: ledgerId,
-        name,
-        email,
-        mobilepay_phone: mobilepayPhone || null,
-        role,
-        is_active: true,
-        updated_at: new Date().toISOString()
-      }, { onConflict: "ledger_id,name" });
-    if (error) {
-      showUserError(`Could not add member: ${error.message || error}`);
-      return;
-    }
+    const detail = result.shouldFallback
+      ? "Required member-management RPC is missing. Apply the latest Supabase schema before adding members in production."
+      : (result.error?.message || result.error);
+    showUserError(`Could not add member: ${detail}`);
+    return;
   }
   if (els.newMemberName) els.newMemberName.value = "";
   if (els.newMemberEmail) els.newMemberEmail.value = "";
