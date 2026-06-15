@@ -27,6 +27,7 @@ const expected = [
   "015_test_lab_report_store.sql",
   "016_realtime_publication_health.sql",
   "017_healthcheck_rpc_detection_fix.sql",
+  "018_realtime_publication_cleanup.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -76,6 +77,8 @@ for (const marker of [
   "from pg_proc p",
   "p.proname = rpc_name",
   "push_subscription_scope",
+  "alter publication supabase_realtime drop table public.car_share_ledgers",
+  "alter publication supabase_realtime add table public.ledger_events",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

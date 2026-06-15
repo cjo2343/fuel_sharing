@@ -260,6 +260,8 @@ function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /critical_rpc_names\(rpc_name\) as/);
   assert.match(schema, /from pg_proc p\s+join pg_namespace n on n\.oid = p\.pronamespace/);
   assert.match(schema, /p\.proname = rpc_name/);
+  assert.match(schema, /alter publication supabase_realtime drop table public\.car_share_ledgers/);
+  assert.match(schema, /alter publication supabase_realtime add table public\.ledger_events/);
   assert.match(schema, /grant execute on function public\.fuel_ledger_healthcheck\(text\) to authenticated/);
   console.log("ok - testFuelLedgerHealthcheckExists");
 }

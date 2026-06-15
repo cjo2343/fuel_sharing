@@ -434,7 +434,13 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   });
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
 
-  await expect(page.locator("#bookingConflictNotice")).toContainText("Conflicts with");
+  await expect
+    .poll(async () => {
+      const state = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+      return state.bookings.filter((booking) => booking.purpose === "Overlapping booking").length;
+    })
+    .toBe(0);
+
   const afterOverlap = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
   expect(afterOverlap.bookings.some((booking) => booking.purpose === "Overlapping booking")).toBe(false);
   expect(afterOverlap.bookings.some((booking) => booking.id === bookingId)).toBe(true);

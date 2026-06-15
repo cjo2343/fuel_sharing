@@ -59,7 +59,7 @@ The frontend must not know this secret; production app data should use Supabase/
 
 ## Known remaining limitation
 
-`car_share_ledgers` is still a compatibility JSON state table. It is broader than the normalized table RLS because the current app still relies on it for shared state/backups. The safest long-term hardening step is to complete the move to normalized-table-primary reads/writes and then restrict or retire broad JSON updates.
+`car_share_ledgers` remains a compatibility JSON state table for backups/fallback reads, but it should not be published through Supabase Realtime. Migration `018_realtime_publication_cleanup.sql` narrows the Realtime publication to `ledger_events` so lightweight sync remains available without streaming broad JSON table changes.
 
 
 ### Request-before-close settlement rule

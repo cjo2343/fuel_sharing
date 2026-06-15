@@ -58,3 +58,8 @@ Recommended manual process:
 ### Data retention/privacy cleanup
 
 Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.
+
+### 018_realtime_publication_cleanup.sql
+
+Narrows the Supabase Realtime publication to the lightweight `public.ledger_events` table by removing the broad legacy `public.car_share_ledgers` table when it is present. The migration is defensive: it only runs when the `supabase_realtime` publication exists, only drops `car_share_ledgers` if published, and ensures `ledger_events` remains published.
+
