@@ -103,6 +103,19 @@ function testAdminToolsGuardrailRpcsExist() {
   console.log("ok - testAdminToolsGuardrailRpcsExist");
 }
 
+function testJsonWriteReductionGuardrailsExist() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /const auditJsonMirrorBackupIntervalMs = 5 \* 60 \* 1000/);
+  assert.match(app, /let normalizedReconciliationDirty = false/);
+  assert.match(app, /function markNormalizedReconciliationDirty\(reason = "state-change"\)/);
+  assert.match(app, /function shouldRunNormalizedReconciliation\(reason = "saveSupabaseState"\)/);
+  assert.match(app, /normalized-reconciliation-skip/);
+  assert.match(app, /json-mirror-skip/);
+  assert.match(app, /scheduleJsonMirrorBackup/);
+  assert.match(app, /maybeSaveJsonMirrorBackup\(\{\s*minIntervalMs: auditJsonMirrorBackupIntervalMs,/m);
+  console.log("ok - testJsonWriteReductionGuardrailsExist");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -119,4 +132,5 @@ testTripTransactionRpcExists();
 testBookingTransactionRpcsExist();
 testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
+testJsonWriteReductionGuardrailsExist();
 testFuelLedgerHealthcheckExists();

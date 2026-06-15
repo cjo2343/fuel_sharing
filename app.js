@@ -334,6 +334,9 @@ let lastCloudRetryAt = "";
 let pendingLocalChanges = 0;
 let lastLocalSaveAt = "";
 const jsonMirrorBackupIntervalMs = 30 * 60 * 1000;
+const auditJsonMirrorBackupIntervalMs = 5 * 60 * 1000;
+let normalizedReconciliationDirty = false;
+let jsonMirrorBackupTimer = null;
 let normalizedTableStatus = {
   checked: false,
   ok: false,
@@ -1260,9 +1263,15 @@ els.settingsForm.addEventListener("submit", async (event) => {
   }));
   state.fuel = state.fuel.filter((fuel) => state.members.includes(fuel.payer));
 
+  markNormalizedReconciliationDirty("group settings changed");
   saveState();
-  if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
-  await saveRemoteState();
+  if (supabaseClient) {
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    await saveSupabaseState({ reason: "group-settings" });
+  } else {
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    await saveRemoteState();
+  }
   render();
 });
 
@@ -1299,6 +1308,7 @@ els.resetPeriod.addEventListener("click", async () => {
   clearFuelLoggingContext();
   clearCurrentAuditLog();
   showAppMessage(`${resetPeriodLabel} reset. ${resetTripCount} trip${resetTripCount === 1 ? "" : "s"} and ${resetFuelCount} fuel log${resetFuelCount === 1 ? "" : "s"} removed.`);
+  markNormalizedReconciliationDirty("reset current period");
   saveState();
   setDefaultDates();
   render();
@@ -1323,6 +1333,7 @@ els.resetData.addEventListener("click", async () => {
   state = structuredClone(defaults);
   clearTripLoggingContext();
   clearFuelLoggingContext();
+  markNormalizedReconciliationDirty("reset all local data");
   saveState();
   setDefaultDates();
   render();
@@ -1787,6 +1798,7 @@ function addGeneratedTestTrip() {
 
   state.lastOdometer = getLatestOdometer();
   setDataToolsMessage("Added one generated test trip. Triggered save + normalized sync.");
+  markNormalizedReconciliationDirty("generated test trip");
   saveState();
   setDefaultDates();
   render();
@@ -1819,6 +1831,7 @@ function addGeneratedTestFuel() {
   });
 
   setDataToolsMessage("Added one generated test fuel log. Triggered save + normalized sync.");
+  markNormalizedReconciliationDirty("generated test fuel");
   saveState();
   setDefaultDates();
   render();
@@ -1827,6 +1840,7 @@ function addGeneratedTestFuel() {
 function removeGeneratedTestData() {
   const cleanup = cleanupGeneratedTestEntriesFromState();
   setDataToolsMessage(`${cleanup.message} Triggered save + normalized sync.`);
+  markNormalizedReconciliationDirty("remove generated test data");
   saveState();
   setDefaultDates();
   render();
@@ -1900,7 +1914,8 @@ function makeGeneratedTestFuel(index = 0) {
 async function flushStressSave(label) {
   writeLocalState();
   if (supabaseClient && currentSession) {
-    await saveSupabaseState();
+    markNormalizedReconciliationDirty("advanced-stress");
+    await saveSupabaseState({ reason: "advanced-stress" });
     await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "advanced-stress" });
   } else {
     saveState();
@@ -7564,6 +7579,7 @@ A backup of the current state is exported first.`
 
     state = importedState;
     state.lastOdometer = getLatestOdometer();
+    markNormalizedReconciliationDirty("import backup");
     saveState();
     setDefaultDates();
     render();
@@ -8007,6 +8023,7 @@ function removeUnusedTestUsers() {
 
   state.members = state.members.filter((member) => !removable.includes(member));
   for (const member of removable) delete state.memberProfiles[member];
+  markNormalizedReconciliationDirty("remove unused test users");
   if (!state.members.includes(currentUser)) {
     currentUser = getCurrentMemberProfile()?.name || state.members[0] || "";
     localStorage.setItem(userKey, currentUser);
@@ -12358,6 +12375,34 @@ async function loadSupabaseState(options = {}) {
   }
 }
 
+
+function markNormalizedReconciliationDirty(reason = "state-change") {
+  normalizedReconciliationDirty = true;
+  recordSupabaseLoadEvent("normalized-reconciliation-dirty", reason);
+}
+
+function shouldRunNormalizedReconciliation(reason = "saveSupabaseState") {
+  if (!supabaseClient || !currentSession) return false;
+  if (!normalizedReadModeActive) return true;
+  if (normalizedReconciliationDirty) return true;
+  return /member|settings|reset|import|test-lab|generated|reconciliation|bootstrap/i.test(String(reason || ""));
+}
+
+function scheduleJsonMirrorBackup(delayMs = auditJsonMirrorBackupIntervalMs) {
+  if (!supabaseClient || !currentSession || !canManageSettings()) return;
+  if (jsonMirrorBackupTimer) return;
+  jsonMirrorBackupTimer = window.setTimeout(async () => {
+    jsonMirrorBackupTimer = null;
+    if (!auditLogDirty) return;
+    try {
+      const saved = await saveJsonMirrorBackup({ force: true, reason: "deferred audit JSON mirror backup" });
+      if (saved) auditLogDirty = false;
+    } catch (error) {
+      console.warn("Deferred JSON mirror backup failed", error);
+    }
+  }, Math.max(1000, Number(delayMs) || auditJsonMirrorBackupIntervalMs));
+}
+
 async function saveSupabaseState(options = {}) {
   const { reason = "saveSupabaseState" } = options || {};
   recordSupabaseLoadEvent("supabase-save", reason);
@@ -12370,13 +12415,30 @@ async function saveSupabaseState(options = {}) {
     setSyncStatus("Saving");
     ignoreRealtimeUntil = Date.now() + 1500;
 
-    // Phase 2I: normalized tables are primary. Keep them aligned from the
-    // current app state, but do not overwrite the legacy JSON blob on every
-    // save. The JSON mirror is now only a periodic/manual safety snapshot.
-    await syncNormalizedTablesFromJson();
+    // Phase 2AB: normalized row/RPC writes are primary for routine trip, fuel,
+    // booking, and payment changes. Avoid full JSON-to-table reconciliation on
+    // every save; only run it when an admin/settings/import/reset/test-lab path
+    // marked broader state as dirty or when normalized read mode is not active.
+    if (shouldRunNormalizedReconciliation(reason)) {
+      await syncNormalizedTablesFromJson();
+      normalizedReconciliationDirty = false;
+    } else {
+      recordSupabaseLoadEvent("normalized-reconciliation-skip", `table-primary save (${reason})`);
+    }
+
+    // Audit entries still live in the JSON mirror, but a trip+fuel burst should
+    // not upsert the full state twice. Save audit changes on a shorter mirror
+    // cadence and keep a deferred backup armed if the cadence blocks this save.
     if (auditLogDirty) {
-      await saveJsonMirrorBackup({ force: true });
-      auditLogDirty = false;
+      const savedAuditMirror = await maybeSaveJsonMirrorBackup({
+        minIntervalMs: auditJsonMirrorBackupIntervalMs,
+        reason: "audit JSON mirror backup"
+      });
+      if (savedAuditMirror) {
+        auditLogDirty = false;
+      } else {
+        scheduleJsonMirrorBackup();
+      }
     } else {
       await maybeSaveJsonMirrorBackup();
     }
@@ -12402,14 +12464,18 @@ async function saveSupabaseState(options = {}) {
   }
 }
 
-async function maybeSaveJsonMirrorBackup() {
+async function maybeSaveJsonMirrorBackup(options = {}) {
+  const { minIntervalMs = jsonMirrorBackupIntervalMs, reason = "scheduled JSON mirror backup" } = options || {};
   const lastSaved = Number(localStorage.getItem(`${storageKey}:jsonMirrorSavedAt`) || 0);
-  if (Date.now() - lastSaved < jsonMirrorBackupIntervalMs) return;
-  await saveJsonMirrorBackup({ force: false });
+  if (Date.now() - lastSaved < minIntervalMs) {
+    recordSupabaseLoadEvent("json-mirror-skip", `${reason}; interval not reached`);
+    return false;
+  }
+  return saveJsonMirrorBackup({ force: false, reason });
 }
 
-async function saveJsonMirrorBackup({ force = false } = {}) {
-  recordSupabaseLoadEvent("json-mirror-save", force ? "forced JSON mirror backup" : "scheduled JSON mirror backup");
+async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
+  recordSupabaseLoadEvent("json-mirror-save", reason || (force ? "forced JSON mirror backup" : "scheduled JSON mirror backup"));
   if (!supabaseClient || !currentSession) return false;
   if (!canManageSettings()) return false;
   if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
