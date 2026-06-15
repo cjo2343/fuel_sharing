@@ -175,7 +175,11 @@ function testSupabaseLoadTimeoutGuardExists() {
   assert.match(app, /stale load replaced \(\$\{reason\}\)/);
   assert.match(app, /supabase-load-stale-result/);
   assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: `manual-\$\{source\}` \}/m);
-  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "auth-change" \}/m);
+  assert.match(app, /const supabaseAuthRefreshSyncCooldownMs = 5 \* 60 \* 1000/);
+  assert.match(app, /let lastAuthCloudSyncUserKey = ""/);
+  assert.match(app, /auth-sync-skip/);
+  assert.match(app, /token_refreshed\|user_updated\|session_updated/);
+  assert.match(app, /reason: `auth-\$\{authEvent\}`/);
   assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ reason: "window-focus" \}/m);
   assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "login" \}/m);
   assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "ledger-event-auto-sync" \}/m);

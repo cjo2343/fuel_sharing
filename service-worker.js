@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v205";
-const BUILD_LABEL = "cloud-sync-timeout-all-paths";
-const BUILD_UPDATED_AT = "2026-06-16T01:10:00.000Z";
+const CACHE_NAME = "fuel-ledger-v206";
+const BUILD_LABEL = "auth-refresh-sync-cooldown";
+const BUILD_UPDATED_AT = "2026-06-16T01:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

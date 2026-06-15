@@ -323,6 +323,9 @@ let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
+const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
+let lastAuthCloudSyncUserKey = "";
+let lastAuthCloudSyncAt = 0;
 const supabaseStaleLoadMs = 45000;
 let periodCloseRpcArmUntil = 0;
 let deferredInstallPrompt = null;
@@ -4499,7 +4502,7 @@ async function initializeSupabase() {
   }
   updateAuthUi();
 
-  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentSession = session;
     if (session?.user?.email) {
       localStorage.setItem(rememberedLoginEmailKey, session.user.email);
@@ -4509,12 +4512,26 @@ async function initializeSupabase() {
     if (session) {
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
+      const authEvent = String(event || "auth-change").toLowerCase();
+      const userKey = String(session.user?.id || session.user?.email || "");
+      const now = Date.now();
+      const isSameUser = userKey && userKey === lastAuthCloudSyncUserKey;
+      const isRefreshOnly = /token_refreshed|user_updated|session_updated/.test(authEvent);
+      const isWithinAuthCooldown = now - Number(lastAuthCloudSyncAt || 0) < supabaseAuthRefreshSyncCooldownMs;
+      if (isRefreshOnly && isSameUser && isWithinAuthCooldown) {
+        recordSupabaseLoadEvent("auth-sync-skip", `${authEvent} cooldown`);
+        return;
+      }
+      lastAuthCloudSyncUserKey = userKey;
+      lastAuthCloudSyncAt = now;
       await loadSupabaseStateWithTimeout(
-        { force: true, reason: "auth-change" },
+        { force: true, reason: `auth-${authEvent}` },
         supabaseStartupLoadTimeoutMs,
         "Cloud sync after sign-in is delayed. Retrying in the background."
       );
     } else {
+      lastAuthCloudSyncUserKey = "";
+      lastAuthCloudSyncAt = 0;
       unsubscribeFromLedgerEvents();
       unsubscribeFromSupabaseState();
     }

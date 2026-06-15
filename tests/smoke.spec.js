@@ -291,16 +291,8 @@ async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fu
   await chooseFirstSelectOption(page.locator("#tripDriver"));
   await ensureTripParticipantsSelected(page);
   await page.locator("#tripDate").fill("2026-06-10");
-
-  // Some scenarios intentionally reset the active period but keep the car's
-  // latest odometer. Reusing a hard-coded 1000 km start after that can trigger
-  // the real odometer chronology guard and make the smoke helper fail before it
-  // reaches the feature under test.
-  const currentStartKm = Number(await page.locator("#startKm").inputValue());
-  const startKm = Number.isFinite(currentStartKm) && currentStartKm > 0 ? currentStartKm : 1000;
-  const endKm = startKm + 42;
-  await page.locator("#startKm").fill(String(startKm));
-  await page.locator("#endKm").fill(String(endKm));
+  await page.locator("#startKm").fill("1000");
+  await page.locator("#endKm").fill("1042");
   await page.locator("#tripNote").fill(note);
   await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
 
