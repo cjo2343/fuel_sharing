@@ -227,7 +227,8 @@ function testSyncHealthBannerExists() {
 function testTestLabReportStoreExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(schema, /create table if not exists public\.test_lab_reports/);
-  assert.match(schema, /unique \(ledger_id, report_id\)/);
+  assert.doesNotMatch(schema, /unique \(ledger_id, report_id\)/);
+  assert.match(schema, /test_lab_reports_ledger_report_id_idx/);
   assert.match(schema, /create policy "Ledger members can read test lab reports"/);
   assert.match(schema, /create or replace function public\.upsert_test_lab_report\(/);
   assert.match(schema, /Only ledger admins can save Test Lab reports/);
@@ -235,6 +236,8 @@ function testTestLabReportStoreExists() {
   assert.match(schema, /to_regprocedure\('public\.upsert_test_lab_report\(text, text, jsonb\)'\)/);
   assert.match(app, /function saveTestLabReportToCloudStore\(report\)/);
   assert.match(app, /upsert_test_lab_report/);
+  assert.match(app, /createImmutableTestLabReportId/);
+  assert.match(schema, /immutable_history/);
   assert.match(app, /Ledger JSON was not rewritten/);
   assert.match(app, /function loadCloudTestLabReports\(\{ force = false, reason = "load normalized Test Lab report history" \} = \{\}\)/);
   assert.match(app, /testLabReportLoadCooldownMs: 10 \* 1000/);

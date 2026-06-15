@@ -2854,14 +2854,23 @@ async function loadCloudTestLabReports({ force = false, reason = "load normalize
   }
 }
 
+function createImmutableTestLabReportId(report = {}) {
+  const baseId = String(report.id || "testlab").trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "testlab";
+  const timestamp = new Date().toISOString().replace(/[^0-9a-z]+/gi, "").toLowerCase();
+  const randomPart = Math.random().toString(36).slice(2, 8) || "report";
+  return `${baseId}-save-${timestamp}-${randomPart}`;
+}
+
 async function saveTestLabReportToCloudStore(report) {
   if (!supabaseClient || !currentSession) return false;
   const reportToStore = redactSensitiveDiagnostics(report);
-  const reportId = String(reportToStore.id || "").trim() || `testlab-${Date.now()}`;
+  const sourceReportId = String(reportToStore.id || "").trim() || `testlab-${Date.now()}`;
+  const reportId = createImmutableTestLabReportId({ id: sourceReportId });
   const storedReport = {
     ...reportToStore,
     id: reportId,
-    syncedAt: reportToStore.syncedAt || new Date().toISOString()
+    sourceReportId,
+    syncedAt: new Date().toISOString()
   };
   recordSupabaseLoadEvent("test-lab-report-rpc-save", "save Test Lab report outside JSON mirror");
   const { error } = await supabaseClient.rpc("upsert_test_lab_report", {
@@ -2900,7 +2909,7 @@ function saveTestLabReportState(report = lastTestLabReport) {
       .then((savedToReportStore) => {
         if (savedToReportStore) {
           markRemoteSaveSucceeded("Reports");
-          setDataToolsMessage("Latest Test Lab report saved to the normalized cloud report store. Ledger JSON was not rewritten.");
+          setDataToolsMessage("Fresh Test Lab report saved as a new normalized cloud history row. Ledger JSON was not rewritten.");
           return;
         }
         return saveJsonMirrorBackup({ force: true, reason: "Test Lab report JSON fallback" }).then((savedToJson) => {

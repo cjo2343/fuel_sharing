@@ -1846,12 +1846,14 @@ create table if not exists public.test_lab_reports (
   report_payload jsonb not null,
   created_by_member_id uuid references public.ledger_members(id) on delete set null,
   synced_at timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  unique (ledger_id, report_id)
+  created_at timestamptz not null default now()
 );
 
 create index if not exists test_lab_reports_ledger_synced_idx
 on public.test_lab_reports (ledger_id, synced_at desc);
+
+create index if not exists test_lab_reports_ledger_report_id_idx
+on public.test_lab_reports (ledger_id, report_id);
 
 alter table public.test_lab_reports enable row level security;
 
@@ -1900,8 +1902,8 @@ begin
     raise exception 'Test Lab report payload must be a JSON object';
   end if;
 
-  perform pg_advisory_xact_lock(hashtext(target_ledger_id || ':test-lab-report:' || normalized_report_id));
-
+  -- Intentionally insert a new row for every cloud save. The function name stays
+  -- as upsert_test_lab_report for backward compatibility with deployed clients.
   insert into public.test_lab_reports (ledger_id, report_id, report_payload, created_by_member_id, synced_at)
   values (
     target_ledger_id,
@@ -1910,17 +1912,15 @@ begin
     actor_member_id,
     now()
   )
-  on conflict (ledger_id, report_id) do update
-    set report_payload = excluded.report_payload,
-        created_by_member_id = excluded.created_by_member_id,
-        synced_at = excluded.synced_at
   returning * into saved_row;
 
   return jsonb_build_object(
     'id', saved_row.id,
     'ledger_id', saved_row.ledger_id,
     'report_id', saved_row.report_id,
-    'synced_at', saved_row.synced_at
+    'synced_at', saved_row.synced_at,
+    'created_at', saved_row.created_at,
+    'immutable_history', true
   );
 end;
 $$;

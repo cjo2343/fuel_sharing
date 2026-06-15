@@ -28,6 +28,7 @@ const expected = [
   "016_realtime_publication_health.sql",
   "017_healthcheck_rpc_detection_fix.sql",
   "018_realtime_publication_cleanup.sql",
+  "019_immutable_test_lab_report_history.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -65,6 +66,7 @@ for (const marker of [
   "create table if not exists public.test_lab_reports",
   "create or replace function public.upsert_test_lab_report",
   "grant execute on function public.upsert_test_lab_report",
+  "immutable_history",
   "to_regprocedure('public.upsert_test_lab_report",
   "realtime_publication",
   "recommended_tables",

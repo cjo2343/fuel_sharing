@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.96",
-    buildLabel: "format-datetime-stale-report-fix",
-    updatedAt: "2026-06-15T20:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v195",
+    version: "2026.06.15.97",
+    buildLabel: "immutable-test-lab-report-history",
+    updatedAt: "2026-06-15T21:15:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v196",
     releaseNotes: Object.freeze([
+      "Cloud-saved Test Lab reports are stored as immutable history rows instead of overwriting the previous saved report.",
+      "Each report cloud save gets a unique report id while preserving the source report id for traceability.",
       "Admin diagnostics cards update immediately after live Security Health completes.",
-      "RPC availability and Realtime publication cards reuse the latest healthcheck RPC payload instead of staying at Not checked yet.",
-      "Historical saved Test Lab reports use the shared short date formatter so the app no longer fails on saved report history.",
-      "Historical saved Test Lab reports remain collapsed so stale failures do not look current.",
+      "Historical saved Test Lab reports stay collapsed so stale failures do not look current.",
       "Realtime publication cleanup keeps only the lightweight ledger_events stream published."
     ])
   });
