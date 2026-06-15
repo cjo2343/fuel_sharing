@@ -14,6 +14,29 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 # Deployment checklist
 
+## Required release gate
+
+Before pushing or deploying a release candidate, run:
+
+```bash
+npm run release:check
+```
+
+This runs the static/unit validation suite and the release-readiness checker. For app behavior changes, also run the browser smoke suite if it was not already included in your local pre-push run:
+
+```bash
+npm run test:e2e
+```
+
+Install the local Git hook once per checkout so pushes run the same gate automatically:
+
+```bash
+npm run hooks:install
+```
+
+Run database migrations before deploying app files. When a patch adds files under `supabase/migrations`, apply the new migration or the consolidated `supabase-schema.sql` first, then deploy the matching frontend/server files.
+
+
 Use this checklist when applying database or app changes to an existing Fuel Sharing deployment.
 
 ## Before deploying
