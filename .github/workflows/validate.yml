@@ -23,14 +23,14 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Check JavaScript syntax
-        run: node --check app.js
+      - name: Install Node dependencies
+        run: npm ci
 
-      - name: Check Python syntax
-        run: python3 -m py_compile server.py
+      - name: Run validation suite
+        run: npm run validate
 
-      - name: Check JSON
-        run: python3 -m json.tool ledger-data.json > /dev/null
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
 
-      - name: Check app references
-        run: node tools/check-app-references.mjs
+      - name: Run Playwright smoke tests
+        run: npm run test:e2e
