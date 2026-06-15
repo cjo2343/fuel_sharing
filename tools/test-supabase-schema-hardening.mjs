@@ -103,6 +103,18 @@ function testAdminToolsGuardrailRpcsExist() {
   console.log("ok - testAdminToolsGuardrailRpcsExist");
 }
 
+function testDiagnosticPrivacyRedactionExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /function redactSensitiveDiagnostics\(value\)/);
+  assert.match(app, /function redactDiagnosticString\(value\)/);
+  assert.match(app, /function isSensitiveDiagnosticKey\(key\)/);
+  assert.match(app, /redactSensitiveDiagnostics\(buildSupabaseLoadReport\(\)\)/);
+  assert.match(app, /const exportedReport = redactSensitiveDiagnostics\(report\)/);
+  assert.match(app, /const reportToStore = sync \? redactSensitiveDiagnostics\(report\) : report/);
+  assert.match(app, /privacy redaction applied/);
+  console.log("ok - testDiagnosticPrivacyRedactionExists");
+}
+
 function testJsonWriteReductionGuardrailsExist() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /const auditJsonMirrorBackupIntervalMs = 5 \* 60 \* 1000/);
@@ -132,5 +144,6 @@ testTripTransactionRpcExists();
 testBookingTransactionRpcsExist();
 testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
+testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
 testFuelLedgerHealthcheckExists();

@@ -1449,23 +1449,35 @@ async function exportAdminSafetyBackup(reason = "admin action") {
   return true;
 }
 
-function redactTestLabReportForCloud(value) {
-  if (Array.isArray(value)) return value.map((item) => redactTestLabReportForCloud(item));
+function redactDiagnosticString(value) {
+  return String(value || "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/\+?\d[0-9 ().-]{7,}\d/g, "[redacted-phone]")
+    .replace(/\b-?\d{1,3}\.\d{4,},\s*-?\d{1,3}\.\d{4,}\b/g, "[redacted-coordinates]");
+}
+
+function isSensitiveDiagnosticKey(key) {
+  return /email|phone|mobilepay|latitude|longitude|\b(?:lat|lng|lon)\b|coordinate|location|browser|useragent|user_agent|session|token|authorization/i.test(String(key || ""));
+}
+
+function redactSensitiveDiagnostics(value) {
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveDiagnostics(item));
   if (!value || typeof value !== "object") {
-    if (typeof value !== "string") return value;
-    return value
-      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-      .replace(/\+?\d[0-9 ().-]{7,}\d/g, "[redacted-phone]");
+    return typeof value === "string" ? redactDiagnosticString(value) : value;
   }
   const redacted = {};
   Object.entries(value).forEach(([key, item]) => {
-    if (/email|phone|mobilepay|latitude|longitude|lat|lng|coordinate|location/i.test(key)) {
+    if (isSensitiveDiagnosticKey(key)) {
       redacted[key] = "[redacted]";
       return;
     }
-    redacted[key] = redactTestLabReportForCloud(item);
+    redacted[key] = redactSensitiveDiagnostics(item);
   });
   return redacted;
+}
+
+function redactTestLabReportForCloud(value) {
+  return redactSensitiveDiagnostics(value);
 }
 
 function updateAdvancedAdminToolsUi() {
@@ -2203,10 +2215,10 @@ function renderSupabaseLoadMonitor() {
 }
 
 function downloadSupabaseLoadReport() {
-  const report = buildSupabaseLoadReport();
+  const report = redactSensitiveDiagnostics(buildSupabaseLoadReport());
   const stamp = localDateString().replace(/[^0-9-]/g, "") || "today";
   downloadTextFile(`fuel-ledger-supabase-load-report-${stamp}.json`, JSON.stringify(report, null, 2), "application/json");
-  setDataToolsMessage("Supabase load report downloaded.");
+  setDataToolsMessage("Supabase load report downloaded with privacy redaction applied.");
 }
 
 
@@ -2505,9 +2517,10 @@ async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000, deep 
 
 function persistTestLabReport(report, { sync = false } = {}) {
   if (!report || typeof report !== "object") return null;
+  const reportToStore = sync ? redactSensitiveDiagnostics(report) : report;
   const enriched = {
-    ...report,
-    createdBy: report.createdBy || describeCurrentActor(),
+    ...reportToStore,
+    createdBy: reportToStore.createdBy || describeCurrentActor(),
     syncedAt: new Date().toISOString()
   };
   const existing = normalizeTestLabReports(state.testLabReports).filter((item) => item.id !== enriched.id);
@@ -3014,9 +3027,10 @@ function downloadLastTestLabReport() {
   lastTestLabReport = report;
   renderTestLabReport(null, { persist: false });
   const filename = `fuel-ledger-test-lab-report-${report.id || localDateString()}.json`;
-  downloadTextFile(filename, JSON.stringify(report, null, 2), "application/json");
+  const exportedReport = redactSensitiveDiagnostics(report);
+  downloadTextFile(filename, JSON.stringify(exportedReport, null, 2), "application/json");
   const source = report.syncedAt ? "synced" : "local";
-  setDataToolsMessage(`Test Lab report downloaded from ${source} report storage.`);
+  setDataToolsMessage(`Test Lab report downloaded from ${source} report storage with privacy redaction applied.`);
 }
 
 

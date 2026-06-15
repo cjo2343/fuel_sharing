@@ -243,12 +243,28 @@ async function closeCurrentPeriodForSmoke(page, options = {}) {
 }
 
 async function openClosedPeriodCard(card) {
-  await card.evaluate((details) => {
-    if (details instanceof HTMLDetailsElement) {
-      details.open = true;
-      details.dispatchEvent(new Event("toggle", { bubbles: true }));
+  await expect(card).toBeVisible();
+
+  const needsLazyRender = await card.evaluate((details) => (
+    details instanceof HTMLDetailsElement && details.dataset.lazyClosedPeriod === "true"
+  ));
+
+  if (needsLazyRender) {
+    const isOpen = await card.evaluate((details) => (
+      details instanceof HTMLDetailsElement ? details.open : false
+    ));
+
+    if (isOpen) {
+      await card.evaluate((details) => {
+        if (details instanceof HTMLDetailsElement) {
+          details.dispatchEvent(new Event("toggle", { bubbles: true }));
+        }
+      });
+    } else {
+      await card.locator("summary").click();
     }
-  });
+  }
+
   await expect(card).not.toHaveAttribute("data-lazy-closed-period", "true");
 }
 
