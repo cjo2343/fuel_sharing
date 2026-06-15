@@ -146,6 +146,19 @@ function testJsonWriteReductionGuardrailsExist() {
   console.log("ok - testJsonWriteReductionGuardrailsExist");
 }
 
+
+function testLocalTripSubmitFlushesServerState() {
+  const app = readFileSync("app.js", "utf8");
+  const marker = `  saveState();
+  if (!supabaseClient) {
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    await saveRemoteState();
+  }
+  if (!wasEditingTrip && tripPayload.sourceBookingId)`;
+  assert.ok(app.includes(marker), "local/server-backed trip submits must flush the exact current state before tests or payment actions read /api/state");
+  console.log("ok - testLocalTripSubmitFlushesServerState");
+}
+
 function testRealtimePerformanceGuardrailsExist() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /const hiddenRealtimePauseDelayMs = 60 \* 1000/);
@@ -316,6 +329,7 @@ testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
 testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
+testLocalTripSubmitFlushesServerState();
 testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
 testAdminDiagnosticsUxExists();

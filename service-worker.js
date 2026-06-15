@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v201";
-const BUILD_LABEL = "admin-safety-backup-coverage";
+const CACHE_NAME = "fuel-ledger-v202";
+const BUILD_LABEL = "local-trip-submit-flush";
 const BUILD_UPDATED_AT = "2026-06-15T23:58:00.000Z";
 const CORE_ASSETS = [
   "/",

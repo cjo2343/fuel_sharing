@@ -856,6 +856,10 @@ els.tripForm.addEventListener("submit", async (event) => {
   });
 
   saveState();
+  if (!supabaseClient) {
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    await saveRemoteState();
+  }
   if (!wasEditingTrip && tripPayload.sourceBookingId) {
     pendingFuelTripContext = buildFuelContextFromTrip(tripPayload);
     els.fuelForm?.reset();
