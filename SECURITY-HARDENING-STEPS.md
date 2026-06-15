@@ -10,6 +10,27 @@ drop function if exists public.production_activity_reset(text);
 
 Then rerun the full schema.
 
+
+## 2026-06-15 hardening consolidation status
+
+The main security hardening roadmap is complete for the current architecture. Deployed guardrails now include:
+
+- Supabase/RLS hardening and transactional RPCs for settlement closing, trips with participants, booking save/delete, member administration, generated-test purge, production reset, retention cleanup, and scheduled reminder state.
+- CSP and security-header parity across Vercel, static `_headers`, and the local Python server.
+- Admin/Test Lab protections: typed confirmations, local-only default test reports, advanced tool unlocks, admin-only backend probes, RPC-backed purge/member actions, and backup-before-destructive-action safeguards.
+- Admin reconciliation safety: normalized-table freshness gate plus forced backup before soft-deleting table rows from JSON reconciliation.
+- Reduced full-state JSON mirror writes: normalized tables are the primary path; JSON remains a periodic/manual recovery mirror and forced backup surface for dangerous flows.
+- Diagnostic/privacy redaction for downloaded and cloud-synced Test Lab/Supabase diagnostic reports.
+- CI, pre-push, and release-readiness guardrails covering validation, migration coverage, runtime/cache metadata, header parity, and Playwright smoke tests.
+
+### Remaining non-urgent hardening opportunities
+
+- Retire or further restrict `car_share_ledgers` once all reads/writes are fully normalized-table primary.
+- Add more database-level constraints for business invariants that are currently enforced mostly in app logic, such as fuel odometer/capacity sanity and stricter booking lifecycle transitions.
+- Continue reducing Realtime/list_changes noise by keeping Realtime opt-in/manual and monitoring JSON mirror write frequency after larger releases.
+- Add a small release-history/admin diagnostics panel that shows the active build label, expected service-worker cache, last release check, and migration level.
+- Consider a staging Supabase project for full migration drills before large schema/RPC changes.
+
 ## What the hardened RLS is intended to enforce
 
 - Only active ledger members can read ledger data.

@@ -491,3 +491,20 @@ Normal Supabase saves now synchronize normalized tables first and defer the larg
 ### Data retention/privacy cleanup
 
 Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.
+
+
+## 2026-06-15 hardening roadmap consolidation
+
+The initial security hardening roadmap is complete and deployed. Completed areas:
+
+- Trip participant guardrails and closed-period smoke-test stabilization.
+- Service-worker offline fallback cleanup and runtime/cache consistency checks.
+- Transactional Supabase RPCs for trip+participants and booking save/delete flows.
+- Admin reconciliation freshness/backup gate before soft-deletes.
+- Admin/tools guardrails for member management, Test Lab purge, reset/import confirmations, and retention scope clarity.
+- CSP/security header parity across Vercel, static headers, and local server.
+- Reduced full-state JSON mirror writes, with forced backups retained for dangerous flows.
+- Diagnostic report redaction for cloud-synced and downloaded reports.
+- CI/pre-push/release-readiness enforcement and automatic backup-before-destructive-action coverage.
+
+Maintenance focus should now move from urgent hardening to stability polish: monitor Supabase write volume, keep migrations and schema tests aligned, verify GitHub Actions after every push, and consider a staging Supabase project before large schema/RPC changes.

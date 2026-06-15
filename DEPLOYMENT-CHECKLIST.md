@@ -14,6 +14,25 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 # Deployment checklist
 
+## Current standard release flow
+
+For normal app changes:
+
+```bash
+git status
+npm run release:check
+git add .
+git commit -m "describe the change"
+git push origin main
+```
+
+The local pre-push hook runs `npm run prepush`, which runs `npm run validate && npm run test:e2e`. GitHub Actions repeats the validation and Playwright smoke suite after push. Treat any failed local hook, release check, or CI run as a deployment blocker.
+
+For releases that include `supabase/migrations/*`, apply the migration or consolidated `supabase-schema.sql` before deploying matching app files. The app keeps compatibility fallbacks for some missing RPCs, but production should use the migrated server-side path immediately.
+
+Documentation-only and test-only changes do not require a `build-info.js` or `service-worker.js` bump. Any runtime/app-shell change must update both files together.
+
+
 ## Required release gate
 
 Before pushing or deploying a release candidate, run:
