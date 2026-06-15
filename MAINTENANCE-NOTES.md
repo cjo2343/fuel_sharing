@@ -510,3 +510,8 @@ Operational watch item: after normal use, inspect Supabase Query Performance. `r
 ### Diagnostic report privacy notes
 
 Debug and Test Lab reports are operational records. Keep redaction broad for secrets and precise personal data, but avoid over-redacting build versions and timestamps because they are needed to debug deployments.
+
+### CI/pre-push validation maintenance
+- Keep `tools/check-ci-guardrails.mjs` in `npm run validate` when adding or renaming validation scripts.
+- If a new hardening check is added, wire it into `npm run validate` and update the CI guardrail test so it cannot silently drop out of local or GitHub checks.
+

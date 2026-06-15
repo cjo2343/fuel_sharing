@@ -478,3 +478,9 @@ After applying migrations through `019_immutable_test_lab_report_history.sql` an
 8. `npm run validate`, `npm run test:e2e`, and `npm run release:check` pass before pushing.
 
 Post-deploy performance check: after 15-30 minutes of normal use, review Supabase Top Queries and compare `realtime.list_changes` against the pre-cleanup baseline.
+
+## CI/pre-push gate
+- Before deploy, run `npm run release:check`.
+- Before push, run `npm run prepush` or rely on the installed `.githooks/pre-push` hook.
+- GitHub Actions must run `npm run validate`, `node tools/check-release-readiness.mjs`, install Playwright Chromium, and run `npm run test:e2e`.
+
