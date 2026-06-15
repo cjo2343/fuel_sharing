@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.90",
-    buildLabel: "test-lab-report-store",
-    updatedAt: "2026-06-15T18:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v189",
+    version: "2026.06.15.91",
+    buildLabel: "realtime-publication-health",
+    updatedAt: "2026-06-15T19:15:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v190",
     releaseNotes: Object.freeze([
-      "Cloud-saved Test Lab reports now use the normalized test_lab_reports store when migrated.",
-      "Saving a Test Lab report no longer rewrites the full ledger JSON mirror unless the new report store RPC is missing.",
-      "Recent cloud report history is loaded from normalized report storage after sign-in.",
-      "JSON mirror fallback remains available for migration-safe rollout."
+      "Security Health now reports Supabase Realtime publication health.",
+      "Admin diagnostics show whether only lightweight ledger_events is published for Realtime.",
+      "Broad Realtime publication tables are surfaced as warnings before any publication cleanup.",
+      "No Realtime publication changes are applied automatically by this release."
     ])
   });
 

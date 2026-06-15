@@ -60,11 +60,21 @@
     if (missingCriticalRpcs.length) {
       return fail("Critical write RPCs are installed", `Missing RPC(s): ${missingCriticalRpcs.join(", ")}. Run the latest Supabase migrations before disabling table fallbacks.`);
     }
+    const realtimePublication = asObject(data.realtime_publication);
+    const realtimeExtraTables = asArray(realtimePublication.extra_tables).filter(Boolean);
+    const ledgerEventsEnabled = realtimePublication.ledger_events_enabled;
     const details = [];
     if (Object.keys(criticalRpcs).length) details.push(`${Object.keys(criticalRpcs).length} critical RPC(s) available`);
     else if (closeRpc === true) details.push("close_settlement_period exists");
+    if (ledgerEventsEnabled === false) details.push("ledger_events is not in Realtime publication");
+    if (realtimeExtraTables.length) details.push(`${realtimeExtraTables.length} extra Realtime table(s) published`);
     if (data.ledger_id) details.push(`ledger ${data.ledger_id}`);
-    return pass(name, details.length ? details.join("; ") : input.detail || "Healthcheck RPC returned successfully.");
+    const result = pass(name, details.length ? details.join("; ") : input.detail || "Healthcheck RPC returned successfully.");
+    if (realtimeExtraTables.length || ledgerEventsEnabled === false) {
+      result.warning = true;
+      result.level = "warning";
+    }
+    return result;
   }
 
   function isMissingRpcError(error) {

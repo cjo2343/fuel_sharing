@@ -25,6 +25,7 @@ const expected = [
   "013_fuel_payment_rpc.sql",
   "014_rpc_health_visibility.sql",
   "015_test_lab_report_store.sql",
+  "016_realtime_publication_health.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -63,6 +64,9 @@ for (const marker of [
   "create or replace function public.upsert_test_lab_report",
   "grant execute on function public.upsert_test_lab_report",
   "to_regprocedure('public.upsert_test_lab_report",
+  "realtime_publication",
+  "recommended_tables",
+  "ledger_events_enabled",
   "create or replace function public.upsert_ledger_member_admin",
   "create or replace function public.set_ledger_member_active_admin",
   "create or replace function public.purge_generated_test_rows",

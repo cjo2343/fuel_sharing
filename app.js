@@ -2252,6 +2252,69 @@ function adminGuardrailStatusCard({ title, status, detail, level = "ok" }) {
   `;
 }
 
+
+function getLatestHealthcheckRpcPayload() {
+  const checks = Array.isArray(supabaseSecurityStatus?.checks) ? supabaseSecurityStatus.checks : [];
+  const healthcheck = checks.find((check) => check?.rpcHealth || /Fuel Ledger healthcheck RPC is available|Critical write RPCs are installed|close_settlement_period RPC is installed/i.test(check?.name || ""));
+  return healthcheck?.rpcHealth && typeof healthcheck.rpcHealth === "object" ? healthcheck.rpcHealth : null;
+}
+
+function getRealtimePublicationDiagnostics() {
+  if (!supabaseClient) {
+    return {
+      status: "Local-only mode",
+      detail: "Realtime publication health is checked after signing in to Supabase.",
+      level: "ok"
+    };
+  }
+  if (!canManageSettings()) {
+    return {
+      status: "Admin check required",
+      detail: "Realtime publication details are shown after an admin runs Security Health.",
+      level: "warning"
+    };
+  }
+  if (!supabaseSecurityStatus?.checked) {
+    return {
+      status: "Not checked yet",
+      detail: "Run Security Health to see whether only lightweight ledger_events is published for Realtime.",
+      level: "warning"
+    };
+  }
+  const rpcHealth = getLatestHealthcheckRpcPayload();
+  const publication = rpcHealth?.realtime_publication;
+  if (!publication || typeof publication !== "object") {
+    return {
+      status: "Legacy healthcheck",
+      detail: "Apply the Realtime publication health migration to show published table details.",
+      level: "warning"
+    };
+  }
+  const extraTables = Array.isArray(publication.extra_tables) ? publication.extra_tables.filter(Boolean) : [];
+  const publishedTables = Array.isArray(publication.tables) ? publication.tables.filter(Boolean) : [];
+  if (publication.ledger_events_enabled === false) {
+    return {
+      status: "ledger_events missing",
+      detail: "Add public.ledger_events to supabase_realtime so lightweight sync can notify clients without broad table subscriptions.",
+      level: "warning"
+    };
+  }
+  if (extraTables.length) {
+    return {
+      status: `${extraTables.length} extra table${extraTables.length === 1 ? "" : "s"} published`,
+      detail: `Consider removing broad Realtime publication for: ${extraTables.join(", ")}. Keep public.ledger_events published.`,
+      level: "warning"
+    };
+  }
+  return {
+    status: "Narrow publication",
+    detail: publishedTables.length
+      ? `Realtime publication is limited to ${publishedTables.join(", ")}.`
+      : "No public app tables are currently published for Realtime; enable public.ledger_events for lightweight notifications.",
+    level: publishedTables.includes("public.ledger_events") ? "ok" : "warning"
+  };
+}
+
 function getRpcAvailabilityDiagnostics() {
   if (!supabaseClient) {
     return {
@@ -2323,6 +2386,7 @@ function renderAdminGuardrailOverview() {
     ? `${pendingLocalChanges} pending local change${pendingLocalChanges === 1 ? "" : "s"}; sync before destructive tools.`
     : `Last confirmed sync: ${formatAdminTimestamp(lastCloudSyncAt || lastCloudSaveAt)}`;
   const rpcDiagnostics = getRpcAvailabilityDiagnostics();
+  const realtimePublicationDiagnostics = getRealtimePublicationDiagnostics();
 
   els.adminGuardrailOverview.innerHTML = `
     <div class="admin-guardrail-grid" data-admin-diagnostics-overview="true">
@@ -2349,6 +2413,12 @@ function renderAdminGuardrailOverview() {
         status: rpcDiagnostics.status,
         detail: rpcDiagnostics.detail,
         level: rpcDiagnostics.level
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Realtime publication",
+        status: realtimePublicationDiagnostics.status,
+        detail: realtimePublicationDiagnostics.detail,
+        level: realtimePublicationDiagnostics.level
       })}
       ${adminGuardrailStatusCard({
         title: "Backup guardrails",

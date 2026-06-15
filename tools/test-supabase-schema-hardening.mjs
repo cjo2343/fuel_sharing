@@ -180,7 +180,11 @@ function testAdminDiagnosticsUxExists() {
   assert.match(app, /Safety backups run before destructive admin actions/);
   assert.match(app, /Broad Live Sync is off by default/);
   assert.match(app, /function getRpcAvailabilityDiagnostics\(\)/);
+  assert.match(app, /function getRealtimePublicationDiagnostics\(\)/);
   assert.match(app, /title: "RPC availability"/);
+  assert.match(app, /title: "Realtime publication"/);
+  assert.match(app, /Run Security Health to see whether only lightweight ledger_events is published for Realtime/);
+  assert.match(app, /Keep public\.ledger_events published/);
   assert.match(app, /Run Security Health to verify trip, fuel, booking, member, purge, reset, and retention RPC availability/);
   assert.match(app, /normalizedProbe\.rpcHealth = probe\.data \|\| null/);
   assert.match(css, /\.admin-guardrail-grid/);
@@ -238,6 +242,10 @@ function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
   assert.match(schema, /'critical_rpcs', jsonb_build_object/);
+  assert.match(schema, /'realtime_publication', jsonb_build_object/);
+  assert.match(schema, /'recommended_tables', jsonb_build_array\('public\.ledger_events'\)/);
+  assert.match(schema, /'extra_tables', coalesce/);
+  assert.match(schema, /'ledger_events_enabled', exists/);
   assert.match(schema, /to_regprocedure\('public\.upsert_trip_with_participants/);
   assert.match(schema, /to_regprocedure\('public\.upsert_fuel_payment/);
   assert.match(schema, /to_regprocedure\('public\.upsert_car_booking/);
