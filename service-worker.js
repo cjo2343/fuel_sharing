@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v183";
-const BUILD_LABEL = "planner-booking-bridge-refactor";
-const BUILD_UPDATED_AT = "2026-06-15T16:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v184";
+const BUILD_LABEL = "runtime-asset-parity";
+const BUILD_UPDATED_AT = "2026-06-15T16:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -25,6 +25,8 @@ const CORE_ASSETS = [
   "/booking-calendar.js",
   "/trip-actions.js",
   "/trip-rendering.js",
+  "/fuel-rendering.js",
+  "/planner-booking-bridge.js",
   "/app.js",
   "/manifest.json",
   "/icon-192.png",
@@ -32,7 +34,14 @@ const CORE_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => undefined));
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(CORE_ASSETS))
+      .catch((error) => {
+        console.warn("core-asset-cache-failure", error);
+      })
+  );
   self.skipWaiting();
 });
 

@@ -1,14 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.84",
-    buildLabel: "planner-booking-bridge-refactor",
-    updatedAt: "2026-06-15T16:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v183",
+    version: "2026.06.15.85",
+    buildLabel: "runtime-asset-parity",
+    updatedAt: "2026-06-15T16:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v184",
     releaseNotes: Object.freeze([
-      "Trip card grouping and rendering helpers now live in trip-rendering.js, continuing the small app.js refactor.",
-      "Trip planner participant and route helpers live in trip-actions.js for smaller, safer future refactors.",
-      "Normal users see a sync health banner when data is local-only, delayed, or waiting to sync.",
+      "Runtime script/cache parity checks now guard against missing helper modules in index.html or the service worker cache.",
+      "Planner/booking bridge, fuel rendering, trip rendering, and trip action helper modules are all loaded and cached for offline use.",
+      "Service worker cache install failures now emit a diagnostic marker in browser logs.",
       "Security hardening baseline is complete; future work is polish and maintenance."
     ])
   });
