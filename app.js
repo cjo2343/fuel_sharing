@@ -8072,8 +8072,7 @@ async function copySettlement(button) {
     const helper = document.createElement("textarea");
     helper.value = text;
     helper.setAttribute("readonly", "");
-    helper.style.position = "fixed";
-    helper.style.opacity = "0";
+    helper.className = "clipboard-copy-helper";
     document.body.append(helper);
     helper.select();
     document.execCommand("copy");
@@ -8714,9 +8713,7 @@ function downloadTextFile(filename, content, type = "text/plain") {
   link.href = url;
   link.download = safeFilename;
   link.rel = "noopener";
-  link.style.position = "fixed";
-  link.style.left = "-9999px";
-  link.style.top = "-9999px";
+  link.className = "hidden-download-link";
   document.body.append(link);
 
   try {

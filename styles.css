@@ -4743,3 +4743,15 @@ body.auth-locked #authPanel .text-button {
   border-radius: 0.75rem;
   background: rgba(238, 247, 243, 0.35);
 }
+
+.clipboard-copy-helper {
+  position: fixed;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hidden-download-link {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+}

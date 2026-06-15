@@ -29,6 +29,8 @@ function testVercelHeaders() {
   assert.match(headers['Content-Security-Policy'], /frame-ancestors 'none'/);
   assert.match(headers['Content-Security-Policy'], /object-src 'none'/);
   assert.match(headers['Content-Security-Policy'], /script-src 'self'(;|$)/);
+  assert.match(headers['Content-Security-Policy'], /style-src 'self'(;|$)/);
+  assert.doesNotMatch(headers['Content-Security-Policy'], /unsafe-inline/);
   assert.doesNotMatch(headers['Content-Security-Policy'], /cdn\.jsdelivr\.net/);
   assert.match(headers['Strict-Transport-Security'], /max-age=31536000/);
   assert.equal(headers['X-Frame-Options'], 'DENY');
@@ -43,6 +45,8 @@ function testStaticHeadersFile() {
   }
   assert.match(headers, /Content-Security-Policy: .*default-src 'self'/);
   assert.match(headers, /script-src 'self'(;|$)/);
+  assert.match(headers, /style-src 'self'(;|$)/);
+  assert.doesNotMatch(headers, /unsafe-inline/);
   assert.doesNotMatch(headers, /cdn\.jsdelivr\.net/);
   assert.match(headers, /Strict-Transport-Security: max-age=31536000; includeSubDomains; preload/);
 }
@@ -55,10 +59,19 @@ function testLocalServerHeaders() {
   assert.match(server, /def content_security_policy\(\):/);
   assert.match(server, /configured_supabase_origin\(\)/);
   assert.match(server, /configured_supabase_realtime_origin\(\)/);
+  assert.match(server, /"style-src 'self'"/);
+  assert.doesNotMatch(server, /unsafe-inline/);
   assert.doesNotMatch(server, /cdn\.jsdelivr\.net/);
 }
 
-const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders];
+
+function testNoInlineStylesRemainInMarkup() {
+  const index = read('index.html');
+  assert.doesNotMatch(index, /<style[\s>]/i, 'index.html must not use inline <style> blocks');
+  assert.doesNotMatch(index, /\sstyle=/i, 'index.html must not use inline style attributes');
+}
+
+const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders, testNoInlineStylesRemainInMarkup];
 for (const test of tests) {
   test();
   console.log(`ok - ${test.name}`);

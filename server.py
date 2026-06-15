@@ -284,7 +284,7 @@ def content_security_policy():
         "frame-ancestors 'none'",
         "form-action 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",
         "img-src 'self' data: blob:",
         "font-src 'self' data:",
         "manifest-src 'self'",

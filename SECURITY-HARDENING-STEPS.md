@@ -120,3 +120,10 @@ select public.fuel_ledger_healthcheck('main-car');
 ```
 
 The result should have `ok: true`, all values under `critical_rpcs` set to `true`, and `realtime_publication.extra_tables` as an empty array.
+
+
+## CSP inline style cleanup
+
+- Inline style CSP allowance has been removed: `style-src 'self'` is now used in static, Vercel, and local server headers.
+- Runtime helper positioning uses CSS classes instead of inline style mutations where practical.
+- `tools/test-security-headers.mjs` fails if `unsafe-inline` or inline markup styles return.
