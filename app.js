@@ -655,10 +655,7 @@ els.currentUser.addEventListener("change", () => {
 });
 
 els.tripDriver.addEventListener("change", () => {
-  const driverCheckbox = els.tripParticipants.querySelector(
-    `[data-participant="${cssEscape(els.tripDriver.value)}"]`
-  );
-  if (driverCheckbox) driverCheckbox.checked = true;
+  ensureSelectedTripDriverParticipant();
 });
 
 if (els.bookingForm) {
@@ -753,6 +750,7 @@ els.tripForm.addEventListener("submit", async (event) => {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
   const start = Number(els.startKm.value);
   const end = Number(els.endKm.value);
+  ensureSelectedTripDriverParticipant();
   const participants = getSelectedParticipants();
 
   if (!validateTripOdometerChronology(start, end)) return;
@@ -4340,6 +4338,18 @@ function renderParticipantOptions() {
       `
     )
     .join("");
+  ensureSelectedTripDriverParticipant();
+}
+
+function ensureSelectedTripDriverParticipant() {
+  const driver = els.tripDriver?.value;
+  if (!driver || !els.tripParticipants) return false;
+  const driverCheckbox = els.tripParticipants.querySelector(
+    `[data-participant="${cssEscape(driver)}"]`
+  );
+  if (!driverCheckbox) return false;
+  driverCheckbox.checked = true;
+  return true;
 }
 
 function renderTripEstimatorParticipants() {

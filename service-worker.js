@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v164";
-const BUILD_LABEL = "data-retention-privacy-cleanup";
-const BUILD_UPDATED_AT = "2026-06-15T08:10:00.000Z";
+const CACHE_NAME = "fuel-ledger-v165";
+const BUILD_LABEL = "trip-participant-guardrails";
+const BUILD_UPDATED_AT = "2026-06-15T08:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -61,7 +61,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
-  event.respondWith(fetch(request).catch(() => caches.match(request).then((response) => response || caches.match("/"))));
+  event.respondWith(
+    fetch(request).catch(() => caches.match(request).then((response) => {
+      if (response) return response;
+      if (request.mode === "navigate") return caches.match("/");
+      return new Response("Offline", { status: 503, statusText: "Offline" });
+    }))
+  );
 });
 
 self.addEventListener("push", (event) => {
