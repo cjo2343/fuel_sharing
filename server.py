@@ -1253,17 +1253,10 @@ def main(argv=None):
             print(json.dumps(result["due"], ensure_ascii=False, indent=2))
         return 0
 
-    port_value = os.environ.get("PORT", "4175")
-    try:
-        port = int(port_value)
-    except (TypeError, ValueError):
-        raise SystemExit(f"Invalid PORT value: {port_value!r}")
-
-    host = "0.0.0.0"
-    server = ThreadingHTTPServer((host, port), Handler)
-    server.daemon_threads = True
-    print(f"Car Share Ledger running at http://{host}:{port}/", flush=True)
-    print("Shared data file:", DATA_FILE, flush=True)
+    port = int(os.environ.get("PORT", "4175"))
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    print(f"Car Share Ledger running at http://localhost:{port}/")
+    print("Shared data file:", DATA_FILE)
     server.serve_forever()
     return 0
 

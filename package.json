@@ -9,8 +9,7 @@
     "reminders:dry-run": "python3 server.py --dry-run-reminders",
     "prepush": "npm run validate && npm run test:e2e",
     "release:check": "npm run validate && node tools/check-release-readiness.mjs",
-    "hooks:install": "git config core.hooksPath .githooks",
-    "start": "python3 server.py"
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@playwright/test": "^1.45.0"
