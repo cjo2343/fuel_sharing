@@ -488,3 +488,5 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Security header/CSP changes must update `tools/test-security-headers.mjs` and `SECURITY-HARDENING-STEPS.md`.
 - CI/pre-push/release guardrail changes must update `tools/check-ci-guardrails.mjs`, `tools/test-release-readiness-guardrails.mjs`, and `MAINTENANCE-NOTES.md`.
 
+
+- Apply migration `022_settlement_request_transaction_rpc.sql` before deploying runtime assets that call `upsert_settlement_request_status`; Security Health should show the settlement request transaction RPC in the critical RPC list.

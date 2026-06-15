@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.112",
-    buildLabel: "booking-trip-participant-preservation",
-    updatedAt: "2026-06-16T02:12:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v211",
+    version: "2026.06.15.113",
+    buildLabel: "settlement-request-transaction-rpc",
+    updatedAt: "2026-06-16T02:13:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v212",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -19,7 +19,8 @@
       "Generated Test Data writes/removals now require the advanced admin unlock plus typed confirmation, and cleanup uses strict auto-test id matching.",
       "Retention cleanup now prunes old cloud Test Lab report history while keeping the newest reports and never touching ledger accounting history.",
       "Diagnostic report redaction now covers JWTs, Authorization values, API keys, passwords, cookies, and sensitive URL query parameters without hiding build versions or timestamps.",
-      "Booking-to-trip conversion now preserves planned estimate participants even if the trip form briefly re-renders to the default all-member selection before submit."
+      "Booking-to-trip conversion now preserves planned estimate participants even if the trip form briefly re-renders to the default all-member selection before submit.",
+      "Settlement request status updates now use a transaction RPC when available so payment status saves and stale payment-line cleanup succeed or fail together."
     ])
   });
 

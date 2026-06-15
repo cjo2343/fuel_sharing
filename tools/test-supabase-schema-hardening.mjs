@@ -37,6 +37,22 @@ function testSettlementRequestTriggerIsInstalled() {
 }
 
 
+function testSettlementRequestTransactionRpcExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(schema, /create or replace function public\.upsert_settlement_request_status\(/);
+  assert.match(schema, /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id \|\| ':settlement:' \|\| target_open_period_id::text\)\)/);
+  assert.match(schema, /Only ledger members can save settlement requests/);
+  assert.match(schema, /Settlement request status and stale-row cleanup should be transactional|cancelled_stale_count/);
+  assert.match(schema, /grant execute on function public\.upsert_settlement_request_status\(text, uuid, uuid, uuid, numeric, text, text, text\[\]\) to authenticated/);
+  assert.match(schema, /'upsert_settlement_request_status'/);
+  assert.match(app, /saveSettlementRequestStatusRpc/);
+  assert.match(app, /isMissingSettlementRequestStatusRpcError/);
+  assert.match(app, /currentSettlementPairKeys/);
+  assert.match(app, /stale-row cleanup through the database transaction RPC/);
+  console.log("ok - testSettlementRequestTransactionRpcExists");
+}
+
+
 function testPeriodCloseRpcExists() {
   assert.match(schema, /create or replace function public\.close_settlement_period\(/);
   assert.match(schema, /pg_try_advisory_xact_lock\(hashtext\(target_ledger_id\)\)/);
@@ -415,6 +431,7 @@ testSettlementRequestTransitionGuardExists();
 testSettlementRequestPartyGuardsExist();
 testSettlementRequestSameLedgerGuardExists();
 testSettlementRequestTriggerIsInstalled();
+testSettlementRequestTransactionRpcExists();
 testPeriodCloseRpcExists();
 testTripTransactionRpcExists();
 testBookingTransactionRpcsExist();

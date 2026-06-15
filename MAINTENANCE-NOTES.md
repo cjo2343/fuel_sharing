@@ -520,3 +520,5 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 - GitHub Actions must run validation, `node tools/check-release-readiness.mjs`, install Chromium, and run Playwright.
 - Release-readiness companion checks should stay actionable: runtime file changes require build/cache metadata, migrations require schema/docs/tests, CSP changes require header tests/docs, and CI guardrail changes require maintenance notes/tests.
 
+
+- When payment/settlement logic changes, run Security Health after applying migration 022 and confirm `upsert_settlement_request_status` is available so stale payment-line cleanup stays transactional.

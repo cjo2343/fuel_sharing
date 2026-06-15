@@ -11941,6 +11941,44 @@ async function pruneStaleSettlementRequests(context) {
   if (cancellation.error) throw cancellation.error;
 }
 
+
+function currentSettlementPairKeys(context) {
+  return calculateLedger().settlements
+    .map((settlement) => {
+      const fromId = context.memberIdsByName[settlement.from];
+      const toId = context.memberIdsByName[settlement.to];
+      return fromId && toId ? `${fromId}->${toId}` : "";
+    })
+    .filter(Boolean);
+}
+
+async function saveSettlementRequestStatusRpc(context, payload) {
+  const { data, error } = await supabaseClient.rpc("upsert_settlement_request_status", {
+    target_ledger_id: context.ledgerId,
+    target_open_period_id: context.openPeriodId,
+    payer_member_id: payload.from_member_id,
+    recipient_member_id: payload.to_member_id,
+    amount_value: payload.amount,
+    currency_value: payload.currency,
+    next_status: payload.status,
+    current_pair_keys: currentSettlementPairKeys(context)
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingSettlementRequestStatusRpcError(error)
+  };
+}
+
+function isMissingSettlementRequestStatusRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || (/upsert_settlement_request_status/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message));
+}
+
 async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus) {
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
   if (!supabaseClient || !currentSession) return true;
@@ -11979,6 +12017,19 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       payload.paid_at = null;
     }
 
+    const rpcResult = await saveSettlementRequestStatusRpc(context, payload);
+    if (rpcResult.ok) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: "Table-primary write saved the settlement request status and stale-row cleanup through the database transaction RPC. JSON will be updated as backup."
+      };
+      return true;
+    }
+
+    if (!rpcResult.shouldFallback) throw rpcResult.error || new Error("Could not save settlement request status.");
+
+    console.warn("Settlement request transaction RPC is unavailable; falling back to guarded table writes. Apply the latest supabase-schema.sql to enable atomic settlement request writes.", rpcResult.error);
     const result = await supabaseClient
       .from("settlement_requests")
       .upsert(payload, { onConflict: "period_id,from_member_id,to_member_id" });
@@ -11991,7 +12042,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: "Table-primary write saved the settlement request status to normalized tables. JSON will be updated as backup."
+      message: "Table-primary write saved the settlement request status with guarded table updates. Apply the latest Supabase schema to use the transaction RPC."
     };
     return true;
   } catch (error) {

@@ -31,6 +31,7 @@ const expected = [
   "019_immutable_test_lab_report_history.sql",
   "020_bootstrap_lock.sql",
   "021_cloud_test_lab_report_retention.sql",
+  "022_settlement_request_transaction_rpc.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -90,6 +91,9 @@ for (const marker of [
   "test_lab_report_days",
   "keep_latest_test_lab_reports",
   "grant execute on function public.run_retention_cleanup(text, integer, integer, integer, integer)",
+  "create or replace function public.upsert_settlement_request_status",
+  "grant execute on function public.upsert_settlement_request_status",
+  "upsert_settlement_request_status",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);
