@@ -26,6 +26,7 @@ const expected = [
   "014_rpc_health_visibility.sql",
   "015_test_lab_report_store.sql",
   "016_realtime_publication_health.sql",
+  "017_healthcheck_rpc_detection_fix.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -71,6 +72,9 @@ for (const marker of [
   "create or replace function public.set_ledger_member_active_admin",
   "create or replace function public.purge_generated_test_rows",
   "grant execute on function public.upsert_ledger_member_admin",
+  "critical_rpc_names",
+  "from pg_proc p",
+  "p.proname = rpc_name",
   "push_subscription_scope",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);

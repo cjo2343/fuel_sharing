@@ -256,6 +256,10 @@ function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /to_regprocedure\('public\.set_ledger_member_active_admin/);
   assert.match(schema, /to_regprocedure\('public\.purge_generated_test_rows/);
   assert.match(schema, /to_regprocedure\('public\.upsert_test_lab_report/);
+
+  assert.match(schema, /critical_rpc_names\(rpc_name\) as/);
+  assert.match(schema, /from pg_proc p\s+join pg_namespace n on n\.oid = p\.pronamespace/);
+  assert.match(schema, /p\.proname = rpc_name/);
   assert.match(schema, /grant execute on function public\.fuel_ledger_healthcheck\(text\) to authenticated/);
   console.log("ok - testFuelLedgerHealthcheckExists");
 }
