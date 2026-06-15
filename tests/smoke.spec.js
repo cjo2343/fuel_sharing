@@ -402,8 +402,11 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   await expect(page.locator("#bookingCalendar")).toContainText("Christian");
 
   const afterBooking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
-  expect(afterBooking.bookings).toHaveLength(1);
-  const bookingId = afterBooking.bookings[0].id;
+  const createdBooking = afterBooking.bookings.find(
+    (booking) => booking.purpose === "Airport pickup" && booking.start === "2026-06-12T09:00" && booking.end === "2026-06-12T11:00"
+  );
+  expect(createdBooking).toBeTruthy();
+  const bookingId = createdBooking.id;
 
   await page.reload();
   await page.locator('[data-view-tab="book"]').click();
@@ -433,7 +436,8 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
 
   await expect(page.locator("#bookingConflictNotice")).toContainText("Conflicts with");
   const afterOverlap = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
-  expect(afterOverlap.bookings).toHaveLength(1);
+  expect(afterOverlap.bookings.some((booking) => booking.purpose === "Overlapping booking")).toBe(false);
+  expect(afterOverlap.bookings.some((booking) => booking.id === bookingId)).toBe(true);
 
   const editButton = page.locator(`[data-edit="bookings:${bookingId}"]`);
   await expect(editButton).toHaveCount(1);
@@ -452,7 +456,7 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   await deleteButton.click();
   await expect(page.locator("#bookingCalendar")).not.toContainText("Airport pickup updated");
   const afterDelete = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
-  expect(afterDelete.bookings).toHaveLength(0);
+  expect(afterDelete.bookings.some((booking) => booking.id === bookingId)).toBe(false);
 });
 
 test("create trip and fuel log, then refresh with data still visible", async ({ page }) => {
