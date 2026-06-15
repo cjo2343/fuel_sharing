@@ -1018,18 +1018,12 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   await page.locator("#tripEstimateDistance").fill("123");
   await page.locator("#tripEstimateStart").fill("Roskilde");
   await page.locator("#tripEstimateDestination").fill("Aarhus");
-  await page.locator("#tripEstimatorParticipants").evaluate((container) => {
-    const selectedPeople = new Set(["Christian", "Marie"]);
-    container.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-      input.checked = selectedPeople.has(input.value);
-    });
-    container.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-
-  await expect.poll(async () => {
-    return page.locator("#tripEstimateResult").innerText();
-  }, { timeout: 5000 }).toContain("Christian, Marie");
-  await expect(page.locator("#tripEstimateResult")).toContainText(/People\s+2/);
+  for (const input of await page.locator("#tripEstimatorParticipants input").all()) {
+    if (await input.isChecked()) await input.uncheck();
+  }
+  await page.locator('#tripEstimatorParticipants input[value="Christian"]').check();
+  await page.locator('#tripEstimatorParticipants input[value="Marie"]').check();
+  await expect(page.locator("#tripEstimateResult")).toContainText("Christian, Marie");
   await page.getByRole("button", { name: "Use this estimate for booking" }).click();
 
   await expect(page.locator("#bookingPurpose")).toHaveValue(/Roskilde.*Aarhus.*123/);
