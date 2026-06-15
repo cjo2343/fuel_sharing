@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-ledger-v185";
+const CACHE_NAME = "fuel-ledger-v186";
 const BUILD_LABEL = "fuel-payment-rpc";
 const BUILD_UPDATED_AT = "2026-06-15T16:45:00.000Z";
 const CORE_ASSETS = [

@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.86",
+    version: "2026.06.15.87",
     buildLabel: "fuel-payment-rpc",
     updatedAt: "2026-06-15T16:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v185",
+    expectedServiceWorkerCache: "fuel-ledger-v186",
     releaseNotes: Object.freeze([
       "Fuel payment saves now use the upsert_fuel_payment RPC when available for server-side validation and permission consistency.",
       "Missing-RPC fallback remains for migration-safe rollout, matching the trip and booking hardening pattern.",
