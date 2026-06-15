@@ -1,13 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.80",
-    buildLabel: "sync-health-banner",
-    updatedAt: "2026-06-15T15:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v179",
+    version: "2026.06.15.81",
+    buildLabel: "trip-actions-refactor",
+    updatedAt: "2026-06-15T15:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v180",
     releaseNotes: Object.freeze([
-      "Normal users now see a sync health banner when data is local-only, delayed, or waiting to sync.",
-      "Render startup binds to the platform PORT with explicit npm start support.",
+      "Trip planner participant and route helpers now live in trip-actions.js for smaller, safer future refactors.",
+      "Normal users see a sync health banner when data is local-only, delayed, or waiting to sync.",
       "Security hardening baseline is complete; future work is polish and maintenance."
     ])
   });

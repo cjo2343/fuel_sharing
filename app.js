@@ -4610,13 +4610,13 @@ function ensureSelectedTripDriverParticipant() {
 function renderTripEstimatorParticipants() {
   if (!els.tripEstimatorParticipants) return;
 
-  const existing = new Set(
-    Array.from(els.tripEstimatorParticipants.querySelectorAll("input:checked")).map((input) => input.value)
-  );
+  const members = getMemberNames();
+  const existing = TripActions.getCheckedCheckboxValues(els.tripEstimatorParticipants);
   const profile = getCurrentMemberProfile();
-  const defaultSelection = existing.size ? existing : new Set(profile?.name ? [profile.name] : getMemberNames());
+  const fallback = profile?.name ? [profile.name] : members;
+  const defaultSelection = new Set(TripActions.normalizeTripParticipantSelection(members, existing, fallback));
 
-  els.tripEstimatorParticipants.innerHTML = getMemberNames()
+  els.tripEstimatorParticipants.innerHTML = members
     .map((member) => `
       <label class="participant-option">
         <input type="checkbox" value="${escapeHtml(member)}" ${defaultSelection.has(member) ? "checked" : ""} />
@@ -4627,8 +4627,7 @@ function renderTripEstimatorParticipants() {
 }
 
 function getTripEstimatorParticipants() {
-  if (!els.tripEstimatorParticipants) return [];
-  return Array.from(els.tripEstimatorParticipants.querySelectorAll("input:checked")).map((input) => input.value);
+  return TripActions.getCheckedCheckboxValues(els.tripEstimatorParticipants);
 }
 
 function renderTripEstimate() {
@@ -4855,14 +4854,11 @@ function getStationMapUrl(station) {
 
 
 function getTripPlannerRoute() {
-  const start = els.tripEstimateStart?.value.trim() || "";
-  const destination = els.tripEstimateDestination?.value.trim() || "";
-  return { start, destination, hasRoute: Boolean(start && destination) };
+  return TripActions.readPlannerRoute(els.tripEstimateStart?.value || "", els.tripEstimateDestination?.value || "");
 }
 
 function getRouteMapUrl(route) {
-  if (!route?.hasRoute) return "";
-  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(route.start)}&destination=${encodeURIComponent(route.destination)}&travelmode=driving`;
+  return TripActions.buildRouteMapUrl(route);
 }
 
 function useTripPlanForBooking() {
