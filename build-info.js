@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.109",
-    buildLabel: "admin-testlab-guardrails",
+    version: "2026.06.15.110",
+    buildLabel: "cloud-testlab-retention",
     updatedAt: "2026-06-16T02:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v208",
+    expectedServiceWorkerCache: "fuel-ledger-v209",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -16,7 +16,8 @@
       "Cloud sync timeout recovery now covers manual Sync now, login/auth refresh, focus refresh, member/admin refreshes, and ledger-event auto-sync, and successful loads clear their timeout timer.",
       "Auth token refresh events now skip redundant forced cloud loads for the same user during a short cooldown, preventing refresh loops from showing false Cloud delayed warnings.",
       "Background auth refresh syncs no longer overwrite a healthy synced state with Cloud delayed; duplicate signed-in/auth-change events are cooldown-skipped.",
-      "Generated Test Data writes/removals now require the advanced admin unlock plus typed confirmation, and cleanup uses strict auto-test id matching."
+      "Generated Test Data writes/removals now require the advanced admin unlock plus typed confirmation, and cleanup uses strict auto-test id matching.",
+      "Retention cleanup now prunes old cloud Test Lab report history while keeping the newest reports and never touching ledger accounting history."
     ])
   });
 

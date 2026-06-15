@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v208";
-const BUILD_LABEL = "admin-testlab-guardrails";
+const CACHE_NAME = "fuel-ledger-v209";
+const BUILD_LABEL = "cloud-testlab-retention";
 const BUILD_UPDATED_AT = "2026-06-16T02:05:00.000Z";
 const CORE_ASSETS = [
   "/",

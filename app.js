@@ -382,6 +382,8 @@ const retentionPolicy = Object.freeze({
   ledgerEventDays: 30,
   testLabReportDays: 30,
   keepLatestTestLabReports: 3,
+  cloudTestLabReportDays: 30,
+  keepLatestCloudTestLabReports: 10,
   stalePushSubscriptionDays: 180
 });
 let lastRetentionCleanupPreview = null;
@@ -2616,15 +2618,19 @@ async function fetchRetentionCleanupPreview() {
     const { data, error } = await supabaseClient.rpc("preview_retention_cleanup", {
       target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
       event_retention_days: retentionPolicy.ledgerEventDays,
-      stale_push_days: retentionPolicy.stalePushSubscriptionDays
+      stale_push_days: retentionPolicy.stalePushSubscriptionDays,
+      test_lab_report_days: retentionPolicy.cloudTestLabReportDays,
+      keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
     });
     if (error) throw error;
     result.cloud = {
       available: true,
       ledgerEvents: Number(data?.ledger_events || 0),
       stalePushSubscriptions: Number(data?.global_stale_push_subscriptions || data?.stale_push_subscriptions || 0),
+      testLabReports: Number(data?.test_lab_reports || data?.cloud_test_lab_reports || 0),
+      keptTestLabReports: Number(data?.kept_test_lab_reports || 0),
       pushSubscriptionScope: data?.push_subscription_scope || "global_user_device_records",
-      message: "Cloud preview completed. Stale push subscriptions are global user/device records, not ledger accounting rows."
+      message: "Cloud preview completed. Stale push subscriptions are global user/device records, and old cloud Test Lab reports are pruned while keeping the newest reports."
     };
   } catch (error) {
     result.cloud = {
@@ -2650,6 +2656,7 @@ function renderRetentionCleanupSummary(preview = lastRetentionCleanupPreview) {
       <ul class="included-fuel-list compact-diagnostics-list">
         <li><span>Old in-app notification events (${retentionPolicy.ledgerEventDays}+ days or expired)</span><b>${Number(preview.cloud?.ledgerEvents || 0)}</b></li>
         <li><span>Global stale push subscriptions (${retentionPolicy.stalePushSubscriptionDays}+ days, user/device scoped)</span><b>${Number(preview.cloud?.stalePushSubscriptions || 0)}</b></li>
+        <li><span>Old cloud Test Lab reports (${retentionPolicy.cloudTestLabReportDays}+ days; keeps latest ${retentionPolicy.keepLatestCloudTestLabReports})</span><b>${Number(preview.cloud?.testLabReports || 0)}</b></li>
         <li><span>Old/local Test Lab reports</span><b>${Number(preview.local?.testLabReports || 0)}</b></li>
         <li><span>Old load-monitor events in this browser</span><b>${Number(preview.local?.loadMonitorEvents || 0)}</b></li>
       </ul>
@@ -2677,6 +2684,7 @@ async function runRetentionCleanup() {
   }
   const total = Number(lastRetentionCleanupPreview?.cloud?.ledgerEvents || 0)
     + Number(lastRetentionCleanupPreview?.cloud?.stalePushSubscriptions || 0)
+    + Number(lastRetentionCleanupPreview?.cloud?.testLabReports || 0)
     + Number(lastRetentionCleanupPreview?.local?.testLabReports || 0)
     + Number(lastRetentionCleanupPreview?.local?.loadMonitorEvents || 0);
   if (!total) {
@@ -2686,19 +2694,21 @@ async function runRetentionCleanup() {
   if (!requireTypedAdminConfirmation({
     phrase: "CLEAN RETENTION DATA",
     title: "Run retention cleanup?",
-    detail: "This deletes old notification events, stale push subscriptions, old local Test Lab reports, and old local load-monitor entries only. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history."
+    detail: "This deletes old notification events, stale push subscriptions, old cloud/local Test Lab reports, and old local load-monitor entries only. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history."
   })) return;
 
   if (els.runRetentionCleanup) els.runRetentionCleanup.disabled = true;
   try {
     const local = applyLocalRetentionCleanup();
-    let cloud = { ledger_events: 0, stale_push_subscriptions: 0 };
+    let cloud = { ledger_events: 0, stale_push_subscriptions: 0, test_lab_reports: 0 };
     if (supabaseClient && currentSession && canManageSettings()) {
       recordSupabaseLoadEvent("retention-cleanup", "run retention cleanup");
       const { data, error } = await supabaseClient.rpc("run_retention_cleanup", {
         target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
         event_retention_days: retentionPolicy.ledgerEventDays,
-        stale_push_days: retentionPolicy.stalePushSubscriptionDays
+        stale_push_days: retentionPolicy.stalePushSubscriptionDays,
+        test_lab_report_days: retentionPolicy.cloudTestLabReportDays,
+        keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
       });
       if (error) throw error;
       cloud = data || cloud;
@@ -2707,7 +2717,7 @@ async function runRetentionCleanup() {
     render();
     lastRetentionCleanupPreview = await fetchRetentionCleanupPreview();
     renderRetentionCleanupSummary(lastRetentionCleanupPreview);
-    setDataToolsMessage(`Retention cleanup complete: removed ${Number(cloud.ledger_events || 0)} old event(s), ${Number(cloud.stale_push_subscriptions || 0)} stale push subscription(s), ${local.testLabReports} local Test Lab report(s), and ${local.loadMonitorEvents} local load-monitor event(s).`);
+    setDataToolsMessage(`Retention cleanup complete: removed ${Number(cloud.ledger_events || 0)} old event(s), ${Number(cloud.stale_push_subscriptions || 0)} stale push subscription(s), ${Number(cloud.test_lab_reports || cloud.cloud_test_lab_reports || 0)} cloud Test Lab report(s), ${local.testLabReports} local Test Lab report(s), and ${local.loadMonitorEvents} local load-monitor event(s).`);
   } catch (error) {
     setDataToolsMessage(`Retention cleanup failed: ${error.message || error}`);
   } finally {

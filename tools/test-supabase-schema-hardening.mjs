@@ -331,6 +331,26 @@ function testTestLabReportStoreExists() {
   console.log("ok - testTestLabReportStoreExists");
 }
 
+function testRetentionPrivacyCleanupCoversCloudReports() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(schema, /create or replace function public\.preview_retention_cleanup\(\s*target_ledger_id text default 'main-car',\s*event_retention_days integer default 30,\s*stale_push_days integer default 180,\s*test_lab_report_days integer default 30,\s*keep_latest_test_lab_reports integer default 10/s);
+  assert.match(schema, /create or replace function public\.run_retention_cleanup\(\s*target_ledger_id text default 'main-car',\s*event_retention_days integer default 30,\s*stale_push_days integer default 180,\s*test_lab_report_days integer default 30,\s*keep_latest_test_lab_reports integer default 10/s);
+  assert.match(schema, /from public\.test_lab_reports/);
+  assert.match(schema, /row_number\(\) over \(order by synced_at desc, created_at desc, id desc\)/);
+  assert.match(schema, /delete from public\.test_lab_reports reports/);
+  assert.match(schema, /grant execute on function public\.preview_retention_cleanup\(text, integer, integer, integer, integer\) to authenticated/);
+  assert.match(schema, /grant execute on function public\.run_retention_cleanup\(text, integer, integer, integer, integer\) to authenticated/);
+  assert.match(schema, /to_regprocedure\('public\.preview_retention_cleanup\(text, integer, integer, integer, integer\)'\)/);
+  assert.match(schema, /to_regprocedure\('public\.run_retention_cleanup\(text, integer, integer, integer, integer\)'\)/);
+  assert.match(app, /cloudTestLabReportDays: 30/);
+  assert.match(app, /keepLatestCloudTestLabReports: 10/);
+  assert.match(app, /test_lab_report_days: retentionPolicy\.cloudTestLabReportDays/);
+  assert.match(app, /keep_latest_test_lab_reports: retentionPolicy\.keepLatestCloudTestLabReports/);
+  assert.match(app, /Old cloud Test Lab reports/);
+  assert.match(app, /cloud Test Lab report\(s\)/);
+  console.log("ok - testRetentionPrivacyCleanupCoversCloudReports");
+}
+
 function testBootstrapLockExists() {
   assert.match(schema, /bootstrap_locked_at timestamptz/);
   assert.match(schema, /create or replace function public\.is_ledger_bootstrap_open\(p_ledger_id text\)/);
@@ -389,5 +409,6 @@ testAdminDiagnosticsUxExists();
 testReleaseAboutPanelExists();
 testSyncHealthBannerExists();
 testTestLabReportStoreExists();
+testRetentionPrivacyCleanupCoversCloudReports();
 testBootstrapLockExists();
 testFuelLedgerHealthcheckExists();
