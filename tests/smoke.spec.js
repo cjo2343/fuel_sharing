@@ -59,6 +59,24 @@ async function chooseFirstSelectOption(select) {
   if (options.length > 0) await select.selectOption(options[0]);
 }
 
+async function ensureTripParticipantsSelected(page) {
+  const checkedParticipants = page.locator('#tripParticipants input[type="checkbox"]:checked');
+  if (await checkedParticipants.count()) return;
+
+  const driver = await page.locator("#tripDriver").inputValue();
+  const selectedDriver = await page.locator('#tripParticipants input[type="checkbox"]').evaluateAll((inputs, selectedDriver) => {
+    const match = inputs.find((input) => input.value === selectedDriver);
+    if (!match) return false;
+    match.checked = true;
+    match.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }, driver);
+  if (selectedDriver) return;
+
+  const firstParticipant = page.locator('#tripParticipants input[type="checkbox"]').first();
+  if (await firstParticipant.count()) await firstParticipant.check();
+}
+
 function decimalPattern(value, fractionDigits = null) {
   const numeric = Number(value);
   const rounded = Number.isFinite(numeric) && fractionDigits !== null
@@ -255,6 +273,7 @@ async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fu
   const effectiveFuelLiters = fuelLiters || String(Math.max(1, Math.round((Number(fuelAmount) / 15) * 100) / 100));
   await chooseFirstSelectOption(page.locator("#currentUser"));
   await chooseFirstSelectOption(page.locator("#tripDriver"));
+  await ensureTripParticipantsSelected(page);
   await page.locator("#tripDate").fill("2026-06-10");
   await page.locator("#startKm").fill("1000");
   await page.locator("#endKm").fill("1042");
