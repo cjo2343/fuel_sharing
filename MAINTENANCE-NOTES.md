@@ -52,6 +52,13 @@ For larger changes or UI/write-path changes, also run:
 npm run test:e2e
 ```
 
+
+## Backup and restore drill
+
+Run the backup/restore drill in [`BACKUP-RESTORE-DRILL.md`](BACKUP-RESTORE-DRILL.md) after migration-heavy releases and at least once per quarter. Treat backup files as private data and keep them out of Git.
+
+Record any real emergency restore with the restore date, app version, backup filename, and reason.
+
 ## Files that should not be committed
 
 - `__pycache__/`
