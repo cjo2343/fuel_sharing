@@ -12874,7 +12874,7 @@ async function saveSupabaseState(options = {}) {
         scheduleJsonMirrorBackup();
       }
     } else {
-      await maybeSaveJsonMirrorBackup();
+      recordSupabaseLoadEvent("json-mirror-manual-only", `table-primary save (${reason}); JSON mirror unchanged`);
     }
 
     lastCloudSaveAt = new Date().toISOString();

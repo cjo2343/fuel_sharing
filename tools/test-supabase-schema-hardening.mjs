@@ -138,8 +138,11 @@ function testJsonWriteReductionGuardrailsExist() {
   assert.match(app, /function shouldRunNormalizedReconciliation\(reason = "saveSupabaseState"\)/);
   assert.match(app, /normalized-reconciliation-skip/);
   assert.match(app, /json-mirror-skip/);
+  assert.match(app, /json-mirror-manual-only/);
   assert.match(app, /scheduleJsonMirrorBackup/);
   assert.match(app, /maybeSaveJsonMirrorBackup\(\{\s*minIntervalMs: auditJsonMirrorBackupIntervalMs,/m);
+  assert.doesNotMatch(app, /else \{\s*await maybeSaveJsonMirrorBackup\(\);\s*\}/m, "routine table-primary saves must not upsert the full JSON mirror when no audit backup is dirty");
+  assert.match(app, /els\.saveJsonBackupNow\?\.addEventListener\("click", async \(\) => \{/);
   console.log("ok - testJsonWriteReductionGuardrailsExist");
 }
 

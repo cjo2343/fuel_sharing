@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.100",
-    buildLabel: "vendor-supabase-client",
-    updatedAt: "2026-06-15T23:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v199",
+    version: "2026.06.15.101",
+    buildLabel: "json-mirror-manual-backup",
+    updatedAt: "2026-06-15T23:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v200",
     releaseNotes: Object.freeze([
-      "Supabase JS is now vendored locally instead of loaded from jsDelivr.",
-      "Content Security Policy no longer allows cdn.jsdelivr.net for scripts or connections.",
-      "The vendored Supabase client files are included in the service worker core cache.",
-      "Bootstrap access remains locked automatically after a real active admin email is attached to the ledger.",
+      "Routine table-primary saves no longer upsert the full JSON ledger mirror when no audit backup is dirty.",
+      "JSON mirror writes are kept for manual admin safety backups and the audit-backup cadence.",
+      "Validation now checks that the unconditional normal-save JSON mirror write path stays removed.",
+      "Supabase JS remains vendored locally and CSP stays locked to same-origin scripts.",
       "Runtime metadata and service worker cache were updated for this hardening build."
     ])
   });
