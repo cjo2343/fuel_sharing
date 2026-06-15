@@ -779,13 +779,12 @@ els.tripForm.addEventListener("submit", async (event) => {
 
   const tripId = editingTripId || crypto.randomUUID();
   const existingTrip = editingTripId ? state.trips.find((trip) => trip.id === editingTripId) : null;
-  const activeTripBookingContext = getActiveTripLogContext() || getTripFormBookingContextDataset();
   const tripPayload = {
     id: tripId,
-    logRef: existingTrip?.logRef || activeTripBookingContext?.logRef || createLogRef(tripId),
-    sourceBookingId: existingTrip?.sourceBookingId || activeTripBookingContext?.bookingId || null,
-    bookingStart: existingTrip?.bookingStart || activeTripBookingContext?.bookingStart || null,
-    bookingEnd: existingTrip?.bookingEnd || activeTripBookingContext?.bookingEnd || null,
+    logRef: existingTrip?.logRef || pendingTripBookingContext?.logRef || createLogRef(tripId),
+    sourceBookingId: existingTrip?.sourceBookingId || pendingTripBookingContext?.bookingId || null,
+    bookingStart: existingTrip?.bookingStart || pendingTripBookingContext?.bookingStart || null,
+    bookingEnd: existingTrip?.bookingEnd || pendingTripBookingContext?.bookingEnd || null,
     driver: els.tripDriver.value,
     participants,
     date: els.tripDate.value,
@@ -9121,7 +9120,6 @@ function startTripFromBooking(id) {
     createLogRef,
     extractEstimatedDistanceFromText
   });
-  setTripFormBookingContextDataset(pendingTripBookingContext);
   renderPeopleSelectors();
   if (getMemberNames().includes(booking.member)) els.tripDriver.value = booking.member;
   const bookingEnd = parseBookingDate(booking.end);
@@ -10285,34 +10283,8 @@ function syncTripDateBounds() {
   else els.tripDate.removeAttribute("max");
 }
 
-function setTripFormBookingContextDataset(context) {
-  if (!els.tripForm) return;
-  if (!context) {
-    delete els.tripForm.dataset.sourceBookingId;
-    delete els.tripForm.dataset.sourceBookingLogRef;
-    delete els.tripForm.dataset.sourceBookingStart;
-    delete els.tripForm.dataset.sourceBookingEnd;
-    return;
-  }
-  els.tripForm.dataset.sourceBookingId = context.bookingId || "";
-  els.tripForm.dataset.sourceBookingLogRef = context.logRef || "";
-  els.tripForm.dataset.sourceBookingStart = context.bookingStart || "";
-  els.tripForm.dataset.sourceBookingEnd = context.bookingEnd || "";
-}
-
-function getTripFormBookingContextDataset() {
-  if (!els.tripForm?.dataset?.sourceBookingId) return null;
-  return {
-    bookingId: els.tripForm.dataset.sourceBookingId,
-    logRef: els.tripForm.dataset.sourceBookingLogRef || "",
-    bookingStart: els.tripForm.dataset.sourceBookingStart || null,
-    bookingEnd: els.tripForm.dataset.sourceBookingEnd || null
-  };
-}
-
 function clearTripLoggingContext() {
   pendingTripBookingContext = null;
-  setTripFormBookingContextDataset(null);
   syncTripDateBounds();
   renderTripBookingContext();
 }
@@ -11213,6 +11185,51 @@ async function saveTripWithParticipantsGuardedTableUpdates(payload, participantM
   return tripId;
 }
 
+
+async function saveFuelPaymentRpc(context, payload) {
+  const { data, error } = await supabaseClient.rpc("upsert_fuel_payment", {
+    target_ledger_id: context.ledgerId,
+    target_open_period_id: context.openPeriodId,
+    legacy_fuel_id: payload.legacy_id,
+    payer_member_id: payload.payer_member_id,
+    payment_date_value: payload.payment_date,
+    amount_value: payload.amount,
+    currency_value: payload.currency,
+    liters_value: payload.liters,
+    price_per_liter_value: payload.price_per_liter,
+    odometer_value: payload.odometer,
+    station_name_value: payload.station_name,
+    station_brand_value: payload.station_brand,
+    station_lat_value: payload.station_lat,
+    station_lng_value: payload.station_lng,
+    user_lat_value: payload.user_lat,
+    user_lng_value: payload.user_lng,
+    full_tank_value: payload.full_tank
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingFuelPaymentRpcError(error)
+  };
+}
+
+function isMissingFuelPaymentRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || (/upsert_fuel_payment/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message));
+}
+
+async function saveFuelWithGuardedTableUpdate(payload) {
+  const fuelResult = await supabaseClient
+    .from("fuel_payments")
+    .upsert(payload, { onConflict: "ledger_id,legacy_id" });
+  if (fuelResult.error) throw fuelResult.error;
+  return true;
+}
+
 async function saveFuelToNormalizedTablesFirst(fuel) {
   recordSupabaseLoadEvent("fuel-table-write", fuel?.id ? `fuel ${String(fuel.id).slice(0, 8)}` : "fuel");
   if (!supabaseClient || !currentSession) return true;
@@ -11245,10 +11262,12 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       updated_at: new Date().toISOString()
     };
 
-    const fuelResult = await supabaseClient
-      .from("fuel_payments")
-      .upsert(payload, { onConflict: "ledger_id,legacy_id" });
-    if (fuelResult.error) throw fuelResult.error;
+    const rpcResult = await saveFuelPaymentRpc(context, payload);
+    if (!rpcResult.ok) {
+      if (!rpcResult.shouldFallback) throw rpcResult.error;
+      console.warn("Fuel payment RPC is unavailable; falling back to guarded table upsert", rpcResult.error);
+      await saveFuelWithGuardedTableUpdate(payload);
+    }
 
     normalizedTableStatus = {
       checked: true,

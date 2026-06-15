@@ -2,14 +2,14 @@
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
     version: "2026.06.15.86",
-    buildLabel: "booking-link-context-guard",
-    updatedAt: "2026-06-15T16:20:00.000Z",
+    buildLabel: "fuel-payment-rpc",
+    updatedAt: "2026-06-15T16:45:00.000Z",
     expectedServiceWorkerCache: "fuel-ledger-v185",
     releaseNotes: Object.freeze([
-      "Runtime script/cache parity checks now guard against missing helper modules in index.html or the service worker cache.",
-      "Planner/booking bridge, fuel rendering, trip rendering, and trip action helper modules are all loaded and cached for offline use.",
-      "Service worker cache install failures now emit a diagnostic marker in browser logs.",
-      "Security hardening baseline is complete; future work is polish and maintenance."
+      "Fuel payment saves now use the upsert_fuel_payment RPC when available for server-side validation and permission consistency.",
+      "Missing-RPC fallback remains for migration-safe rollout, matching the trip and booking hardening pattern.",
+      "Schema and migration validation now assert the fuel payment RPC exists and is granted to authenticated users.",
+      "Runtime script/cache parity checks remain active for new helper modules."
     ])
   });
 

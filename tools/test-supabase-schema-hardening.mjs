@@ -71,6 +71,21 @@ function testBookingTransactionRpcsExist() {
   console.log("ok - testBookingTransactionRpcsExist");
 }
 
+
+
+function testFuelPaymentRpcExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(schema, /create or replace function public\.upsert_fuel_payment\(/);
+  assert.match(schema, /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id \|\| ':fuel:' \|\| legacy_fuel_id\)\)/);
+  assert.match(schema, /Only the fuel creator, payer, or a ledger admin can update this fuel payment/);
+  assert.match(schema, /Only the fuel payer or a ledger admin can create this fuel payment/);
+  assert.match(schema, /grant execute on function public\.upsert_fuel_payment\(text, uuid, text, uuid, date, numeric, text, numeric, numeric, numeric, text, text, numeric, numeric, numeric, numeric, boolean\) to authenticated/);
+  assert.match(app, /saveFuelPaymentRpc/);
+  assert.match(app, /isMissingFuelPaymentRpcError/);
+  assert.match(app, /saveFuelWithGuardedTableUpdate/);
+  console.log("ok - testFuelPaymentRpcExists");
+}
+
 function testAdminReconciliationSafetyGateExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /const reconciliationFreshLoadMaxAgeMs = 5 \* 60 \* 1000/);
@@ -212,6 +227,7 @@ testSettlementRequestTriggerIsInstalled();
 testPeriodCloseRpcExists();
 testTripTransactionRpcExists();
 testBookingTransactionRpcsExist();
+testFuelPaymentRpcExists();
 testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
 testDiagnosticPrivacyRedactionExists();
