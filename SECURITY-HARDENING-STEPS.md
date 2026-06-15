@@ -92,6 +92,13 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 The app now treats normalized Supabase tables as the primary write path and keeps the full JSON state mirror as a periodic/manual safety backup. This reduces write volume, event noise, and the chance of sync feedback loops while preserving recovery/export fallback behavior.
 
 
+## Completed: destructive admin safety backups
+
+Destructive admin actions must export a local backup and, when signed in to Supabase, force a JSON mirror safety backup before changing/removing important ledger data. The protected reasons are listed in `requiredAdminSafetyBackupReasons` in `app.js` and covered by `tools/test-supabase-schema-hardening.mjs`. This currently covers current-period reset, full local reset, backup import, period close, production activity reset, generated test-data cleanup/purge, and unused test-user removal. If a future patch adds another destructive admin action, add the backup call and extend the test at the same time.
+
+Retention/privacy cleanup is intentionally separate: it only removes temporary notification events, stale push subscriptions, old local Test Lab reports, and local load-monitor events, not trips, fuel logs, bookings, settlements, closed periods, or audit-critical history.
+
+
 ### Data retention/privacy cleanup
 
 Admins can preview and run retention cleanup from Admin -> Data retention & privacy cleanup. The cleanup removes only temporary/privacy-sensitive records: expired/old `ledger_events`, stale push subscriptions, old local Test Lab reports, and old browser-local load-monitor entries. It does not delete trips, fuel logs, bookings, settlements, closed periods, or audit-critical ledger history. Apply migration `009_retention_privacy_cleanup.sql` before using the cloud cleanup buttons.

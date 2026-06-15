@@ -445,6 +445,10 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 
 After deployment, make one small trip/fuel/booking edit and verify the Supabase load monitor shows normalized table activity without repeated `JSON mirror saves`. A JSON mirror save may still occur when the backup interval has elapsed or an audit-critical flow forces a snapshot.
 
+## Destructive admin backup check
+
+Before deploying a patch that adds or changes destructive admin actions, verify `npm run validate` includes `testDestructiveActionBackupsExist`. The action should call `await exportAdminSafetyBackup("...")` before it resets, imports over, closes/archives, purges, or removes important ledger data. Cloud backup failure should block the destructive action instead of continuing.
+
 ## Admin/Test Lab protection verification
 
 - Confirm Safe Test Lab is visible to admins and remains local-only.

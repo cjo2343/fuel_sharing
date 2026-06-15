@@ -161,13 +161,26 @@ function testRealtimePerformanceGuardrailsExist() {
 
 function testDestructiveActionBackupsExist() {
   const app = readFileSync("app.js", "utf8");
-  assert.match(app, /await exportAdminSafetyBackup\("production activity reset"\)/);
-  assert.match(app, /await exportAdminSafetyBackup\("purge soft-deleted generated test rows"\)/);
-  assert.match(app, /await exportAdminSafetyBackup\("remove generated test data"\)/);
-  assert.match(app, /await exportAdminSafetyBackup\("cleanup generated test data"\)/);
-  assert.match(app, /await exportAdminSafetyBackup\("remove unused test users"\)/);
+  const requiredBackupReasons = [
+    "reset current period",
+    "reset all local data",
+    "import backup",
+    "close current period",
+    "production activity reset",
+    "purge soft-deleted generated test rows",
+    "remove generated test data",
+    "cleanup generated test data",
+    "remove unused test users"
+  ];
+  assert.match(app, /const requiredAdminSafetyBackupReasons = Object\.freeze\(\[/);
+  for (const reason of requiredBackupReasons) {
+    assert.match(app, new RegExp(`"${reason}"`));
+    assert.match(app, new RegExp(`await exportAdminSafetyBackup\\("${reason}"\\)`));
+  }
   assert.match(app, /async function removeGeneratedTestData\(\)/);
   assert.match(app, /async function removeUnusedTestUsers\(\)/);
+  assert.match(app, /Cloud backup failed before \${reason}/);
+  assert.match(app, /showUserError\(error\.message \|\| String\(error\)\);\n      return;\n    }\n\n  const period =/);
   console.log("ok - testDestructiveActionBackupsExist");
 }
 

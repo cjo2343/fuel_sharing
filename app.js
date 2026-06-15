@@ -359,6 +359,18 @@ const supabaseLoadSafety = {
   testLabReportLoadCooldownMs: 10 * 1000,
   requests: []
 };
+const requiredAdminSafetyBackupReasons = Object.freeze([
+  "reset current period",
+  "reset all local data",
+  "import backup",
+  "close current period",
+  "production activity reset",
+  "purge soft-deleted generated test rows",
+  "remove generated test data",
+  "cleanup generated test data",
+  "remove unused test users"
+]);
+
 const retentionPolicy = Object.freeze({
   ledgerEventDays: 30,
   testLabReportDays: 30,
@@ -6895,6 +6907,13 @@ async function closeCurrentPeriod(options = {}) {
   els.closePeriod.textContent = "Closing...";
 
   try {
+    try {
+      await exportAdminSafetyBackup("close current period");
+    } catch (error) {
+      showUserError(error.message || String(error));
+      return;
+    }
+
   const period = {
     id: crypto.randomUUID(),
     closedAt: new Date().toISOString(),

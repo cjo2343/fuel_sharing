@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.101",
-    buildLabel: "json-mirror-manual-backup",
-    updatedAt: "2026-06-15T23:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v200",
+    version: "2026.06.15.102",
+    buildLabel: "admin-safety-backup-coverage",
+    updatedAt: "2026-06-15T23:58:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v201",
     releaseNotes: Object.freeze([
-      "Routine table-primary saves no longer upsert the full JSON ledger mirror when no audit backup is dirty.",
-      "JSON mirror writes are kept for manual admin safety backups and the audit-backup cadence.",
-      "Validation now checks that the unconditional normal-save JSON mirror write path stays removed.",
-      "Supabase JS remains vendored locally and CSP stays locked to same-origin scripts.",
+      "Period close now takes the same admin safety backup path before archiving current activity.",
+      "Destructive admin backup reasons are listed in code and checked by validation.",
+      "Deployment and hardening docs now explain the backup-before-destructive-action rule.",
+      "JSON mirror writes remain manual, safety, or audit-cadence only.",
       "Runtime metadata and service worker cache were updated for this hardening build."
     ])
   });

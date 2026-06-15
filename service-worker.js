@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v200";
-const BUILD_LABEL = "json-mirror-manual-backup";
-const BUILD_UPDATED_AT = "2026-06-15T23:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v201";
+const BUILD_LABEL = "admin-safety-backup-coverage";
+const BUILD_UPDATED_AT = "2026-06-15T23:58:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
