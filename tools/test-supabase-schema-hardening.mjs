@@ -59,6 +59,18 @@ function testTripTransactionRpcExists() {
   console.log("ok - testTripTransactionRpcExists");
 }
 
+
+function testBookingTransactionRpcsExist() {
+  assert.match(schema, /create or replace function public\.upsert_car_booking\(/);
+  assert.match(schema, /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id \|\| ':booking:' \|\| legacy_booking_id\)\)/);
+  assert.match(schema, /Only the booking creator, booked member, or a ledger admin can update this booking/);
+  assert.match(schema, /create or replace function public\.soft_delete_car_booking\(/);
+  assert.match(schema, /Only the booking creator, booked member, or a ledger admin can delete this booking/);
+  assert.match(schema, /grant execute on function public\.upsert_car_booking\(text, text, uuid, timestamptz, timestamptz, text\) to authenticated/);
+  assert.match(schema, /grant execute on function public\.soft_delete_car_booking\(text, text\) to authenticated/);
+  console.log("ok - testBookingTransactionRpcsExist");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -72,4 +84,5 @@ testSettlementRequestSameLedgerGuardExists();
 testSettlementRequestTriggerIsInstalled();
 testPeriodCloseRpcExists();
 testTripTransactionRpcExists();
+testBookingTransactionRpcsExist();
 testFuelLedgerHealthcheckExists();

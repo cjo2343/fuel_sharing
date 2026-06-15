@@ -11047,6 +11047,54 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   }
 }
 
+
+async function saveBookingRpc(context, payload) {
+  const { data, error } = await supabaseClient.rpc("upsert_car_booking", {
+    target_ledger_id: context.ledgerId,
+    legacy_booking_id: payload.legacy_id,
+    booking_member_id: payload.member_id,
+    start_at_value: payload.start_at,
+    end_at_value: payload.end_at,
+    purpose_value: payload.purpose
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingBookingTransactionRpcError(error)
+  };
+}
+
+function isMissingBookingTransactionRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || /upsert_car_booking|soft_delete_car_booking/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+}
+
+async function saveBookingWithGuardedTableUpdate(payload) {
+  const bookingResult = await supabaseClient
+    .from("car_bookings")
+    .upsert(payload, { onConflict: "ledger_id,legacy_id" });
+  if (bookingResult.error) throw bookingResult.error;
+}
+
+async function softDeleteBookingRpc(context, legacyBookingId) {
+  const { data, error } = await supabaseClient.rpc("soft_delete_car_booking", {
+    target_ledger_id: context.ledgerId,
+    legacy_booking_id: legacyBookingId
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingBookingTransactionRpcError(error)
+  };
+}
+
 async function saveBookingToNormalizedTablesFirst(booking) {
   recordSupabaseLoadEvent("booking-table-write", booking?.id ? `booking ${String(booking.id).slice(0, 8)}` : "booking");
   if (!supabaseClient || !currentSession) return true;
@@ -11066,15 +11114,26 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       updated_at: new Date().toISOString()
     };
 
-    const bookingResult = await supabaseClient
-      .from("car_bookings")
-      .upsert(payload, { onConflict: "ledger_id,legacy_id" });
-    if (bookingResult.error) throw bookingResult.error;
+    const rpcResult = await saveBookingRpc(context, payload);
+
+    if (rpcResult.ok) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: "Table-primary write saved the booking through the database transaction RPC. JSON will be updated as backup."
+      };
+      return true;
+    }
+
+    if (!rpcResult.shouldFallback) throw rpcResult.error || new Error("Could not save booking.");
+
+    console.warn("Booking transaction RPC is unavailable; falling back to direct table write. Apply the latest supabase-schema.sql to enable hardened booking writes.", rpcResult.error);
+    await saveBookingWithGuardedTableUpdate(payload);
 
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: "Table-primary write saved the booking to normalized tables. JSON will be updated as backup."
+      message: "Table-primary write saved the booking with direct table update. Apply the latest Supabase schema to use the transaction RPC."
     };
     return true;
   } catch (error) {
@@ -11207,12 +11266,26 @@ async function softDeleteNormalizedEntryFirst(type, id) {
     if (!context) return true;
     const table = type === "trips" ? "trips" : type === "fuel" ? "fuel_payments" : type === "bookings" ? "car_bookings" : null;
     if (!table) return true;
-    const result = await supabaseClient
-      .from(table)
-      .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("ledger_id", context.ledgerId)
-      .eq("legacy_id", id);
-    if (result.error) throw result.error;
+    if (type === "bookings") {
+      const rpcResult = await softDeleteBookingRpc(context, id);
+      if (!rpcResult.ok) {
+        if (!rpcResult.shouldFallback) throw rpcResult.error || new Error("Could not delete booking.");
+        console.warn("Booking delete RPC is unavailable; falling back to direct table soft-delete. Apply the latest supabase-schema.sql to enable hardened booking deletes.", rpcResult.error);
+        const fallbackResult = await supabaseClient
+          .from(table)
+          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("ledger_id", context.ledgerId)
+          .eq("legacy_id", id);
+        if (fallbackResult.error) throw fallbackResult.error;
+      }
+    } else {
+      const result = await supabaseClient
+        .from(table)
+        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("ledger_id", context.ledgerId)
+        .eq("legacy_id", id);
+      if (result.error) throw result.error;
+    }
     normalizedTableStatus = {
       checked: true,
       ok: true,
