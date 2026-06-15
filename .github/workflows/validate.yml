@@ -29,6 +29,9 @@ jobs:
       - name: Run validation suite
         run: npm run validate
 
+      - name: Run release readiness checks
+        run: node tools/check-release-readiness.mjs
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
