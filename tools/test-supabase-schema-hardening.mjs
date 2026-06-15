@@ -128,6 +128,19 @@ function testJsonWriteReductionGuardrailsExist() {
   console.log("ok - testJsonWriteReductionGuardrailsExist");
 }
 
+function testRealtimePerformanceGuardrailsExist() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /const hiddenRealtimePauseDelayMs = 60 \* 1000/);
+  assert.match(app, /function pauseRealtimeForHiddenPage\(\)/);
+  assert.match(app, /function resumeRealtimeForVisiblePage\(\)/);
+  assert.match(app, /function handleRealtimeVisibilityChange\(\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange", \(\) => \{/);
+  assert.match(app, /ledger-event-auto-sync-skip", "page hidden; sync on next focus"/);
+  assert.match(app, /realtime-paused-hidden/);
+  assert.match(app, /realtime-resumed-visible/);
+  console.log("ok - testRealtimePerformanceGuardrailsExist");
+}
+
 function testDestructiveActionBackupsExist() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /await exportAdminSafetyBackup\("production activity reset"\)/);
@@ -158,5 +171,6 @@ testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
 testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
+testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
 testFuelLedgerHealthcheckExists();

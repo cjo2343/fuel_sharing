@@ -308,6 +308,8 @@ let ledgerEventAutoSyncTimer = null;
 let lastLedgerEventAutoSyncAt = 0;
 const ledgerEventAutoSyncDebounceMs = 2500;
 const ledgerEventAutoSyncCooldownMs = 20000;
+let hiddenRealtimePauseTimer = null;
+const hiddenRealtimePauseDelayMs = 60 * 1000;
 let ignoreRealtimeUntil = 0;
 const liveSyncStorageKey = `${storageKey}:liveSyncEnabled`;
 let liveSyncEnabled = localStorage.getItem(liveSyncStorageKey) === "true";
@@ -4104,6 +4106,10 @@ window.addEventListener("focus", () => {
   loadSupabaseState({ reason: "window-focus" }).catch((error) => {
     console.warn("Focus sync failed", error);
   });
+});
+
+document.addEventListener("visibilitychange", () => {
+  handleRealtimeVisibilityChange();
 });
 
 function updateAuthUi() {
@@ -12601,6 +12607,10 @@ async function publishLedgerEvent(event = {}) {
 
 function scheduleLedgerEventAutoSync(row = null) {
   if (!supabaseClient || !currentSession) return;
+  if (document.visibilityState === "hidden") {
+    recordSupabaseLoadEvent("ledger-event-auto-sync-skip", "page hidden; sync on next focus");
+    return;
+  }
 
   if (pendingLocalChanges > 0) {
     recordSupabaseLoadEvent("ledger-event-auto-sync-skip", "pending local changes");
@@ -12649,6 +12659,10 @@ function handleLedgerEventNotification(row) {
 
 function subscribeToLedgerEvents() {
   if (!supabaseClient || !currentSession || ledgerEventsChannel) return;
+  if (document.visibilityState === "hidden") {
+    recordSupabaseLoadEvent("ledger-events-subscription-skip", "page hidden");
+    return;
+  }
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   ledgerEventsChannel = supabaseClient
     .channel(`ledger-events:${ledgerId}`)
@@ -12670,8 +12684,47 @@ function unsubscribeFromLedgerEvents() {
   renderSupabaseLoadMonitor();
 }
 
+function pauseRealtimeForHiddenPage() {
+  if (hiddenRealtimePauseTimer) window.clearTimeout(hiddenRealtimePauseTimer);
+  hiddenRealtimePauseTimer = window.setTimeout(() => {
+    hiddenRealtimePauseTimer = null;
+    if (document.visibilityState !== "hidden") return;
+    const hadLedgerEvents = Boolean(ledgerEventsChannel);
+    const hadBroadRealtime = Boolean(supabaseStateChannel);
+    unsubscribeFromLedgerEvents();
+    unsubscribeFromSupabaseState();
+    if (hadLedgerEvents || hadBroadRealtime) {
+      recordSupabaseLoadEvent("realtime-paused-hidden", hadBroadRealtime ? "ledger events + broad realtime" : "ledger events");
+    }
+  }, hiddenRealtimePauseDelayMs);
+}
+
+function resumeRealtimeForVisiblePage() {
+  if (hiddenRealtimePauseTimer) {
+    window.clearTimeout(hiddenRealtimePauseTimer);
+    hiddenRealtimePauseTimer = null;
+  }
+  if (!supabaseClient || !currentSession) return;
+  subscribeToLedgerEvents();
+  if (liveSyncEnabled) subscribeToSupabaseState({ force: true });
+  recordSupabaseLoadEvent("realtime-resumed-visible", liveSyncEnabled ? "ledger events + broad realtime" : "ledger events");
+}
+
+function handleRealtimeVisibilityChange() {
+  if (!supabaseClient || !currentSession) return;
+  if (document.visibilityState === "hidden") {
+    pauseRealtimeForHiddenPage();
+  } else {
+    resumeRealtimeForVisiblePage();
+  }
+}
+
 function subscribeToSupabaseState({ force = false } = {}) {
   if (!supabaseClient || supabaseStateChannel) return;
+  if (document.visibilityState === "hidden") {
+    recordSupabaseLoadEvent("realtime-disabled", "Realtime subscription skipped while page is hidden.");
+    return;
+  }
   if (!force && !liveSyncEnabled) {
     recordSupabaseLoadEvent("realtime-disabled", "Realtime subscription skipped; live sync is off by default.");
     return;
