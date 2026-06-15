@@ -554,6 +554,7 @@ const els = {
   saveTestLabReportCloud: document.querySelector("#saveTestLabReportCloud"),
   cleanupTestLabData: document.querySelector("#cleanupTestLabData"),
   testLabReport: document.querySelector("#testLabReport"),
+  adminGuardrailOverview: document.querySelector("#adminGuardrailOverview"),
   supabaseLoadMonitor: document.querySelector("#supabaseLoadMonitor"),
   refreshSupabaseLoadMonitor: document.querySelector("#refreshSupabaseLoadMonitor"),
   exportSupabaseLoadReport: document.querySelector("#exportSupabaseLoadReport"),
@@ -1636,6 +1637,7 @@ els.refreshAboutBuildInfo?.addEventListener("click", () => {
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   renderSupabaseLoadMonitor();
+  renderAdminGuardrailOverview();
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
 
@@ -2215,6 +2217,78 @@ function renderSupabaseLoadMonitor() {
         </ul>
       </details>
     ` : ""}
+  `;
+}
+
+
+function formatAdminTimestamp(value) {
+  if (!value) return "Not yet in this session";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" });
+}
+
+function adminGuardrailStatusCard({ title, status, detail, level = "ok" }) {
+  return `
+    <article class="admin-guardrail-card ${escapeHtml(level)}">
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(status)}</p>
+      <small>${escapeHtml(detail)}</small>
+    </article>
+  `;
+}
+
+function renderAdminGuardrailOverview() {
+  if (!els.adminGuardrailOverview) return;
+  const build = window.FUEL_LEDGER_BUILD || {};
+  const realtimeDetail = document.hidden
+    ? "Tab is hidden; realtime is paused/resumed by visibility guardrails."
+    : liveSyncEnabled
+      ? "Broad Live Sync is enabled; hidden tabs pause it after the safety delay."
+      : "Broad Live Sync is off by default; lightweight ledger events handle notifications.";
+  const normalizedStatus = normalizedTableStatus?.checked
+    ? (normalizedTableStatus.ok ? "Healthy" : "Needs review")
+    : "Not checked yet";
+  const backupDetail = lastJsonMirrorSaveAt
+    ? `Last JSON safety backup: ${formatAdminTimestamp(lastJsonMirrorSaveAt)}`
+    : "Safety backups run before destructive admin actions and manual backup saves.";
+  const pendingDetail = pendingLocalChanges > 0
+    ? `${pendingLocalChanges} pending local change${pendingLocalChanges === 1 ? "" : "s"}; sync before destructive tools.`
+    : `Last confirmed sync: ${formatAdminTimestamp(lastCloudSyncAt || lastCloudSaveAt)}`;
+
+  els.adminGuardrailOverview.innerHTML = `
+    <div class="admin-guardrail-grid" data-admin-diagnostics-overview="true">
+      ${adminGuardrailStatusCard({
+        title: "Release",
+        status: build.version ? `${build.version} · ${build.buildLabel || "unlabeled"}` : "Build info unavailable",
+        detail: build.expectedServiceWorkerCache ? `Expected cache: ${build.expectedServiceWorkerCache}` : "Refresh version status if this looks stale.",
+        level: build.version ? "ok" : "warning"
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Realtime",
+        status: liveSyncEnabled ? "Live Sync enabled" : "Live Sync off by default",
+        detail: realtimeDetail,
+        level: liveSyncEnabled ? "warning" : "ok"
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Table health",
+        status: normalizedStatus,
+        detail: normalizedTableStatus?.message || "Normalized tables are primary; JSON is a safety mirror.",
+        level: normalizedTableStatus?.checked && normalizedTableStatus?.ok ? "ok" : "warning"
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Backup guardrails",
+        status: "Protected destructive actions",
+        detail: backupDetail,
+        level: lastSyncError ? "warning" : "ok"
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Sync state",
+        status: pendingLocalChanges > 0 ? "Pending local changes" : "Ready",
+        detail: pendingDetail,
+        level: pendingLocalChanges > 0 || lastSyncError ? "warning" : "ok"
+      })}
+    </div>
   `;
 }
 
@@ -4006,6 +4080,7 @@ function render() {
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
   renderSupabaseLoadMonitor();
+  renderAdminGuardrailOverview();
   renderRetentionCleanupSummary();
   renderTestLabReport(null, { persist: false });
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);

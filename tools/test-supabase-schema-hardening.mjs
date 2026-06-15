@@ -153,6 +153,21 @@ function testDestructiveActionBackupsExist() {
   console.log("ok - testDestructiveActionBackupsExist");
 }
 
+
+function testAdminDiagnosticsUxExists() {
+  const app = readFileSync("app.js", "utf8");
+  const html = readFileSync("index.html", "utf8");
+  const css = readFileSync("styles.css", "utf8");
+  assert.match(html, /id="adminGuardrailOverview"/);
+  assert.match(app, /function renderAdminGuardrailOverview\(\)/);
+  assert.match(app, /data-admin-diagnostics-overview="true"/);
+  assert.match(app, /adminGuardrailStatusCard/);
+  assert.match(app, /Safety backups run before destructive admin actions/);
+  assert.match(app, /Broad Live Sync is off by default/);
+  assert.match(css, /\.admin-guardrail-grid/);
+  console.log("ok - testAdminDiagnosticsUxExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -173,4 +188,5 @@ testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
 testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
+testAdminDiagnosticsUxExists();
 testFuelLedgerHealthcheckExists();
