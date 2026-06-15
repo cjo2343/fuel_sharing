@@ -1365,9 +1365,9 @@ els.downloadPeriodReport?.addEventListener("click", () => {
   downloadCurrentPeriodReport();
 });
 
-els.removeTestUsers?.addEventListener("click", () => {
+els.removeTestUsers?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  removeUnusedTestUsers();
+  await removeUnusedTestUsers();
 });
 
 els.addTestTrip?.addEventListener("click", () => {
@@ -1380,9 +1380,9 @@ els.addTestFuel?.addEventListener("click", () => {
   addGeneratedTestFuel();
 });
 
-els.removeTestData?.addEventListener("click", () => {
+els.removeTestData?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  removeGeneratedTestData();
+  await removeGeneratedTestData();
 });
 
 els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
@@ -1412,6 +1412,7 @@ els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
   }
   els.purgeSoftDeletedTestRows.disabled = true;
   try {
+    await exportAdminSafetyBackup("purge soft-deleted generated test rows");
     const result = await window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: false });
     setDataToolsMessage(`Purged ${result.trips} soft-deleted generated test trip row${result.trips === 1 ? "" : "s"} and ${result.fuel} soft-deleted generated test fuel row${result.fuel === 1 ? "" : "s"}.`);
     await refreshDatabaseDiagnostics().catch(() => {});
@@ -1849,7 +1850,8 @@ function addGeneratedTestFuel() {
   render();
 }
 
-function removeGeneratedTestData() {
+async function removeGeneratedTestData() {
+  await exportAdminSafetyBackup("remove generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
   setDataToolsMessage(`${cleanup.message} Triggered save + normalized sync.`);
   markNormalizedReconciliationDirty("remove generated test data");
@@ -2896,6 +2898,7 @@ async function runStandaloneSecurityHealthScenario() {
 }
 
 async function cleanupGeneratedTestDataWithReport() {
+  await exportAdminSafetyBackup("cleanup generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
   await flushStressSave(`${cleanup.message} Triggered save + normalized sync.`);
   const report = buildCurrentTestLabReport({
@@ -8025,7 +8028,7 @@ function csvFuelRow(fuel, periodStatus, periodLabel) {
   ];
 }
 
-function removeUnusedTestUsers() {
+async function removeUnusedTestUsers() {
   const removable = state.members.filter((member) => /test/i.test(member) && !memberHasLedgerData(member));
 
   if (removable.length === 0) {
@@ -8034,6 +8037,13 @@ function removeUnusedTestUsers() {
   }
 
   if (!confirmUserAction(`Remove these unused test users?\n\n${removable.join("\n")}`)) return;
+
+  try {
+    await exportAdminSafetyBackup("remove unused test users");
+  } catch (error) {
+    showUserError(error.message || String(error));
+    return;
+  }
 
   state.members = state.members.filter((member) => !removable.includes(member));
   for (const member of removable) delete state.memberProfiles[member];
@@ -9594,7 +9604,12 @@ async function runProductionActivityReset() {
     return;
   }
 
-  exportLedgerBackup();
+  try {
+    await exportAdminSafetyBackup("production activity reset");
+  } catch (error) {
+    showUserError(error.message || String(error));
+    return;
+  }
 
   els.productionActivityReset.disabled = true;
   if (els.authMessage) els.authMessage.textContent = "Resetting production activity...";

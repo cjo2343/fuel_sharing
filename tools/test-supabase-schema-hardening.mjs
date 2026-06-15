@@ -128,6 +128,18 @@ function testJsonWriteReductionGuardrailsExist() {
   console.log("ok - testJsonWriteReductionGuardrailsExist");
 }
 
+function testDestructiveActionBackupsExist() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /await exportAdminSafetyBackup\("production activity reset"\)/);
+  assert.match(app, /await exportAdminSafetyBackup\("purge soft-deleted generated test rows"\)/);
+  assert.match(app, /await exportAdminSafetyBackup\("remove generated test data"\)/);
+  assert.match(app, /await exportAdminSafetyBackup\("cleanup generated test data"\)/);
+  assert.match(app, /await exportAdminSafetyBackup\("remove unused test users"\)/);
+  assert.match(app, /async function removeGeneratedTestData\(\)/);
+  assert.match(app, /async function removeUnusedTestUsers\(\)/);
+  console.log("ok - testDestructiveActionBackupsExist");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -146,4 +158,5 @@ testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
 testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
+testDestructiveActionBackupsExist();
 testFuelLedgerHealthcheckExists();
