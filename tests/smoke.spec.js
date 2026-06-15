@@ -1070,10 +1070,21 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   await page.locator("#tripParticipants").evaluate((container) => {
     const selectedPeople = new Set(["Christian", "Marie"]);
     container.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-      input.checked = selectedPeople.has(input.value);
+      const shouldBeChecked = selectedPeople.has(input.value);
+      if (input.checked !== shouldBeChecked) {
+        input.checked = shouldBeChecked;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     });
+    container.dispatchEvent(new Event("input", { bubbles: true }));
     container.dispatchEvent(new Event("change", { bubbles: true }));
   });
+  await expect.poll(async () => {
+    return page.locator('#tripParticipants input[type="checkbox"]:checked').evaluateAll((inputs) => {
+      return inputs.map((input) => input.value).sort();
+    });
+  }, { timeout: 5000 }).toEqual(["Christian", "Marie"].sort());
 
   await page.locator("#startKm").fill("10000");
   await page.locator("#endKm").fill("10123");
@@ -1083,8 +1094,8 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
     const response = await request.get("/api/state");
     const saved = await response.json();
     const trip = saved.trips.find((item) => item.sourceBookingId === booking.id);
-    return trip?.participants || [];
-  }, { timeout: 5000 }).toEqual(["Christian", "Marie"]);
+    return [...(trip?.participants || [])].sort();
+  }, { timeout: 5000 }).toEqual(["Christian", "Marie"].sort());
 });
 
 test("fuel log is blocked when liters exceed configured tank capacity", async ({ page, request }) => {
