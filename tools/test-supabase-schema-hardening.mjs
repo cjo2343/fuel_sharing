@@ -118,6 +118,23 @@ function testAdminToolsGuardrailRpcsExist() {
   console.log("ok - testAdminToolsGuardrailRpcsExist");
 }
 
+function testAdminTestLabProtectionsExist() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /function requireAdvancedAdminAction\(\{ phrase, title, detail, requireUnlock = true \} = \{\}\)/);
+  assert.match(app, /if \(requireUnlock && !assertAdvancedAdminToolsUnlocked\(\)\) return false/);
+  assert.match(app, /phrase: "ADD TEST TRIP"/);
+  assert.match(app, /phrase: "ADD TEST FUEL"/);
+  assert.match(app, /phrase: "REMOVE TEST DATA"/);
+  assert.match(app, /Use Safe Test Lab for local-only checks/);
+  assert.match(app, /function isStrictGeneratedTestEntry\(entry\)/);
+  assert.match(app, /String\(entry\.id \|\| ""\)\.startsWith\(generatedTestPrefix\)/);
+  assert.match(app, /function isStrictGeneratedTestStatusKey\(key\)/);
+  assert.match(app, /const isTest = isStrictGeneratedTestEntry/);
+  assert.doesNotMatch(app, /state\.trips = \(state\.trips \|\| \[\]\)\.filter\(\(trip\) => !testLab\?\.isTestLabEntry/, "destructive generated cleanup must not use broad marker-only detection");
+  console.log("ok - testAdminTestLabProtectionsExist");
+}
+
+
 function testDiagnosticPrivacyRedactionExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /function redactSensitiveDiagnostics\(value\)/);
@@ -361,6 +378,7 @@ testBookingTransactionRpcsExist();
 testFuelPaymentRpcExists();
 testAdminReconciliationSafetyGateExists();
 testAdminToolsGuardrailRpcsExist();
+testAdminTestLabProtectionsExist();
 testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
 testLocalTripSubmitFlushesServerState();

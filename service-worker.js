@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v207";
-const BUILD_LABEL = "background-auth-sync-no-delay";
+const CACHE_NAME = "fuel-ledger-v208";
+const BUILD_LABEL = "admin-testlab-guardrails";
 const BUILD_UPDATED_AT = "2026-06-16T02:05:00.000Z";
 const CORE_ASSETS = [
   "/",

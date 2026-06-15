@@ -112,6 +112,7 @@ The current target state is:
 - Critical write/admin actions are protected by RPCs and surfaced through `fuel_ledger_healthcheck('main-car')`.
 - Supabase Realtime is narrowed to `public.ledger_events` only. The broad JSON table `public.car_share_ledgers` remains as backup/fallback storage but should not be in the Realtime publication.
 - Cloud-saved Test Lab/Security Health reports are immutable rows in `public.test_lab_reports`; old saved reports are historical audit records and should not be treated as current health.
+- Generated Test Data buttons that write/remove live ledger rows require the advanced admin/test unlock plus typed confirmation. Cleanup uses strict `auto-test-` id matching instead of marker-only note/station matching.
 
 Use this SQL as the quick health gate:
 

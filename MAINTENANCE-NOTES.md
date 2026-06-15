@@ -485,7 +485,8 @@ Normal Supabase saves now synchronize normalized tables first and defer the larg
 - Safe Test Lab remains local-only and visible to admins without unlocking advanced tools.
 - Cloud-touching Security Health is separated from routine Test Lab and protected by typed confirmation plus a cooldown.
 - Advanced stress/debug tools are hidden behind an explicit admin unlock and require typed confirmation before running.
-- Generated data cleanup requires typed confirmation to reduce accidental destructive actions.
+- Generated test trip/fuel creation and generated-data removal also require the advanced admin/test unlock plus typed confirmation because they touch live ledger state.
+- Generated data cleanup uses strict `auto-test-` id matching so a real row is not removed only because a note/station contains the test marker text.
 
 
 ### Data retention/privacy cleanup

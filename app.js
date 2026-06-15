@@ -1431,17 +1431,29 @@ els.removeTestUsers?.addEventListener("click", async () => {
 });
 
 els.addTestTrip?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireAdvancedAdminAction({
+    phrase: "ADD TEST TRIP",
+    title: "Add generated test trip?",
+    detail: "This writes one clearly marked generated test trip to the live ledger. Use Safe Test Lab for local-only checks."
+  })) return;
   addGeneratedTestTrip();
 });
 
 els.addTestFuel?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireAdvancedAdminAction({
+    phrase: "ADD TEST FUEL",
+    title: "Add generated test fuel log?",
+    detail: "This writes one clearly marked generated test fuel log to the live ledger. Use Safe Test Lab for local-only checks."
+  })) return;
   addGeneratedTestFuel();
 });
 
 els.removeTestData?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireAdvancedAdminAction({
+    phrase: "REMOVE TEST DATA",
+    title: "Remove generated test data?",
+    detail: "This removes only strict generated test entries with the auto-test id prefix after taking a safety backup."
+  })) return;
   await removeGeneratedTestData();
 });
 
@@ -1556,8 +1568,8 @@ function updateAdvancedAdminToolsUi() {
   if (els.advancedAdminToolsPanel) els.advancedAdminToolsPanel.classList.toggle("hidden", !advancedAdminToolsUnlocked);
   if (els.advancedAdminToolsStatus) {
     els.advancedAdminToolsStatus.textContent = advancedAdminToolsUnlocked
-      ? "Advanced stress tools unlocked for this tab for 15 minutes. Use only when diagnosing sync behavior."
-      : "Advanced stress tools are locked.";
+      ? "Advanced admin/test tools unlocked for this tab for 15 minutes. Use only for generated-data or stress diagnostics."
+      : "Advanced admin/test tools are locked.";
   }
   if (els.unlockAdvancedAdminTools) {
     els.unlockAdvancedAdminTools.textContent = advancedAdminToolsUnlocked ? "Lock advanced admin tools" : "Unlock advanced admin tools";
@@ -1568,8 +1580,15 @@ function assertAdvancedAdminToolsUnlocked() {
   if (!canManageSettings()) return false;
   if (advancedAdminToolsUnlocked) return true;
   showUserWarning("Unlock advanced admin tools before running stress/debug actions.");
-  setDataToolsMessage("Advanced stress tools are locked. Unlock them first, then use typed confirmation.");
+  setDataToolsMessage("Advanced admin/test tools are locked. Unlock them first, then use typed confirmation.");
   return false;
+}
+
+function requireAdvancedAdminAction({ phrase, title, detail, requireUnlock = true } = {}) {
+  if (!canManageSettings()) return false;
+  if (requireUnlock && !assertAdvancedAdminToolsUnlocked()) return false;
+  if (!phrase) return true;
+  return requireTypedAdminConfirmation({ phrase, title, detail });
 }
 
 els.unlockAdvancedAdminTools?.addEventListener("click", () => {
@@ -1593,7 +1612,7 @@ els.unlockAdvancedAdminTools?.addEventListener("click", () => {
   advancedAdminToolsUnlocked = true;
   scheduleAdvancedAdminToolsRelock();
   updateAdvancedAdminToolsUi();
-  setDataToolsMessage("Advanced admin tools unlocked for this tab for 15 minutes.");
+  setDataToolsMessage("Advanced admin/test tools unlocked for this tab for 15 minutes.");
 });
 
 els.runStressTest?.addEventListener("click", async () => {
@@ -1961,6 +1980,15 @@ function isGeneratedTestEntry(entry) {
     String(entry.station || "").includes(generatedTestMarker);
 }
 
+function isStrictGeneratedTestEntry(entry) {
+  if (!entry) return false;
+  return String(entry.id || "").startsWith(generatedTestPrefix);
+}
+
+function isStrictGeneratedTestStatusKey(key) {
+  return String(key || "").includes(generatedTestPrefix);
+}
+
 function makeGeneratedTestTrip(index = 0) {
   const members = getMemberNames();
   const actor = members[index % Math.max(1, members.length)] || getTestActorName();
@@ -2097,7 +2125,7 @@ function tagGeneratedEntry(entry, runId) {
 
 function cleanupGeneratedTestEntriesFromState() {
   const before = testLab?.generatedDataSummary ? testLab.generatedDataSummary(state, { prefix: generatedTestPrefix, marker: generatedTestMarker }) : null;
-  const isTest = (entry) => testLab?.isTestLabEntry ? testLab.isTestLabEntry(entry, { prefix: generatedTestPrefix, marker: generatedTestMarker }) : isGeneratedTestEntry(entry);
+  const isTest = isStrictGeneratedTestEntry;
 
   state.trips = (state.trips || []).filter((trip) => !isTest(trip));
   state.fuel = (state.fuel || []).filter((fuel) => !isTest(fuel));
@@ -2105,7 +2133,7 @@ function cleanupGeneratedTestEntriesFromState() {
   state.closedPeriods = (state.closedPeriods || []).filter((period) => !isTest(period));
 
   Object.keys(state.paymentStatuses || {}).forEach((key) => {
-    if (key.includes(generatedTestPrefix) || key.includes(generatedTestMarker)) delete state.paymentStatuses[key];
+    if (isStrictGeneratedTestStatusKey(key)) delete state.paymentStatuses[key];
   });
 
   state.lastOdometer = getLatestOdometer();

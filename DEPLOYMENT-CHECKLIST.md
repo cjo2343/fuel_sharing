@@ -454,6 +454,8 @@ Before deploying a patch that adds or changes destructive admin actions, verify 
 - Confirm Safe Test Lab is visible to admins and remains local-only.
 - Confirm Security Health is labeled cloud-touching and requires typed confirmation.
 - Confirm Advanced stress tools are hidden until “Unlock advanced admin tools” is confirmed.
+- Confirm generated test trip/fuel creation and generated-data removal require the advanced admin/test unlock plus typed confirmation.
+- Confirm generated-data cleanup only removes strict `auto-test-` entries and leaves real rows with ordinary notes/stations untouched.
 - Confirm non-admin members cannot access Admin/Test Lab tools.
 
 
