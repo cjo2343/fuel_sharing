@@ -217,6 +217,23 @@ function testSyncHealthBannerExists() {
   console.log("ok - testSyncHealthBannerExists");
 }
 
+function testTestLabReportStoreExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(schema, /create table if not exists public\.test_lab_reports/);
+  assert.match(schema, /unique \(ledger_id, report_id\)/);
+  assert.match(schema, /create policy "Ledger members can read test lab reports"/);
+  assert.match(schema, /create or replace function public\.upsert_test_lab_report\(/);
+  assert.match(schema, /Only ledger admins can save Test Lab reports/);
+  assert.match(schema, /grant execute on function public\.upsert_test_lab_report\(text, text, jsonb\) to authenticated/);
+  assert.match(schema, /to_regprocedure\('public\.upsert_test_lab_report\(text, text, jsonb\)'\)/);
+  assert.match(app, /function saveTestLabReportToCloudStore\(report\)/);
+  assert.match(app, /upsert_test_lab_report/);
+  assert.match(app, /Ledger JSON was not rewritten/);
+  assert.match(app, /function loadCloudTestLabReports\(\)/);
+  assert.match(app, /from\("test_lab_reports"\)/);
+  console.log("ok - testTestLabReportStoreExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -228,6 +245,7 @@ function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /to_regprocedure\('public\.upsert_ledger_member_admin/);
   assert.match(schema, /to_regprocedure\('public\.set_ledger_member_active_admin/);
   assert.match(schema, /to_regprocedure\('public\.purge_generated_test_rows/);
+  assert.match(schema, /to_regprocedure\('public\.upsert_test_lab_report/);
   assert.match(schema, /grant execute on function public\.fuel_ledger_healthcheck\(text\) to authenticated/);
   console.log("ok - testFuelLedgerHealthcheckExists");
 }
@@ -249,4 +267,5 @@ testDestructiveActionBackupsExist();
 testAdminDiagnosticsUxExists();
 testReleaseAboutPanelExists();
 testSyncHealthBannerExists();
+testTestLabReportStoreExists();
 testFuelLedgerHealthcheckExists();

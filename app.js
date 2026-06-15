@@ -2667,6 +2667,73 @@ async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000, deep 
   return supabaseSecurityStatus;
 }
 
+function isMissingTestLabReportStoreError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || /test_lab_reports|upsert_test_lab_report/i.test(message) && /not found|schema cache|could not find|does not exist|relation/i.test(message);
+}
+
+function mergeTestLabReportsIntoState(reports = []) {
+  const existing = normalizeTestLabReports(state.testLabReports);
+  const mergedById = new Map();
+  [...reports, ...existing].forEach((report) => {
+    if (!report || typeof report !== "object") return;
+    const normalized = normalizeTestLabReports([report])[0];
+    if (!normalized?.id) return;
+    mergedById.set(normalized.id, normalized);
+  });
+  state.testLabReports = normalizeTestLabReports([...mergedById.values()]);
+  lastTestLabReport = state.testLabReports[0] || lastTestLabReport;
+  return state.testLabReports;
+}
+
+async function loadCloudTestLabReports() {
+  if (!supabaseClient || !currentSession) return false;
+  try {
+    recordSupabaseLoadEvent("test-lab-report-load", "load normalized Test Lab report history");
+    const { data, error } = await supabaseClient
+      .from("test_lab_reports")
+      .select("report_payload,synced_at")
+      .eq("ledger_id", supabaseHelpers.getLedgerId(supabaseConfig))
+      .order("synced_at", { ascending: false })
+      .limit(5);
+    if (error) throw error;
+    const reports = (data || []).map((row) => ({
+      ...(row.report_payload || {}),
+      syncedAt: row.report_payload?.syncedAt || row.synced_at
+    }));
+    mergeTestLabReportsIntoState(reports);
+    writeLocalState();
+    return true;
+  } catch (error) {
+    if (isMissingTestLabReportStoreError(error)) {
+      recordSupabaseLoadEvent("test-lab-report-load-skip", "normalized Test Lab report store is not migrated yet");
+      return false;
+    }
+    console.warn("Could not load normalized Test Lab reports", error);
+    return false;
+  }
+}
+
+async function saveTestLabReportToCloudStore(report) {
+  if (!supabaseClient || !currentSession) return false;
+  const reportToStore = redactSensitiveDiagnostics(report);
+  const reportId = String(reportToStore.id || "").trim() || `testlab-${Date.now()}`;
+  recordSupabaseLoadEvent("test-lab-report-rpc-save", "save Test Lab report outside JSON mirror");
+  const { error } = await supabaseClient.rpc("upsert_test_lab_report", {
+    target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
+    report_id_value: reportId,
+    report_payload_value: {
+      ...reportToStore,
+      id: reportId,
+      syncedAt: reportToStore.syncedAt || new Date().toISOString()
+    }
+  });
+  if (!error) return true;
+  if (isMissingTestLabReportStoreError(error)) return false;
+  throw error;
+}
+
 function persistTestLabReport(report, { sync = false } = {}) {
   if (!report || typeof report !== "object") return null;
   const reportToStore = sync ? redactSensitiveDiagnostics(report) : report;
@@ -2675,23 +2742,30 @@ function persistTestLabReport(report, { sync = false } = {}) {
     createdBy: reportToStore.createdBy || describeCurrentActor(),
     syncedAt: new Date().toISOString()
   };
-  const existing = normalizeTestLabReports(state.testLabReports).filter((item) => item.id !== enriched.id);
-  state.testLabReports = normalizeTestLabReports([enriched, ...existing]);
-  lastTestLabReport = state.testLabReports[0];
-  if (sync || testLabCloudReportOptIn) saveTestLabReportState();
+  mergeTestLabReportsIntoState([enriched]);
+  if (sync || testLabCloudReportOptIn) saveTestLabReportState(enriched);
   return lastTestLabReport;
 }
 
-function saveTestLabReportState() {
+function saveTestLabReportState(report = lastTestLabReport) {
   recordSupabaseLoadEvent("test-lab-report-save", "Manually saved Test Lab report metadata to cloud");
-  state.updatedAt = new Date().toISOString();
   writeLocalState();
-  markLocalChangeQueued();
   if (supabaseClient && currentSession) {
-    saveJsonMirrorBackup({ force: true })
-      .then(() => {
-        markRemoteSaveSucceeded("Shared");
-        scheduleNormalizedTableCheck({ delayMs: 60000, reason: "test-lab-report" });
+    saveTestLabReportToCloudStore(report)
+      .then((savedToReportStore) => {
+        if (savedToReportStore) {
+          markRemoteSaveSucceeded("Reports");
+          setDataToolsMessage("Latest Test Lab report saved to the normalized cloud report store. Ledger JSON was not rewritten.");
+          return;
+        }
+        return saveJsonMirrorBackup({ force: true, reason: "Test Lab report JSON fallback" }).then((savedToJson) => {
+          if (savedToJson) {
+            markRemoteSaveSucceeded("Shared");
+            setDataToolsMessage("Latest Test Lab report saved through the JSON mirror fallback. Apply the Test Lab report store migration to avoid full-state JSON writes.");
+          } else {
+            markRemoteSaveFailed(new Error("Could not save Test Lab report."), "Could not save Test Lab report.");
+          }
+        });
       })
       .catch((error) => markRemoteSaveFailed(error, "Could not save Test Lab report."));
   } else {
@@ -12553,6 +12627,7 @@ async function loadSupabaseState(options = {}) {
       await syncNormalizedTablesFromJson();
     }
 
+    await loadCloudTestLabReports();
     scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
     return true;

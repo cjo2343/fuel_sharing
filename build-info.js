@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.89",
-    buildLabel: "booking-link-context-guard",
-    updatedAt: "2026-06-15T17:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v188",
+    version: "2026.06.15.90",
+    buildLabel: "test-lab-report-store",
+    updatedAt: "2026-06-15T18:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v189",
     releaseNotes: Object.freeze([
-      "Booking-to-trip logging now mirrors booking context on the trip form so linkage survives render/refactor timing edges.",
-      "Trips created from bookings preserve booking ID, booking window, and log reference before pending fuel checks run.",
-      "RPC health visibility remains available from the previous release.",
-      "Runtime script/cache parity checks remain active for new helper modules."
+      "Cloud-saved Test Lab reports now use the normalized test_lab_reports store when migrated.",
+      "Saving a Test Lab report no longer rewrites the full ledger JSON mirror unless the new report store RPC is missing.",
+      "Recent cloud report history is loaded from normalized report storage after sign-in.",
+      "JSON mirror fallback remains available for migration-safe rollout."
     ])
   });
 
