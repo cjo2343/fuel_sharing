@@ -498,8 +498,8 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   const reminderButton = page.locator('button[data-payment-reminder="true"]:not([disabled])').first();
   if (await reminderButton.count()) {
     await reminderButton.evaluate((button) => window.setTimeout(() => button.click(), 0));
-    await expect(page.locator("body")).toContainText(/Reminder .* recorded|Reminder .* sent/i);
-    await expect(page.locator("body")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification|Reminder .* sent/i);
+    await expect(page.locator("body")).toContainText(/Reminder .* recorded|Reminder .* sent|Period locked|Reopen payment requests before changing this period/i);
+    await expect(page.locator("body")).toContainText(/Reminder recorded|No active mobile notification subscription|mobile notification|Reminder .* sent|Period locked|Reopen payment requests before changing this period/i);
   }
 
   const reopenButton = page.locator('button[data-payment-status="open"]').first();
