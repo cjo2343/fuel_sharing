@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v197";
-const BUILD_LABEL = "production-admin-hardening";
-const BUILD_UPDATED_AT = "2026-06-15T22:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v198";
+const BUILD_LABEL = "bootstrap-url-hardening";
+const BUILD_UPDATED_AT = "2026-06-15T22:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -100,9 +100,19 @@ self.addEventListener("push", (event) => {
   );
 });
 
+function sanitizeNotificationUrl(value) {
+  try {
+    const candidate = new URL(value || "/", self.location.origin);
+    if (candidate.origin !== self.location.origin) return "/";
+    return `${candidate.pathname}${candidate.search}${candidate.hash}` || "/";
+  } catch {
+    return "/";
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/";
+  const url = sanitizeNotificationUrl(event.notification.data?.url);
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {

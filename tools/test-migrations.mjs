@@ -29,6 +29,7 @@ const expected = [
   "017_healthcheck_rpc_detection_fix.sql",
   "018_realtime_publication_cleanup.sql",
   "019_immutable_test_lab_report_history.sql",
+  "020_bootstrap_lock.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -81,6 +82,9 @@ for (const marker of [
   "push_subscription_scope",
   "alter publication supabase_realtime drop table public.car_share_ledgers",
   "alter publication supabase_realtime add table public.ledger_events",
+  "bootstrap_locked_at",
+  "create or replace function public.lock_ledger_bootstrap_when_admin_email_attached",
+  "create trigger lock_ledger_bootstrap_on_admin_email",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

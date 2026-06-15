@@ -70,5 +70,7 @@ const expectedCache = buildInfo.match(/expectedServiceWorkerCache:\s*["']([^"']+
 assert.ok(cacheName, "service-worker.js must expose CACHE_NAME");
 assert.equal(cacheName, expectedCache, "service-worker.js CACHE_NAME must match build-info.js expectedServiceWorkerCache");
 assert.ok(serviceWorker.includes("core-asset-cache-failure"), "service worker should log cache install failures for diagnostics");
+assert.ok(serviceWorker.includes("function sanitizeNotificationUrl"), "service worker should sanitize notification click URLs");
+assert.ok(serviceWorker.includes("candidate.origin !== self.location.origin"), "notification click URLs must be restricted to same-origin paths");
 
 console.log("Runtime asset parity check passed.");

@@ -36,6 +36,8 @@ npm run hooks:install
 
 Run database migrations before deploying app files. When a patch adds files under `supabase/migrations`, apply the new migration or the consolidated `supabase-schema.sql` first, then deploy the matching frontend/server files.
 
+Bootstrap-lock releases need the database migration before the app is served. Confirm `ledgers.bootstrap_locked_at` exists, `is_ledger_bootstrap_open(...)` returns false for locked ledgers, and the bootstrap lock trigger has run after the first active admin member with an email is attached. If these checks fail, stop the deployment and apply the latest `supabase/migrations` or the matching `supabase-schema.sql` again.
+
 
 Use this checklist when applying database or app changes to an existing Fuel Sharing deployment.
 

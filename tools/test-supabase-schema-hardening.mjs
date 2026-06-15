@@ -251,6 +251,17 @@ function testTestLabReportStoreExists() {
   console.log("ok - testTestLabReportStoreExists");
 }
 
+function testBootstrapLockExists() {
+  assert.match(schema, /bootstrap_locked_at timestamptz/);
+  assert.match(schema, /create or replace function public\.is_ledger_bootstrap_open\(p_ledger_id text\)/);
+  assert.match(schema, /l\.bootstrap_locked_at is not null/);
+  assert.match(schema, /create or replace function public\.lock_ledger_bootstrap_when_admin_email_attached\(\)/);
+  assert.match(schema, /new\.role = 'admin'/);
+  assert.match(schema, /btrim\(new\.email\) <> ''/);
+  assert.match(schema, /create trigger lock_ledger_bootstrap_on_admin_email/);
+  console.log("ok - testBootstrapLockExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -295,4 +306,5 @@ testAdminDiagnosticsUxExists();
 testReleaseAboutPanelExists();
 testSyncHealthBannerExists();
 testTestLabReportStoreExists();
+testBootstrapLockExists();
 testFuelLedgerHealthcheckExists();

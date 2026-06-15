@@ -1,16 +1,16 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.98",
-    buildLabel: "production-admin-hardening",
-    updatedAt: "2026-06-15T22:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v197",
+    version: "2026.06.15.99",
+    buildLabel: "bootstrap-url-hardening",
+    updatedAt: "2026-06-15T22:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v198",
     releaseNotes: Object.freeze([
-      "Member management now fails closed when required admin RPCs are missing instead of using direct table fallbacks.",
-      "Generated test row purges require the server-side purge RPC in production.",
-      "Advanced admin tools unlock only for the current tab and automatically relock after 15 minutes.",
-      "Supabase browser client CDN URL is pinned to an exact v2 release instead of floating on @2.",
-      "RPC availability diagnostics now direct admins to apply the latest schema before using production write/admin tools."
+      "Bootstrap access now locks automatically after a real active admin email is attached to the ledger.",
+      "Push notification clicks are restricted to same-origin app paths.",
+      "Validation now checks that member/admin RPCs and test-row purge fail closed when RPCs are missing.",
+      "Member management and generated test purge operations continue to require server-side RPCs in production.",
+      "Runtime metadata and service worker cache were updated for this hardening build."
     ])
   });
 
