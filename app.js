@@ -16,6 +16,8 @@ const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
+const advancedAdminToolsKey = "fuel-ledger-advanced-admin-tools-unlocked";
+const securityHealthCooldownMs = 2 * 60 * 1000;
 const generatedTestPrefix = "auto-test-";
 const generatedTestMarker = "[AUTO TEST]";
 const supabaseHelpers = window.FuelSupabaseHelpers;
@@ -28,6 +30,8 @@ const auditLog = window.FuelAuditLog;
 const testLab = window.FuelTestLab;
 const securityHealth = window.FuelSecurityHealth;
 let lastTestLabReport = null;
+let advancedAdminToolsUnlocked = localStorage.getItem(advancedAdminToolsKey) === "true";
+let lastStandaloneSecurityHealthAt = 0;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 let auditLogDirty = false;
 
@@ -528,6 +532,9 @@ const els = {
   runPrivacyScenario: document.querySelector("#runPrivacyScenario"),
   runRuntimeScenario: document.querySelector("#runRuntimeScenario"),
   runSecurityScenario: document.querySelector("#runSecurityScenario"),
+  unlockAdvancedAdminTools: document.querySelector("#unlockAdvancedAdminTools"),
+  advancedAdminToolsStatus: document.querySelector("#advancedAdminToolsStatus"),
+  advancedAdminToolsPanel: document.querySelector(".admin-advanced-tools"),
   runRapidSaveTest: document.querySelector("#runRapidSaveTest"),
   exportTestLabReport: document.querySelector("#exportTestLabReport"),
   saveTestLabReportCloud: document.querySelector("#saveTestLabReportCloud"),
@@ -538,6 +545,7 @@ const els = {
   exportSupabaseLoadReport: document.querySelector("#exportSupabaseLoadReport"),
   syncNowAdmin: document.querySelector("#syncNowAdmin"),
   toggleLiveSync: document.querySelector("#toggleLiveSync"),
+  refreshAboutBuildInfo: document.querySelector("#refreshAboutBuildInfo"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -1375,13 +1383,78 @@ els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
   }
 });
 
-els.runStressTest?.addEventListener("click", async () => {
+function requireTypedAdminConfirmation({ phrase, title, detail }) {
+  if (!canManageSettings()) return false;
+  const message = [
+    title || "Confirm admin action",
+    detail || "This action is restricted to admins.",
+    "",
+    `Type ${phrase} to continue.`
+  ].join("\n");
+  const typed = prompt(message);
+  return typed === phrase;
+}
+
+function updateAdvancedAdminToolsUi() {
+  if (els.advancedAdminToolsPanel) els.advancedAdminToolsPanel.classList.toggle("hidden", !advancedAdminToolsUnlocked);
+  if (els.advancedAdminToolsStatus) {
+    els.advancedAdminToolsStatus.textContent = advancedAdminToolsUnlocked
+      ? "Advanced stress tools unlocked for this browser session. Use only when diagnosing sync behavior."
+      : "Advanced stress tools are locked.";
+  }
+  if (els.unlockAdvancedAdminTools) {
+    els.unlockAdvancedAdminTools.textContent = advancedAdminToolsUnlocked ? "Lock advanced admin tools" : "Unlock advanced admin tools";
+  }
+}
+
+function assertAdvancedAdminToolsUnlocked() {
+  if (!canManageSettings()) return false;
+  if (advancedAdminToolsUnlocked) return true;
+  showUserWarning("Unlock advanced admin tools before running stress/debug actions.");
+  setDataToolsMessage("Advanced stress tools are locked. Unlock them first, then use typed confirmation.");
+  return false;
+}
+
+els.unlockAdvancedAdminTools?.addEventListener("click", () => {
   if (!canManageSettings()) return;
+  if (advancedAdminToolsUnlocked) {
+    advancedAdminToolsUnlocked = false;
+    localStorage.removeItem(advancedAdminToolsKey);
+    updateAdvancedAdminToolsUi();
+    setDataToolsMessage("Advanced admin tools locked.");
+    return;
+  }
+  if (!requireTypedAdminConfirmation({
+    phrase: "UNLOCK ADMIN TOOLS",
+    title: "Unlock advanced admin tools?",
+    detail: "These tools can create cloud load or generated test rows. Safe Test Lab does not require unlocking."
+  })) {
+    setDataToolsMessage("Advanced admin unlock cancelled.");
+    return;
+  }
+  advancedAdminToolsUnlocked = true;
+  localStorage.setItem(advancedAdminToolsKey, "true");
+  updateAdvancedAdminToolsUi();
+  setDataToolsMessage("Advanced admin tools unlocked for this browser.");
+});
+
+els.runStressTest?.addEventListener("click", async () => {
+  if (!canManageSettings() || !assertAdvancedAdminToolsUnlocked()) return;
+  if (!requireTypedAdminConfirmation({
+    phrase: "RUN STRESS TEST",
+    title: "Run advanced stress test?",
+    detail: "This can create generated data and Supabase activity. Use only while diagnosing sync behavior."
+  })) return;
   await runGeneratedStressTest();
 });
 
 els.runRapidSaveTest?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!canManageSettings() || !assertAdvancedAdminToolsUnlocked()) return;
+  if (!requireTypedAdminConfirmation({
+    phrase: "RUN RAPID SAVE TEST",
+    title: "Run rapid save test?",
+    detail: "This intentionally creates repeated save activity. Use only while Supabase CPU is calm."
+  })) return;
   await runGeneratedRapidSaveTest();
 });
 
@@ -1433,6 +1506,18 @@ els.runRuntimeScenario?.addEventListener("click", async () => {
 
 els.runSecurityScenario?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
+  const remaining = securityHealthCooldownMs - (Date.now() - lastStandaloneSecurityHealthAt);
+  if (remaining > 0) {
+    const seconds = Math.ceil(remaining / 1000);
+    showUserWarning(`Security Health is on cooldown. Try again in about ${seconds} second${seconds === 1 ? "" : "s"}.`);
+    return;
+  }
+  if (!requireTypedAdminConfirmation({
+    phrase: "RUN SECURITY HEALTH",
+    title: "Run live Security Health?",
+    detail: "This is cloud-touching. It uses live Supabase checks and should only be run when CPU is calm. Routine Test Lab skips the deep backend probe."
+  })) return;
+  lastStandaloneSecurityHealthAt = Date.now();
   await runStandaloneSecurityHealthScenario();
 });
 
@@ -1448,7 +1533,16 @@ els.saveTestLabReportCloud?.addEventListener("click", async () => {
 
 els.cleanupTestLabData?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
+  if (!requireTypedAdminConfirmation({
+    phrase: "CLEAN TEST DATA",
+    title: "Clean generated Test Lab data?",
+    detail: "This removes entries carrying the generated test marker. Production data should be left untouched."
+  })) return;
   await cleanupGeneratedTestDataWithReport();
+});
+
+els.refreshAboutBuildInfo?.addEventListener("click", () => {
+  window.FuelBuildInfo?.refreshBuildInfo?.();
 });
 
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
@@ -2192,7 +2286,11 @@ async function saveCurrentTestLabReportToCloud() {
     showUserWarning("Run or export a Test Lab report before saving it to cloud.");
     return;
   }
-  if (!confirmUserAction("Save the latest Test Lab report to shared cloud storage? Routine Test Lab reports stay local to protect Supabase from diagnostic load.")) return;
+  if (!requireTypedAdminConfirmation({
+    phrase: "SAVE REPORT TO CLOUD",
+    title: "Save Test Lab report to cloud?",
+    detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage."
+  })) return;
   testLabCloudReportOptIn = true;
   localStorage.setItem(testLabReportCloudStorageKey, "true");
   persistTestLabReport(report, { sync: true });
@@ -3641,6 +3739,7 @@ function render() {
   els.resetData.disabled = !canManageSettings();
   els.resetData.classList.toggle("hidden", !canManageSettings());
   if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
+  updateAdvancedAdminToolsUi();
   if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
   if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
   if (els.memberManagementPanel) els.memberManagementPanel.classList.toggle("hidden", !canManageSettings());

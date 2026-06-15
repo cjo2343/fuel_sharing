@@ -420,9 +420,9 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 
 After deployment, make one small trip/fuel/booking edit and verify the Supabase load monitor shows normalized table activity without repeated `JSON mirror saves`. A JSON mirror save may still occur when the backup interval has elapsed or an audit-critical flow forces a snapshot.
 
+## Admin/Test Lab protection verification
 
-### Trip date and odometer guided corrections
-
-- Trip dates for booking completion/edit flows now allow the booking end date instead of incorrectly capping at the current day.
-- Trip saves block backwards odometer entries and show guided corrections using the booking estimate where available.
-- Suggested actions can keep the start odometer and set the end odometer, or keep the end odometer and set the start odometer.
+- Confirm Safe Test Lab is visible to admins and remains local-only.
+- Confirm Security Health is labeled cloud-touching and requires typed confirmation.
+- Confirm Advanced stress tools are hidden until “Unlock advanced admin tools” is confirmed.
+- Confirm non-admin members cannot access Admin/Test Lab tools.

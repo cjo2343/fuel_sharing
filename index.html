@@ -224,7 +224,6 @@
               Note
               <input id="tripNote" type="text" maxlength="80" placeholder="Optional" />
             </label>
-            <div id="tripCorrectionPanel" class="fuel-correction-panel wide hidden" aria-live="polite"></div>
             <fieldset class="wide participant-field">
               <legend>Split between</legend>
               <div id="tripParticipants" class="participant-grid"></div>
@@ -565,7 +564,7 @@
               <p class="eyebrow">About</p>
               <h2 id="aboutBuildInfoHeading">App version</h2>
             </div>
-            <button id="refreshAboutBuildInfo" class="subtle-button" type="button" onclick="window.FuelBuildInfo?.refreshBuildInfo?.()">Refresh status</button>
+            <button id="refreshAboutBuildInfo" class="subtle-button" type="button">Refresh status</button>
           </div>
           <p class="section-note">Share this read-only version and update status when checking whether a phone or home-screen app has the newest files. No admin access is needed.</p>
           <div id="aboutBuildInfoPanel" class="build-info-panel-content compact-build-info"></div>
@@ -616,7 +615,12 @@
             </article>
             <article class="data-tool-card">
               <strong>Test Lab</strong>
-              <p>Run production-safe checks by default. Advanced stress tools are tucked away because they can increase Supabase usage.</p>
+              <p>Routine checks are local-only by default. Cloud-touching and stress tools are protected so they cannot be triggered accidentally.</p>
+              <div class="admin-tool-badges" aria-label="Test Lab safety labels">
+                <span class="tool-safety-badge safe">Safe</span>
+                <span class="tool-safety-badge local-only">Local-only</span>
+                <span class="tool-safety-badge admin-only">Admin-only</span>
+              </div>
               <div class="button-row test-lab-primary-actions">
                 <button id="runFullTestLab" class="subtle-button" type="button">Run safe Test Lab</button>
                 <button id="exportTestLabReport" class="subtle-button" type="button">Export last report</button>
@@ -630,12 +634,23 @@
                   <button id="runBackupScenario" class="subtle-button" type="button">Backup/import</button>
                   <button id="runPrivacyScenario" class="subtle-button" type="button">Privacy</button>
                   <button id="runRuntimeScenario" class="subtle-button" type="button">Runtime/PWA</button>
-                  <button id="runSecurityScenario" class="subtle-button" type="button">Security health</button>
                 </div>
               </details>
-              <details class="test-lab-action-group">
+              <details class="test-lab-action-group cloud-touching-tool">
+                <summary>Cloud-touching checks</summary>
+                <p class="entry-meta"><span class="tool-safety-badge cloud-touching">Cloud-touching</span> Security Health uses live Supabase reads/probes and has a cooldown. Run it only when Supabase CPU is calm.</p>
+                <div class="button-row">
+                  <button id="runSecurityScenario" class="subtle-button" type="button">Security health</button>
+                  <button id="saveTestLabReportCloud" class="subtle-button" type="button">Save report to cloud</button>
+                </div>
+              </details>
+              <div class="advanced-admin-unlock">
+                <button id="unlockAdvancedAdminTools" class="subtle-button" type="button">Unlock advanced admin tools</button>
+                <span id="advancedAdminToolsStatus" class="entry-meta">Advanced stress tools are locked.</span>
+              </div>
+              <details class="test-lab-action-group admin-advanced-tools hidden">
                 <summary>Advanced stress tools</summary>
-                <p class="entry-meta">These write temporary generated data and can increase Supabase usage. Use only when diagnosing sync behavior.</p>
+                <p class="entry-meta"><span class="tool-safety-badge destructive">Destructive/cloud load risk</span> These write temporary generated data and can increase Supabase usage. They require typed confirmation.</p>
                 <div class="button-row">
                   <button id="runStressTest" class="subtle-button" type="button">Add stress data</button>
                   <button id="runRapidSaveTest" class="subtle-button" type="button">Rapid save test</button>
@@ -718,7 +733,7 @@
               <p class="eyebrow">Admin</p>
               <h2 id="buildInfoHeading">Version & update status</h2>
             </div>
-            <button id="refreshBuildInfo" class="subtle-button" type="button" onclick="window.FuelBuildInfo?.refreshBuildInfo?.()">Refresh status</button>
+            <button id="refreshBuildInfo" class="subtle-button" type="button">Refresh status</button>
           </div>
           <p class="section-note">Use this panel to confirm a phone or home-screen PWA is running the newest deployed files and service worker cache.</p>
           <div id="buildInfoPanel" class="build-info-panel-content"></div>
