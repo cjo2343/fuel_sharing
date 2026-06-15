@@ -19,6 +19,7 @@ const expected = [
   "007_security_health_rpc.sql",
   "008_scheduled_reminder_rpcs.sql",
   "009_retention_privacy_cleanup.sql",
+  "010_trip_transaction_rpc.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -43,6 +44,8 @@ for (const marker of [
   "grant execute on function public.save_scheduled_reminder_state(text, jsonb) to service_role",
   "create or replace function public.preview_retention_cleanup",
   "create or replace function public.run_retention_cleanup",
+  "create or replace function public.upsert_trip_with_participants",
+  "grant execute on function public.upsert_trip_with_participants",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

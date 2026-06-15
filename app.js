@@ -10903,31 +10903,27 @@ async function saveTripToNormalizedTablesFirst(trip) {
       updated_at: new Date().toISOString()
     };
 
-    const tripResult = await supabaseClient
-      .from("trips")
-      .upsert(payload, { onConflict: "ledger_id,legacy_id" })
-      .select("id")
-      .single();
-    if (tripResult.error) throw tripResult.error;
+    const participantMemberIds = [...new Set(getTripParticipants(trip).map((name) => context.memberIdsByName[name]).filter(Boolean))];
+    const rpcResult = await saveTripWithParticipantsRpc(context, payload, participantMemberIds);
 
-    const tripId = tripResult.data.id;
-    const deleteParticipants = await supabaseClient.from("trip_participants").delete().eq("trip_id", tripId);
-    if (deleteParticipants.error) throw deleteParticipants.error;
-
-    const participantPayloads = [...new Set(getTripParticipants(trip).map((name) => context.memberIdsByName[name]).filter(Boolean))]
-      .map((memberId) => ({ trip_id: tripId, member_id: memberId }));
-
-    if (participantPayloads.length) {
-      const participantResult = await supabaseClient
-        .from("trip_participants")
-        .upsert(participantPayloads, { onConflict: "trip_id,member_id" });
-      if (participantResult.error) throw participantResult.error;
+    if (rpcResult.ok) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: "Table-primary write saved the trip and participants through the database transaction RPC. JSON will be updated as backup."
+      };
+      return true;
     }
+
+    if (!rpcResult.shouldFallback) throw rpcResult.error || new Error("Could not save trip with participants.");
+
+    console.warn("Trip transaction RPC is unavailable; falling back to guarded table writes. Apply the latest supabase-schema.sql to enable atomic trip writes.", rpcResult.error);
+    await saveTripWithParticipantsGuardedTableUpdates(payload, participantMemberIds);
 
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: "Table-primary write saved the trip to normalized tables. JSON will be updated as backup."
+      message: "Table-primary write saved the trip with guarded table updates. Apply the latest Supabase schema to use the transaction RPC."
     };
     return true;
   } catch (error) {
@@ -10941,6 +10937,58 @@ async function saveTripToNormalizedTablesFirst(trip) {
     render();
     return false;
   }
+}
+
+
+async function saveTripWithParticipantsRpc(context, payload, participantMemberIds) {
+  const { data, error } = await supabaseClient.rpc("upsert_trip_with_participants", {
+    target_ledger_id: context.ledgerId,
+    target_open_period_id: context.openPeriodId,
+    legacy_trip_id: payload.legacy_id,
+    driver_member_id: payload.driver_member_id,
+    trip_date_value: payload.trip_date,
+    start_km_value: payload.start_km,
+    end_km_value: payload.end_km,
+    note_value: payload.note,
+    participant_member_ids: participantMemberIds
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingTripTransactionRpcError(error)
+  };
+}
+
+function isMissingTripTransactionRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || /upsert_trip_with_participants/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
+}
+
+async function saveTripWithParticipantsGuardedTableUpdates(payload, participantMemberIds) {
+  const tripResult = await supabaseClient
+    .from("trips")
+    .upsert(payload, { onConflict: "ledger_id,legacy_id" })
+    .select("id")
+    .single();
+  if (tripResult.error) throw tripResult.error;
+
+  const tripId = tripResult.data.id;
+  const deleteParticipants = await supabaseClient.from("trip_participants").delete().eq("trip_id", tripId);
+  if (deleteParticipants.error) throw deleteParticipants.error;
+
+  const participantPayloads = participantMemberIds.map((memberId) => ({ trip_id: tripId, member_id: memberId }));
+  if (!participantPayloads.length) throw new Error("Trip must include at least one participant.");
+
+  const participantResult = await supabaseClient
+    .from("trip_participants")
+    .upsert(participantPayloads, { onConflict: "trip_id,member_id" });
+  if (participantResult.error) throw participantResult.error;
+
+  return tripId;
 }
 
 async function saveFuelToNormalizedTablesFirst(fuel) {
