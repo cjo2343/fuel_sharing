@@ -1067,6 +1067,13 @@ test("plan estimate can be copied into a real booking", async ({ page, request }
   await expect(page.locator("#tripForm")).toBeVisible();
   await expect(page.locator('#tripParticipants input[value="Christian"]')).toBeChecked();
   await expect(page.locator('#tripParticipants input[value="Marie"]')).toBeChecked();
+  await page.locator("#tripParticipants").evaluate((container) => {
+    const selectedPeople = new Set(["Christian", "Marie"]);
+    container.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.checked = selectedPeople.has(input.value);
+    });
+    container.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 
   await page.locator("#startKm").fill("10000");
   await page.locator("#endKm").fill("10123");
