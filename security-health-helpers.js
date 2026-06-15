@@ -50,11 +50,19 @@
       return fail(name, data.message || input.detail || "Healthcheck RPC returned an unhealthy result.");
     }
     const closeRpc = data.close_settlement_period_exists;
+    const criticalRpcs = asObject(data.critical_rpcs);
+    const missingCriticalRpcs = Object.entries(criticalRpcs)
+      .filter(([, exists]) => exists !== true)
+      .map(([rpcName]) => rpcName);
     if (closeRpc === false) {
       return fail("close_settlement_period RPC is installed", "The lightweight healthcheck ran, but close_settlement_period is missing from the schema.");
     }
+    if (missingCriticalRpcs.length) {
+      return fail("Critical write RPCs are installed", `Missing RPC(s): ${missingCriticalRpcs.join(", ")}. Run the latest Supabase migrations before disabling table fallbacks.`);
+    }
     const details = [];
-    if (closeRpc === true) details.push("close_settlement_period exists");
+    if (Object.keys(criticalRpcs).length) details.push(`${Object.keys(criticalRpcs).length} critical RPC(s) available`);
+    else if (closeRpc === true) details.push("close_settlement_period exists");
     if (data.ledger_id) details.push(`ledger ${data.ledger_id}`);
     return pass(name, details.length ? details.join("; ") : input.detail || "Healthcheck RPC returned successfully.");
   }

@@ -1,14 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.87",
-    buildLabel: "fuel-payment-rpc",
-    updatedAt: "2026-06-15T16:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v186",
+    version: "2026.06.15.88",
+    buildLabel: "rpc-health-visibility",
+    updatedAt: "2026-06-15T17:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v187",
     releaseNotes: Object.freeze([
-      "Fuel payment saves now use the upsert_fuel_payment RPC when available for server-side validation and permission consistency.",
-      "Missing-RPC fallback remains for migration-safe rollout, matching the trip and booking hardening pattern.",
-      "Schema and migration validation now assert the fuel payment RPC exists and is granted to authenticated users.",
+      "Admin diagnostics now show critical RPC availability from the read-only fuel_ledger_healthcheck RPC.",
+      "Security Health reports missing trip, fuel, booking, member, purge, reset, or retention RPCs before table fallbacks are removed.",
+      "A migration updates fuel_ledger_healthcheck without changing data or destructive behavior.",
       "Runtime script/cache parity checks remain active for new helper modules."
     ])
   });

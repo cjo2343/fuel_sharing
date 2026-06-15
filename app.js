@@ -2251,6 +2251,59 @@ function adminGuardrailStatusCard({ title, status, detail, level = "ok" }) {
   `;
 }
 
+function getRpcAvailabilityDiagnostics() {
+  if (!supabaseClient) {
+    return {
+      status: "Local-only mode",
+      detail: "RPC availability is checked after signing in to Supabase.",
+      level: "ok"
+    };
+  }
+  if (!canManageSettings()) {
+    return {
+      status: "Admin check required",
+      detail: "Critical RPC probes are shown after an admin runs Security Health.",
+      level: "warning"
+    };
+  }
+  const checks = Array.isArray(supabaseSecurityStatus?.checks) ? supabaseSecurityStatus.checks : [];
+  const healthcheck = checks.find((check) => check?.rpcHealth || /Fuel Ledger healthcheck RPC is available|Critical write RPCs are installed|close_settlement_period RPC is installed/i.test(check?.name || ""));
+  if (!supabaseSecurityStatus?.checked || !healthcheck) {
+    return {
+      status: "Not checked yet",
+      detail: "Run Security Health to verify trip, fuel, booking, member, purge, reset, and retention RPC availability.",
+      level: "warning"
+    };
+  }
+  const criticalRpcs = healthcheck.rpcHealth && typeof healthcheck.rpcHealth === "object" && healthcheck.rpcHealth.critical_rpcs && typeof healthcheck.rpcHealth.critical_rpcs === "object"
+    ? healthcheck.rpcHealth.critical_rpcs
+    : null;
+  if (!criticalRpcs) {
+    return {
+      status: healthcheck.ok ? "Legacy healthcheck passed" : "Needs review",
+      detail: healthcheck.ok
+        ? "Apply the RPC health visibility migration to show all critical RPCs before removing direct-table fallbacks."
+        : (healthcheck.detail || "Security Health reported an RPC issue."),
+      level: "warning"
+    };
+  }
+  const missing = Object.entries(criticalRpcs)
+    .filter(([, exists]) => exists !== true)
+    .map(([name]) => name);
+  if (missing.length) {
+    return {
+      status: `${missing.length} RPC${missing.length === 1 ? "" : "s"} missing`,
+      detail: `Missing: ${missing.join(", ")}. Keep migration-safe table fallbacks enabled until this is resolved.`,
+      level: "warning"
+    };
+  }
+  return {
+    status: "All critical RPCs available",
+    detail: `${Object.keys(criticalRpcs).length} RPC-backed write/admin paths verified by Security Health.`,
+    level: "ok"
+  };
+}
+
 function renderAdminGuardrailOverview() {
   if (!els.adminGuardrailOverview) return;
   const build = window.FUEL_LEDGER_BUILD || {};
@@ -2268,6 +2321,7 @@ function renderAdminGuardrailOverview() {
   const pendingDetail = pendingLocalChanges > 0
     ? `${pendingLocalChanges} pending local change${pendingLocalChanges === 1 ? "" : "s"}; sync before destructive tools.`
     : `Last confirmed sync: ${formatAdminTimestamp(lastCloudSyncAt || lastCloudSaveAt)}`;
+  const rpcDiagnostics = getRpcAvailabilityDiagnostics();
 
   els.adminGuardrailOverview.innerHTML = `
     <div class="admin-guardrail-grid" data-admin-diagnostics-overview="true">
@@ -2288,6 +2342,12 @@ function renderAdminGuardrailOverview() {
         status: normalizedStatus,
         detail: normalizedTableStatus?.message || "Normalized tables are primary; JSON is a safety mirror.",
         level: normalizedTableStatus?.checked && normalizedTableStatus?.ok ? "ok" : "warning"
+      })}
+      ${adminGuardrailStatusCard({
+        title: "RPC availability",
+        status: rpcDiagnostics.status,
+        detail: rpcDiagnostics.detail,
+        level: rpcDiagnostics.level
       })}
       ${adminGuardrailStatusCard({
         title: "Backup guardrails",
@@ -2771,12 +2831,14 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
       const probe = await supabaseClient.rpc("fuel_ledger_healthcheck", {
         target_ledger_id: ledgerId
       });
-      record(helper.normalizeHealthcheckRpcResult({
+      const normalizedProbe = helper.normalizeHealthcheckRpcResult({
         name: "Fuel Ledger healthcheck RPC is available",
         ok: !probe.error,
         data: probe.data,
         error: probe.error
-      }));
+      });
+      normalizedProbe.rpcHealth = probe.data || null;
+      record(normalizedProbe);
     } catch (error) {
       record(helper.normalizeHealthcheckRpcResult({
         name: "Fuel Ledger healthcheck RPC is available",
@@ -2796,6 +2858,7 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
     message: failed.length ? `${failed.length} Supabase security health check(s) need attention.` : "Supabase security health checks passed.",
     checks
   };
+  renderAdminGuardrailOverview();
   if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
   return supabaseSecurityStatus;
 }

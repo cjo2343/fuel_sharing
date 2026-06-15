@@ -23,6 +23,7 @@ const expected = [
   "011_booking_transaction_rpcs.sql",
   "012_admin_tools_guardrails.sql",
   "013_fuel_payment_rpc.sql",
+  "014_rpc_health_visibility.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -55,6 +56,8 @@ for (const marker of [
   "grant execute on function public.soft_delete_car_booking",
   "create or replace function public.upsert_fuel_payment",
   "grant execute on function public.upsert_fuel_payment",
+  "critical_rpcs",
+  "to_regprocedure('public.upsert_fuel_payment",
   "create or replace function public.upsert_ledger_member_admin",
   "create or replace function public.set_ledger_member_active_admin",
   "create or replace function public.purge_generated_test_rows",
