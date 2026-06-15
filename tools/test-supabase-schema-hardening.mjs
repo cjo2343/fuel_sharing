@@ -186,7 +186,10 @@ function testAdminDiagnosticsUxExists() {
   assert.match(app, /Run Security Health to see whether only lightweight ledger_events is published for Realtime/);
   assert.match(app, /Keep public\.ledger_events published/);
   assert.match(app, /Run Security Health to verify trip, fuel, booking, member, purge, reset, and retention RPC availability/);
-  assert.match(app, /normalizedProbe\.rpcHealth = probe\.data \|\| null/);
+  assert.match(app, /let latestHealthcheckRpcPayload = null/);
+  assert.match(app, /function rememberHealthcheckRpcPayload/);
+  assert.match(app, /normalizedProbe\.rpcHealth = rememberHealthcheckRpcPayload\(probe\.data, checkedAt\)/);
+  assert.match(app, /renderAdminGuardrailOverview\(\);\n  setDataToolsMessage\(`Security health complete:/);
   assert.match(css, /\.admin-guardrail-grid/);
   console.log("ok - testAdminDiagnosticsUxExists");
 }

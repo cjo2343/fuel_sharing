@@ -1,14 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.94",
-    buildLabel: "stale-report-display-polish",
-    updatedAt: "2026-06-15T20:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v193",
+    version: "2026.06.15.95",
+    buildLabel: "admin-diagnostics-health-propagation",
+    updatedAt: "2026-06-15T20:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v194",
     releaseNotes: Object.freeze([
-      "Historical saved Test Lab reports are collapsed by default so stale failures do not look current.",
-      "Historical report summaries show generated time and build/cache context before details are expanded.",
-      "Fresh Security Health/Test Lab runs stay visible instead of being replaced by cloud report-history reloads.",
+      "Admin diagnostics cards update immediately after live Security Health completes.",
+      "RPC availability and Realtime publication cards reuse the latest healthcheck RPC payload instead of staying at Not checked yet.",
+      "Historical saved Test Lab reports remain collapsed so stale failures do not look current.",
       "Realtime publication cleanup keeps only the lightweight ledger_events stream published."
     ])
   });

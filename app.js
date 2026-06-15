@@ -372,6 +372,28 @@ let supabaseSecurityStatus = {
   message: "Supabase security health has not been checked yet.",
   checks: []
 };
+let latestHealthcheckRpcPayload = null;
+let latestHealthcheckRpcCheckedAt = "";
+
+function normalizeHealthcheckRpcPayload(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) {
+    const first = payload.find(Boolean);
+    return normalizeHealthcheckRpcPayload(first);
+  }
+  if (payload && typeof payload === "object" && payload.fuel_ledger_healthcheck && typeof payload.fuel_ledger_healthcheck === "object") {
+    return payload.fuel_ledger_healthcheck;
+  }
+  return payload && typeof payload === "object" ? payload : null;
+}
+
+function rememberHealthcheckRpcPayload(payload, checkedAt = new Date().toISOString()) {
+  const normalized = normalizeHealthcheckRpcPayload(payload);
+  if (!normalized) return null;
+  latestHealthcheckRpcPayload = normalized;
+  latestHealthcheckRpcCheckedAt = checkedAt;
+  return latestHealthcheckRpcPayload;
+}
 let databaseDiagnosticsStatus = {
   checked: false,
   loading: false,
@@ -2263,7 +2285,8 @@ function adminGuardrailStatusCard({ title, status, detail, level = "ok" }) {
 function getLatestHealthcheckRpcPayload() {
   const checks = Array.isArray(supabaseSecurityStatus?.checks) ? supabaseSecurityStatus.checks : [];
   const healthcheck = checks.find((check) => check?.rpcHealth || /Fuel Ledger healthcheck RPC is available|Critical write RPCs are installed|close_settlement_period RPC is installed/i.test(check?.name || ""));
-  return healthcheck?.rpcHealth && typeof healthcheck.rpcHealth === "object" ? healthcheck.rpcHealth : null;
+  const fromStatus = normalizeHealthcheckRpcPayload(healthcheck?.rpcHealth);
+  return fromStatus || latestHealthcheckRpcPayload || null;
 }
 
 function getRealtimePublicationDiagnostics() {
@@ -2281,14 +2304,14 @@ function getRealtimePublicationDiagnostics() {
       level: "warning"
     };
   }
-  if (!supabaseSecurityStatus?.checked) {
+  const rpcHealth = getLatestHealthcheckRpcPayload();
+  if (!supabaseSecurityStatus?.checked && !rpcHealth) {
     return {
       status: "Not checked yet",
       detail: "Run Security Health to see whether only lightweight ledger_events is published for Realtime.",
       level: "warning"
     };
   }
-  const rpcHealth = getLatestHealthcheckRpcPayload();
   const publication = rpcHealth?.realtime_publication;
   if (!publication || typeof publication !== "object") {
     return {
@@ -2339,22 +2362,23 @@ function getRpcAvailabilityDiagnostics() {
   }
   const checks = Array.isArray(supabaseSecurityStatus?.checks) ? supabaseSecurityStatus.checks : [];
   const healthcheck = checks.find((check) => check?.rpcHealth || /Fuel Ledger healthcheck RPC is available|Critical write RPCs are installed|close_settlement_period RPC is installed/i.test(check?.name || ""));
-  if (!supabaseSecurityStatus?.checked || !healthcheck) {
+  const rpcHealth = normalizeHealthcheckRpcPayload(healthcheck?.rpcHealth) || latestHealthcheckRpcPayload;
+  if (!supabaseSecurityStatus?.checked && !rpcHealth) {
     return {
       status: "Not checked yet",
       detail: "Run Security Health to verify trip, fuel, booking, member, purge, reset, and retention RPC availability.",
       level: "warning"
     };
   }
-  const criticalRpcs = healthcheck.rpcHealth && typeof healthcheck.rpcHealth === "object" && healthcheck.rpcHealth.critical_rpcs && typeof healthcheck.rpcHealth.critical_rpcs === "object"
-    ? healthcheck.rpcHealth.critical_rpcs
+  const criticalRpcs = rpcHealth && typeof rpcHealth === "object" && rpcHealth.critical_rpcs && typeof rpcHealth.critical_rpcs === "object"
+    ? rpcHealth.critical_rpcs
     : null;
   if (!criticalRpcs) {
     return {
       status: healthcheck.ok ? "Legacy healthcheck passed" : "Needs review",
-      detail: healthcheck.ok
+      detail: healthcheck?.ok
         ? "Apply the RPC health visibility migration to show all critical RPCs before removing direct-table fallbacks."
-        : (healthcheck.detail || "Security Health reported an RPC issue."),
+        : (healthcheck?.detail || "Security Health reported an RPC issue."),
       level: "warning"
     };
   }
@@ -2952,11 +2976,13 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
       message: "Security health helpers are not loaded.",
       checks: [{ ok: false, name: "Security health helper is loaded", detail: "Refresh the app and try again." }]
     };
+    renderAdminGuardrailOverview();
     return supabaseSecurityStatus;
   }
 
   const now = Date.now();
   if (!force && supabaseSecurityStatus.checked && now - supabaseLoadSafety.lastSecurityHealthAt < supabaseLoadSafety.securityHealthCooldownMs) {
+    renderAdminGuardrailOverview();
     if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
     return supabaseSecurityStatus;
   }
@@ -2981,6 +3007,7 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
       message: "Local-only mode: Supabase backend security checks are not applicable.",
       checks
     };
+    renderAdminGuardrailOverview();
     if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
     return supabaseSecurityStatus;
   }
@@ -2994,6 +3021,7 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
       message: "Sign in before running live Supabase security checks.",
       checks
     };
+    renderAdminGuardrailOverview();
     if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
     return supabaseSecurityStatus;
   }
@@ -3038,7 +3066,7 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
         data: probe.data,
         error: probe.error
       });
-      normalizedProbe.rpcHealth = probe.data || null;
+      normalizedProbe.rpcHealth = rememberHealthcheckRpcPayload(probe.data, checkedAt);
       record(normalizedProbe);
     } catch (error) {
       record(helper.normalizeHealthcheckRpcResult({
@@ -3274,6 +3302,7 @@ async function runStandaloneSecurityHealthScenario() {
     securityStatus
   });
   renderTestLabReport(report, { persist: false });
+  renderAdminGuardrailOverview();
   setDataToolsMessage(`Security health complete: ${report.passedCount} passed, ${report.failedCount} failed. Report stayed local unless you save it to cloud.`);
 }
 
