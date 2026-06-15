@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.85",
-    buildLabel: "runtime-asset-parity",
+    version: "2026.06.15.86",
+    buildLabel: "booking-link-context-guard",
     updatedAt: "2026-06-15T16:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v184",
+    expectedServiceWorkerCache: "fuel-ledger-v185",
     releaseNotes: Object.freeze([
       "Runtime script/cache parity checks now guard against missing helper modules in index.html or the service worker cache.",
       "Planner/booking bridge, fuel rendering, trip rendering, and trip action helper modules are all loaded and cached for offline use.",
