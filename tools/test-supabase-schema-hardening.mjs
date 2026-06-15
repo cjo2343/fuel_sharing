@@ -71,6 +71,17 @@ function testBookingTransactionRpcsExist() {
   console.log("ok - testBookingTransactionRpcsExist");
 }
 
+function testAdminReconciliationSafetyGateExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /const reconciliationFreshLoadMaxAgeMs = 5 \* 60 \* 1000/);
+  assert.match(app, /function hasFreshNormalizedTableLoadForReconciliation\(\)/);
+  assert.match(app, /async function ensureReconciliationSoftDeleteSafety\(summary = \{\}\)/);
+  assert.match(app, /reconciliation-soft-delete-blocked/);
+  assert.match(app, /await saveJsonMirrorBackup\(\{ force: true \}\)/);
+  assert.match(app, /lastNormalizedTableLoadAt = Date\.now\(\)/);
+  console.log("ok - testAdminReconciliationSafetyGateExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -85,4 +96,5 @@ testSettlementRequestTriggerIsInstalled();
 testPeriodCloseRpcExists();
 testTripTransactionRpcExists();
 testBookingTransactionRpcsExist();
+testAdminReconciliationSafetyGateExists();
 testFuelLedgerHealthcheckExists();

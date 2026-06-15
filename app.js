@@ -327,6 +327,8 @@ let fuelPriceTimer = null;
 let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
 let lastJsonMirrorSaveAt = "";
+let lastNormalizedTableLoadAt = 0;
+const reconciliationFreshLoadMaxAgeMs = 5 * 60 * 1000;
 let lastSyncError = "";
 let lastCloudRetryAt = "";
 let pendingLocalChanges = 0;
@@ -11313,6 +11315,57 @@ async function softDeleteNormalizedEntryFirst(type, id) {
   }
 }
 
+
+function hasFreshNormalizedTableLoadForReconciliation() {
+  return Boolean(lastNormalizedTableLoadAt && Date.now() - lastNormalizedTableLoadAt <= reconciliationFreshLoadMaxAgeMs);
+}
+
+async function ensureReconciliationSoftDeleteSafety(summary = {}) {
+  const tripCount = Number(summary.trips || 0);
+  const fuelCount = Number(summary.fuel || 0);
+  const bookingCount = Number(summary.bookings || 0);
+  const total = tripCount + fuelCount + bookingCount;
+  if (total <= 0) return true;
+
+  const details = [`${tripCount} trips`, `${fuelCount} fuel logs`, `${bookingCount} bookings`].join(", ");
+  if (!hasFreshNormalizedTableLoadForReconciliation()) {
+    recordSupabaseLoadEvent("reconciliation-soft-delete-blocked", `stale normalized table load; would hide ${details}`);
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Admin reconciliation skipped ${total} soft-delete candidate${total === 1 ? "" : "s"} because normalized tables were not freshly loaded first (${details}). Reload cloud data, then retry if the JSON backup is known to be current.`,
+      details: [`Blocked reconciliation soft-deletes: ${details}`]
+    };
+    return false;
+  }
+
+  try {
+    const backedUp = await saveJsonMirrorBackup({ force: true });
+    if (!backedUp) {
+      recordSupabaseLoadEvent("reconciliation-soft-delete-blocked", `JSON mirror backup failed; would hide ${details}`);
+      normalizedTableStatus = {
+        checked: true,
+        ok: false,
+        message: `Admin reconciliation skipped ${total} soft-delete candidate${total === 1 ? "" : "s"} because a fresh JSON mirror backup could not be saved first (${details}).`,
+        details: [`Blocked reconciliation soft-deletes before backup: ${details}`]
+      };
+      return false;
+    }
+  } catch (error) {
+    recordSupabaseLoadEvent("reconciliation-soft-delete-blocked", error.message || "JSON mirror backup failed");
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Admin reconciliation skipped ${total} soft-delete candidate${total === 1 ? "" : "s"} because the pre-delete JSON mirror backup failed: ${error.message || error}`,
+      details: [`Blocked reconciliation soft-deletes before backup: ${details}`]
+    };
+    return false;
+  }
+
+  recordSupabaseLoadEvent("reconciliation-soft-delete-armed", `fresh load and backup complete; hiding ${details}`);
+  return true;
+}
+
 async function syncNormalizedTablesFromJson() {
   if (!supabaseClient || !currentSession) return;
   if (!(await hasFreshSupabaseSession())) return;
@@ -11435,13 +11488,6 @@ async function syncNormalizedTablesFromJson() {
 
     const activeTripIds = new Set(state.trips.map((trip) => trip.id));
     const tripsToSoftDelete = (existingTripsResult.data || []).filter((trip) => trip.legacy_id && !activeTripIds.has(trip.legacy_id));
-    for (const trip of tripsToSoftDelete) {
-      const deleted = await supabaseClient
-        .from("trips")
-        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", trip.id);
-      if (deleted.error) throw deleted.error;
-    }
 
     const tripIdsByLegacyId = Object.fromEntries([...(existingTripsResult.data || []), ...tableTrips].map((trip) => [trip.legacy_id, trip.id]));
     for (const trip of state.trips) {
@@ -11515,13 +11561,6 @@ async function syncNormalizedTablesFromJson() {
 
     const activeFuelIds = new Set(state.fuel.map((fuel) => fuel.id));
     const fuelToSoftDelete = (existingFuelResult.data || []).filter((fuel) => fuel.legacy_id && !activeFuelIds.has(fuel.legacy_id));
-    for (const fuel of fuelToSoftDelete) {
-      const deleted = await supabaseClient
-        .from("fuel_payments")
-        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", fuel.id);
-      if (deleted.error) throw deleted.error;
-    }
 
     let skippedBookingSyncForTestLab = false;
     let existingBookings = [];
@@ -11639,20 +11678,52 @@ async function syncNormalizedTablesFromJson() {
 
     const activeBookingIds = new Set(state.bookings.map((booking) => booking.id));
     const bookingsToSoftDelete = existingBookings.filter((booking) => booking.legacy_id && !activeBookingIds.has(booking.legacy_id));
-    for (const booking of bookingsToSoftDelete) {
-      const deleted = await supabaseClient
-        .from("car_bookings")
-        .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", booking.id);
-      if (deleted.error) throw deleted.error;
+
+    const canApplyReconciliationSoftDeletes = await ensureReconciliationSoftDeleteSafety({
+      trips: tripsToSoftDelete.length,
+      fuel: fuelToSoftDelete.length,
+      bookings: bookingsToSoftDelete.length
+    });
+
+    const reconciliationSoftDeleteCount = tripsToSoftDelete.length + fuelToSoftDelete.length + bookingsToSoftDelete.length;
+
+    if (canApplyReconciliationSoftDeletes) {
+      for (const trip of tripsToSoftDelete) {
+        const deleted = await supabaseClient
+          .from("trips")
+          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", trip.id);
+        if (deleted.error) throw deleted.error;
+      }
+
+      for (const fuel of fuelToSoftDelete) {
+        const deleted = await supabaseClient
+          .from("fuel_payments")
+          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", fuel.id);
+        if (deleted.error) throw deleted.error;
+      }
+
+      for (const booking of bookingsToSoftDelete) {
+        const deleted = await supabaseClient
+          .from("car_bookings")
+          .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", booking.id);
+        if (deleted.error) throw deleted.error;
+      }
     }
 
     normalizedTableStatus = {
       checked: true,
-      ok: true,
-      message: skippedBookingSyncForTestLab
-        ? `Dual-write sync is active. Normalized members/trips/fuel were updated from JSON; booking writes were skipped for a temporary Test Lab run (${getMemberNames().length} members, ${state.trips.length} trips, ${state.fuel.length} fuel logs).`
-        : `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.bookings.length} bookings, ${state.fuel.length} fuel logs).`
+      ok: canApplyReconciliationSoftDeletes || reconciliationSoftDeleteCount === 0,
+      message: !canApplyReconciliationSoftDeletes && reconciliationSoftDeleteCount > 0
+        ? `Dual-write sync updated normalized rows but skipped ${reconciliationSoftDeleteCount} reconciliation soft-delete candidate${reconciliationSoftDeleteCount === 1 ? "" : "s"} until a fresh normalized-table load and pre-delete JSON backup are available.`
+        : skippedBookingSyncForTestLab
+          ? `Dual-write sync is active. Normalized members/trips/fuel were updated from JSON; booking writes were skipped for a temporary Test Lab run (${getMemberNames().length} members, ${state.trips.length} trips, ${state.fuel.length} fuel logs).`
+          : `Dual-write sync is active. Normalized tables were updated from JSON (${getMemberNames().length} members, ${state.trips.length} trips, ${state.bookings.length} bookings, ${state.fuel.length} fuel logs).`,
+      details: canApplyReconciliationSoftDeletes
+        ? [`Reconciliation soft-deletes applied: ${tripsToSoftDelete.length} trips, ${fuelToSoftDelete.length} fuel logs, ${bookingsToSoftDelete.length} bookings.`]
+        : [`Reconciliation soft-deletes skipped: ${tripsToSoftDelete.length} trips, ${fuelToSoftDelete.length} fuel logs, ${bookingsToSoftDelete.length} bookings.`]
     };
   } catch (error) {
     console.warn("Normalized table dual-write failed", error);
@@ -11827,6 +11898,8 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     }, openPeriod.id);
     paymentStatusesFromTables[key] = normalizePaymentStatus(request.status);
   }
+
+  lastNormalizedTableLoadAt = Date.now();
 
   return normalizeState({
     ...jsonFallbackState,
