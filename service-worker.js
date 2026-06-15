@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v182";
-const BUILD_LABEL = "fuel-rendering-refactor";
+const CACHE_NAME = "fuel-ledger-v183";
+const BUILD_LABEL = "planner-booking-bridge-refactor";
 const BUILD_UPDATED_AT = "2026-06-15T16:05:00.000Z";
 const CORE_ASSETS = [
   "/",

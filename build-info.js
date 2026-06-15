@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.83",
-    buildLabel: "fuel-rendering-refactor",
+    version: "2026.06.15.84",
+    buildLabel: "planner-booking-bridge-refactor",
     updatedAt: "2026-06-15T16:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v182",
+    expectedServiceWorkerCache: "fuel-ledger-v183",
     releaseNotes: Object.freeze([
       "Trip card grouping and rendering helpers now live in trip-rendering.js, continuing the small app.js refactor.",
       "Trip planner participant and route helpers live in trip-actions.js for smaller, safer future refactors.",
