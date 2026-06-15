@@ -233,7 +233,9 @@ function testTestLabReportStoreExists() {
   assert.match(app, /function saveTestLabReportToCloudStore\(report\)/);
   assert.match(app, /upsert_test_lab_report/);
   assert.match(app, /Ledger JSON was not rewritten/);
-  assert.match(app, /function loadCloudTestLabReports\(\)/);
+  assert.match(app, /function loadCloudTestLabReports\(\{ force = false, reason = "load normalized Test Lab report history" \} = \{\}\)/);
+  assert.match(app, /testLabReportLoadCooldownMs: 10 \* 1000/);
+  assert.match(app, /test-lab-report-local-merge/);
   assert.match(app, /from\("test_lab_reports"\)/);
   console.log("ok - testTestLabReportStoreExists");
 }

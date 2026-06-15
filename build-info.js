@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.91",
-    buildLabel: "realtime-publication-health",
-    updatedAt: "2026-06-15T19:15:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v190",
+    version: "2026.06.15.92",
+    buildLabel: "test-lab-report-load-optimization",
+    updatedAt: "2026-06-15T19:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v191",
     releaseNotes: Object.freeze([
-      "Security Health now reports Supabase Realtime publication health.",
-      "Admin diagnostics show whether only lightweight ledger_events is published for Realtime.",
-      "Broad Realtime publication tables are surfaced as warnings before any publication cleanup.",
-      "No Realtime publication changes are applied automatically by this release."
+      "Test Lab report cloud saves now merge locally after the RPC save instead of reloading report history immediately.",
+      "Normalized Test Lab report history loads are debounced to reduce repeated Admin load-monitor activity.",
+      "Report-history activity is tracked separately from broad ledger reload pressure.",
+      "Realtime publication health diagnostics remain active."
     ])
   });
 

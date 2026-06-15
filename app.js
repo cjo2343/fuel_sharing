@@ -353,6 +353,9 @@ const supabaseLoadSafety = {
   securityHealthInFlight: false,
   lastSecurityHealthAt: 0,
   securityHealthCooldownMs: 2 * 60 * 1000,
+  testLabReportLoadInFlight: false,
+  lastTestLabReportLoadAt: 0,
+  testLabReportLoadCooldownMs: 10 * 1000,
   requests: []
 };
 const retentionPolicy = Object.freeze({
@@ -2162,7 +2165,11 @@ function supabaseLoadLabel(label) {
     "fuel-table-write": "Fuel table writes",
     "booking-table-write": "Booking table writes",
     "settlement-table-write": "Settlement table writes",
-    "test-lab-report-save": "Test Lab report saves"
+    "test-lab-report-save": "Test Lab report saves",
+    "test-lab-report-load": "Test Lab report loads",
+    "test-lab-report-load-skip": "Test Lab report load skips",
+    "test-lab-report-local-merge": "Test Lab report local merges",
+    "test-lab-report-rpc-save": "Test Lab report RPC saves"
   };
   return map[label] || String(label || "Supabase activity").replace(/-/g, " ");
 }
@@ -2757,10 +2764,21 @@ function mergeTestLabReportsIntoState(reports = []) {
   return state.testLabReports;
 }
 
-async function loadCloudTestLabReports() {
+async function loadCloudTestLabReports({ force = false, reason = "load normalized Test Lab report history" } = {}) {
   if (!supabaseClient || !currentSession) return false;
+  const now = Date.now();
+  if (supabaseLoadSafety.testLabReportLoadInFlight) {
+    recordSupabaseLoadEvent("test-lab-report-load-skip", "normalized Test Lab report history load already in flight");
+    return false;
+  }
+  if (!force && now - Number(supabaseLoadSafety.lastTestLabReportLoadAt || 0) < supabaseLoadSafety.testLabReportLoadCooldownMs) {
+    recordSupabaseLoadEvent("test-lab-report-load-skip", "recent normalized Test Lab report history load reused");
+    return true;
+  }
+  supabaseLoadSafety.testLabReportLoadInFlight = true;
+  supabaseLoadSafety.lastTestLabReportLoadAt = now;
   try {
-    recordSupabaseLoadEvent("test-lab-report-load", "load normalized Test Lab report history");
+    recordSupabaseLoadEvent("test-lab-report-load", reason);
     const { data, error } = await supabaseClient
       .from("test_lab_reports")
       .select("report_payload,synced_at")
@@ -2782,6 +2800,8 @@ async function loadCloudTestLabReports() {
     }
     console.warn("Could not load normalized Test Lab reports", error);
     return false;
+  } finally {
+    supabaseLoadSafety.testLabReportLoadInFlight = false;
   }
 }
 
@@ -2789,17 +2809,23 @@ async function saveTestLabReportToCloudStore(report) {
   if (!supabaseClient || !currentSession) return false;
   const reportToStore = redactSensitiveDiagnostics(report);
   const reportId = String(reportToStore.id || "").trim() || `testlab-${Date.now()}`;
+  const storedReport = {
+    ...reportToStore,
+    id: reportId,
+    syncedAt: reportToStore.syncedAt || new Date().toISOString()
+  };
   recordSupabaseLoadEvent("test-lab-report-rpc-save", "save Test Lab report outside JSON mirror");
   const { error } = await supabaseClient.rpc("upsert_test_lab_report", {
     target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
     report_id_value: reportId,
-    report_payload_value: {
-      ...reportToStore,
-      id: reportId,
-      syncedAt: reportToStore.syncedAt || new Date().toISOString()
-    }
+    report_payload_value: storedReport
   });
-  if (!error) return true;
+  if (!error) {
+    mergeTestLabReportsIntoState([storedReport]);
+    writeLocalState();
+    recordSupabaseLoadEvent("test-lab-report-local-merge", "merged saved Test Lab report locally without reloading report history");
+    return true;
+  }
   if (isMissingTestLabReportStoreError(error)) return false;
   throw error;
 }
@@ -12697,7 +12723,7 @@ async function loadSupabaseState(options = {}) {
       await syncNormalizedTablesFromJson();
     }
 
-    await loadCloudTestLabReports();
+    await loadCloudTestLabReports({ reason: "load normalized Test Lab report history after cloud state load" });
     scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
     return true;
