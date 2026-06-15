@@ -3086,7 +3086,23 @@ function renderTestLabReport(report = null, { persist = false } = {}) {
         <span>${escapeHtml(lastTestLabReport.historicalReportReason || "This report was loaded from saved cloud report history. Run Security health again to replace it with a fresh result.")}${buildMismatch ? ` Current build expects ${escapeHtml(buildInfo.expectedServiceWorkerCache)}; this report used ${escapeHtml(reportBuild.expectedServiceWorkerCache)}.` : ""}</span>
       </div>`
     : "";
-  els.testLabReport.innerHTML = `${banner}${testLab.renderReportHtml(lastTestLabReport)}`;
+  const reportHtml = testLab.renderReportHtml(lastTestLabReport);
+  if (historical || buildMismatch) {
+    const generatedAt = lastTestLabReport.finishedAt || lastTestLabReport.syncedAt || lastTestLabReport.startedAt || "";
+    const generatedLabel = generatedAt ? formatDateTime(generatedAt) : "unknown time";
+    const statusLabel = lastTestLabReport.ok ? "passed" : "failed";
+    const buildLabel = reportBuild.buildLabel || reportBuild.expectedServiceWorkerCache || "older build";
+    els.testLabReport.innerHTML = `${banner}
+      <details class="test-lab-historical-details">
+        <summary>
+          <strong>Historical ${escapeHtml(statusLabel)} report</strong>
+          <span>${escapeHtml(generatedLabel)} · ${escapeHtml(buildLabel)}</span>
+        </summary>
+        ${reportHtml}
+      </details>`;
+    return;
+  }
+  els.testLabReport.innerHTML = `${banner}${reportHtml}`;
 }
 
 function highlightVisibleEntryCard(type, id, missingMessage) {

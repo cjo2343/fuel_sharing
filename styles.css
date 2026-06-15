@@ -4334,6 +4334,37 @@ body.auth-locked #authPanel .text-button {
   line-height: 1.35;
 }
 
+
+.test-lab-historical-details {
+  border: 1px solid rgba(180, 83, 9, 0.26);
+  border-radius: 0.9rem;
+  background: rgba(255, 251, 235, 0.66);
+  margin: 0.5rem 0 0.75rem;
+  overflow: hidden;
+}
+
+.test-lab-historical-details summary {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  color: var(--ink);
+}
+
+.test-lab-historical-details summary span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.test-lab-historical-details .test-lab-report {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  margin: 0;
+}
+
 .test-lab-report {
   border: 1px solid var(--border);
   border-radius: 1rem;

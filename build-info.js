@@ -1,14 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.93",
-    buildLabel: "stale-report-guard",
-    updatedAt: "2026-06-15T20:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v192",
+    version: "2026.06.15.94",
+    buildLabel: "stale-report-display-polish",
+    updatedAt: "2026-06-15T20:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v193",
     releaseNotes: Object.freeze([
-      "Saved cloud Test Lab reports are clearly marked as historical when shown in Admin.",
+      "Historical saved Test Lab reports are collapsed by default so stale failures do not look current.",
+      "Historical report summaries show generated time and build/cache context before details are expanded.",
       "Fresh Security Health/Test Lab runs stay visible instead of being replaced by cloud report-history reloads.",
-      "Saving a historical report is blocked; run a fresh check before saving to cloud.",
       "Realtime publication cleanup keeps only the lightweight ledger_events stream published."
     ])
   });
