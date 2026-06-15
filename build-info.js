@@ -1,14 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.88",
-    buildLabel: "rpc-health-visibility",
-    updatedAt: "2026-06-15T17:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v187",
+    version: "2026.06.15.89",
+    buildLabel: "booking-link-context-guard",
+    updatedAt: "2026-06-15T17:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v188",
     releaseNotes: Object.freeze([
-      "Admin diagnostics now show critical RPC availability from the read-only fuel_ledger_healthcheck RPC.",
-      "Security Health reports missing trip, fuel, booking, member, purge, reset, or retention RPCs before table fallbacks are removed.",
-      "A migration updates fuel_ledger_healthcheck without changing data or destructive behavior.",
+      "Booking-to-trip logging now mirrors booking context on the trip form so linkage survives render/refactor timing edges.",
+      "Trips created from bookings preserve booking ID, booking window, and log reference before pending fuel checks run.",
+      "RPC health visibility remains available from the previous release.",
       "Runtime script/cache parity checks remain active for new helper modules."
     ])
   });

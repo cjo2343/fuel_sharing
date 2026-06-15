@@ -779,12 +779,13 @@ els.tripForm.addEventListener("submit", async (event) => {
 
   const tripId = editingTripId || crypto.randomUUID();
   const existingTrip = editingTripId ? state.trips.find((trip) => trip.id === editingTripId) : null;
+  const activeTripBookingContext = getActiveTripLogContext() || getTripFormBookingContextDataset();
   const tripPayload = {
     id: tripId,
-    logRef: existingTrip?.logRef || pendingTripBookingContext?.logRef || createLogRef(tripId),
-    sourceBookingId: existingTrip?.sourceBookingId || pendingTripBookingContext?.bookingId || null,
-    bookingStart: existingTrip?.bookingStart || pendingTripBookingContext?.bookingStart || null,
-    bookingEnd: existingTrip?.bookingEnd || pendingTripBookingContext?.bookingEnd || null,
+    logRef: existingTrip?.logRef || activeTripBookingContext?.logRef || createLogRef(tripId),
+    sourceBookingId: existingTrip?.sourceBookingId || activeTripBookingContext?.bookingId || null,
+    bookingStart: existingTrip?.bookingStart || activeTripBookingContext?.bookingStart || null,
+    bookingEnd: existingTrip?.bookingEnd || activeTripBookingContext?.bookingEnd || null,
     driver: els.tripDriver.value,
     participants,
     date: els.tripDate.value,
@@ -9183,6 +9184,7 @@ function startTripFromBooking(id) {
     createLogRef,
     extractEstimatedDistanceFromText
   });
+  setTripFormBookingContextDataset(pendingTripBookingContext);
   renderPeopleSelectors();
   if (getMemberNames().includes(booking.member)) els.tripDriver.value = booking.member;
   const bookingEnd = parseBookingDate(booking.end);
@@ -10346,8 +10348,34 @@ function syncTripDateBounds() {
   else els.tripDate.removeAttribute("max");
 }
 
+function setTripFormBookingContextDataset(context) {
+  if (!els.tripForm) return;
+  if (!context) {
+    delete els.tripForm.dataset.sourceBookingId;
+    delete els.tripForm.dataset.sourceBookingLogRef;
+    delete els.tripForm.dataset.sourceBookingStart;
+    delete els.tripForm.dataset.sourceBookingEnd;
+    return;
+  }
+  els.tripForm.dataset.sourceBookingId = context.bookingId || "";
+  els.tripForm.dataset.sourceBookingLogRef = context.logRef || "";
+  els.tripForm.dataset.sourceBookingStart = context.bookingStart || "";
+  els.tripForm.dataset.sourceBookingEnd = context.bookingEnd || "";
+}
+
+function getTripFormBookingContextDataset() {
+  if (!els.tripForm?.dataset?.sourceBookingId) return null;
+  return {
+    bookingId: els.tripForm.dataset.sourceBookingId,
+    logRef: els.tripForm.dataset.sourceBookingLogRef || "",
+    bookingStart: els.tripForm.dataset.sourceBookingStart || null,
+    bookingEnd: els.tripForm.dataset.sourceBookingEnd || null
+  };
+}
+
 function clearTripLoggingContext() {
   pendingTripBookingContext = null;
+  setTripFormBookingContextDataset(null);
   syncTripDateBounds();
   renderTripBookingContext();
 }
