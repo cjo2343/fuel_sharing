@@ -317,10 +317,13 @@ let liveSyncEnabled = localStorage.getItem(liveSyncStorageKey) === "true";
 const testLabReportCloudStorageKey = `${storageKey}:testLabCloudReportOptIn`;
 let testLabCloudReportOptIn = localStorage.getItem(testLabReportCloudStorageKey) === "true";
 let supabaseLoadInFlight = false;
+let supabaseLoadStartedAt = 0;
+let supabaseLoadToken = 0;
 let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
+const supabaseStaleLoadMs = 45000;
 let periodCloseRpcArmUntil = 0;
 let deferredInstallPrompt = null;
 let pushSupported = false;
@@ -2211,6 +2214,8 @@ function supabaseLoadLabel(label) {
     "live-sync-toggle": "Live sync toggle",
     "focus-sync-skip": "Focus sync skipped",
     "supabase-load-skip": "Supabase load skipped",
+    "supabase-load-timeout": "Supabase load timeout",
+    "supabase-load-stale-result": "Ignored stale Supabase load",
     "realtime-ignored-self-save": "Ignored self realtime events",
     "trip-table-write": "Trip table writes",
     "fuel-table-write": "Fuel table writes",
@@ -2238,6 +2243,8 @@ function buildSupabaseLoadReport() {
       realtimeChannelActive: Boolean(supabaseStateChannel),
       ledgerEventsRealtimeActive: Boolean(ledgerEventsChannel),
       supabaseLoadInFlight,
+      supabaseLoadStartedAt,
+      supabaseLoadToken,
       normalizedReadModeActive,
       pendingLocalChanges,
       lastCloudSaveAt,
@@ -4523,6 +4530,7 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
       timedOut = true;
       lastSyncError = timeoutMessage || "Cloud sync is delayed.";
       lastCloudRetryAt = new Date().toISOString();
+      markSupabaseLoadTimedOut("startup-timeout");
       setSyncStatus("Delayed");
       render();
       resolve(false);
@@ -12750,6 +12758,19 @@ async function saveRemoteState() {
   }
 }
 
+function markSupabaseLoadTimedOut(reason = "load-timeout") {
+  if (!supabaseLoadInFlight) return;
+  supabaseLoadInFlight = false;
+  supabaseLoadStartedAt = 0;
+  supabaseLoadToken += 1;
+  recordSupabaseLoadEvent("supabase-load-timeout", reason);
+  renderSupabaseLoadMonitor();
+}
+
+function isCurrentSupabaseLoad(loadToken) {
+  return supabaseLoadInFlight && loadToken === supabaseLoadToken;
+}
+
 async function loadSupabaseState(options = {}) {
   const { force = false, reason = "loadSupabaseState" } = options || {};
   recordSupabaseLoadEvent("supabase-load", reason);
@@ -12760,8 +12781,13 @@ async function loadSupabaseState(options = {}) {
 
   const now = Date.now();
   if (supabaseLoadInFlight) {
-    recordSupabaseLoadEvent("supabase-load-skip", `already loading (${reason})`);
-    return false;
+    const loadAgeMs = now - Number(supabaseLoadStartedAt || lastSupabaseLoadAt || 0);
+    if (loadAgeMs > supabaseStaleLoadMs) {
+      markSupabaseLoadTimedOut(`stale load replaced (${reason})`);
+    } else {
+      recordSupabaseLoadEvent("supabase-load-skip", `already loading (${reason})`);
+      return false;
+    }
   }
   if (!force && now - lastSupabaseLoadAt < supabaseLoadCooldownMs) {
     recordSupabaseLoadEvent("supabase-load-skip", `cooldown (${reason})`);
@@ -12769,6 +12795,8 @@ async function loadSupabaseState(options = {}) {
   }
 
   supabaseLoadInFlight = true;
+  supabaseLoadStartedAt = now;
+  const loadToken = ++supabaseLoadToken;
   lastSupabaseLoadAt = now;
 
   try {
@@ -12780,6 +12808,10 @@ async function loadSupabaseState(options = {}) {
       .single();
 
     if (error) throw error;
+    if (!isCurrentSupabaseLoad(loadToken)) {
+      recordSupabaseLoadEvent("supabase-load-stale-result", reason);
+      return false;
+    }
 
     lastCloudSaveAt = data.updated_at || new Date().toISOString();
     lastCloudSyncAt = new Date().toISOString();
@@ -12793,6 +12825,10 @@ async function loadSupabaseState(options = {}) {
     try {
       const normalizedState = await loadStateFromNormalizedTables(jsonState);
       if (normalizedState) {
+        if (!isCurrentSupabaseLoad(loadToken)) {
+          recordSupabaseLoadEvent("supabase-load-stale-result", `normalized tables (${reason})`);
+          return false;
+        }
         normalizedReadModeActive = true;
         applyIncomingState(normalizedState, "Tables");
         loadedFromTables = true;
@@ -12811,11 +12847,19 @@ async function loadSupabaseState(options = {}) {
     }
 
     if (!loadedFromTables) {
+      if (!isCurrentSupabaseLoad(loadToken)) {
+        recordSupabaseLoadEvent("supabase-load-stale-result", `json fallback (${reason})`);
+        return false;
+      }
       normalizedReadModeActive = false;
       applyIncomingState(jsonState, "Cloud");
       await syncNormalizedTablesFromJson();
     }
 
+    if (!isCurrentSupabaseLoad(loadToken)) {
+      recordSupabaseLoadEvent("supabase-load-stale-result", `post-load (${reason})`);
+      return false;
+    }
     await loadCloudTestLabReports({ reason: "load normalized Test Lab report history after cloud state load" });
     scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
@@ -12827,7 +12871,10 @@ async function loadSupabaseState(options = {}) {
     setSyncStatus("Delayed");
     return false;
   } finally {
-    supabaseLoadInFlight = false;
+    if (isCurrentSupabaseLoad(loadToken)) {
+      supabaseLoadInFlight = false;
+      supabaseLoadStartedAt = 0;
+    }
     renderSupabaseLoadMonitor();
   }
 }

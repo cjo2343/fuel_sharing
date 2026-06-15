@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v202";
-const BUILD_LABEL = "local-trip-submit-flush";
-const BUILD_UPDATED_AT = "2026-06-15T23:58:00.000Z";
+const CACHE_NAME = "fuel-ledger-v203";
+const BUILD_LABEL = "cloud-sync-timeout-recovery";
+const BUILD_UPDATED_AT = "2026-06-16T00:15:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

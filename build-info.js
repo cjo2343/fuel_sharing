@@ -1,16 +1,17 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.103",
-    buildLabel: "local-trip-submit-flush",
-    updatedAt: "2026-06-15T23:58:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v202",
+    version: "2026.06.15.104",
+    buildLabel: "cloud-sync-timeout-recovery",
+    updatedAt: "2026-06-16T00:15:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v203",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
       "Deployment and hardening docs now explain the backup-before-destructive-action rule.",
       "JSON mirror writes remain manual, safety, or audit-cadence only.",
-      "Local/server-backed trip submits now flush immediately so booking-to-trip smoke tests and payment actions read the exact saved participants."
+      "Local/server-backed trip submits now flush immediately so booking-to-trip smoke tests and payment actions read the exact saved participants.",
+      "Startup cloud sync now times out cleanly and unlocks manual Sync now retries instead of leaving the app stuck in Syncing."
     ])
   });
 

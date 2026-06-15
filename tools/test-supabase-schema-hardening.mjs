@@ -159,6 +159,23 @@ function testLocalTripSubmitFlushesServerState() {
   console.log("ok - testLocalTripSubmitFlushesServerState");
 }
 
+
+function testSupabaseLoadTimeoutGuardExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /let supabaseLoadStartedAt = 0/);
+  assert.match(app, /let supabaseLoadToken = 0/);
+  assert.match(app, /const supabaseStaleLoadMs = 45000/);
+  assert.match(app, /function markSupabaseLoadTimedOut\(reason = "load-timeout"\)/);
+  assert.match(app, /supabase-load-timeout/);
+  assert.match(app, /function isCurrentSupabaseLoad\(loadToken\)/);
+  assert.match(app, /markSupabaseLoadTimedOut\("startup-timeout"\)/);
+  assert.match(app, /stale load replaced \(\$\{reason\}\)/);
+  assert.match(app, /supabase-load-stale-result/);
+  assert.ok(app.includes(`if (isCurrentSupabaseLoad(loadToken)) {
+      supabaseLoadInFlight = false;`));
+  console.log("ok - testSupabaseLoadTimeoutGuardExists");
+}
+
 function testRealtimePerformanceGuardrailsExist() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /const hiddenRealtimePauseDelayMs = 60 \* 1000/);
@@ -330,6 +347,7 @@ testAdminToolsGuardrailRpcsExist();
 testDiagnosticPrivacyRedactionExists();
 testJsonWriteReductionGuardrailsExist();
 testLocalTripSubmitFlushesServerState();
+testSupabaseLoadTimeoutGuardExists();
 testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
 testAdminDiagnosticsUxExists();
