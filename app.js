@@ -1729,7 +1729,11 @@ async function handleManualSyncNow(source = "manual") {
     button.textContent = "Syncing...";
   }
   try {
-    const loaded = await loadSupabaseState({ force: true, reason: `manual-${source}` });
+    const loaded = await loadSupabaseStateWithTimeout(
+      { force: true, reason: `manual-${source}` },
+      supabaseStartupLoadTimeoutMs,
+      "Manual cloud sync is delayed. You can keep using local data and try again."
+    );
     if (loaded) showAppMessage("Shared data refreshed.");
     else showAppMessage("Cloud sync did not complete. You can keep using local data and try again.", "warning");
   } finally {
@@ -4505,7 +4509,11 @@ async function initializeSupabase() {
     if (session) {
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
-      await loadSupabaseState({ force: true, reason: "auth-change" });
+      await loadSupabaseStateWithTimeout(
+        { force: true, reason: "auth-change" },
+        supabaseStartupLoadTimeoutMs,
+        "Cloud sync after sign-in is delayed. Retrying in the background."
+      );
     } else {
       unsubscribeFromLedgerEvents();
       unsubscribeFromSupabaseState();
@@ -4525,12 +4533,16 @@ async function initializeSupabase() {
 
 async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) {
   let timedOut = false;
+  let completed = false;
+  let timeoutId = null;
+  const reason = String(options?.reason || "cloud-sync");
   const timeout = new Promise((resolve) => {
-    window.setTimeout(() => {
+    timeoutId = window.setTimeout(() => {
+      if (completed) return;
       timedOut = true;
       lastSyncError = timeoutMessage || "Cloud sync is delayed.";
       lastCloudRetryAt = new Date().toISOString();
-      markSupabaseLoadTimedOut("startup-timeout");
+      markSupabaseLoadTimedOut(`${reason}-timeout`);
       setSyncStatus("Delayed");
       render();
       resolve(false);
@@ -4539,13 +4551,15 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
 
   const load = loadSupabaseState(options).catch((error) => {
     if (!timedOut) throw error;
-    console.warn("Background cloud load failed after startup timeout", error);
+    console.warn("Background cloud load failed after timeout", error);
     return false;
   });
 
   const result = await Promise.race([load, timeout]);
+  completed = true;
+  if (timeoutId) window.clearTimeout(timeoutId);
   if (timedOut) {
-    recordSupabaseLoadEvent("startup-delayed-fallback", timeoutMessage || "cloud sync delayed");
+    recordSupabaseLoadEvent("cloud-sync-delayed-fallback", timeoutMessage || "cloud sync delayed");
   }
   return result;
 }
@@ -4558,7 +4572,11 @@ window.addEventListener("focus", () => {
     recordSupabaseLoadEvent("focus-sync-skip", "focus cooldown");
     return;
   }
-  loadSupabaseState({ reason: "window-focus" }).catch((error) => {
+  loadSupabaseStateWithTimeout(
+    { reason: "window-focus" },
+    supabaseStartupLoadTimeoutMs,
+    "Focus cloud sync is delayed. You can keep using local data."
+  ).catch((error) => {
     console.warn("Focus sync failed", error);
   });
 });
@@ -4674,7 +4692,11 @@ async function verifyLoginCode() {
   els.authMessage.textContent = "Signed in.";
   updateAuthUi();
 
-  if (currentSession) await loadSupabaseState({ force: true, reason: "login" });
+  if (currentSession) await loadSupabaseStateWithTimeout(
+    { force: true, reason: "login" },
+    supabaseStartupLoadTimeoutMs,
+    "Login cloud sync is delayed. You can keep using local data and try again."
+  );
 }
 
 function startLoginCooldown() {
@@ -6865,7 +6887,11 @@ async function confirmFreshCloudStateForCriticalAction(actionLabel) {
       ? `${actionLabel} changes shared data, but this device has ${pendingLocalChanges} unsynced local change${pendingLocalChanges === 1 ? "" : "s"}. Sync now before continuing?`
       : `${actionLabel} changes shared data. Your last confirmed cloud sync is more than 10 minutes old. Sync now before continuing?`;
   if (!confirmUserAction(message)) return false;
-  const loaded = await loadSupabaseState({ force: true, reason: `critical-action:${actionLabel}` });
+  const loaded = await loadSupabaseStateWithTimeout(
+    { force: true, reason: `critical-action:${actionLabel}` },
+    supabaseStartupLoadTimeoutMs,
+    `${actionLabel} cloud refresh is delayed.`
+  );
   if (loaded) return true;
   return confirmUserAction(`${actionLabel} could not refresh shared data first. Continue anyway using the local copy?`);
 }
@@ -9960,7 +9986,11 @@ async function afterMemberManagementChange(message) {
   if (els.memberManagementMessage) els.memberManagementMessage.textContent = message;
   await refreshMemberManagement();
   memberManagementStatus.error = "";
-  await loadSupabaseState({ force: true, reason: "member-management" });
+  await loadSupabaseStateWithTimeout(
+    { force: true, reason: "member-management" },
+    supabaseStartupLoadTimeoutMs,
+    "Member management cloud refresh is delayed."
+  );
   await refreshDatabaseDiagnostics().catch(() => {});
   await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
   render();
@@ -10022,7 +10052,11 @@ async function runProductionActivityReset() {
       ok: true,
       message: `Production activity reset complete. New open period ${shortId(data?.open_period_id || "")}.`
     };
-    await loadSupabaseState({ force: true, reason: "production-reset" });
+    await loadSupabaseStateWithTimeout(
+      { force: true, reason: "production-reset" },
+      supabaseStartupLoadTimeoutMs,
+      "Production reset cloud refresh is delayed."
+    );
     await saveJsonMirrorBackup({ force: true }).catch((error) => console.warn("JSON backup after reset failed", error));
     await refreshDatabaseDiagnostics().catch(() => {});
     await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
@@ -12703,7 +12737,11 @@ async function checkNormalizedTablesAgainstCurrentState({ force = false, silent 
 async function loadRemoteState() {
   recordSupabaseLoadEvent(supabaseClient ? "supabase-load" : "server-load", "loadRemoteState");
   if (supabaseClient) {
-    await loadSupabaseState({ reason: "loadRemoteState" });
+    await loadSupabaseStateWithTimeout(
+      { reason: "loadRemoteState" },
+      supabaseStartupLoadTimeoutMs,
+      "Cloud sync is delayed. You can keep using local data."
+    );
     return;
   }
 
@@ -13103,7 +13141,11 @@ function scheduleLedgerEventAutoSync(row = null) {
     lastLedgerEventAutoSyncAt = Date.now();
     recordSupabaseLoadEvent("ledger-event-auto-sync", row?.event_type || "ledger_events");
     showAppMessage("New shared update detected. Refreshing shared data automatically...", "info");
-    await loadSupabaseState({ force: true, reason: "ledger-event-auto-sync" });
+    await loadSupabaseStateWithTimeout(
+      { force: true, reason: "ledger-event-auto-sync" },
+      supabaseStartupLoadTimeoutMs,
+      "Automatic cloud sync is delayed. You can still tap Sync now."
+    );
   }, delayMs);
 }
 

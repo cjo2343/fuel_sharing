@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.105",
-    buildLabel: "csp-inline-style-cleanup",
-    updatedAt: "2026-06-16T00:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v204",
+    version: "2026.06.15.106",
+    buildLabel: "cloud-sync-timeout-all-paths",
+    updatedAt: "2026-06-16T01:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v205",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -12,7 +12,8 @@
       "JSON mirror writes remain manual, safety, or audit-cadence only.",
       "Local/server-backed trip submits now flush immediately so booking-to-trip smoke tests and payment actions read the exact saved participants.",
       "Startup cloud sync now times out cleanly and unlocks manual Sync now retries instead of leaving the app stuck in Syncing.",
-      "CSP style rules now use style-src self without unsafe-inline; helper positioning moved to stylesheet classes and header tests block regressions."
+      "CSP style rules now use style-src self without unsafe-inline; helper positioning moved to stylesheet classes and header tests block regressions.",
+      "Cloud sync timeout recovery now covers manual Sync now, login/auth refresh, focus refresh, member/admin refreshes, and ledger-event auto-sync, and successful loads clear their timeout timer."
     ])
   });
 

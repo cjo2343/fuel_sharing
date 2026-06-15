@@ -168,9 +168,17 @@ function testSupabaseLoadTimeoutGuardExists() {
   assert.match(app, /function markSupabaseLoadTimedOut\(reason = "load-timeout"\)/);
   assert.match(app, /supabase-load-timeout/);
   assert.match(app, /function isCurrentSupabaseLoad\(loadToken\)/);
-  assert.match(app, /markSupabaseLoadTimedOut\("startup-timeout"\)/);
+  assert.match(app, /let timeoutId = null/);
+  assert.match(app, /window\.clearTimeout\(timeoutId\)/);
+  assert.match(app, /markSupabaseLoadTimedOut\(`\$\{reason\}-timeout`\)/);
+  assert.match(app, /cloud-sync-delayed-fallback/);
   assert.match(app, /stale load replaced \(\$\{reason\}\)/);
   assert.match(app, /supabase-load-stale-result/);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: `manual-\$\{source\}` \}/m);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "auth-change" \}/m);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ reason: "window-focus" \}/m);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "login" \}/m);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "ledger-event-auto-sync" \}/m);
   assert.ok(app.includes(`if (isCurrentSupabaseLoad(loadToken)) {
       supabaseLoadInFlight = false;`));
   console.log("ok - testSupabaseLoadTimeoutGuardExists");
