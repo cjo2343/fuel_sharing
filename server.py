@@ -263,13 +263,12 @@ def configured_supabase_realtime_origin():
 
 def content_security_policy():
     # Keep this CSP compatible with the static PWA, Supabase Auth/PostgREST/Realtime,
-    # the CDN-hosted Supabase client and its source maps, Overpass station search,
+    # the locally vendored Supabase client, Overpass station search,
     # service workers, and browser notification flows. Broad table Realtime remains
     # off in the app; this only permits the narrow ledger_events channel when active.
     connect_sources = [
         "'self'",
         "https://overpass-api.de",
-        "https://cdn.jsdelivr.net",
     ]
     supabase_origin = configured_supabase_origin()
     supabase_realtime = configured_supabase_realtime_origin()
@@ -284,7 +283,7 @@ def content_security_policy():
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "script-src 'self' https://cdn.jsdelivr.net",
+        "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
         "font-src 'self' data:",

@@ -28,6 +28,8 @@ function testVercelHeaders() {
   assert.match(headers['Content-Security-Policy'], /default-src 'self'/);
   assert.match(headers['Content-Security-Policy'], /frame-ancestors 'none'/);
   assert.match(headers['Content-Security-Policy'], /object-src 'none'/);
+  assert.match(headers['Content-Security-Policy'], /script-src 'self'(;|$)/);
+  assert.doesNotMatch(headers['Content-Security-Policy'], /cdn\.jsdelivr\.net/);
   assert.match(headers['Strict-Transport-Security'], /max-age=31536000/);
   assert.equal(headers['X-Frame-Options'], 'DENY');
   assert.equal(headers['X-Content-Type-Options'], 'nosniff');
@@ -40,6 +42,8 @@ function testStaticHeadersFile() {
     assert.match(headers, new RegExp(`${header}:`), `_headers missing ${header}`);
   }
   assert.match(headers, /Content-Security-Policy: .*default-src 'self'/);
+  assert.match(headers, /script-src 'self'(;|$)/);
+  assert.doesNotMatch(headers, /cdn\.jsdelivr\.net/);
   assert.match(headers, /Strict-Transport-Security: max-age=31536000; includeSubDomains; preload/);
 }
 
@@ -51,6 +55,7 @@ function testLocalServerHeaders() {
   assert.match(server, /def content_security_policy\(\):/);
   assert.match(server, /configured_supabase_origin\(\)/);
   assert.match(server, /configured_supabase_realtime_origin\(\)/);
+  assert.doesNotMatch(server, /cdn\.jsdelivr\.net/);
 }
 
 const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders];

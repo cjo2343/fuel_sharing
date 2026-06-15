@@ -1,10 +1,12 @@
-const CACHE_NAME = "fuel-ledger-v198";
-const BUILD_LABEL = "bootstrap-url-hardening";
-const BUILD_UPDATED_AT = "2026-06-15T22:35:00.000Z";
+const CACHE_NAME = "fuel-ledger-v199";
+const BUILD_LABEL = "vendor-supabase-client";
+const BUILD_UPDATED_AT = "2026-06-15T23:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
   "/styles.css",
+  "/vendor/supabase-js-2.43.4/supabase.js",
+  "/vendor/supabase-js-2.43.4/26.supabase.js",
   "/supabase-config.js",
   "/utils.js",
   "/supabase-helpers.js",

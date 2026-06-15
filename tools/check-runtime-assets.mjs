@@ -24,6 +24,9 @@ const coreAssets = coreAssetsFromServiceWorker(serviceWorker);
 const normalizedCoreAssets = new Set(coreAssets.map((asset) => asset.replace(/^\//, "")));
 
 assert.ok(scripts.includes("app.js"), "index.html must load app.js");
+assert.ok(scripts.includes("vendor/supabase-js-2.43.4/supabase.js"), "index.html must load the vendored Supabase client");
+assert.ok(!indexHtml.includes("cdn.jsdelivr.net"), "index.html must not load runtime scripts from jsDelivr");
+assert.ok(coreAssets.includes("/vendor/supabase-js-2.43.4/26.supabase.js"), "service worker must cache the vendored Supabase UMD chunk");
 
 for (const script of scripts) {
   assert.ok(existsSync(script), `${script} referenced by index.html must exist`);

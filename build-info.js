@@ -1,15 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.99",
-    buildLabel: "bootstrap-url-hardening",
-    updatedAt: "2026-06-15T22:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v198",
+    version: "2026.06.15.100",
+    buildLabel: "vendor-supabase-client",
+    updatedAt: "2026-06-15T23:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v199",
     releaseNotes: Object.freeze([
-      "Bootstrap access now locks automatically after a real active admin email is attached to the ledger.",
-      "Push notification clicks are restricted to same-origin app paths.",
-      "Validation now checks that member/admin RPCs and test-row purge fail closed when RPCs are missing.",
-      "Member management and generated test purge operations continue to require server-side RPCs in production.",
+      "Supabase JS is now vendored locally instead of loaded from jsDelivr.",
+      "Content Security Policy no longer allows cdn.jsdelivr.net for scripts or connections.",
+      "The vendored Supabase client files are included in the service worker core cache.",
+      "Bootstrap access remains locked automatically after a real active admin email is attached to the ledger.",
       "Runtime metadata and service worker cache were updated for this hardening build."
     ])
   });

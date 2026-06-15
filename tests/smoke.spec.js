@@ -169,7 +169,7 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
     body: "window.CAR_SHARE_SUPABASE = { enabled: true, url: 'https://test.supabase.local', anonKey: 'test-anon-key', ledgerId: 'test-ledger' };"
   }));
 
-  await page.route(/.*\/npm\/@supabase\/supabase-js@2(?:\.\d+\.\d+)?(?:\/.*)?$/, (route) => route.fulfill({
+  await page.route(/.*(?:\/npm\/@supabase\/supabase-js@2(?:\.\d+\.\d+)?(?:\/.*)?|\/vendor\/supabase-js-2\.43\.4\/supabase\.js)$/, (route) => route.fulfill({
     contentType: "application/javascript",
     body: "window.supabase = window.__TEST_SUPABASE__;"
   }));
