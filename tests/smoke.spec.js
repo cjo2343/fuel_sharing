@@ -613,7 +613,16 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
   await expect(page.locator("#bookingCalendar")).toContainText("Required fuel regression");
 
-  const bookingId = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")).bookings[0].id);
+  const bookingId = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("car-share-ledger-v1"));
+    const booking = state.bookings.find((item) =>
+      item.purpose === "Required fuel regression"
+      && item.start === "2026-06-10T21:00"
+      && item.end === "2026-06-11T23:00"
+    );
+    return booking?.id;
+  });
+  expect(bookingId).toBeTruthy();
   await page.locator(`[data-convert-booking-to-trip="${bookingId}"]`).click();
   await expect(page.locator('[data-view="log"]#tripLogPanel')).toBeVisible();
   await expect(page.locator("#tripDate")).toHaveValue("2026-06-11");
@@ -628,7 +637,9 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await expect(page.locator("#pendingLogList")).toContainText("Required fuel regression");
   await expect(page.locator("#periodList")).not.toContainText("Required fuel regression");
 
-  await page.locator('[data-add-fuel-for-trip]').first().evaluate((button) => button.click());
+  const requiredFuelAction = page.locator("#pendingLogList .pending-log-card", { hasText: "Required fuel regression" }).locator("[data-add-fuel-for-trip]").first();
+  await expect(requiredFuelAction).toBeVisible();
+  await requiredFuelAction.evaluate((button) => button.click());
   await expect(page.locator("#fuelTripContext")).toContainText("Required for multi-day booking");
   await page.locator("#fuelAmount").fill("444");
   await page.locator("#fuelLiters").fill("30");
@@ -639,6 +650,15 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await page.locator("#fuelFullTank").check();
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
   await expect(page.locator("#fuelList")).toContainText("444,00 DKK");
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+    const linkedTrip = state.trips.find((trip) => trip.sourceBookingId === bookingId || trip.note === "Required fuel regression");
+    const linkedFuel = state.fuel.find((fuel) =>
+      fuel.fullTank === true
+      && (fuel.sourceBookingId === bookingId || fuel.sourceTripId === linkedTrip?.id || fuel.tripId === linkedTrip?.id)
+    );
+    return Boolean(linkedTrip && linkedFuel);
+  }, { timeout: 5000 }).toBe(true);
 
   await page.locator('[data-view-tab="settle"]').click();
   await expect(page.locator("#settlementWarning")).not.toContainText("multi-day booking trip needs");
