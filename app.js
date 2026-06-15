@@ -3117,7 +3117,7 @@ function renderTestLabReport(report = null, { persist = false } = {}) {
   const reportHtml = testLab.renderReportHtml(lastTestLabReport);
   if (historical || buildMismatch) {
     const generatedAt = lastTestLabReport.finishedAt || lastTestLabReport.syncedAt || lastTestLabReport.startedAt || "";
-    const generatedLabel = generatedAt ? formatDateTime(generatedAt) : "unknown time";
+    const generatedLabel = generatedAt ? formatDateTimeShort(generatedAt) : "unknown time";
     const statusLabel = lastTestLabReport.ok ? "passed" : "failed";
     const buildLabel = reportBuild.buildLabel || reportBuild.expectedServiceWorkerCache || "older build";
     els.testLabReport.innerHTML = `${banner}

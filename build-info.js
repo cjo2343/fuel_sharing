@@ -1,13 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.95",
-    buildLabel: "admin-diagnostics-health-propagation",
-    updatedAt: "2026-06-15T20:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v194",
+    version: "2026.06.15.96",
+    buildLabel: "format-datetime-stale-report-fix",
+    updatedAt: "2026-06-15T20:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v195",
     releaseNotes: Object.freeze([
       "Admin diagnostics cards update immediately after live Security Health completes.",
       "RPC availability and Realtime publication cards reuse the latest healthcheck RPC payload instead of staying at Not checked yet.",
+      "Historical saved Test Lab reports use the shared short date formatter so the app no longer fails on saved report history.",
       "Historical saved Test Lab reports remain collapsed so stale failures do not look current.",
       "Realtime publication cleanup keeps only the lightweight ledger_events stream published."
     ])
