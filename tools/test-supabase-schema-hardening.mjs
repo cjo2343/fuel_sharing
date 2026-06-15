@@ -184,6 +184,20 @@ function testReleaseAboutPanelExists() {
   console.log("ok - testReleaseAboutPanelExists");
 }
 
+function testSyncHealthBannerExists() {
+  const app = readFileSync("app.js", "utf8");
+  const html = readFileSync("index.html", "utf8");
+  const css = readFileSync("styles.css", "utf8");
+  assert.match(html, /id="syncHealthBanner"/);
+  assert.match(app, /function buildSyncHealthBannerState\(\)/);
+  assert.match(app, /function renderSyncHealthBanner\(\)/);
+  assert.match(app, /data-sync-health-action/);
+  assert.match(app, /Sync delayed/);
+  assert.match(app, /Unsynced local changes/);
+  assert.match(css, /\.sync-health-banner/);
+  console.log("ok - testSyncHealthBannerExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -206,4 +220,5 @@ testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
 testAdminDiagnosticsUxExists();
 testReleaseAboutPanelExists();
+testSyncHealthBannerExists();
 testFuelLedgerHealthcheckExists();

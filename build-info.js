@@ -1,13 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.79",
-    buildLabel: "render-port-startup",
-    updatedAt: "2026-06-15T14:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v178",
+    version: "2026.06.15.80",
+    buildLabel: "sync-health-banner",
+    updatedAt: "2026-06-15T15:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v179",
     releaseNotes: Object.freeze([
-      "Render startup now has an explicit npm start command and PORT binding diagnostics.",
-      "Realtime performance guardrails pause subscriptions while the tab is hidden.",
+      "Normal users now see a sync health banner when data is local-only, delayed, or waiting to sync.",
+      "Render startup binds to the platform PORT with explicit npm start support.",
       "Security hardening baseline is complete; future work is polish and maintenance."
     ])
   });

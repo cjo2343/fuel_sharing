@@ -25,6 +25,23 @@ function assertIncludes(file, content, markers) {
   }
 }
 
+const envExample = read(".env.example");
+assertIncludes(".env.example", envExample, [
+  "FUEL_LEDGER_API_SECRET",
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "VAPID_PRIVATE_KEY",
+  "REMINDER_CRON_SECRET",
+]);
+
+const localDev = read("LOCAL-DEVELOPMENT.md");
+assertIncludes("LOCAL-DEVELOPMENT.md", localDev, [
+  "Supabase disabled",
+  "FUEL_LEDGER_DATA_FILE",
+  "npm run release:check",
+  "Render",
+]);
+
 const packageJson = JSON.parse(read("package.json"));
 assert.ok(packageJson.scripts?.validate, "package.json must define npm run validate");
 assert.ok(packageJson.scripts?.["test:e2e"], "package.json must define npm run test:e2e");

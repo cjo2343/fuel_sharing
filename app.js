@@ -414,6 +414,7 @@ const els = {
   syncStatus: document.querySelector("#syncStatus"),
   syncDetail: document.querySelector("#syncDetail"),
   syncNow: document.querySelector("#syncNow"),
+  syncHealthBanner: document.querySelector("#syncHealthBanner"),
   tripDriver: document.querySelector("#tripDriver"),
   bookingMember: document.querySelector("#bookingMember"),
   fuelPayer: document.querySelector("#fuelPayer"),
@@ -623,6 +624,11 @@ initializeSync()
 initializePwa();
 refreshFuelPriceEstimate();
 window.addEventListener("hashchange", () => handleStartupDeepLinks());
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-sync-health-action]")) return;
+  focusSyncHealthAction();
+});
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -4088,6 +4094,7 @@ function render() {
   renderMemberManagementPanel();
   renderSupabaseLoadMonitor();
   renderAdminGuardrailOverview();
+  renderSyncHealthBanner();
   renderRetentionCleanupSummary();
   renderTestLabReport(null, { persist: false });
   els.resetPeriod.disabled = !canManageSettings() || (state.trips.length === 0 && state.fuel.length === 0);
@@ -4440,6 +4447,79 @@ function renderPeriodEntryLock() {
   els.periodEntryLock.innerHTML = message
     ? `<p class="eyebrow">Period locked</p><h2>Reopen payment requests before changing this period</h2><p class="section-note">${escapeHtml(message)}</p><p class="section-note">To correct an entry, reopen the requested/paid settlement first, then use History → Edit on your current-period log.</p>`
     : "";
+}
+
+function buildSyncHealthBannerState() {
+  if (supabaseClient && !currentSession) {
+    return {
+      level: "warning",
+      title: "Sign in to sync",
+      message: pendingLocalChanges > 0
+        ? `${pendingLocalChanges} local change${pendingLocalChanges === 1 ? "" : "s"} saved on this device only. Sign in before switching devices.`
+        : "This device is using local data until you sign in.",
+      action: "Sign in above"
+    };
+  }
+
+  if (lastSyncError) {
+    return {
+      level: "error",
+      title: "Sync delayed",
+      message: `${lastSyncError} Changes are kept on this device and will be retried.`,
+      action: "Tap Sync now"
+    };
+  }
+
+  if (pendingLocalChanges > 0) {
+    return {
+      level: "warning",
+      title: "Unsynced local changes",
+      message: `${pendingLocalChanges} change${pendingLocalChanges === 1 ? " is" : "s are"} saved locally and waiting to sync.`,
+      action: "Tap Sync now"
+    };
+  }
+
+  if (supabaseClient && currentSession && normalizedTableStatus?.checked && normalizedTableStatus.ok === false) {
+    return {
+      level: "warning",
+      title: "Database fallback active",
+      message: "The app is using the JSON fallback because normalized table health is degraded.",
+      action: "Admin can check diagnostics"
+    };
+  }
+
+  return null;
+}
+
+function renderSyncHealthBanner() {
+  if (!els.syncHealthBanner) return;
+  const banner = buildSyncHealthBannerState();
+  els.syncHealthBanner.classList.toggle("hidden", !banner);
+  if (!banner) {
+    els.syncHealthBanner.innerHTML = "";
+    delete els.syncHealthBanner.dataset.level;
+    return;
+  }
+
+  els.syncHealthBanner.dataset.level = banner.level;
+  els.syncHealthBanner.innerHTML = `
+    <div>
+      <strong>${escapeHtml(banner.title)}</strong>
+      <p>${escapeHtml(banner.message)}</p>
+    </div>
+    <button class="subtle-button compact-button" type="button" data-sync-health-action>${escapeHtml(banner.action)}</button>
+  `;
+}
+
+function focusSyncHealthAction() {
+  if (supabaseClient && !currentSession && els.loginEmail) {
+    setActiveView("log");
+    els.loginEmail.focus();
+    return;
+  }
+  handleManualSyncNow("banner").catch((error) => {
+    console.warn("Sync health action failed", error);
+  });
 }
 
 function renderLogEntryPanelsVisibility() {
@@ -12877,6 +12957,8 @@ function setSyncStatus(label) {
   if (els.syncDetail) {
     els.syncDetail.textContent = display.detail;
   }
+
+  renderSyncHealthBanner();
 }
 
 function hasLedgerData(candidate) {

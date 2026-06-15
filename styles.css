@@ -1074,6 +1074,15 @@ body.auth-locked #authPanel .text-button {
     min-height: 34px;
   }
 
+  .sync-health-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sync-health-banner .compact-button {
+    width: 100%;
+  }
+
   .odometer {
     height: 70px;
     min-width: 0;
@@ -2881,6 +2890,40 @@ body.auth-locked #authPanel .text-button {
 
 .route-map-link:hover {
   text-decoration: underline;
+}
+
+
+.sync-health-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(138, 101, 0, 0.28);
+  border-radius: 16px;
+  background: #fff8df;
+  color: #624900;
+  box-shadow: 0 10px 24px rgba(138, 101, 0, 0.08);
+}
+
+.sync-health-banner[data-level="error"] {
+  border-color: rgba(141, 29, 29, 0.3);
+  background: #fff0f0;
+  color: #7b1717;
+}
+
+.sync-health-banner strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.92rem;
+}
+
+.sync-health-banner p {
+  margin: 0;
+  color: currentColor;
+  font-size: 0.84rem;
+  font-weight: 760;
+  line-height: 1.35;
 }
 
 .app-message-toast {
