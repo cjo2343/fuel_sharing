@@ -506,3 +506,7 @@ Final known-good baseline after the security/performance/reporting work:
 - If Admin cards show `Not checked yet` after running Security Health, verify the deployed app is at least build `admin-diagnostics-health-propagation` / cache `fuel-ledger-v194`; newer builds include the formatter fix and immutable report history.
 
 Operational watch item: after normal use, inspect Supabase Query Performance. `realtime.list_changes` should be materially lower than the earlier broad-publication baseline where it dominated query time.
+
+### Diagnostic report privacy notes
+
+Debug and Test Lab reports are operational records. Keep redaction broad for secrets and precise personal data, but avoid over-redacting build versions and timestamps because they are needed to debug deployments.

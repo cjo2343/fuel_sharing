@@ -139,11 +139,20 @@ function testDiagnosticPrivacyRedactionExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /function redactSensitiveDiagnostics\(value\)/);
   assert.match(app, /function redactDiagnosticString\(value\)/);
+  assert.match(app, /function redactDiagnosticUrlSecrets\(value\)/);
   assert.match(app, /function isSensitiveDiagnosticKey\(key\)/);
+  assert.match(app, /\[redacted-email\]/);
+  assert.match(app, /\[redacted-phone\]/);
+  assert.match(app, /\[redacted-coordinates\]/);
+  assert.match(app, /\[redacted-jwt\]/);
+  assert.match(app, /\[redacted-token\]/);
+  assert.match(app, /access_token\|refresh_token\|token\|apikey\|api_key\|key\|code\|password\|secret/);
+  assert.match(app, /api\[_-\]\?key\|apikey\|secret\|password\|cookie\|jwt/);
   assert.match(app, /redactSensitiveDiagnostics\(buildSupabaseLoadReport\(\)\)/);
   assert.match(app, /const exportedReport = redactSensitiveDiagnostics\(report\)/);
   assert.match(app, /const reportToStore = sync \? redactSensitiveDiagnostics\(report\) : report/);
   assert.match(app, /privacy redaction applied/);
+  assert.doesNotMatch(app, /\+\?\d\[0-9 \(\)\.\-\]\{7,\}\d/, "phone redaction must not treat build versions or ISO dates as phone numbers");
   console.log("ok - testDiagnosticPrivacyRedactionExists");
 }
 

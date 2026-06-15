@@ -128,3 +128,9 @@ The result should have `ok: true`, all values under `critical_rpcs` set to `true
 - Inline style CSP allowance has been removed: `style-src 'self'` is now used in static, Vercel, and local server headers.
 - Runtime helper positioning uses CSS classes instead of inline style mutations where practical.
 - `tools/test-security-headers.mjs` fails if `unsafe-inline` or inline markup styles return.
+
+### Diagnostic redaction hardening
+
+- Debug/Test Lab reports must redact emails, phone numbers, coordinates, session/token fields, API keys, cookies, passwords, JWT-like strings, Authorization header values, and sensitive URL query parameters before download or cloud storage.
+- Build metadata such as app versions and ISO timestamps should remain readable; phone redaction must not turn release versions or dates into false phone matches.
+- Validation should fail if these diagnostic redaction markers or checks are removed.
