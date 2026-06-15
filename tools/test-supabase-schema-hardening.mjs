@@ -168,6 +168,22 @@ function testAdminDiagnosticsUxExists() {
   console.log("ok - testAdminDiagnosticsUxExists");
 }
 
+function testReleaseAboutPanelExists() {
+  const app = readFileSync("app.js", "utf8");
+  const buildInfo = readFileSync("build-info.js", "utf8");
+  const html = readFileSync("index.html", "utf8");
+  const css = readFileSync("styles.css", "utf8");
+  assert.match(html, /id="aboutBuildInfoPanel"/);
+  assert.match(html, /id="buildInfoPanel"/);
+  assert.match(app, /refreshBuildInfo: document\.querySelector\("#refreshBuildInfo"\)/);
+  assert.match(app, /els\.refreshBuildInfo\?\.addEventListener\("click"/);
+  assert.match(buildInfo, /window\.FUEL_LEDGER_BUILD = BUILD_INFO/);
+  assert.match(buildInfo, /releaseNotes: Object\.freeze\(\[/);
+  assert.match(buildInfo, /Latest notes/);
+  assert.match(css, /\.release-note-card/);
+  console.log("ok - testReleaseAboutPanelExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -189,4 +205,5 @@ testJsonWriteReductionGuardrailsExist();
 testRealtimePerformanceGuardrailsExist();
 testDestructiveActionBackupsExist();
 testAdminDiagnosticsUxExists();
+testReleaseAboutPanelExists();
 testFuelLedgerHealthcheckExists();

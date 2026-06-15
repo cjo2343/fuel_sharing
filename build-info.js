@@ -1,10 +1,15 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.77",
-    buildLabel: "admin-diagnostics-ux",
-    updatedAt: "2026-06-15T13:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v176"
+    version: "2026.06.15.78",
+    buildLabel: "release-about-panel",
+    updatedAt: "2026-06-15T14:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v177",
+    releaseNotes: Object.freeze([
+      "Admin diagnostics and build visibility are available from About and Admin.",
+      "Realtime performance guardrails pause subscriptions while the tab is hidden.",
+      "Security hardening baseline is complete; future work is polish and maintenance."
+    ])
   });
 
   function formatDateTime(value) {
@@ -12,6 +17,8 @@
     if (Number.isNaN(date.getTime())) return value || "Unknown";
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   }
+
+  window.FUEL_LEDGER_BUILD = BUILD_INFO;
 
   function serviceWorkerStatus() {
     if (!("serviceWorker" in navigator)) return "Not supported in this browser";
@@ -35,6 +42,15 @@
     });
   }
 
+  function escapeBuildInfoText(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function renderBuildInfoPanel(target, serviceWorkerInfo = null) {
     if (!target) return;
     const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Not reported yet";
@@ -47,6 +63,9 @@
       : cacheMatches === true
         ? "Cache matches this build."
         : "Reload once if this looks stale.";
+    const releaseNotes = (BUILD_INFO.releaseNotes || [])
+      .map((note) => `<li>${escapeBuildInfoText(note)}</li>`)
+      .join("");
 
     target.innerHTML = `
       <div class="build-info-grid">
@@ -74,6 +93,10 @@
         <article class="diagnostic-card ok">
           <strong>PWA status</strong>
           <p>${serviceWorkerStatus()}</p>
+        </article>
+        <article class="diagnostic-card ok release-note-card">
+          <strong>Latest notes</strong>
+          <ul>${releaseNotes}</ul>
         </article>
       </div>
     `;

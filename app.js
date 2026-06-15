@@ -564,6 +564,7 @@ const els = {
   runRetentionCleanup: document.querySelector("#runRetentionCleanup"),
   retentionCleanupSummary: document.querySelector("#retentionCleanupSummary"),
   refreshAboutBuildInfo: document.querySelector("#refreshAboutBuildInfo"),
+  refreshBuildInfo: document.querySelector("#refreshBuildInfo"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -1632,6 +1633,12 @@ els.cleanupTestLabData?.addEventListener("click", async () => {
 
 els.refreshAboutBuildInfo?.addEventListener("click", () => {
   window.FuelBuildInfo?.refreshBuildInfo?.();
+});
+
+els.refreshBuildInfo?.addEventListener("click", () => {
+  if (!canManageSettings()) return;
+  window.FuelBuildInfo?.refreshBuildInfo?.();
+  renderAdminGuardrailOverview();
 });
 
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {

@@ -3006,6 +3006,20 @@ body.auth-locked #authPanel .text-button {
   font-weight: 700;
 }
 
+.release-note-card {
+  grid-column: 1 / -1;
+}
+
+.release-note-card ul {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text);
+}
+
+.release-note-card li + li {
+  margin-top: 0.25rem;
+}
+
 /* Completed-period archive search/filter controls */
 .archive-toolbar {
   display: grid;
