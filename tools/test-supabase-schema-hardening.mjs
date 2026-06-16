@@ -601,12 +601,15 @@ function testAuthBoundWorkspaceIdentityExists() {
   assert.match(app, /const pendingWorkspaceInviteCodeKey = "fuel-ledger-pending-workspace-invite-code"/);
   assert.match(app, /async function refreshAuthBoundMemberProfile\(\)/);
   assert.match(app, /getAuthBoundMemberProfileFallback\(\)/);
-  assert.match(app, /profile\?\.role === "admin"/);
+  assert.match(app, /profile && !profile\.pendingInvite && profile\.role === "admin"/);
   assert.doesNotMatch(app, /profile\?\.role === "admin" \|\| noMemberEmailsConfigured\(\)/);
-  assert.match(app, /currentUser = profile\?\.name \|\| ""/);
-  assert.match(app, /profile\?\.name && !stateNames\.includes\(profile\.name\)/);
+  assert.match(app, /function getSignedInDisplayProfile\(\)/);
+  assert.match(app, /currentUser = displayName/);
+  assert.match(app, /const displayName = displayProfile\?\.name \|\| ""/);
+  assert.match(app, /knownLoggedInMember = Boolean\(profile && !profile\.pendingInvite\)/);
   assert.match(app, /refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
   assert.doesNotMatch(app, /supabaseClient\.from\("ledgers"\)\.select\("\*"\)\.eq\("id", ledgerId\)\.maybeSingle\(\)/);
+  assert.match(app, /Paste an invite code to join another workspace/);
   assert.match(app, /const linkedWorkspace = getLinkedWorkspaceForActiveLedger\(\)/);
   console.log("ok - testAuthBoundWorkspaceIdentityExists");
 }

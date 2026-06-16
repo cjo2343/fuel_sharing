@@ -218,3 +218,7 @@ Invite onboarding now binds the visible app identity to the signed-in Supabase e
 ### 2026-06-16 invite redemption ambiguity fix
 
 Apply `supabase/migrations/029_invite_redeem_return_ambiguity_fix.sql` after the invite pgcrypto migrations. It redefines `redeem_ledger_invite` so return columns are assigned explicitly instead of colliding with table columns named `ledger_id` and `role`. This keeps the login-screen invite auto-redeem flow from failing and avoids making users paste the same workspace code again on the dashboard.
+
+### 2026-06-16 invite auth/session UI hotfix
+
+Signed-in invite redemption now treats the Supabase session as the source of truth for the dashboard join card. Stale "Sign in before redeeming" messages are cleared after login, and pending invitees show an email-derived temporary identity rather than inheriting the first local JSON admin while the `ledger_members` row refreshes. Admin actions and full normalized reconciliation still require a confirmed authenticated admin role.

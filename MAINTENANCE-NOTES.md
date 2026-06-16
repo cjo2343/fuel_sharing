@@ -611,3 +611,9 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Fixed migration `029_invite_redeem_return_ambiguity_fix.sql` and `supabase-schema.sql` to record migration metadata in the existing `description` column instead of a non-existent `notes` column.
 - Added validation coverage so future migrations cannot insert into `public.fuel_ledger_schema_migrations (migration_id, notes)` or update `notes = excluded.notes`.
 - Updated the deployment checklist with an explicit migration 029 tracking-column check before applying invite redemption SQL.
+
+### Invite auth/session UI hotfix
+
+- The signed-in invite redemption panel now uses the Supabase session as the source of truth, clears stale "Sign in before redeeming" helper text after login, and lets signed-in users retry invite codes without reloading.
+- Pending invitees now display their own signed-in email-derived identity while membership refreshes instead of falling back to the first local JSON member/admin.
+- Non-admin and pending invite sessions remain blocked from admin settings and full JSON-to-table reconciliation until their authenticated workspace role is confirmed.

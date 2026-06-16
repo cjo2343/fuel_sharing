@@ -105,7 +105,23 @@ function getAuthBoundMemberProfileFallback() {
     email,
     role: workspace.role === "admin" ? "admin" : "member",
     mobilepayPhone: "",
-    authBound: true
+    authBound: true,
+    fallback: true
+  };
+}
+
+function getSignedInDisplayProfile() {
+  const profile = getCurrentMemberProfile();
+  if (profile) return profile;
+  const email = getLoggedInEmail();
+  if (!email) return null;
+  return {
+    name: inferAuthBoundMemberName(email),
+    email,
+    role: "member",
+    mobilepayPhone: "",
+    authBound: true,
+    pendingInvite: true
   };
 }
 
@@ -5550,12 +5566,14 @@ function renderLogEntryPanelsVisibility() {
 function renderPeopleSelectors() {
   const stateNames = getMemberNames();
   const profile = getCurrentMemberProfile();
+  const displayProfile = currentSession ? getSignedInDisplayProfile() : null;
   const loggedIn = Boolean(currentSession);
-  const knownLoggedInMember = Boolean(profile);
-  const names = profile?.name && !stateNames.includes(profile.name) ? [profile.name, ...stateNames] : stateNames;
+  const knownLoggedInMember = Boolean(profile && !profile.pendingInvite);
+  const displayName = displayProfile?.name || "";
+  const names = displayName && !stateNames.includes(displayName) ? [displayName, ...stateNames] : stateNames;
 
   if (loggedIn) {
-    currentUser = profile?.name || "";
+    currentUser = displayName;
   } else if (!stateNames.includes(currentUser)) {
     currentUser = stateNames[0] || "";
   }
@@ -10639,7 +10657,14 @@ function renderInviteRedemptionPanel() {
   const visible = Boolean(supabaseClient && currentSession);
   els.inviteRedemptionPanel.classList.toggle("hidden", !visible);
   if (els.redeemInviteButton) els.redeemInviteButton.disabled = !visible;
-  if (!visible) setRedeemInviteMessage(supabaseClient ? "Sign in before redeeming an invite code." : "Invite redemption requires Supabase sign-in.");
+  if (!visible) {
+    setRedeemInviteMessage(supabaseClient ? "Sign in before redeeming an invite code." : "Invite redemption requires Supabase sign-in.");
+    return;
+  }
+  const currentMessage = String(els.redeemInviteMessage?.textContent || "").trim();
+  if (!currentMessage || /sign in before redeeming/i.test(currentMessage)) {
+    setRedeemInviteMessage("Paste an invite code to join another workspace.");
+  }
 }
 
 function normalizeInviteCodeInput(value) {
@@ -11913,7 +11938,7 @@ function canManageSettings() {
   if (!supabaseClient) return true;
   if (!currentSession) return false;
   const profile = getCurrentMemberProfile();
-  return profile?.role === "admin";
+  return Boolean(profile && !profile.pendingInvite && profile.role === "admin");
 }
 
 function canManageSettlementRequest(settlement) {
