@@ -75,6 +75,25 @@ assert.match(
   "window-focus sync cooldown skips should be recorded as diagnostics instead of delayed sync failures"
 );
 
+
+assert.match(
+  appSource,
+  /const recentHealthySync = hasRecentHealthyCloudSync\(now, syncDelayHealthyGraceMs\);[\s\S]*foregroundWriteActive[\s\S]*focus-sync-skip/,
+  "window-focus refreshes should be skipped after a healthy sync or while foreground writes are active"
+);
+
+assert.match(
+  appSource,
+  /function shouldDeferBackgroundCloudLoad\(reason = "background", referenceTime = Date\.now\(\)\)[\s\S]*hasForegroundWriteInFlight\(referenceTime\)/,
+  "background cloud loads should defer while user writes are in flight"
+);
+
+assert.match(
+  appSource,
+  /shouldDeferBackgroundCloudLoad\(reason, now\)[\s\S]*background-load-deferred[\s\S]*return false;/,
+  "loadSupabaseState should not overlap background refreshes with foreground writes"
+);
+
 assert.match(
   appSource,
   /ledgerEventsChannel && ledgerEventsChannelLedgerId === ledgerId[\s\S]*ledger-events-subscription-skip/,

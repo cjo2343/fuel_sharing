@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.159",
-    buildLabel: "data-io-operation-id-pairing",
-    updatedAt: "2026-06-16T23:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v258",
+    version: "2026.06.16.160",
+    buildLabel: "foreground-write-background-load-guard",
+    updatedAt: "2026-06-16T23:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v259",
     releaseNotes: Object.freeze([
+      "Background window-focus and realtime-triggered cloud loads now defer while foreground writes or recent healthy syncs exist, preventing user actions from competing with automatic refreshes.",
+      "Active data I/O operations now age into timeout status in Admin diagnostics instead of appearing active forever when a finish event is missing.",
       "Data I/O operation pairing now uses unique operation IDs, so simultaneous Render payment starts and finishes cannot leave orphaned active rows in Admin diagnostics.",
       "Admin diagnostics now separates admin/manual diagnostic timeouts from core cloud sync warnings and presents load activity in wide dashboard cards with grouped operations.",
       "Data I/O diagnostics now pair start/success/error events into operation rows with status and duration, so an old start entry no longer looks like a stuck write when a matching ok event exists.",

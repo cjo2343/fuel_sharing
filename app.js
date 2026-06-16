@@ -534,6 +534,7 @@ const syncDiagnostics = [];
 let lastDataIoDiagnostic = null;
 const dataIoDiagnostics = [];
 let dataIoOperationCounter = 0;
+const dataIoOperationStaleMs = 15000;
 
 function createDataIoOperationId(source = "data-io") {
   dataIoOperationCounter += 1;
@@ -689,6 +690,19 @@ function latestDataIoOperations(limit = 6) {
       finishedAtMs: Number.isFinite(atMs) ? atMs : null
     });
   });
+  const now = Date.now();
+  operations.forEach((operation) => {
+    if (operation.status !== "active") return;
+    const startedAtMs = Number(operation.startedAtMs || Date.parse(operation.start?.at || ""));
+    if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) return;
+    const ageMs = now - startedAtMs;
+    if (ageMs >= dataIoOperationStaleMs) {
+      operation.status = "timeout";
+      operation.durationMs = Math.max(0, Math.round(ageMs));
+      operation.finishedAtMs = now;
+      operation.latest = operation.finish || operation.start || operation.latest;
+    }
+  });
   return operations
     .slice()
     .sort((a, b) => (b.finishedAtMs || b.startedAtMs || 0) - (a.finishedAtMs || a.startedAtMs || 0))
@@ -697,6 +711,27 @@ function latestDataIoOperations(limit = 6) {
 
 function latestDataIoOperation() {
   return latestDataIoOperations(1)[0] || null;
+}
+
+function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoOperationStaleMs) {
+  return latestDataIoOperations(12).some((operation) => {
+    if (operation.status !== "active") return false;
+    const startedAtMs = Number(operation.startedAtMs || Date.parse(operation.start?.at || ""));
+    if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) return true;
+    return referenceTime - startedAtMs < maxAgeMs;
+  });
+}
+
+function hasForegroundWriteInFlight(referenceTime = Date.now()) {
+  return pendingSettlementRequestKeys.size > 0 || hasActiveDataIoOperation(referenceTime, dataIoOperationStaleMs);
+}
+
+function shouldDeferBackgroundCloudLoad(reason = "background", referenceTime = Date.now()) {
+  const normalizedReason = String(reason || "background");
+  const isBackgroundReason = /window-focus|focus|ledger-event-auto-sync|realtime|visibility|background/.test(normalizedReason);
+  if (!isBackgroundReason) return false;
+  if (hasForegroundWriteInFlight(referenceTime)) return true;
+  return false;
 }
 
 function latestSupabaseActivityGroups(limit = 8) {
@@ -5634,9 +5669,18 @@ window.addEventListener("focus", () => {
   const now = Date.now();
   const recentFocusAttempt = now - Number(lastFocusSyncAttemptAt || 0) < supabaseFocusReloadCooldownMs;
   const recentLoadAttempt = now - Number(lastSupabaseLoadAt || 0) < supabaseFocusReloadCooldownMs;
-  if (recentFocusAttempt || recentLoadAttempt) {
-    recordSupabaseLoadEvent("focus-sync-skip", recentFocusAttempt ? "focus attempt cooldown" : "cloud load cooldown");
-    recordSyncDiagnostic("focus-sync-skip", recentFocusAttempt ? "Skipped window-focus refresh during focus cooldown." : "Skipped window-focus refresh during load cooldown.", { reason: "window-focus", recentFocusAttempt, recentLoadAttempt });
+  const recentHealthySync = hasRecentHealthyCloudSync(now, syncDelayHealthyGraceMs);
+  const foregroundWriteActive = hasForegroundWriteInFlight(now);
+  if (foregroundWriteActive || recentHealthySync || recentFocusAttempt || recentLoadAttempt) {
+    const detail = foregroundWriteActive
+      ? "foreground write in progress"
+      : recentHealthySync
+        ? "recent healthy sync"
+        : recentFocusAttempt
+          ? "focus attempt cooldown"
+          : "cloud load cooldown";
+    recordSupabaseLoadEvent("focus-sync-skip", detail);
+    recordSyncDiagnostic("focus-sync-skip", `Skipped window-focus refresh during ${detail}.`, { reason: "window-focus", foregroundWriteActive, recentHealthySync, recentFocusAttempt, recentLoadAttempt });
     return;
   }
   lastFocusSyncAttemptAt = now;
@@ -14754,6 +14798,12 @@ async function loadSupabaseState(options = {}) {
   }
 
   const now = Date.now();
+  if (shouldDeferBackgroundCloudLoad(reason, now)) {
+    recordSupabaseLoadEvent("supabase-load-skip", `deferred during foreground write (${reason})`);
+    recordSyncDiagnostic("background-load-deferred", `${reason} was deferred because a foreground write is active.`, { reason, pendingSettlementRequests: pendingSettlementRequestKeys.size });
+    renderSupabaseLoadMonitor();
+    return false;
+  }
   if (supabaseLoadInFlight) {
     const loadAgeMs = now - Number(supabaseLoadStartedAt || lastSupabaseLoadAt || 0);
     if (loadAgeMs > supabaseStaleLoadMs) {
@@ -15100,6 +15150,11 @@ function scheduleLedgerEventAutoSync(row = null) {
     if (!supabaseClient || !currentSession) return;
     if (pendingLocalChanges > 0) {
       recordSupabaseLoadEvent("ledger-event-auto-sync-skip", "pending local changes at run");
+      return;
+    }
+    if (hasForegroundWriteInFlight()) {
+      recordSupabaseLoadEvent("ledger-event-auto-sync-skip", "foreground write active");
+      recordSyncDiagnostic("background-load-deferred", "Ledger event refresh was deferred because a foreground write is active.", { reason: "ledger-event-auto-sync" });
       return;
     }
     lastLedgerEventAutoSyncAt = Date.now();
