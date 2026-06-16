@@ -11914,17 +11914,31 @@ function getCurrentMemberProfile() {
   const email = getLoggedInEmail();
   if (!email) return null;
 
-  if (authBoundMemberProfile && authBoundMemberProfileLedgerId === getActiveLedgerId()) {
-    return authBoundMemberProfile;
+  if (supabaseClient && currentSession) {
+    if (authBoundMemberProfile && authBoundMemberProfileLedgerId === getActiveLedgerId()) {
+      return authBoundMemberProfile;
+    }
+
+    const linkedFallback = getAuthBoundMemberProfileFallback();
+    if (linkedFallback) return linkedFallback;
+
+    // In Supabase/workspace mode, local JSON member profiles are display/cache data only.
+    // Do not let stale JSON assign the signed-in email to the first local admin while
+    // the authoritative ledger_members/list_my_ledgers membership is still loading.
+    return {
+      name: inferAuthBoundMemberName(email),
+      email,
+      role: "member",
+      mobilepayPhone: "",
+      authBound: true,
+      pendingInvite: true
+    };
   }
 
   const match = getMemberNames()
     .map(getMemberProfile)
     .find((profile) => profile.email === email);
   if (match) return match;
-
-  const linkedFallback = getAuthBoundMemberProfileFallback();
-  if (linkedFallback) return linkedFallback;
 
   return null;
 }
@@ -11958,6 +11972,7 @@ function noMemberEmailsConfigured() {
 
 
 function ensureMemberForLoggedInUser() {
+  if (supabaseClient) return false;
   const email = getLoggedInEmail();
   if (!email) return false;
 
@@ -13108,6 +13123,7 @@ async function syncNormalizedTablesFromJson() {
   // run the full reconciliation; regular members keep the table-primary write and
   // JSON backup snapshot paths separate.
   if (!canManageSettings()) {
+    recordSupabaseLoadEvent("normalized-reconciliation-skip", "auth-bound member is not confirmed admin; skipping ledgers/table reconciliation");
     normalizedTableStatus = {
       checked: true,
       ok: true,

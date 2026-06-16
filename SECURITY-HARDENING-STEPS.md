@@ -222,3 +222,9 @@ Apply `supabase/migrations/029_invite_redeem_return_ambiguity_fix.sql` after the
 ### 2026-06-16 invite auth/session UI hotfix
 
 Signed-in invite redemption now treats the Supabase session as the source of truth for the dashboard join card. Stale "Sign in before redeeming" messages are cleared after login, and pending invitees show an email-derived temporary identity rather than inheriting the first local JSON admin while the `ledger_members` row refreshes. Admin actions and full normalized reconciliation still require a confirmed authenticated admin role.
+
+### Invite auth identity fallback hardening — 2026-06-16
+
+- Supabase workspace sessions now treat local JSON member profiles as display/cache data only until the signed-in email is confirmed by workspace membership.
+- New invitees are no longer bootstrapped onto the first local JSON admin identity while workspace membership is still loading.
+- Full JSON-to-table ledger reconciliation remains admin-only and is skipped for pending/non-admin invite sessions to avoid direct `ledgers` RLS writes.

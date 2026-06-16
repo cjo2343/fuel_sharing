@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v233";
-const BUILD_LABEL = "invite-auth-session-fix";
-const BUILD_UPDATED_AT = "2026-06-16T14:32:00.000Z";
+const CACHE_NAME = "fuel-ledger-v234";
+const BUILD_LABEL = "invite-auth-identity-rsl-fix";
+const BUILD_UPDATED_AT = "2026-06-16T14:58:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

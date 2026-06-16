@@ -604,6 +604,9 @@ function testAuthBoundWorkspaceIdentityExists() {
   assert.match(app, /profile && !profile\.pendingInvite && profile\.role === "admin"/);
   assert.doesNotMatch(app, /profile\?\.role === "admin" \|\| noMemberEmailsConfigured\(\)/);
   assert.match(app, /function getSignedInDisplayProfile\(\)/);
+  assert.match(app, /local JSON member profiles are display\/cache data only/);
+  assert.match(app, /if \(supabaseClient\) return false/);
+  assert.match(app, /auth-bound member is not confirmed admin; skipping ledgers\/table reconciliation/);
   assert.match(app, /currentUser = displayName/);
   assert.match(app, /const displayName = displayProfile\?\.name \|\| ""/);
   assert.match(app, /knownLoggedInMember = Boolean\(profile && !profile\.pendingInvite\)/);

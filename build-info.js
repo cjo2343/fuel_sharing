@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.134",
-    buildLabel: "invite-auth-session-fix",
-    updatedAt: "2026-06-16T14:32:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v233",
+    version: "2026.06.16.135",
+    buildLabel: "invite-auth-identity-rsl-fix",
+    updatedAt: "2026-06-16T14:58:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v234",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -41,7 +41,8 @@
       "Admin invite refresh now has a fail-safe timeout and always leaves the Refresh button usable instead of staying on Loading workspaces.",
       "Admin invite tools now auto-refresh when the Admin tab opens or auth/workspace readiness changes, and invite creation no longer waits on invite-list refresh before showing the one-time code.",
       "Invite redemption now fixes the Supabase ledger_id return-column ambiguity so login auto-redeem works without pasting the workspace code again on the dashboard.",
-      "Invite redemption now treats the Supabase session as the signed-in source of truth, clears stale sign-in prompts, and keeps pending invitees from inheriting the old local admin identity while membership loads."
+      "Invite redemption now treats the Supabase session as the signed-in source of truth, clears stale sign-in prompts, and keeps pending invitees from inheriting the old local admin identity while membership loads.",
+      "Supabase workspace sessions now ignore stale JSON member-profile authority until workspace membership confirms the signed-in user, preventing invitees from appearing as the first local admin and avoiding regular-member ledger reconciliation writes."
     ])
   });
 

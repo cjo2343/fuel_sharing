@@ -617,3 +617,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - The signed-in invite redemption panel now uses the Supabase session as the source of truth, clears stale "Sign in before redeeming" helper text after login, and lets signed-in users retry invite codes without reloading.
 - Pending invitees now display their own signed-in email-derived identity while membership refreshes instead of falling back to the first local JSON member/admin.
 - Non-admin and pending invite sessions remain blocked from admin settings and full JSON-to-table reconciliation until their authenticated workspace role is confirmed.
+
+- 2026-06-16: Invite auth identity fallback hardening
+  - Prevented Supabase workspace sessions from using stale JSON member profiles as authoritative identity before `ledger_members`/`list_my_ledgers` confirms the signed-in user.
+  - Stopped Supabase-mode member bootstrap from assigning a new invitee email to the first local JSON admin.
+  - Skipped full JSON-to-table ledger reconciliation unless the authenticated workspace member is a confirmed admin, avoiding regular invitee `ledgers` RLS errors.
