@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v266";
+const CACHE_NAME = "fuel-ledger-v267";
 const BUILD_LABEL = "remote-save-queue-serialization";
-const BUILD_UPDATED_AT = "2026-06-16T22:04:12.000Z";
+const BUILD_UPDATED_AT = "2026-06-16T22:09:49.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

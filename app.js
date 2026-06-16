@@ -504,9 +504,13 @@ const recentHealthyFocusSyncGraceMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
 const syncDelayHealthyGraceMs = 10 * 60 * 1000;
 const visibleSyncingFailsafeMs = 30000;
+const visibleSavingFailsafeMs = 20000;
 let visibleSyncingStartedAt = 0;
 let visibleSyncingSource = "";
 let visibleSyncingFailsafeTimer = null;
+let visibleSavingStartedAt = 0;
+let visibleSavingSource = "";
+let visibleSavingFailsafeTimer = null;
 
 const visibleSyncBackgroundSources = new Set([
   "admin-diagnostics",
@@ -899,11 +903,44 @@ function getHealthySyncStatusLabel() {
 }
 
 function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
-  if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
+  if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
     setSyncStatus(getHealthySyncStatusLabel());
   }
   clearSyncDelay(reason);
   renderSyncHealthBanner();
+}
+
+function clearVisibleSavingFailsafe() {
+  if (visibleSavingFailsafeTimer) {
+    window.clearTimeout(visibleSavingFailsafeTimer);
+    visibleSavingFailsafeTimer = null;
+  }
+}
+
+function scheduleVisibleSavingFailsafe(source = "saving") {
+  if (!els.syncStatus) return;
+  clearVisibleSavingFailsafe();
+  visibleSavingFailsafeTimer = window.setTimeout(() => {
+    clearStaleVisibleSavingStatus(`failsafe:${source}`);
+  }, visibleSavingFailsafeMs);
+}
+
+function clearStaleVisibleSavingStatus(reason = "saving-failsafe") {
+  if (!els.syncStatus || String(els.syncStatus.dataset.status || "") !== "saving") return false;
+  const savingAgeMs = visibleSavingStartedAt ? Date.now() - visibleSavingStartedAt : visibleSavingFailsafeMs;
+  const activeDataIo = hasActiveDataIoOperation() ? 1 : 0;
+  const foregroundWriteActive = hasForegroundWriteInFlight();
+  if ((activeDataIo || foregroundWriteActive) && savingAgeMs < visibleSavingFailsafeMs) {
+    scheduleVisibleSavingFailsafe(reason);
+    recordSyncDiagnostic("saving-failsafe-wait", "Saving badge is still tied to an active foreground write.", { reason, savingAgeMs, activeDataIo, visibleSavingSource });
+    return false;
+  }
+  clearSyncDelay(`saving-stale-cleared:${reason}`);
+  setSyncStatus(getHealthySyncStatusLabel());
+  recordSupabaseLoadEvent("saving-stale-cleared", reason);
+  recordSyncDiagnostic("saving-stale-cleared", "Stale visible Saving state was cleared automatically.", { reason, savingAgeMs, activeDataIo, foregroundWriteActive, visibleSavingSource });
+  renderSupabaseLoadMonitor();
+  return true;
 }
 
 function clearVisibleSyncingFailsafe() {
@@ -8970,9 +9007,10 @@ async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = 
 
 function clearPaymentActionSavingUi(reason = "payment-action-finished") {
   recordSyncDiagnostic("payment-action-finished", reason, { reason });
-  if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
+  if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
     restoreHealthySyncStatusAfterQuietSync(reason);
   }
+  clearVisibleSavingFailsafe();
 }
 
 function applyPaymentActionLocally(key, nextStatus, auditEntry, reason = "payment-action-local-apply") {
@@ -15419,6 +15457,27 @@ function setSyncStatus(label, options = {}) {
 
   els.syncStatus.textContent = display.text;
   els.syncStatus.dataset.status = display.status;
+
+  if (display.status === "saving") {
+    if (!visibleSavingStartedAt) {
+      visibleSavingStartedAt = Date.now();
+      visibleSavingSource = requestedSource;
+      recordSyncDiagnostic("saving-start", visibleSavingSource, { source: visibleSavingSource });
+    }
+    scheduleVisibleSavingFailsafe(visibleSavingSource);
+  } else if (visibleSavingStartedAt) {
+    const savingAgeMs = Date.now() - visibleSavingStartedAt;
+    recordSyncDiagnostic("saving-clear", String(label || display.status || "cleared"), {
+      source: visibleSavingSource,
+      nextStatus: display.status,
+      savingAgeMs
+    });
+    visibleSavingStartedAt = 0;
+    visibleSavingSource = "";
+    clearVisibleSavingFailsafe();
+  } else {
+    clearVisibleSavingFailsafe();
+  }
 
   if (display.status === "syncing") {
     if (!visibleSyncingStartedAt) {

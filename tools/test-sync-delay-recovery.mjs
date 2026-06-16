@@ -270,3 +270,33 @@ assert.match(
   /const highActivity = lastMinute >= 20 \|\| \(lastMinute >= 10 && lastFiveMinutes >= 50\);[\s\S]*const coolingDown = !highActivity && lastFiveMinutes >= 50;/,
   "Admin activity severity should cool down when the last minute is quiet even if the five-minute window still contains old bursts"
 );
+
+assert.match(
+  appSource,
+  /const visibleSavingFailsafeMs = 20000;[\s\S]*let visibleSavingStartedAt = 0;[\s\S]*let visibleSavingFailsafeTimer = null;/,
+  "visible Saving status should have its own failsafe timer so foreground save labels cannot stay stuck"
+);
+
+assert.match(
+  appSource,
+  /function clearStaleVisibleSavingStatus\(reason = "saving-failsafe"\)[\s\S]*saving-stale-cleared[\s\S]*setSyncStatus\(getHealthySyncStatusLabel\(\)\)/,
+  "stale visible Saving state should clear back to the latest healthy cloud/database status"
+);
+
+assert.match(
+  appSource,
+  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*restoreHealthySyncStatusAfterQuietSync\(reason\)[\s\S]*clearVisibleSavingFailsafe\(\)/,
+  "payment actions should clear either stuck Saving or Syncing status in their finally cleanup"
+);
+
+assert.match(
+  appSource,
+  /display\.status === "saving"[\s\S]*recordSyncDiagnostic\("saving-start"[\s\S]*scheduleVisibleSavingFailsafe/,
+  "setSyncStatus should centrally start the visible Saving failsafe and diagnostic trail"
+);
+
+assert.match(
+  appSource,
+  /recordSyncDiagnostic\("saving-clear"[\s\S]*clearVisibleSavingFailsafe\(\)/,
+  "leaving Saving should centrally record a clear diagnostic and cancel the failsafe"
+);

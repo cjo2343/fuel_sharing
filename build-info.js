@@ -1,12 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.166",
+    version: "2026.06.17.167",
     buildLabel: "remote-save-queue-serialization",
-    updatedAt: "2026-06-16T22:04:12.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v266",
+    updatedAt: "2026-06-16T22:09:49.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v267",
     releaseNotes: Object.freeze([
       "Debounced remote saves now serialize while a previous save is still running, coalescing follow-up saves instead of overlapping cloud writes that can make sync appear stuck.",
+      "Visible Saving status now has its own failsafe and payment-action finally cleanup, so a timed-out payment confirmation cannot leave the top bar stuck on Saving changes after Cloud Load and Data I/O are idle.",
       "Skipped/guarded data I/O diagnostics now render as skipped/instant instead of OK/active, so ledger-directory skip breadcrumbs no longer look like stuck writes.",
       "Admin activity severity now cools down when the last minute is quiet even if the previous five-minute window still contains an old burst.",
       "Visible Saving/Syncing status is now source-gated: background focus, realtime, admin diagnostics, and service-worker paths are blocked from setting the top-bar badge and instead record a diagnostic with the attempted source.",
