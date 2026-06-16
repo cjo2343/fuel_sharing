@@ -200,6 +200,9 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
       upsert() { return Promise.resolve({ data: null, error: null }); }
       delete() { return Promise.resolve({ data: null, error: null }); }
       maybeSingle() {
+        if (this.table === "car_share_ledgers") {
+          return Promise.resolve({ data: { state: seededState, updated_at: "2026-06-11T00:00:00.000Z" }, error: null });
+        }
         if (this.table === "settlement_periods") return Promise.resolve({ data: null, error: null });
         return Promise.resolve({ data: null, error: null });
       }
@@ -229,6 +232,10 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
       }
     };
   }, { seededState, session });
+
+  await page.addInitScript(() => {
+    localStorage.setItem("fuel-ledger-active-workspace-id", "test-ledger");
+  });
 
   await gotoLocalSmokeApp(page);
   await expect(page.locator("#tripList")).toContainText("Christian-owned permission smoke trip", { timeout: 10000 });
