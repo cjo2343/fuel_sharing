@@ -620,6 +620,18 @@ function testAuthBoundWorkspaceIdentityExists() {
   console.log("ok - testAuthBoundWorkspaceIdentityExists");
 }
 
+
+function testWorkspaceSyncCompletionGuardExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /function markCloudSyncDidNotComplete\(message = "Cloud sync did not complete\."\)/);
+  assert.match(app, /result === false && !timedOut/);
+  assert.match(app, /String\(els\.syncStatus\.dataset\.status \|\| ""\) !== "syncing"/);
+  assert.match(app, /lastSyncError = message/);
+  assert.match(app, /setSyncStatus\("Delayed"\)/);
+  assert.match(app, /setSyncStatus\(normalizedReadModeActive \? "Tables" : "Cloud"\)/);
+  console.log("ok - testWorkspaceSyncCompletionGuardExists");
+}
+
 function testWorkspaceInviteRefreshFailSafeExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /const workspaceInviteRequestTimeoutMs = 8000/);
@@ -722,6 +734,7 @@ testInviteOnboardingFoundationExists();
 testWorkspaceInviteUxLayoutExists();
 testCurrentWorkspaceUxScopeExists();
 testAuthBoundWorkspaceIdentityExists();
+testWorkspaceSyncCompletionGuardExists();
 testWorkspaceInviteRefreshFailSafeExists();
 testWorkspaceInviteAutoRefreshExists();
 testPrivateWorkspaceCreationUiExists();

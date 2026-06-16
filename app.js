@@ -5163,7 +5163,18 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const result = await Promise.race([load, timeout]);
   completed = true;
   if (timeoutId) window.clearTimeout(timeoutId);
+  if (result === false && !timedOut) {
+    markCloudSyncDidNotComplete(timeoutMessage || "Cloud sync did not complete.");
+  }
   return result;
+}
+
+function markCloudSyncDidNotComplete(message = "Cloud sync did not complete.") {
+  if (!els.syncStatus || String(els.syncStatus.dataset.status || "") !== "syncing") return;
+  lastSyncError = message;
+  lastCloudRetryAt = new Date().toISOString();
+  setSyncStatus("Delayed");
+  renderSupabaseLoadMonitor();
 }
 
 
@@ -14129,6 +14140,13 @@ async function loadSupabaseState(options = {}) {
     if (isCurrentSupabaseLoad(loadToken)) {
       supabaseLoadInFlight = false;
       supabaseLoadStartedAt = 0;
+      if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
+        if (lastSyncError) {
+          setSyncStatus("Delayed");
+        } else {
+          setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
+        }
+      }
     }
     renderSupabaseLoadMonitor();
   }

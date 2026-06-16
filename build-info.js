@@ -1,12 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.139",
-    buildLabel: "private-workspace-creation-ui",
-    updatedAt: "2026-06-16T15:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v238",
+    version: "2026.06.16.140",
+    buildLabel: "workspace-sync-completion-hotfix",
+    updatedAt: "2026-06-16T16:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v239",
     releaseNotes: Object.freeze([
       "Private workspace creation UI lets signed-in users create invite-only workspaces, become admin, switch into them, and invite others.",
+      "Workspace-triggered cloud refreshes now always clear the Syncing badge on success, failure, or timeout so private workspace switching and creation do not leave stale syncing UI.",
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
       "Deployment and hardening docs now explain the backup-before-destructive-action rule.",

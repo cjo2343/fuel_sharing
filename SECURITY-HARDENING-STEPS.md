@@ -241,3 +241,7 @@ Signed-in invite redemption now treats the Supabase session as the source of tru
 - Runtime JavaScript now avoids optional catch binding syntax for older Safari/WebKit compatibility.
 - Admin guardrail rendering no longer dereferences `healthcheck.ok` when the healthcheck row is absent.
 - Validation now blocks reintroducing optional catch binding syntax in root runtime JavaScript files.
+
+- 2026-06-16: Workspace sync completion hotfix
+  - Workspace switch/create/invite refresh paths now fail closed out of the visible Syncing state when cloud loading returns false without a timeout.
+  - Added validation coverage so completed workspace cloud refresh attempts must either return to Cloud/Database or show Delayed instead of staying stuck on Syncing.
