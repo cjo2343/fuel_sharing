@@ -4916,3 +4916,7 @@ body.auth-locked #authPanel .text-button {
 .success-text {
   color: #166534;
 }
+
+.auth-form .compact-note {
+  grid-column: 1 / -1;
+}

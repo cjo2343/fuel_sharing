@@ -514,6 +514,13 @@ function testInviteOnboardingFoundationExists() {
   assert.match(index, /id="inviteRedemptionPanel"/);
   assert.match(index, /id="redeemInviteForm"/);
   assert.match(index, /id="redeemInviteCode"/);
+  assert.match(index, /id="loginInviteCode"/);
+  assert.match(index, /Optional: paste the workspace invite code here before requesting your email login code/);
+  assert.match(app, /pendingWorkspaceInviteCodeKey/);
+  assert.match(app, /redeemPendingLoginInviteAfterSignIn/);
+  assert.match(app, /rememberLoginInviteCode/);
+  assert.match(app, /redeemWorkspaceInvite\(pendingInviteCode\)/);
+  assert.match(app, /Your workspace invite will be redeemed after sign-in/);
   assert.match(app, /describeWorkspaceInviteError/);
   assert.match(app, /Supabase invite code generator is not installed/);
   assert.match(app, /027_invite_code_generation_pgcrypto_fix/);
@@ -543,6 +550,7 @@ function testWorkspaceInviteUxLayoutExists() {
   assert.match(css, /\.workspace-invites-grid \.compact-admin-form \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.workspace-invites-grid \.compact-list \.member-management-row \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /\.invite-redemption-panel \.invite-redemption-form/);
+  assert.match(css, /\.auth-form \.compact-note \{[\s\S]*grid-column: 1 \/ -1/);
   console.log("ok - testWorkspaceInviteUxLayoutExists");
 }
 

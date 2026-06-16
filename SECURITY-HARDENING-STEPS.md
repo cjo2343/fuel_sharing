@@ -192,3 +192,7 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Active workspace switching remains permission-scoped: users can switch only to ledgers linked to their signed-in email by `list_my_ledgers()`, and all Supabase read/write helpers resolve through the active ledger id.
 
 - 2026-06-16: Signed-in invite redemption UI now calls `redeem_ledger_invite`, refreshes `list_my_ledgers()`, and switches only to a ledger returned for the signed-in user. Public signup stays disabled; continue to add server/Supabase-side rate limits before broad launch.
+
+- 2026-06-16: Login-screen invite auto-redeem
+  - Added an optional workspace invite-code field to the sign-in screen so new users can paste the admin-created invite before requesting their email code.
+  - After successful email-code verification, the app redeems the stored invite, refreshes linked workspaces, switches into the joined workspace, and clears the pending invite code on success.

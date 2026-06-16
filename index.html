@@ -60,6 +60,18 @@
               Email
               <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" />
             </label>
+            <label>
+              Workspace invite code
+              <input
+                id="loginInviteCode"
+                type="text"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                placeholder="Paste invite code from admin"
+              />
+            </label>
+            <p id="loginInviteHint" class="section-note compact-note">Optional: paste the workspace invite code here before requesting your email login code. The app will redeem it automatically after sign-in.</p>
             <button class="action-button" type="submit">Send login code</button>
           </form>
           <form id="otpForm" class="auth-form hidden">

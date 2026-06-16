@@ -549,6 +549,8 @@ const els = {
   loginForm: document.querySelector("#loginForm"),
   otpForm: document.querySelector("#otpForm"),
   loginEmail: document.querySelector("#loginEmail"),
+  loginInviteCode: document.querySelector("#loginInviteCode"),
+  loginInviteHint: document.querySelector("#loginInviteHint"),
   loginCode: document.querySelector("#loginCode"),
   authMessage: document.querySelector("#authMessage"),
   signOut: document.querySelector("#signOut"),
@@ -682,6 +684,11 @@ const els = {
   workspaceList: document.querySelector("#workspaceList"),
   inviteList: document.querySelector("#inviteList"),
   workspaceInvitesMessage: document.querySelector("#workspaceInvitesMessage"),
+  inviteRedemptionPanel: document.querySelector("#inviteRedemptionPanel"),
+  redeemInviteForm: document.querySelector("#redeemInviteForm"),
+  redeemInviteCode: document.querySelector("#redeemInviteCode"),
+  redeemInviteButton: document.querySelector("#redeemInviteButton"),
+  redeemInviteMessage: document.querySelector("#redeemInviteMessage"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
   productionActivityReset: document.querySelector("#productionActivityReset"),
@@ -788,7 +795,12 @@ document.addEventListener("click", (event) => {
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  rememberLoginInviteCode();
   await sendLoginLink();
+});
+
+els.loginInviteCode?.addEventListener("input", () => {
+  rememberLoginInviteCode();
 });
 
 els.otpForm.addEventListener("submit", async (event) => {
@@ -5065,6 +5077,42 @@ document.addEventListener("visibilitychange", () => {
   handleRealtimeVisibilityChange();
 });
 
+function getPendingLoginInviteCode() {
+  return normalizeInviteCodeInput(els.loginInviteCode?.value || localStorage.getItem(pendingWorkspaceInviteCodeKey) || "");
+}
+
+function rememberLoginInviteCode() {
+  const inviteCode = normalizeInviteCodeInput(els.loginInviteCode?.value || "");
+  if (inviteCode) {
+    localStorage.setItem(pendingWorkspaceInviteCodeKey, inviteCode);
+  } else {
+    localStorage.removeItem(pendingWorkspaceInviteCodeKey);
+  }
+  return inviteCode;
+}
+
+function hydrateLoginInviteCodeInput() {
+  if (!els.loginInviteCode || currentSession) return;
+  const storedInviteCode = normalizeInviteCodeInput(localStorage.getItem(pendingWorkspaceInviteCodeKey) || "");
+  if (storedInviteCode && !els.loginInviteCode.value) els.loginInviteCode.value = storedInviteCode;
+}
+
+async function redeemPendingLoginInviteAfterSignIn() {
+  const pendingInviteCode = normalizeInviteCodeInput(localStorage.getItem(pendingWorkspaceInviteCodeKey) || els.loginInviteCode?.value || "");
+  if (!pendingInviteCode) return false;
+  els.authMessage.textContent = "Signed in. Redeeming workspace invite...";
+  if (els.redeemInviteCode) els.redeemInviteCode.value = pendingInviteCode;
+  const redeemed = await redeemWorkspaceInvite(pendingInviteCode);
+  if (redeemed) {
+    localStorage.removeItem(pendingWorkspaceInviteCodeKey);
+    if (els.loginInviteCode) els.loginInviteCode.value = "";
+    els.authMessage.textContent = `Invite accepted. Joined ${getCurrentWorkspaceLabel()}.`;
+    return true;
+  }
+  els.authMessage.textContent = "Signed in, but the workspace invite could not be redeemed. Check the invite code below or ask the admin for a fresh invite.";
+  return false;
+}
+
 function updateAuthUi() {
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
 
@@ -5084,6 +5132,7 @@ function updateAuthUi() {
   els.signOut.classList.toggle("hidden", !currentSession);
   if (pendingEmail && !els.loginEmail.value) els.loginEmail.value = pendingEmail;
   if (!pendingEmail && !currentSession) els.loginEmail.value = "";
+  hydrateLoginInviteCodeInput();
 
   const profile = getCurrentMemberProfile();
   const email = getLoggedInEmail();
@@ -5097,7 +5146,7 @@ function updateAuthUi() {
         ? "Enter your email and the login code from the email."
         : rememberedEmail
           ? "Welcome back. Enter your email to sign in on this device if your saved session has expired."
-          : "Enter your email to sign in or join the shared car. After the first login, this device will stay signed in.";
+          : "Enter your email to sign in. If you have a workspace invite code, paste it here and it will be redeemed after sign-in.";
   if (!currentSession) {
     setSyncStatus("Login");
   } else if (!["saving", "syncing", "local", "delayed"].includes(els.syncStatus.dataset.status || "")) {
@@ -5111,6 +5160,7 @@ async function sendLoginLink() {
   if (!supabaseClient) return;
 
   const email = els.loginEmail.value.trim();
+  const inviteCode = rememberLoginInviteCode();
   if (!email) return;
 
   if (isLoginCoolingDown()) {
@@ -5140,7 +5190,9 @@ async function sendLoginLink() {
   localStorage.setItem(pendingLoginEmailKey, email);
   els.otpForm.classList.remove("hidden");
   els.loginCode.focus();
-  els.authMessage.textContent = "Check your email and enter the login code.";
+  els.authMessage.textContent = inviteCode
+    ? "Check your email and enter the login code. Your workspace invite will be redeemed after sign-in."
+    : "Check your email and enter the login code.";
 }
 
 async function verifyLoginCode() {
@@ -5172,11 +5224,16 @@ async function verifyLoginCode() {
   els.authMessage.textContent = "Signed in.";
   updateAuthUi();
 
-  if (currentSession) await loadSupabaseStateWithTimeout(
-    { force: true, reason: "login" },
-    supabaseStartupLoadTimeoutMs,
-    "Login cloud sync is delayed. You can keep using local data and try again."
-  );
+  if (currentSession) {
+    const redeemedInvite = await redeemPendingLoginInviteAfterSignIn();
+    if (!redeemedInvite) {
+      await loadSupabaseStateWithTimeout(
+        { force: true, reason: "login" },
+        supabaseStartupLoadTimeoutMs,
+        "Login cloud sync is delayed. You can keep using local data and try again."
+      );
+    }
+  }
 }
 
 function startLoginCooldown() {
@@ -10514,18 +10571,18 @@ async function refreshLinkedWorkspacesAfterInvite() {
   return workspaceInviteStatus.ledgers;
 }
 
-async function redeemWorkspaceInvite() {
+async function redeemWorkspaceInvite(inviteCodeOverride = "") {
   if (!supabaseClient || !currentSession) {
     showUserError("Sign in before redeeming an invite code.");
     setRedeemInviteMessage("Sign in before redeeming an invite code.", "error");
-    return;
+    return false;
   }
-  const inviteCode = normalizeInviteCodeInput(els.redeemInviteCode?.value || "");
+  const inviteCode = normalizeInviteCodeInput(inviteCodeOverride || els.redeemInviteCode?.value || "");
   if (!inviteCode) {
     showUserError("Enter an invite code before joining a workspace.");
     setRedeemInviteMessage("Enter an invite code before joining a workspace.", "error");
     els.redeemInviteCode?.focus();
-    return;
+    return false;
   }
 
   if (els.redeemInviteButton) els.redeemInviteButton.disabled = true;
@@ -10552,10 +10609,12 @@ async function redeemWorkspaceInvite() {
       );
     }
     if (canManageSettings()) await refreshWorkspaceInvites();
+    return true;
   } catch (error) {
     const message = describeInviteRedeemError(error);
     showUserError(`Could not redeem invite: ${message}`);
     setRedeemInviteMessage(message, "error");
+    return false;
   } finally {
     if (els.redeemInviteButton) els.redeemInviteButton.disabled = false;
     render();

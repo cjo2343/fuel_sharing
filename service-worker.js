@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v225";
-const BUILD_LABEL = "invite-redemption-ui";
-const BUILD_UPDATED_AT = "2026-06-16T11:24:00.000Z";
+const CACHE_NAME = "fuel-ledger-v226";
+const BUILD_LABEL = "login-invite-autoredeem";
+const BUILD_UPDATED_AT = "2026-06-16T12:36:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

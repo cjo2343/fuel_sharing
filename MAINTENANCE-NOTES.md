@@ -573,3 +573,7 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
   - Added a signed-in invite redemption panel so users can paste an invite code, call `redeem_ledger_invite`, refresh linked workspaces, and switch into the joined workspace.
   - Added validation coverage for the user-facing redemption form and RPC wiring.
   - Bumped runtime metadata/service-worker cache because app UI and stylesheet assets changed.
+
+- 2026-06-16: Login-screen invite auto-redeem
+  - Added an optional workspace invite-code field to the sign-in screen so new users can paste the admin-created invite before requesting their email code.
+  - After successful email-code verification, the app redeems the stored invite, refreshes linked workspaces, switches into the joined workspace, and clears the pending invite code on success.
