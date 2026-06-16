@@ -3528,7 +3528,7 @@ returns text
 language sql
 immutable
 as $$
-  select encode(digest(coalesce(invite_code, ''), 'sha256'), 'hex');
+  select encode(extensions.digest(coalesce(invite_code, ''), 'sha256'), 'hex');
 $$;
 
 create or replace function public.create_ledger_invite(
@@ -3790,7 +3790,8 @@ as $$
       ('024_schema_drift_healthcheck'),
       ('025_workspace_foundation'),
       ('026_invite_onboarding_foundation'),
-      ('027_invite_code_generation_pgcrypto_fix')
+      ('027_invite_code_generation_pgcrypto_fix'),
+      ('028_invite_code_hash_pgcrypto_fix')
   ),
   migration_status as (
     select
@@ -4010,5 +4011,10 @@ on conflict (migration_id) do update set
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('027_invite_code_generation_pgcrypto_fix', 'Schema-qualify pgcrypto invite code generation so invite RPCs work on deployed Supabase projects.')
+on conflict (migration_id) do update set
+  description = excluded.description;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('028_invite_code_hash_pgcrypto_fix', 'Schema-qualify pgcrypto invite code hashing so invite RPCs work on deployed Supabase projects.')
 on conflict (migration_id) do update set
   description = excluded.description;

@@ -10606,8 +10606,8 @@ function renderCreatedInvite(result) {
 
 function describeWorkspaceInviteError(error) {
   const message = String(error?.message || error || "Invite creation failed.");
-  if (/gen_random_bytes/i.test(message) || /pgcrypto/i.test(message)) {
-    return "Supabase invite code generator is not installed. Apply migration 027_invite_code_generation_pgcrypto_fix.sql, then try again.";
+  if (/gen_random_bytes/i.test(message) || /digest\(/i.test(message) || /pgcrypto/i.test(message)) {
+    return "Supabase invite code generator is not installed. Apply migrations 027_invite_code_generation_pgcrypto_fix.sql and 028_invite_code_hash_pgcrypto_fix.sql, then try again.";
   }
   return message;
 }

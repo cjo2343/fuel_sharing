@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.123",
-    buildLabel: "active-workspace-selector",
-    updatedAt: "2026-06-16T10:23:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v222",
+    version: "2026.06.16.124",
+    buildLabel: "invite-code-hash-pgcrypto-fix",
+    updatedAt: "2026-06-16T10:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v223",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -30,6 +30,7 @@
       "Insights and dashboard labels now make clear that statistics are scoped to the currently configured workspace/car, with workspace switching still disabled.",
       "Admin Invites & workspaces now uses a cleaner responsive layout so invite forms, workspace rows, and invite rows do not overlap.",
       "Invite creation now uses schema-qualified Supabase pgcrypto random bytes and shows a clear migration message if the database helper is missing.",
+      "Invite code hashing now also uses schema-qualified Supabase pgcrypto digest and shows a clear migration message if the hash helper is missing.",
       "Private-beta workspace switching now lets signed-in users select among ledgers returned by list_my_ledgers(), with trips, bookings, fuel, settlements, insights, and admin tools reloaded for the active workspace."
     ])
   });
