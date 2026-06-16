@@ -688,6 +688,37 @@ function latestDataIoOperation() {
   return latestDataIoOperations(1)[0] || null;
 }
 
+function latestSupabaseActivityGroups(limit = 8) {
+  const grouped = [];
+  const byKey = new Map();
+  getSupabaseLoadEvents(30 * 60 * 1000).forEach((entry) => {
+    const key = `${entry.label || ""}|${entry.detail || ""}`;
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
+        label: entry.label || "activity",
+        detail: entry.detail || "",
+        count: 0,
+        firstAt: entry.at,
+        lastAt: entry.at
+      };
+      byKey.set(key, group);
+      grouped.push(group);
+    }
+    group.count += 1;
+    group.lastAt = entry.at;
+  });
+  return grouped
+    .sort((a, b) => Date.parse(b.lastAt || "") - Date.parse(a.lastAt || ""))
+    .slice(0, limit);
+}
+
+function formatDurationMs(durationMs) {
+  if (!Number.isFinite(durationMs)) return "";
+  if (durationMs < 1000) return `${durationMs} ms`;
+  return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 1 : 0)} s`;
+}
+
 function summarizeSupabaseError(error) {
   if (!error) return null;
   return {
@@ -2919,39 +2950,63 @@ function renderSupabaseLoadMonitor() {
   const statusText = summary.highActivity
     ? "High app-side Supabase activity detected. Export a load report if Supabase CPU is elevated."
     : "No high app-side Supabase activity detected in the last 10 minutes.";
+  const activityGroups = latestSupabaseActivityGroups(8);
+  const healthySyncLabel = lastCloudSyncAt ? new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" }) : "Not yet";
+  const latestOperationStatus = latestDataIoOp?.status || "idle";
   els.supabaseLoadMonitor.innerHTML = `
-    <div class="test-lab-report-summary ${statusClass}">
-      <strong>${summary.total} event${summary.total === 1 ? "" : "s"} in 10 min</strong>
-      <span>${summary.lastMinute} in the last minute · ${summary.lastFiveMinutes} in the last 5 minutes</span>
-      <p>${escapeHtml(statusText)}</p>
-      <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · broad table channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
-      <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime, and auto-refreshes safely after events.</p>
-      <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
-      ${lastSyncDiagnostic ? `<p><strong>Latest sync diagnostic:</strong> ${escapeHtml(lastSyncDiagnostic.stage)} — ${escapeHtml(lastSyncDiagnostic.detail || lastSyncDiagnostic.error?.message || "No detail")}</p>` : ""}
-      ${latestDataIoOp ? `<p><strong>Latest data I/O:</strong> ${escapeHtml(formatDataIoOperationLine(latestDataIoOp))}</p>` : ""}
+    <div class="admin-diagnostics-dashboard">
+      <article class="admin-metric-card ${statusClass}">
+        <span>App activity</span>
+        <strong>${summary.total}</strong>
+        <small>${summary.lastMinute} last minute · ${summary.lastFiveMinutes} last 5 minutes</small>
+        <p>${escapeHtml(statusText)}</p>
+      </article>
+      <article class="admin-metric-card ${supabaseLoadInFlight ? "warning" : "ok"}">
+        <span>Cloud load</span>
+        <strong>${supabaseLoadInFlight ? "Running" : "Idle"}</strong>
+        <small>Last confirmed: ${escapeHtml(healthySyncLabel)}</small>
+        <p>${lastSyncDiagnostic ? `${escapeHtml(lastSyncDiagnostic.stage)} — ${escapeHtml(lastSyncDiagnostic.detail || lastSyncDiagnostic.error?.message || "No detail")}` : "No recent sync diagnostic."}</p>
+      </article>
+      <article class="admin-metric-card ${latestOperationStatus === "failed" || latestOperationStatus === "timeout" ? "issue" : latestOperationStatus === "active" ? "warning" : "ok"}">
+        <span>Latest data I/O</span>
+        <strong>${escapeHtml(latestOperationStatus)}</strong>
+        <small>${latestDataIoOp ? escapeHtml(formatDataIoOperationLine(latestDataIoOp)) : "No operation yet"}</small>
+        <p>Grouped by operation so start/finish pairs are readable.</p>
+      </article>
+      <article class="admin-metric-card ${ledgerEventsChannel ? "ok" : "warning"}">
+        <span>Realtime</span>
+        <strong>${ledgerEventsChannel ? "Event channel" : "Waiting"}</strong>
+        <small>${liveSyncEnabled ? "Broad live sync enabled" : "Broad live sync off"}</small>
+        <p>Lightweight ledger events are used for hints; core reads/writes do not depend on realtime.</p>
+      </article>
     </div>
-    ${topLabels.length ? `
-      <ul class="included-fuel-list compact-diagnostics-list">
-        ${topLabels.map(([label, count]) => `<li><span>${escapeHtml(supabaseLoadLabel(label))}</span><b>${count}</b></li>`).join("")}
-      </ul>
-    ` : `<p class="entry-meta">No tracked Supabase/app-sync activity yet in this browser session.</p>`}
     ${recentDataIoOps.length ? `
-      <details class="test-lab-action-group">
+      <details class="admin-diagnostics-section" open>
         <summary>Latest data I/O operations</summary>
-        <ul class="test-lab-check-list">
+        <div class="admin-operation-list">
           ${recentDataIoOps.map((operation) => {
             const entry = operation.latest || operation.start || {};
             const timeSource = operation.finish || operation.start || entry;
-            return `<li><strong>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(formatDataIoOperationLine(operation))}</li>`;
+            const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
+            const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : "active";
+            return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${entry.endpoint || entry.rpc || entry.table ? `→ ${escapeHtml(entry.endpoint || entry.rpc || entry.table)}` : ""}</small></div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
           }).join("")}
-        </ul>
+        </div>
       </details>
     ` : ""}
-    ${latest.length ? `
-      <details class="test-lab-action-group">
-        <summary>Latest activity</summary>
-        <ul class="test-lab-check-list">
-          ${latest.map((entry) => `<li><strong>${escapeHtml(new Date(entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(supabaseLoadLabel(entry.label))}${entry.detail ? ` — ${escapeHtml(entry.detail)}` : ""}</li>`).join("")}
+    ${topLabels.length ? `
+      <details class="admin-diagnostics-section">
+        <summary>Activity by type</summary>
+        <div class="admin-activity-grid">
+          ${topLabels.map(([label, count]) => `<article><span>${escapeHtml(supabaseLoadLabel(label))}</span><strong>${count}</strong></article>`).join("")}
+        </div>
+      </details>
+    ` : `<p class="entry-meta">No tracked Supabase/app-sync activity yet in this browser session.</p>`}
+    ${activityGroups.length ? `
+      <details class="admin-diagnostics-section">
+        <summary>Recent grouped activity</summary>
+        <ul class="test-lab-check-list readable-activity-list">
+          ${activityGroups.map((group) => `<li><strong>${escapeHtml(new Date(group.lastAt).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(supabaseLoadLabel(group.label))}${group.detail ? ` — ${escapeHtml(group.detail)}` : ""}${group.count > 1 ? ` <b>×${group.count}</b>` : ""}</li>`).join("")}
         </ul>
       </details>
     ` : ""}
@@ -5487,7 +5542,9 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const startedAt = Date.now();
   const isBackgroundSync = Boolean(options?.background);
   const isManualSync = Boolean(options?.manual) || /^manual-/.test(reason);
+  const isAdminDiagnosticsSync = reason === "manual-admin" || reason === "admin-diagnostics" || /^admin-/.test(reason);
   const shouldShowDelayedStatus = () => {
+    if (isAdminDiagnosticsSync) return false;
     if (isManualSync) return shouldSurfaceManualSyncDelay(startedAt);
     if (!isBackgroundSync) return true;
     return shouldSurfaceBackgroundSyncDelay(startedAt);
@@ -5504,6 +5561,10 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
         render();
         recordSupabaseLoadEvent("cloud-sync-delayed-fallback", timeoutMessage || "cloud sync delayed");
         recordSyncDiagnostic("timeout", timeoutMessage || "Cloud sync timed out.", { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
+      } else if (isAdminDiagnosticsSync) {
+        restoreHealthySyncStatusAfterQuietSync(`${reason}-diagnostics-timeout`);
+        recordSupabaseLoadEvent("admin-diagnostics-timeout", `${reason} timed out after a healthy sync`);
+        recordSyncDiagnostic("admin-diagnostics-timeout", `${reason} timed out after a healthy sync. Core app sync remains healthy.`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
       } else if (isManualSync) {
         restoreHealthySyncStatusAfterQuietSync(`${reason}-timeout-after-healthy-sync`);
         recordSupabaseLoadEvent("cloud-sync-delayed-manual-quiet", `${reason} timed out after a healthy sync`);
@@ -5530,7 +5591,11 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
     renderSyncHealthBanner();
   }
   if (result === false && !timedOut) {
-    if (isManualSync && !shouldShowDelayedStatus()) {
+    if (isAdminDiagnosticsSync && !shouldShowDelayedStatus()) {
+      restoreHealthySyncStatusAfterQuietSync(`${reason}-diagnostics-incomplete`);
+      recordSupabaseLoadEvent("admin-diagnostics-incomplete", `${reason} returned without a fresh load after a healthy sync`);
+      recordSyncDiagnostic("admin-diagnostics-incomplete", `${reason} did not complete. Core app sync remains healthy.`, { reason, elapsedMs: Date.now() - startedAt });
+    } else if (isManualSync && !shouldShowDelayedStatus()) {
       restoreHealthySyncStatusAfterQuietSync(`${reason}-incomplete-after-healthy-sync`);
       recordSupabaseLoadEvent("manual-sync-incomplete-quiet", `${reason} returned without a fresh load after a healthy sync`);
       recordSyncDiagnostic("manual-load-incomplete-after-healthy-sync", `${reason} returned without a fresh load after a healthy sync`, { reason, elapsedMs: Date.now() - startedAt });

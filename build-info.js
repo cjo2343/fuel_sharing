@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.157",
-    buildLabel: "data-io-operation-pairing",
-    updatedAt: "2026-06-16T22:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v256",
+    version: "2026.06.16.158",
+    buildLabel: "admin-diagnostics-dashboard",
+    updatedAt: "2026-06-16T22:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v257",
     releaseNotes: Object.freeze([
+      "Admin diagnostics now separates admin/manual diagnostic timeouts from core cloud sync warnings and presents load activity in wide dashboard cards with grouped operations.",
       "Data I/O diagnostics now pair start/success/error events into operation rows with status and duration, so an old start entry no longer looks like a stuck write when a matching ok event exists.",
       "Data I/O flight recorder now records each normalized read/write source, route, table/RPC/API endpoint, result, and Supabase error so stuck Saving/Syncing states show the real failing operation instead of a generic status.",
       "Ledger upserts are now blocked before Supabase when slug is missing, and the block is recorded as a data I/O diagnostic so the old ledgers.slug failure path is easy to identify.",
