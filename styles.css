@@ -4920,3 +4920,32 @@ body.auth-locked #authPanel .text-button {
 .auth-form .compact-note {
   grid-column: 1 / -1;
 }
+
+.sync-diagnostics-details {
+  flex-basis: 100%;
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(141, 29, 29, 0.16);
+  color: currentColor;
+}
+
+.sync-diagnostics-details summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.sync-diagnostics-details ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.sync-diagnostics-details li {
+  margin-bottom: 0.4rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.sync-diagnostics-details small {
+  color: currentColor;
+  opacity: 0.82;
+}

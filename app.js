@@ -515,6 +515,51 @@ let lastNormalizedTableLoadAt = 0;
 const reconciliationFreshLoadMaxAgeMs = 5 * 60 * 1000;
 let lastSyncError = "";
 let lastCloudRetryAt = "";
+let lastSyncDiagnostic = null;
+const syncDiagnostics = [];
+
+function summarizeSupabaseError(error) {
+  if (!error) return null;
+  return {
+    message: String(error.message || error.error_description || error.details || error.hint || error || "Unknown Supabase error"),
+    code: error.code || error.status || error.statusCode || "",
+    details: error.details || error.error_description || "",
+    hint: error.hint || "",
+    name: error.name || ""
+  };
+}
+
+function recordSyncDiagnostic(stage, detail = "", extra = {}) {
+  const diagnostic = {
+    at: new Date().toISOString(),
+    stage: String(stage || "sync"),
+    detail: String(detail || ""),
+    ledgerId: supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : "",
+    activeLedgerId,
+    hasSupabaseClient: Boolean(supabaseClient),
+    hasSession: Boolean(currentSession),
+    userEmail: currentSession?.user?.email || "",
+    pendingLocalChanges,
+    lastCloudSyncAt,
+    lastCloudSaveAt,
+    normalizedReadModeActive,
+    normalizedTableOk: normalizedTableStatus?.ok === true,
+    supabaseLoadInFlight,
+    online: typeof navigator === "undefined" ? true : navigator.onLine !== false,
+    error: summarizeSupabaseError(extra.error),
+    ...Object.fromEntries(Object.entries(extra || {}).filter(([key]) => key !== "error"))
+  };
+  lastSyncDiagnostic = diagnostic;
+  syncDiagnostics.push(diagnostic);
+  while (syncDiagnostics.length > 20) syncDiagnostics.shift();
+  recordSupabaseLoadEvent(`sync-diagnostic:${diagnostic.stage}`, diagnostic.detail || diagnostic.error?.message || "", { diagnostic: true });
+  renderSupabaseLoadMonitor();
+  return diagnostic;
+}
+
+function latestSyncDiagnostics(limit = 5) {
+  return syncDiagnostics.slice(-limit).reverse();
+}
 let pendingLocalChanges = 0;
 let lastLocalSaveAt = "";
 const jsonMirrorBackupIntervalMs = 30 * 60 * 1000;
@@ -2592,6 +2637,7 @@ function renderSupabaseLoadMonitor() {
       <p><strong>Live sync:</strong> ${liveSyncEnabled ? "Enabled" : "Off by default"}${supabaseStateChannel ? " · broad table channel active" : ""}. ${supabaseLoadInFlight ? "Cloud load in progress." : ""}</p>
       <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime, and auto-refreshes safely after events.</p>
       <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
+      ${lastSyncDiagnostic ? `<p><strong>Latest sync diagnostic:</strong> ${escapeHtml(lastSyncDiagnostic.stage)} — ${escapeHtml(lastSyncDiagnostic.detail || lastSyncDiagnostic.error?.message || "No detail")}</p>` : ""}
     </div>
     ${topLabels.length ? `
       <ul class="included-fuel-list compact-diagnostics-list">
@@ -5153,8 +5199,10 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
         setSyncStatus("Delayed");
         render();
         recordSupabaseLoadEvent("cloud-sync-delayed-fallback", timeoutMessage || "cloud sync delayed");
+        recordSyncDiagnostic("timeout", timeoutMessage || "Cloud sync timed out.", { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
       } else {
         recordSupabaseLoadEvent("cloud-sync-delayed-background", `${reason} timed out after a healthy sync`);
+        recordSyncDiagnostic("background-timeout", `${reason} timed out after a healthy sync`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
       }
       resolve(false);
     }, timeoutMs);
@@ -5528,7 +5576,8 @@ function buildSyncHealthBannerState() {
       level: "error",
       title: "Sync delayed",
       message: `${lastSyncError} Changes are kept on this device and will be retried.`,
-      action: "Tap Sync now"
+      action: "Tap Sync now",
+      diagnostics: latestSyncDiagnostics(4)
     };
   }
 
@@ -5570,6 +5619,14 @@ function renderSyncHealthBanner() {
       <p>${escapeHtml(banner.message)}</p>
     </div>
     <button class="subtle-button compact-button" type="button" data-sync-health-action>${escapeHtml(banner.action)}</button>
+    ${banner.diagnostics?.length ? `
+      <details class="sync-diagnostics-details">
+        <summary>Show sync details</summary>
+        <ul>
+          ${banner.diagnostics.map((entry) => `<li><strong>${escapeHtml(entry.stage)}</strong> · ${escapeHtml(new Date(entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}: ${escapeHtml(entry.detail || entry.error?.message || "No detail")}<br><small>${escapeHtml([entry.error?.code ? `code ${entry.error.code}` : "", entry.error?.hint ? `hint: ${entry.error.hint}` : "", entry.online === false ? "browser reports offline" : "", entry.normalizedTableOk === false ? "normalized tables not healthy" : ""].filter(Boolean).join(" · "))}</small></li>`).join("")}
+        </ul>
+      </details>
+    ` : ""}
   `;
 }
 
@@ -14072,14 +14129,21 @@ async function loadSupabaseState(options = {}) {
 
   try {
     setSyncStatus("Syncing");
+    recordSyncDiagnostic("load-start", reason, { force });
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
       .select("state,updated_at")
       .eq("id", supabaseHelpers.getLedgerId(supabaseConfig))
       .maybeSingle();
 
-    if (error) throw error;
-    if (!data) recordSupabaseLoadEvent("supabase-json-mirror-missing", reason);
+    if (error) {
+      recordSyncDiagnostic("json-mirror-load-error", error.message || "Could not read car_share_ledgers.", { reason, error });
+      throw error;
+    }
+    if (!data) {
+      recordSupabaseLoadEvent("supabase-json-mirror-missing", reason);
+      recordSyncDiagnostic("json-mirror-missing", "No JSON mirror row returned for this ledger.", { reason });
+    }
     if (!isCurrentSupabaseLoad(loadToken)) {
       recordSupabaseLoadEvent("supabase-load-stale-result", reason);
       return false;
@@ -14090,6 +14154,7 @@ async function loadSupabaseState(options = {}) {
     lastJsonMirrorSaveAt = data?.updated_at || "";
     lastSyncError = "";
     lastCloudRetryAt = "";
+    lastSyncDiagnostic = null;
     if (els.authMessage && currentSession) els.authMessage.textContent = `Signed in as ${currentSession.user.email}.`;
     const jsonState = normalizeState(data?.state || null);
     let loadedFromTables = false;
@@ -14116,6 +14181,7 @@ async function loadSupabaseState(options = {}) {
         ok: false,
         message: `Could not read normalized tables, so JSON was used as fallback: ${tableError.message || tableError}`
       };
+      recordSyncDiagnostic("normalized-table-fallback", tableError.message || "Could not read normalized tables.", { reason, error: tableError });
     }
 
     if (!loadedFromTables) {
@@ -14135,10 +14201,12 @@ async function loadSupabaseState(options = {}) {
     await loadCloudTestLabReports({ reason: "load normalized Test Lab report history after cloud state load" });
     scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
+    recordSyncDiagnostic("load-success", loadedFromTables ? "Loaded from normalized tables." : "Loaded from JSON mirror fallback.", { reason, loadedFromTables });
     return true;
   } catch (error) {
     lastSyncError = error.message || "Could not load cloud data.";
     lastCloudRetryAt = new Date().toISOString();
+    recordSyncDiagnostic("load-error", lastSyncError, { reason, error });
     els.authMessage.textContent = `${lastSyncError} The app could not load the shared cloud data.`;
     setSyncStatus("Delayed");
     return false;
@@ -14526,6 +14594,7 @@ function markRemoteSaveSucceeded(label) {
 function markRemoteSaveFailed(error, fallbackMessage = "Could not save shared data.") {
   lastSyncError = error?.message || fallbackMessage;
   lastCloudRetryAt = new Date().toISOString();
+  recordSyncDiagnostic("save-error", lastSyncError, { error });
   setSyncStatus("Local");
 }
 

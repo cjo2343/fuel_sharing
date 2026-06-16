@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.141",
-    buildLabel: "onboarding-rate-limit-foundation",
-    updatedAt: "2026-06-16T16:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v240",
+    version: "2026.06.16.142",
+    buildLabel: "sync-diagnostics-banner",
+    updatedAt: "2026-06-16T16:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v241",
     releaseNotes: Object.freeze([
+      "Sync delayed warnings now include an expandable in-app diagnostic trail with the failing step, timeout/error detail, session state, ledger id, and network status so phone/PWA issues are visible without opening the console.",
+      "The Supabase load monitor now surfaces the latest sync diagnostic alongside recent app-side Supabase activity.",
       "Onboarding abuse/rate-limit foundation now throttles private workspace creation, invite creation, and invite redemption through Supabase migration 030.",
       "Private workspace creation UI lets signed-in users create invite-only workspaces, become admin, switch into them, and invite others.",
       "Workspace-triggered cloud refreshes now always clear the Syncing badge on success, failure, or timeout so private workspace switching and creation do not leave stale syncing UI.",
