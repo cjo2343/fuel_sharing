@@ -298,6 +298,24 @@ async function openClosedPeriodCard(card) {
   await expect(card).not.toHaveAttribute("data-lazy-closed-period", "true");
 }
 
+
+async function waitForPaymentRequestSaved(page, { timeout = 10000 } = {}) {
+  await expect.poll(async () => {
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}"));
+    const statuses = Object.values(saved.paymentStatuses || {});
+    const auditEntries = Array.isArray(saved.auditLog) ? saved.auditLog : [];
+    const hasRequestedStatus = statuses.includes("requested");
+    const hasRequestedAudit = auditEntries.some((entry) => `${entry?.summary || ""} ${entry?.detail || ""} ${entry?.type || ""}`.includes("Payment requested"));
+    return { hasRequestedStatus, hasRequestedAudit };
+  }, {
+    timeout,
+    message: "payment request status and audit entry should be persisted before audit-log assertions"
+  }).toEqual({ hasRequestedStatus: true, hasRequestedAudit: true });
+
+  await expect(page.locator("#auditLog")).toContainText("Payment requested", { timeout });
+  await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/, { timeout });
+}
+
 async function requestAllOpenPayments(page) {
   // The settlement UI re-renders after each status change and payment actions
   // may now round-trip through server.py. Keep clicking the first currently
@@ -525,8 +543,7 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   // Settlement controls can be inside a collapsed/compact section in the UI.
   // Click the DOM button directly so this test verifies behavior, not layout visibility.
   await requestButton.evaluate((button) => button.click());
-  await expect(page.locator("#auditLog")).toContainText("Payment requested");
-  await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
+  await waitForPaymentRequestSaved(page);
 
   const reminderButton = page.locator('button[data-payment-reminder="true"]:not([disabled])').first();
   if (await reminderButton.count()) {
@@ -575,8 +592,7 @@ test("period-aware audit log clears current history and freezes closed-period hi
   await expect(page.locator("#closePeriod")).toHaveAttribute("title", /Request all settlement payments before closing this period/);
 
   await requestAllOpenPayments(page);
-  await expect(page.locator("#auditLog")).toContainText("Payment requested");
-  await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/);
+  await waitForPaymentRequestSaved(page);
   await expect(page.locator("#closePeriod")).toBeEnabled();
   await closeCurrentPeriodForSmoke(page);
 
