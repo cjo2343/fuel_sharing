@@ -522,7 +522,6 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 
 
 - When payment/settlement logic changes, run Security Health after applying migration 022 and confirm `upsert_settlement_request_status` is available so stale payment-line cleanup stays transactional.
-- Sync diagnostics/admin-status changes that touch validation or release scripts must keep CI/pre-push guardrail notes updated, especially when package.json or release-readiness checks change.
 
 ## 2026-06-16 - Schema migration tracking
 

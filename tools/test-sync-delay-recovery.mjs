@@ -172,3 +172,27 @@ assert.match(
   /title: normalizedReadModeActive \? "Database tables" : "Database saving"[\s\S]*JSON is only a manual\/periodic backup snapshot/,
   "Admin follow-up should describe normalized table health separately from the JSON backup snapshot"
 );
+
+assert.match(
+  appSource,
+  /const visibleSyncingFailsafeMs = 30000;[\s\S]*let visibleSyncingStartedAt = 0;[\s\S]*let visibleSyncingFailsafeTimer = null;/,
+  "visible Syncing status should have a failsafe timer so background paths cannot leave it stuck"
+);
+
+assert.match(
+  appSource,
+  /function clearStaleVisibleSyncingStatus\(reason = "syncing-failsafe"\)[\s\S]*syncing-stale-cleared[\s\S]*setSyncStatus\(getHealthySyncStatusLabel\(\)\)/,
+  "stale visible Syncing state should clear back to the latest healthy cloud/database status"
+);
+
+assert.match(
+  appSource,
+  /function setSyncStatus\(label, options = \{\}\)[\s\S]*display\.status === "syncing"[\s\S]*recordSyncDiagnostic\("syncing-start"[\s\S]*scheduleVisibleSyncingFailsafe/,
+  "setSyncStatus should centrally start the visible Syncing failsafe and diagnostic trail"
+);
+
+assert.match(
+  appSource,
+  /recordSyncDiagnostic\("syncing-clear"[\s\S]*clearVisibleSyncingFailsafe\(\)/,
+  "leaving Syncing should centrally record a clear diagnostic and cancel the failsafe"
+);

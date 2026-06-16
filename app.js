@@ -193,7 +193,7 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   workspaceInviteStatus.loaded = false;
   workspaceInviteStatus.invites = [];
   normalizedTableStatus = { checked: false, ok: false, message: "Workspace changed; reload normalized tables." };
-  setSyncStatus("Syncing");
+  setSyncStatus("Syncing", { source });
   render();
   unsubscribeFromLedgerEvents();
   unsubscribeFromSupabaseState();
@@ -501,6 +501,10 @@ let lastFocusSyncAttemptAt = 0;
 const recentHealthyFocusSyncGraceMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
 const syncDelayHealthyGraceMs = 10 * 60 * 1000;
+const visibleSyncingFailsafeMs = 30000;
+let visibleSyncingStartedAt = 0;
+let visibleSyncingSource = "";
+let visibleSyncingFailsafeTimer = null;
 const workspaceInviteRequestTimeoutMs = 8000;
 const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
 let lastAuthCloudSyncUserKey = "";
@@ -604,12 +608,57 @@ function clearRecoverableSyncDelayAfterHealthySync(reason = "healthy-sync") {
   return true;
 }
 
+function getHealthySyncStatusLabel() {
+  if (!supabaseClient || !currentSession) return "Login";
+  return normalizedReadModeActive ? "Tables" : "Cloud";
+}
+
 function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
   if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
-    setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
+    setSyncStatus(getHealthySyncStatusLabel());
   }
   clearSyncDelay(reason);
   renderSyncHealthBanner();
+}
+
+function clearVisibleSyncingFailsafe() {
+  if (visibleSyncingFailsafeTimer) {
+    window.clearTimeout(visibleSyncingFailsafeTimer);
+    visibleSyncingFailsafeTimer = null;
+  }
+}
+
+function scheduleVisibleSyncingFailsafe(source = "syncing") {
+  if (!els.syncStatus) return;
+  clearVisibleSyncingFailsafe();
+  visibleSyncingFailsafeTimer = window.setTimeout(() => {
+    clearStaleVisibleSyncingStatus(`failsafe:${source}`);
+  }, visibleSyncingFailsafeMs);
+}
+
+function clearStaleVisibleSyncingStatus(reason = "syncing-failsafe") {
+  if (!els.syncStatus || String(els.syncStatus.dataset.status || "") !== "syncing") return false;
+  const now = Date.now();
+  const syncingAgeMs = visibleSyncingStartedAt ? now - visibleSyncingStartedAt : visibleSyncingFailsafeMs;
+  const activeLoadAgeMs = supabaseLoadInFlight ? now - Number(supabaseLoadStartedAt || 0) : 0;
+  if (supabaseLoadInFlight && activeLoadAgeMs > 0 && activeLoadAgeMs < supabaseStaleLoadMs) {
+    scheduleVisibleSyncingFailsafe(reason);
+    recordSyncDiagnostic("syncing-failsafe-wait", "Syncing badge is still tied to an active cloud load.", { reason, syncingAgeMs, activeLoadAgeMs, visibleSyncingSource });
+    return false;
+  }
+  if (supabaseLoadInFlight && activeLoadAgeMs >= supabaseStaleLoadMs) {
+    markSupabaseLoadTimedOut(`visible syncing stale (${reason})`);
+  }
+  if (lastSyncError && !hasRecentHealthyCloudSync(now, syncDelayHealthyGraceMs)) {
+    setSyncStatus("Delayed");
+  } else {
+    clearSyncDelay(`syncing-stale-cleared:${reason}`);
+    setSyncStatus(getHealthySyncStatusLabel());
+  }
+  recordSupabaseLoadEvent("syncing-stale-cleared", reason);
+  recordSyncDiagnostic("syncing-stale-cleared", "Stale visible Syncing state was cleared automatically.", { reason, syncingAgeMs, activeLoadAgeMs, visibleSyncingSource });
+  renderSupabaseLoadMonitor();
+  return true;
 }
 
 function clearSyncDelay(reason = "sync-recovered") {
@@ -14259,7 +14308,7 @@ async function loadSupabaseState(options = {}) {
 
   try {
     clearRecoverableSyncDelayAfterHealthySync(`load-start:${reason}`);
-    setSyncStatus("Syncing");
+    setSyncStatus("Syncing", { source: reason });
     recordSyncDiagnostic("load-start", reason, { force });
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
@@ -14396,7 +14445,7 @@ async function saveSupabaseState(options = {}) {
   }
 
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: reason });
     ignoreRealtimeUntil = Date.now() + 1500;
 
     // Phase 2AB: normalized row/RPC writes are primary for routine trip, fuel,
@@ -14744,7 +14793,7 @@ function markRemoteSaveFailed(error, fallbackMessage = "Could not save shared da
   setSyncStatus("Local");
 }
 
-function setSyncStatus(label) {
+function setSyncStatus(label, options = {}) {
   const display = window.FuelSyncStatus?.syncDisplayForStatus
     ? window.FuelSyncStatus.syncDisplayForStatus(label, {
         pendingCount: pendingLocalChanges,
@@ -14758,6 +14807,27 @@ function setSyncStatus(label) {
 
   els.syncStatus.textContent = display.text;
   els.syncStatus.dataset.status = display.status;
+
+  if (display.status === "syncing") {
+    if (!visibleSyncingStartedAt) {
+      visibleSyncingStartedAt = Date.now();
+      visibleSyncingSource = String(options.source || label || "syncing");
+      recordSyncDiagnostic("syncing-start", visibleSyncingSource, { source: visibleSyncingSource });
+    }
+    scheduleVisibleSyncingFailsafe(visibleSyncingSource);
+  } else if (visibleSyncingStartedAt) {
+    const syncingAgeMs = Date.now() - visibleSyncingStartedAt;
+    recordSyncDiagnostic("syncing-clear", String(label || display.status || "cleared"), {
+      source: visibleSyncingSource,
+      nextStatus: display.status,
+      syncingAgeMs
+    });
+    visibleSyncingStartedAt = 0;
+    visibleSyncingSource = "";
+    clearVisibleSyncingFailsafe();
+  } else {
+    clearVisibleSyncingFailsafe();
+  }
 
   if (els.syncDetail) {
     els.syncDetail.textContent = display.detail;
