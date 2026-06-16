@@ -560,6 +560,15 @@ function recordSyncDiagnostic(stage, detail = "", extra = {}) {
 function latestSyncDiagnostics(limit = 5) {
   return syncDiagnostics.slice(-limit).reverse();
 }
+
+function clearSyncDelay(reason = "sync-recovered") {
+  const hadDelay = Boolean(lastSyncError || lastCloudRetryAt);
+  lastSyncError = "";
+  lastCloudRetryAt = "";
+  if (hadDelay) {
+    recordSupabaseLoadEvent("sync-delay-cleared", reason);
+  }
+}
 let pendingLocalChanges = 0;
 let lastLocalSaveAt = "";
 const jsonMirrorBackupIntervalMs = 30 * 60 * 1000;
@@ -5217,6 +5226,10 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const result = await Promise.race([load, timeout]);
   completed = true;
   if (timeoutId) window.clearTimeout(timeoutId);
+  if (result === true) {
+    clearSyncDelay(`${reason}-completed`);
+    renderSyncHealthBanner();
+  }
   if (result === false && !timedOut) {
     markCloudSyncDidNotComplete(timeoutMessage || "Cloud sync did not complete.");
   }
@@ -14201,7 +14214,9 @@ async function loadSupabaseState(options = {}) {
     await loadCloudTestLabReports({ reason: "load normalized Test Lab report history after cloud state load" });
     scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
+    clearSyncDelay(`load-success:${reason}`);
     recordSyncDiagnostic("load-success", loadedFromTables ? "Loaded from normalized tables." : "Loaded from JSON mirror fallback.", { reason, loadedFromTables });
+    setSyncStatus(loadedFromTables ? "Tables" : "Cloud");
     return true;
   } catch (error) {
     lastSyncError = error.message || "Could not load cloud data.";
@@ -14586,8 +14601,7 @@ function markLocalChangeQueued() {
 
 function markRemoteSaveSucceeded(label) {
   pendingLocalChanges = 0;
-  lastSyncError = "";
-  lastCloudRetryAt = "";
+  clearSyncDelay(`save-success:${label || "cloud"}`);
   setSyncStatus(label);
 }
 

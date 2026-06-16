@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.142",
-    buildLabel: "sync-diagnostics-banner",
-    updatedAt: "2026-06-16T16:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v241",
+    version: "2026.06.16.143",
+    buildLabel: "sync-delay-success-clear",
+    updatedAt: "2026-06-16T18:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v242",
     releaseNotes: Object.freeze([
+      "Successful Supabase loads and saves now clear stale Sync delayed warnings immediately, so a load-success diagnostic no longer leaves the red banner stuck on-screen.",
       "Sync delayed warnings now include an expandable in-app diagnostic trail with the failing step, timeout/error detail, session state, ledger id, and network status so phone/PWA issues are visible without opening the console.",
       "The Supabase load monitor now surfaces the latest sync diagnostic alongside recent app-side Supabase activity.",
       "Onboarding abuse/rate-limit foundation now throttles private workspace creation, invite creation, and invite redemption through Supabase migration 030.",
