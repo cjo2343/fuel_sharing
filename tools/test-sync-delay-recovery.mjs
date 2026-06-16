@@ -32,3 +32,21 @@ assert.match(
   /loadSupabaseStateWithTimeout\(\s*\{ reason: "window-focus", background: true \}/,
   "window-focus refresh should be treated as a background sync so a timeout after a healthy load does not show a scary delayed banner"
 );
+
+assert.match(
+  appSource,
+  /const syncDelayHealthyGraceMs = 10 \* 60 \* 1000;/,
+  "background sync timeouts should allow a recent healthy sync grace window"
+);
+
+assert.match(
+  appSource,
+  /return startedAt - lastHealthySyncMs > syncDelayHealthyGraceMs;/,
+  "background sync timeouts should only show the delayed banner when the last healthy sync is stale"
+);
+
+assert.doesNotMatch(
+  appSource,
+  /lastHealthySyncMs < startedAt/,
+  "background sync timeouts must not treat every earlier successful sync as stale"
+);

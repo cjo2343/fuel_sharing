@@ -496,6 +496,7 @@ let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
+const syncDelayHealthyGraceMs = 10 * 60 * 1000;
 const workspaceInviteRequestTimeoutMs = 8000;
 const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
 let lastAuthCloudSyncUserKey = "";
@@ -5195,7 +5196,8 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const shouldShowDelayedStatus = () => {
     if (!isBackgroundSync) return true;
     const lastHealthySyncMs = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
-    return !Number.isFinite(lastHealthySyncMs) || lastHealthySyncMs < startedAt;
+    if (!Number.isFinite(lastHealthySyncMs)) return true;
+    return startedAt - lastHealthySyncMs > syncDelayHealthyGraceMs;
   };
   const timeout = new Promise((resolve) => {
     timeoutId = window.setTimeout(() => {

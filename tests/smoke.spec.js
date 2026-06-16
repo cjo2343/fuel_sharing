@@ -37,10 +37,17 @@ test.beforeEach(async ({ request }) => {
 
 
 async function gotoLocalSmokeApp(page, url = "/") {
-  await page.goto(url, { waitUntil: "commit" });
+  await page.goto(url, { waitUntil: "load" });
 }
 
 async function waitForLocalSmokeAppReady(page) {
+  await page.waitForFunction(() => (
+    typeof window.formatMoney === "function"
+    && Boolean(window.FuelBuildInfo?.BUILD_INFO)
+    && Boolean(window.FuelBookingCalendar)
+    && Boolean(window.FuelRendering)
+    && typeof window.closeCurrentPeriod === "function"
+  ), null, { timeout: 10000 });
   await expect(page.locator("#tripForm")).toBeVisible({ timeout: 10000 });
   await expect(page.locator("#startKm")).toBeEnabled({ timeout: 10000 });
   await expect(page.locator("#tripList")).toBeAttached({ timeout: 10000 });
@@ -57,7 +64,7 @@ async function openLocalApp(page) {
   // localStorage is only available after navigating to an HTTP origin.
   // Do not clear it from about:blank; WebKit/Chromium can throw SecurityError.
   await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: "commit" });
+  await page.reload({ waitUntil: "load" });
 
   await waitForLocalSmokeAppReady(page);
 }
