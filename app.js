@@ -21,6 +21,10 @@ const generatedTestPrefix = "auto-test-";
 const generatedTestMarker = "[AUTO TEST]";
 const supabaseHelpers = window.FuelSupabaseHelpers;
 const supabaseConfig = supabaseHelpers.getSupabaseConfig();
+const configuredLedgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+const activeWorkspaceStorageKey = "fuel-ledger-active-workspace-id";
+let activeLedgerId = localStorage.getItem(activeWorkspaceStorageKey) || configuredLedgerId;
+supabaseConfig.activeLedgerId = activeLedgerId;
 const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig);
 const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
 const dataStore = window.FuelDataStore;
@@ -36,6 +40,89 @@ let lastStandaloneSecurityHealthAt = 0;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 let auditLogDirty = false;
 
+
+function getConfiguredLedgerId() {
+  return configuredLedgerId || "main-car";
+}
+
+function getActiveLedgerId() {
+  return activeLedgerId || getConfiguredLedgerId();
+}
+
+function getWorkspaceLedgerOptions() {
+  return Array.isArray(workspaceInviteStatus.ledgers) ? workspaceInviteStatus.ledgers : [];
+}
+
+function isLedgerLinkedToCurrentUser(ledgerId) {
+  const normalized = String(ledgerId || "").trim();
+  if (!normalized) return false;
+  if (normalized === getConfiguredLedgerId()) return true;
+  return getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === normalized);
+}
+
+function setActiveLedgerId(ledgerId, { persist = true } = {}) {
+  const normalized = String(ledgerId || getConfiguredLedgerId()).trim() || getConfiguredLedgerId();
+  activeLedgerId = normalized;
+  supabaseConfig.activeLedgerId = normalized;
+  if (persist) localStorage.setItem(activeWorkspaceStorageKey, normalized);
+  return activeLedgerId;
+}
+
+function reconcileActiveLedgerSelection() {
+  if (!isLedgerLinkedToCurrentUser(activeLedgerId)) {
+    setActiveLedgerId(getConfiguredLedgerId(), { persist: true });
+  } else {
+    setActiveLedgerId(activeLedgerId, { persist: true });
+  }
+}
+
+function getWorkspaceOptionLabel(ledger) {
+  return String(ledger?.name || ledger?.slug || ledger?.ledger_id || "Current workspace").trim();
+}
+
+function renderActiveWorkspaceSelector() {
+  if (!els.activeWorkspace) return;
+  const ledgers = getWorkspaceLedgerOptions();
+  const current = getActiveLedgerId();
+  const knownLedgers = ledgers.length
+    ? ledgers
+    : [{ ledger_id: current, name: current === getConfiguredLedgerId() ? "Fuel Ledger" : current, role: canManageSettings() ? "admin" : "member" }];
+  const hasCurrent = knownLedgers.some((ledger) => String(ledger.ledger_id || "") === current);
+  const options = hasCurrent ? knownLedgers : [{ ledger_id: current, name: current }, ...knownLedgers];
+  els.activeWorkspace.innerHTML = options.map((ledger) => {
+    const id = String(ledger.ledger_id || "");
+    const label = getWorkspaceOptionLabel(ledger);
+    const role = ledger.role ? ` · ${ledger.role}` : "";
+    return `<option value="${escapeHtml(id)}" ${id === current ? "selected" : ""}>${escapeHtml(label + role)}</option>`;
+  }).join("");
+  els.activeWorkspace.disabled = !supabaseClient || !currentSession || options.length <= 1;
+}
+
+async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
+  const targetLedgerId = String(ledgerId || "").trim();
+  if (!targetLedgerId || targetLedgerId === getActiveLedgerId()) return;
+  if (!isLedgerLinkedToCurrentUser(targetLedgerId)) {
+    showUserError("You can only switch to workspaces linked to your signed-in email.");
+    renderActiveWorkspaceSelector();
+    return;
+  }
+  setActiveLedgerId(targetLedgerId, { persist: true });
+  workspaceInviteStatus.loaded = false;
+  workspaceInviteStatus.invites = [];
+  normalizedTableStatus = { checked: false, ok: false, message: "Workspace changed; reload normalized tables." };
+  setSyncStatus("Syncing");
+  render();
+  unsubscribeFromLedgerEvents();
+  unsubscribeFromSupabaseState();
+  subscribeToLedgerEvents();
+  subscribeToSupabaseState({ force: true });
+  const loaded = await loadSupabaseStateWithTimeout(
+    { force: true, reason: source },
+    supabaseStartupLoadTimeoutMs,
+    "Workspace switch sync is delayed. You can keep using local data and try Sync now."
+  );
+  if (loaded) showAppMessage(`Switched workspace to ${getCurrentWorkspaceLabel()}.`);
+}
 
 function getMobilePayReturnPrompt(key) {
   try {
@@ -466,6 +553,7 @@ const els = {
   authMessage: document.querySelector("#authMessage"),
   signOut: document.querySelector("#signOut"),
   currentUser: document.querySelector("#currentUser"),
+  activeWorkspace: document.querySelector("#activeWorkspace"),
   topbarWorkspaceScope: document.querySelector("#topbarWorkspaceScope"),
   syncStatus: document.querySelector("#syncStatus"),
   syncDetail: document.querySelector("#syncDetail"),
@@ -1809,6 +1897,13 @@ els.syncNowAdmin?.addEventListener("click", () => {
   handleManualSyncNow("admin");
 });
 
+els.activeWorkspace?.addEventListener("change", (event) => {
+  switchActiveWorkspace(event.target.value, "workspace-selector").catch((error) => {
+    showUserError(`Could not switch workspace: ${error.message || error}`);
+    renderActiveWorkspaceSelector();
+  });
+});
+
 els.toggleLiveSync?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   liveSyncEnabled = !liveSyncEnabled;
@@ -1857,6 +1952,14 @@ els.createInviteForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
   await createWorkspaceInvite();
+});
+
+els.workspaceList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-workspace-action]");
+  if (!button || !canManageSettings()) return;
+  if (button.dataset.workspaceAction === "switch") {
+    await switchActiveWorkspace(button.dataset.ledgerId, "workspace-admin-list");
+  }
 });
 
 els.inviteList?.addEventListener("click", async (event) => {
@@ -4718,10 +4821,10 @@ function renderAuditLog() {
 
 
 function getCurrentWorkspaceContext() {
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const linkedLedgers = Array.isArray(workspaceInviteStatus.ledgers) ? workspaceInviteStatus.ledgers : [];
+  const ledgerId = getActiveLedgerId();
+  const linkedLedgers = getWorkspaceLedgerOptions();
   const linked = linkedLedgers.find((ledger) => ledger.ledger_id === ledgerId) || null;
-  const label = String(linked?.name || linked?.slug || ledgerId || "current workspace").trim();
+  const label = String(linked?.name || linked?.slug || (ledgerId === getConfiguredLedgerId() ? "Fuel Ledger" : ledgerId) || "current workspace").trim();
   const slug = String(linked?.slug || ledgerId || "").trim();
   const role = String(linked?.role || (canManageSettings() ? "admin" : "member")).trim();
   return {
@@ -4730,7 +4833,7 @@ function getCurrentWorkspaceContext() {
     slug,
     role,
     inviteRequired: linked?.invite_required !== false,
-    switchingEnabled: false
+    switchingEnabled: linkedLedgers.length > 1
   };
 }
 
@@ -4758,7 +4861,7 @@ function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
       <article>
         <span>Current scope</span>
         <strong>Insights are per workspace</strong>
-        <small>This view uses only the currently configured ledger, not every workspace you belong to.</small>
+        <small>This view uses only the selected workspace, not every workspace you belong to.</small>
       </article>
       <article>
         <span>Current period</span>
@@ -4767,8 +4870,8 @@ function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
       </article>
       <article>
         <span>Workspace switching</span>
-        <strong>Not enabled yet</strong>
-        <small>Admin can review linked workspaces, but app traffic still uses this configured ledger.</small>
+        <strong>${context.switchingEnabled ? "Enabled" : "One workspace available"}</strong>
+        <small>${context.switchingEnabled ? "Use the workspace selector to reload this app around another linked workspace." : "More linked workspaces will appear in the selector when available."}</small>
       </article>
     </div>
   `;
@@ -4794,6 +4897,7 @@ function render() {
   renderBookingActivityLog();
   renderClosedPeriods();
   renderTripEstimate();
+  renderActiveWorkspaceSelector();
   renderWorkspaceScopeSummary(ledger);
   renderFuelIntelligence(ledger);
   renderStationInsights(ledger);
@@ -10409,7 +10513,8 @@ function renderWorkspaceInvitesPanel() {
     return;
   }
 
-  const currentLedgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  reconcileActiveLedgerSelection();
+  const currentLedgerId = getActiveLedgerId();
   const ledgers = workspaceInviteStatus.ledgers || [];
   if (els.workspaceList) {
     els.workspaceList.innerHTML = ledgers.length
@@ -10417,10 +10522,13 @@ function renderWorkspaceInvitesPanel() {
         <div class="member-management-row workspace-row ${ledger.ledger_id === currentLedgerId ? "current" : ""}">
           <div class="member-field-stack">
             <strong>${escapeHtml(ledger.name || ledger.slug || ledger.ledger_id)}</strong>
-            <small>${escapeHtml(ledger.ledger_id === currentLedgerId ? "Current configured ledger" : "Linked workspace")}</small>
+            <small>${escapeHtml(ledger.ledger_id === currentLedgerId ? "Current selected workspace" : "Linked workspace")}</small>
           </div>
           <span class="status-pill ${ledger.role === "admin" ? "status-ok" : ""}">${escapeHtml(ledger.role || "member")}</span>
           <span class="entry-meta">${ledger.invite_required === false ? "Public signup flag on" : "Invite required"}</span>
+          <div class="button-row compact-actions">
+            <button class="subtle-button" type="button" data-workspace-action="switch" data-ledger-id="${escapeHtml(ledger.ledger_id)}" ${ledger.ledger_id === currentLedgerId ? "disabled" : ""}>Use workspace</button>
+          </div>
         </div>
       `).join("")
       : `<p class="empty-state">No linked workspaces found for this signed-in email.</p>`;
@@ -10456,20 +10564,19 @@ async function refreshWorkspaceInvites() {
   workspaceInviteStatus.loading = true;
   workspaceInviteStatus.error = "";
   renderWorkspaceInvitesPanel();
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   try {
-    const [{ data: ledgers, error: ledgersError }, { data: invites, error: invitesError }] = await Promise.all([
-      supabaseClient.rpc("list_my_ledgers"),
-      supabaseClient
-        .from("ledger_invites")
-        .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
-        .eq("ledger_id", ledgerId)
-        .order("created_at", { ascending: false })
-        .limit(25)
-    ]);
+    const { data: ledgers, error: ledgersError } = await supabaseClient.rpc("list_my_ledgers");
     if (ledgersError) throw ledgersError;
-    if (invitesError) throw invitesError;
     workspaceInviteStatus.ledgers = Array.isArray(ledgers) ? ledgers : [];
+    reconcileActiveLedgerSelection();
+    const ledgerId = getActiveLedgerId();
+    const { data: invites, error: invitesError } = await supabaseClient
+      .from("ledger_invites")
+      .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
+      .eq("ledger_id", ledgerId)
+      .order("created_at", { ascending: false })
+      .limit(25);
+    if (invitesError) throw invitesError;
     workspaceInviteStatus.invites = Array.isArray(invites) ? invites : [];
     workspaceInviteStatus.loaded = true;
   } catch (error) {
@@ -13047,7 +13154,12 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   const tableFuel = fuelResult.data || [];
   const tableBookings = bookingsResult.data || [];
   const tableRequests = requestsResult.data || [];
-  const openPeriod = periods.find((period) => period.status === "open") || null;
+  let openPeriod = periods.find((period) => period.status === "open") || null;
+  if (!openPeriod && ledger && members.length) {
+    const openPeriodId = await ensureOpenSettlementPeriod(ledgerId);
+    openPeriod = { id: openPeriodId, status: "open", label: "Current period", created_at: new Date().toISOString() };
+    recordSupabaseLoadEvent("normalized-open-period-created", ledgerId);
+  }
 
   if (!ledger || members.length === 0 || !openPeriod) return null;
 
@@ -13489,21 +13601,22 @@ async function loadSupabaseState(options = {}) {
       .from("car_share_ledgers")
       .select("state,updated_at")
       .eq("id", supabaseHelpers.getLedgerId(supabaseConfig))
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) recordSupabaseLoadEvent("supabase-json-mirror-missing", reason);
     if (!isCurrentSupabaseLoad(loadToken)) {
       recordSupabaseLoadEvent("supabase-load-stale-result", reason);
       return false;
     }
 
-    lastCloudSaveAt = data.updated_at || new Date().toISOString();
+    lastCloudSaveAt = data?.updated_at || new Date().toISOString();
     lastCloudSyncAt = new Date().toISOString();
-    lastJsonMirrorSaveAt = data.updated_at || "";
+    lastJsonMirrorSaveAt = data?.updated_at || "";
     lastSyncError = "";
     lastCloudRetryAt = "";
     if (els.authMessage && currentSession) els.authMessage.textContent = `Signed in as ${currentSession.user.email}.`;
-    const jsonState = normalizeState(data.state);
+    const jsonState = normalizeState(data?.state || null);
     let loadedFromTables = false;
 
     try {

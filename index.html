@@ -17,6 +17,12 @@
           <h1>Fuel Ledger</h1>
         </div>
         <div class="topbar-tools">
+          <label class="workspace-picker">
+            Workspace
+            <select id="activeWorkspace" disabled>
+              <option>Current workspace</option>
+            </select>
+          </label>
           <label class="user-picker">
             Using as
             <select id="currentUser"></select>
@@ -749,7 +755,7 @@
           </div>
           <div class="workspace-invites-intro">
             <p class="section-note">Private-beta workspace tools. Create invite codes for this ledger, review your workspaces, and keep public signup closed until launch readiness is green.</p>
-            <p class="entry-meta">Workspace switching is not enabled yet; current app traffic still uses the configured ledger.</p>
+            <p class="entry-meta">Workspace switching is private-beta enabled for ledgers linked to your signed-in email. Current tabs reload when you switch workspaces.</p>
           </div>
 
           <div class="workspace-invites-grid">
@@ -783,7 +789,7 @@
 
             <article class="data-tool-card">
               <strong>Your workspaces</strong>
-              <p>Shows ledgers linked to your signed-in email. Switching will be enabled in a later launch-readiness pass.</p>
+              <p>Shows ledgers linked to your signed-in email. Use the top workspace selector or the buttons below to switch the current app scope.</p>
               <div id="workspaceList" class="member-management-list compact-list" aria-live="polite"></div>
             </article>
 

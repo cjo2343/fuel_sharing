@@ -176,15 +176,26 @@ legend {
   flex-wrap: wrap;
 }
 
-.user-picker {
+.user-picker,
+.workspace-picker {
   min-width: 164px;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 820;
 }
 
-.user-picker select {
+.workspace-picker {
+  min-width: 210px;
+}
+
+.user-picker select,
+.workspace-picker select {
   margin-top: 6px;
+}
+
+.workspace-picker select:disabled {
+  color: var(--muted);
+  background: rgba(31, 90, 73, 0.06);
 }
 
 .sync-status {
@@ -1005,7 +1016,8 @@ body.auth-locked #authPanel .text-button {
     justify-content: stretch;
   }
 
-  .user-picker {
+  .user-picker,
+  .workspace-picker {
     min-width: 0;
   }
 

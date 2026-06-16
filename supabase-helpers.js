@@ -20,7 +20,7 @@
   }
 
   function getLedgerId(config) {
-    return config?.ledgerId || "main-car";
+    return config?.activeLedgerId || config?.ledgerId || "main-car";
   }
 
   async function getFreshSession(client) {
