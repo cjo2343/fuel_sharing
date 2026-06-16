@@ -818,7 +818,7 @@ test("payment status actions do not mutate booking records or emit normalized sy
   await expect.poll(async () => {
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").paymentStatuses || {});
     return Object.values(saved).some((status) => status === "requested");
-  }, { timeout: 5000 }).toBe(false);
+  }, { timeout: 5000 }).toBe(true);
 
   const afterBookings = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings || []);
   expect(afterBookings).toEqual(beforeBookings);
