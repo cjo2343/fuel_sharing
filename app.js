@@ -8976,22 +8976,39 @@ async function updatePaymentStatus(button) {
     );
     if (!tableSaved) return;
 
-    const backendApplied = await withPaymentStatusActionTimeout(
-      applyBackendPaymentAction({
-        action: "payment_status",
-        scope: "current",
-        paymentKey: key,
-        previousStatus,
-        nextStatus,
-        auditEntry
-      }),
-      "Payment status local backend save"
-    );
-    if (!backendApplied) {
+    if (supabaseClient) {
+      // The Render/Supabase payment action already persisted the normalized
+      // status transactionally. Keep the browser state in sync without calling
+      // saveState(), because saveState() queues the generic full-state save stack
+      // and causes payment actions to fan out into repeated Supabase saves,
+      // reconciliation skips, JSON mirror checks, and ledger event attempts.
       state.paymentStatuses[key] = nextStatus;
       auditLogDirty = true;
       state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
-      saveState();
+      writeLocalState();
+      lastCloudSaveAt = new Date().toISOString();
+      lastCloudSyncAt = lastCloudSaveAt;
+      markRemoteSaveSucceeded("Tables");
+      scheduleJsonMirrorBackup();
+      recordSupabaseLoadEvent("payment-action-local-apply", "updated local payment status without full-state remote save");
+    } else {
+      const backendApplied = await withPaymentStatusActionTimeout(
+        applyBackendPaymentAction({
+          action: "payment_status",
+          scope: "current",
+          paymentKey: key,
+          previousStatus,
+          nextStatus,
+          auditEntry
+        }),
+        "Payment status local backend save"
+      );
+      if (!backendApplied) {
+        state.paymentStatuses[key] = nextStatus;
+        auditLogDirty = true;
+        state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
+        saveState();
+      }
     }
     actionSucceeded = true;
     if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
