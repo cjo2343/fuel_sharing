@@ -707,6 +707,11 @@ function testSettlementPaymentSaveSkipsLedgerUpsert() {
   assert.match(app, /settlement-directory-sync-skip/);
   assert.match(app, /slug: String\(ledgerId \|\| getConfiguredLedgerId\(\)\)\.trim\(\) \|\| getConfiguredLedgerId\(\)/);
   assert.doesNotMatch(app, /async function saveSettlementRequestToNormalizedTableFirst[\s\S]*?\.from\("ledgers"\)\.upsert/, "settlement payment status saves must not directly upsert ledgers");
+  assert.match(app, /const paymentStatusActionTimeoutMs = 15000/);
+  assert.match(app, /async function withPaymentStatusActionTimeout/);
+  assert.match(app, /finally \{[\s\S]*pendingSettlementRequestKeys\.delete\(key\)[\s\S]*clearPaymentActionSavingUi/);
+  assert.match(app, /payment-action-timeout/);
+  assert.match(app, /AbortController/);
   console.log("ok - testSettlementPaymentSaveSkipsLedgerUpsert");
 }
 

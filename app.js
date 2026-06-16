@@ -17,6 +17,7 @@ const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
 const renderPaymentStatusActionUrl = "/api/payments/status-action";
+const paymentStatusActionTimeoutMs = 15000;
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const securityHealthCooldownMs = 2 * 60 * 1000;
 const generatedTestPrefix = "auto-test-";
@@ -8588,6 +8589,43 @@ function renderMemberActionPanel(ledger, visibleSettlements = getVisibleSettleme
   `;
 }
 
+
+function paymentActionProgressLabel(nextStatus) {
+  return nextStatus === "requested" ? "Requesting..." : nextStatus === "paid" ? "Marking paid..." : "Reopening...";
+}
+
+function paymentActionCompleteLabel(nextStatus) {
+  return nextStatus === "requested" ? "Requested" : nextStatus === "paid" ? "Paid" : "Request payment";
+}
+
+function paymentActionTimeoutError(label, timeoutMs) {
+  const error = new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`);
+  error.name = "PaymentActionTimeoutError";
+  error.isPaymentActionTimeout = true;
+  return error;
+}
+
+async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = paymentStatusActionTimeoutMs) {
+  let timeoutId = null;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(paymentActionTimeoutError(label, timeoutMs));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([actionPromise, timeout]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+function clearPaymentActionSavingUi(reason = "payment-action-finished") {
+  recordSyncDiagnostic("payment-action-finished", reason, { reason });
+  if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
+    restoreHealthySyncStatusAfterQuietSync(reason);
+  }
+}
+
 async function updatePaymentStatus(button) {
   if (!(await confirmFreshCloudStateForCriticalAction("Update payment status"))) return;
   const key = button.dataset.paymentKey;
@@ -8632,45 +8670,61 @@ async function updatePaymentStatus(button) {
   });
   pendingSettlementRequestKeys.add(key);
   button.disabled = true;
-  button.textContent = nextStatus === "requested" ? "Requesting..." : nextStatus === "paid" ? "Marking paid..." : "Reopening...";
-  setSyncStatus("Saving");
+  button.textContent = paymentActionProgressLabel(nextStatus);
+  setSyncStatus("Saving", { source: "payment-status-action" });
 
-  const tableSaved = await saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, { previousStatus, auditEntry });
-  if (!tableSaved) {
+  let actionSucceeded = false;
+  try {
+    const tableSaved = await withPaymentStatusActionTimeout(
+      saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, { previousStatus, auditEntry }),
+      "Payment status normalized save"
+    );
+    if (!tableSaved) return;
+
+    const backendApplied = await withPaymentStatusActionTimeout(
+      applyBackendPaymentAction({
+        action: "payment_status",
+        scope: "current",
+        paymentKey: key,
+        previousStatus,
+        nextStatus,
+        auditEntry
+      }),
+      "Payment status local backend save"
+    );
+    if (!backendApplied) {
+      state.paymentStatuses[key] = nextStatus;
+      auditLogDirty = true;
+      state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
+      saveState();
+    }
+    actionSucceeded = true;
+    if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
+
+    const paymentMessage = nextStatus === "requested"
+      ? `Payment request sent to ${settlement.from}.`
+      : nextStatus === "paid"
+        ? `Payment to ${settlement.to} marked paid.`
+        : "Payment request reopened. You can now correct the settlement if needed.";
+    showAppMessage(paymentMessage);
+
+    if (nextStatus === "requested") {
+      sendSettlementPush(settlement, paymentAuditInfo.metadata).catch((error) => {
+        console.warn("Settlement push notification failed", error);
+      });
+    }
+  } catch (error) {
+    console.warn("Payment status action did not complete", error);
+    recordSyncDiagnostic("payment-action-timeout", error?.message || "Payment action did not complete.", { error, paymentKey: key, nextStatus });
+    showUserError(error?.isPaymentActionTimeout
+      ? "The payment request is taking too long. The button was reset; try Sync now and request it again if it was not saved."
+      : `Could not update the payment request: ${error.message || error}`);
+  } finally {
     pendingSettlementRequestKeys.delete(key);
+    button.disabled = false;
+    button.textContent = actionSucceeded ? paymentActionCompleteLabel(nextStatus) : paymentActionCompleteLabel(previousStatus);
+    clearPaymentActionSavingUi(actionSucceeded ? "payment-action-success" : "payment-action-reset");
     render();
-    return;
-  }
-
-  const backendApplied = await applyBackendPaymentAction({
-    action: "payment_status",
-    scope: "current",
-    paymentKey: key,
-    previousStatus,
-    nextStatus,
-    auditEntry
-  });
-  if (!backendApplied) {
-    state.paymentStatuses[key] = nextStatus;
-    auditLogDirty = true;
-    state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
-    saveState();
-  }
-  if (["paid", "open", "requested"].includes(nextStatus)) clearMobilePayReturnPrompt(key);
-  pendingSettlementRequestKeys.delete(key);
-  render();
-
-  const paymentMessage = nextStatus === "requested"
-    ? `Payment request sent to ${settlement.from}.`
-    : nextStatus === "paid"
-      ? `Payment to ${settlement.to} marked paid.`
-      : "Payment request reopened. You can now correct the settlement if needed.";
-  showAppMessage(paymentMessage);
-
-  if (nextStatus === "requested") {
-    sendSettlementPush(settlement, paymentAuditInfo.metadata).catch((error) => {
-      console.warn("Settlement push notification failed", error);
-    });
   }
 
   // Requesting or marking a payment must never close the period automatically.
@@ -13305,8 +13359,11 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), paymentStatusActionTimeoutMs);
     const response = await fetch(renderPaymentStatusActionUrl, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${currentSession.access_token}`
@@ -13324,7 +13381,7 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
         auditEntry: options.auditEntry || {},
         currentPairKeys: currentSettlementPairKeys(context)
       })
-    });
+    }).finally(() => window.clearTimeout(timeoutId));
 
     const text = await response.text();
     let result = null;
@@ -13346,6 +13403,9 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
     };
   } catch (error) {
     console.warn("Render payment action API failed; falling back to direct Supabase RPC", error);
+    if (error?.name === "AbortError") {
+      error = paymentActionTimeoutError("Render payment action API", paymentStatusActionTimeoutMs);
+    }
     return { ok: false, error, shouldFallback: true, backend: "render-api" };
   }
 }

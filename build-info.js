@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.154",
-    buildLabel: "settlement-ledger-slug-guard",
-    updatedAt: "2026-06-16T21:40:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v253",
+    version: "2026.06.16.155",
+    buildLabel: "payment-action-stuck-state-guard",
+    updatedAt: "2026-06-16T22:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v254",
     releaseNotes: Object.freeze([
+      "Payment request buttons now have a guaranteed timeout/finally cleanup, so Requesting/Saving cannot stay stuck if the Render/Supabase payment path hangs or falls back.",
       "Settlement/payment status saves now skip admin ledger-directory reconciliation, so requesting or reopening a payment cannot upsert ledgers without the required slug and force JSON fallback.",
       "Admin ledger directory reconciliation now includes a slug whenever it does upsert ledgers, preventing the not-null slug constraint from failing on settings/member syncs.",
       "Payment status changes now prefer the existing Render web service API, which verifies the signed-in Supabase session and calls the backend payment action RPC before the browser falls back to direct Supabase RPC.",
