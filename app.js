@@ -538,6 +538,40 @@ function summarizeDataIoTarget(meta = {}) {
   return meta.endpoint || meta.rpc || meta.table || meta.route || meta.source || "unknown";
 }
 
+function dataIoSignature(entry = {}) {
+  return [
+    entry.source || "unknown",
+    entry.route || "unknown",
+    entry.table || "",
+    entry.rpc || "",
+    entry.endpoint || "",
+    entry.operation || ""
+  ].join("|");
+}
+
+function dataIoStatusForPhase(phase, ok) {
+  if (ok || phase === "success") return "ok";
+  if (/timeout/i.test(phase || "")) return "timeout";
+  if (/blocked|error|exception|fail/i.test(phase || "")) return "failed";
+  if (/skip/i.test(phase || "")) return "skipped";
+  return "active";
+}
+
+function formatDataIoDiagnosticLine(entry = {}) {
+  const target = entry.table ? ` → ${entry.table}` : entry.rpc ? ` → ${entry.rpc}` : entry.endpoint ? ` → ${entry.endpoint}` : "";
+  const detail = entry.detail || entry.error?.message || entry.phase || "No detail";
+  return `${entry.source || "unknown"} via ${entry.route || "unknown"}${target} — ${detail}`;
+}
+
+function formatDataIoOperationLine(operation = {}) {
+  const entry = operation.latest || operation.start || {};
+  const target = entry.table ? ` → ${entry.table}` : entry.rpc ? ` → ${entry.rpc}` : entry.endpoint ? ` → ${entry.endpoint}` : "";
+  const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
+  const duration = Number.isFinite(operation.durationMs) ? ` · ${operation.durationMs} ms` : "";
+  const detail = operation.finish?.detail || operation.finish?.error?.message || operation.start?.detail || operation.start?.error?.message || "";
+  return `${entry.source || "unknown"} via ${entry.route || "unknown"}${target} — ${status}${duration}${detail ? ` · ${detail}` : ""}`;
+}
+
 function recordDataIoDiagnostic(phase, meta = {}) {
   const diagnostic = {
     at: new Date().toISOString(),
@@ -597,6 +631,61 @@ async function traceDataIo(meta, operation) {
 
 function latestDataIoDiagnostics(limit = 6) {
   return dataIoDiagnostics.slice(-limit).reverse();
+}
+
+function latestDataIoOperations(limit = 6) {
+  const operations = [];
+  const openBySignature = new Map();
+  dataIoDiagnostics.forEach((entry) => {
+    const signature = dataIoSignature(entry);
+    const atMs = Date.parse(entry.at || "");
+    if (entry.phase === "start") {
+      const operation = {
+        signature,
+        start: entry,
+        finish: null,
+        latest: entry,
+        status: "active",
+        durationMs: null,
+        startedAtMs: Number.isFinite(atMs) ? atMs : 0,
+        finishedAtMs: null
+      };
+      operations.push(operation);
+      openBySignature.set(signature, operation);
+      return;
+    }
+    const open = openBySignature.get(signature);
+    if (open && !open.finish) {
+      open.finish = entry;
+      open.latest = entry;
+      open.status = dataIoStatusForPhase(entry.phase, entry.ok);
+      const startMs = Date.parse(open.start?.at || "");
+      if (Number.isFinite(startMs) && Number.isFinite(atMs)) {
+        open.durationMs = Math.max(0, Math.round(atMs - startMs));
+        open.finishedAtMs = atMs;
+      }
+      openBySignature.delete(signature);
+      return;
+    }
+    operations.push({
+      signature,
+      start: null,
+      finish: entry,
+      latest: entry,
+      status: dataIoStatusForPhase(entry.phase, entry.ok),
+      durationMs: null,
+      startedAtMs: Number.isFinite(atMs) ? atMs : 0,
+      finishedAtMs: Number.isFinite(atMs) ? atMs : null
+    });
+  });
+  return operations
+    .slice()
+    .sort((a, b) => (b.finishedAtMs || b.startedAtMs || 0) - (a.finishedAtMs || a.startedAtMs || 0))
+    .slice(0, limit);
+}
+
+function latestDataIoOperation() {
+  return latestDataIoOperations(1)[0] || null;
 }
 
 function summarizeSupabaseError(error) {
@@ -2806,7 +2895,9 @@ function buildSupabaseLoadReport() {
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
     dataIoDiagnostics: latestDataIoDiagnostics(10),
+    dataIoOperations: latestDataIoOperations(10),
     latestDataIoDiagnostic: lastDataIoDiagnostic,
+    latestDataIoOperation: latestDataIoOperation(),
     normalizedTableStatus,
     supabaseSecurityStatus
   };
@@ -2818,6 +2909,8 @@ function renderSupabaseLoadMonitor() {
   }
   if (!els.supabaseLoadMonitor) return;
   const summary = getSupabaseLoadSummary({ windowMinutes: 10 });
+  const latestDataIoOp = latestDataIoOperation();
+  const recentDataIoOps = latestDataIoOperations(6);
   const topLabels = Object.entries(summary.byLabel)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8);
@@ -2835,18 +2928,22 @@ function renderSupabaseLoadMonitor() {
       <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime, and auto-refreshes safely after events.</p>
       <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
       ${lastSyncDiagnostic ? `<p><strong>Latest sync diagnostic:</strong> ${escapeHtml(lastSyncDiagnostic.stage)} — ${escapeHtml(lastSyncDiagnostic.detail || lastSyncDiagnostic.error?.message || "No detail")}</p>` : ""}
-      ${lastDataIoDiagnostic ? `<p><strong>Latest data I/O:</strong> ${escapeHtml(lastDataIoDiagnostic.source)} via ${escapeHtml(lastDataIoDiagnostic.route)}${lastDataIoDiagnostic.table ? ` → ${escapeHtml(lastDataIoDiagnostic.table)}` : lastDataIoDiagnostic.rpc ? ` → ${escapeHtml(lastDataIoDiagnostic.rpc)}` : lastDataIoDiagnostic.endpoint ? ` → ${escapeHtml(lastDataIoDiagnostic.endpoint)}` : ""} — ${escapeHtml(lastDataIoDiagnostic.detail || lastDataIoDiagnostic.error?.message || lastDataIoDiagnostic.phase || "No detail")}</p>` : ""}
+      ${latestDataIoOp ? `<p><strong>Latest data I/O:</strong> ${escapeHtml(formatDataIoOperationLine(latestDataIoOp))}</p>` : ""}
     </div>
     ${topLabels.length ? `
       <ul class="included-fuel-list compact-diagnostics-list">
         ${topLabels.map(([label, count]) => `<li><span>${escapeHtml(supabaseLoadLabel(label))}</span><b>${count}</b></li>`).join("")}
       </ul>
     ` : `<p class="entry-meta">No tracked Supabase/app-sync activity yet in this browser session.</p>`}
-    ${latestDataIoDiagnostics(6).length ? `
+    ${recentDataIoOps.length ? `
       <details class="test-lab-action-group">
-        <summary>Latest data I/O</summary>
+        <summary>Latest data I/O operations</summary>
         <ul class="test-lab-check-list">
-          ${latestDataIoDiagnostics(6).map((entry) => `<li><strong>${escapeHtml(new Date(entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(entry.source)} via ${escapeHtml(entry.route)}${entry.table ? ` → ${escapeHtml(entry.table)}` : entry.rpc ? ` → ${escapeHtml(entry.rpc)}` : entry.endpoint ? ` → ${escapeHtml(entry.endpoint)}` : ""}${entry.detail || entry.error?.message ? ` — ${escapeHtml(entry.detail || entry.error?.message)}` : ""}</li>`).join("")}
+          ${recentDataIoOps.map((operation) => {
+            const entry = operation.latest || operation.start || {};
+            const timeSource = operation.finish || operation.start || entry;
+            return `<li><strong>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(formatDataIoOperationLine(operation))}</li>`;
+          }).join("")}
         </ul>
       </details>
     ` : ""}

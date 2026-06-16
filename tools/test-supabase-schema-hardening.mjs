@@ -724,7 +724,11 @@ function testDataIoFlightRecorderExists() {
   assert.match(app, /data-io-failure/);
   assert.match(app, /Latest data I\/O/);
   assert.match(app, /latestDataIoDiagnostic/);
+  assert.match(app, /function latestDataIoOperations\(limit = 6\)/);
+  assert.match(app, /function formatDataIoOperationLine\(operation = \{\}\)/);
+  assert.match(app, /Latest data I\/O operations/);
   assert.match(app, /dataIoDiagnostics: latestDataIoDiagnostics\(10\)/);
+  assert.match(app, /dataIoOperations: latestDataIoOperations\(10\)/);
   assert.match(app, /source: "trip-save"/);
   assert.match(app, /source: "fuel-save"/);
   assert.match(app, /source: "booking-save"/);
