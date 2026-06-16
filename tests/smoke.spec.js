@@ -41,7 +41,7 @@ async function openLocalApp(page) {
     body: "window.CAR_SHARE_SUPABASE = { enabled: false, url: '', anonKey: '', ledgerId: 'test-ledger' };"
   }));
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   // localStorage is only available after navigating to an HTTP origin.
   // Do not clear it from about:blank; WebKit/Chromium can throw SecurityError.
@@ -220,7 +220,7 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
     };
   }, { seededState, session });
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#tripList")).toContainText("Christian-owned permission smoke trip");
   await expect(page.locator("#fuelList")).toContainText("Permission Smoke Station");
 }
