@@ -508,3 +508,8 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Apply `supabase/migrations/025_workspace_foundation.sql` before deploying builds that expect workspace readiness diagnostics.
 - Confirm Security Health stays green and reports no missing migrations/schema drift after applying the migration.
 - Public signup remains disabled by default; do not advertise broadly until invite onboarding, per-workspace UI, and rate limits are complete.
+
+## Migration 026 invite onboarding foundation
+- Apply `supabase/migrations/026_invite_onboarding_foundation.sql` after `025_workspace_foundation.sql`.
+- Confirm Security Health shows migration `026_invite_onboarding_foundation` applied and schema drift OK.
+- Keep public signup disabled. Invite RPCs are groundwork only until the workspace selection/join UI and abuse controls are complete.

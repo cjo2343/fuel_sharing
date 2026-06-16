@@ -35,6 +35,7 @@ const expected = [
   "023_schema_migration_tracking.sql",
   "024_schema_drift_healthcheck.sql",
   "025_workspace_foundation.sql",
+  "026_invite_onboarding_foundation.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

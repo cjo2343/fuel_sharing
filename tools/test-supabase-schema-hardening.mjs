@@ -421,6 +421,7 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /'023_schema_migration_tracking'/);
   assert.match(schema, /'024_schema_drift_healthcheck'/);
   assert.match(schema, /'025_workspace_foundation'/);
+  assert.match(schema, /'026_invite_onboarding_foundation'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
   assert.match(schema, /'missing_migrations'/);
@@ -471,7 +472,33 @@ function testWorkspaceFoundationExists() {
   assert.match(schema, /'list_my_ledgers'/);
   assert.match(schema, /'create_private_ledger_workspace'/);
   assert.match(schema, /'025_workspace_foundation'/);
+  assert.match(schema, /'026_invite_onboarding_foundation'/);
   console.log("ok - testWorkspaceFoundationExists");
+}
+
+function testInviteOnboardingFoundationExists() {
+  assert.match(schema, /create table if not exists public\.ledger_invites/);
+  assert.match(schema, /invite_code_hash text not null/);
+  assert.match(schema, /create index if not exists ledger_invites_ledger_active_idx/);
+  assert.match(schema, /alter table public\.ledger_invites enable row level security/);
+  assert.match(schema, /create policy "Ledger admins can read invites"/);
+  assert.match(schema, /create policy "Ledger admins can update invites"/);
+  assert.match(schema, /create or replace function public\.hash_ledger_invite_code/);
+  assert.match(schema, /create or replace function public\.create_ledger_invite/);
+  assert.match(schema, /create or replace function public\.redeem_ledger_invite/);
+  assert.match(schema, /create or replace function public\.revoke_ledger_invite/);
+  assert.match(schema, /generated_code := 'fl-'/);
+  assert.match(schema, /digest\(coalesce\(invite_code, ''\), 'sha256'\)/);
+  assert.match(schema, /Only ledger admins can create invites/);
+  assert.match(schema, /A signed-in user email is required to redeem an invite/);
+  assert.match(schema, /This invite is for a different email address/);
+  assert.match(schema, /'ledger_invites'/);
+  assert.match(schema, /'create_ledger_invite'/);
+  assert.match(schema, /'redeem_ledger_invite'/);
+  assert.match(schema, /'revoke_ledger_invite'/);
+  assert.match(schema, /'invite_onboarding_ready'/);
+  assert.match(schema, /'026_invite_onboarding_foundation'/);
+  console.log("ok - testInviteOnboardingFoundationExists");
 }
 
 function testFuelLedgerHealthcheckExists() {
@@ -528,4 +555,5 @@ testBootstrapLockExists();
 testSchemaMigrationTrackingExists();
 testSchemaDriftHealthcheckExists();
 testWorkspaceFoundationExists();
+testInviteOnboardingFoundationExists();
 testFuelLedgerHealthcheckExists();

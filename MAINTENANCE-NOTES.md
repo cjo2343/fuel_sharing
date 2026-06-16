@@ -549,3 +549,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 
 - Migration `025_workspace_foundation.sql` adds private workspace/ledger isolation metadata and safe list/create workspace RPCs.
 - This is not a public launch switch. Keep Reddit/public advertising blocked until workspace selection, invite redemption, rate limiting, and abuse monitoring are implemented and tested.
+
+## Invite onboarding foundation
+- Added migration `026_invite_onboarding_foundation.sql` for admin-created ledger invites and signed-in redemption.
+- Invite codes are stored hashed, scoped to a ledger, can expire/revoke, and can be email-restricted.
+- This does not enable public self-serve onboarding; keep the app private-beta until the UI and abuse controls are added.

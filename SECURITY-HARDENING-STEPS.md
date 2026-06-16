@@ -171,3 +171,8 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Ledger rows now have private workspace metadata (`slug`, `invite_required`, `is_public_signup_enabled`) for future multi-ledger onboarding.
 - Public signup remains disabled by default. New private workspace RPCs are groundwork only and must stay invite/private until onboarding and abuse controls are added.
 - Security Health schema drift checks now include the workspace metadata columns.
+
+### Invite-only onboarding foundation
+- Migration `026_invite_onboarding_foundation.sql` adds private, hashed ledger invite codes for future workspace joins.
+- Invite creation and revocation require ledger admin access; invite redemption requires a signed-in user email.
+- Public signup remains disabled. Do not advertise broadly until invite UI, workspace switching, and rate-limit/abuse monitoring are complete.

@@ -74,3 +74,6 @@ Narrows the Supabase Realtime publication to the lightweight `public.ledger_even
 ### 025_workspace_foundation.sql
 
 Adds private workspace/ledger isolation foundation for future public launch readiness: ledger slugs, invite/public-signup flags defaulting private, membership lookup indexes, and safe list/create workspace RPCs. This does not enable public self-serve onboarding.
+
+### 026_invite_onboarding_foundation
+Adds private invite onboarding foundation for future public workspace joins. Admins can create/revoke hashed invite codes and signed-in users can redeem them into a ledger. Public signup remains disabled; this is groundwork for invite-only onboarding, not a public launch switch.
