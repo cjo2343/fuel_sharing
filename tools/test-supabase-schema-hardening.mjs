@@ -230,7 +230,7 @@ function testSupabaseLoadTimeoutGuardExists() {
   assert.match(app, /cloud-sync-delayed-fallback/);
   assert.match(app, /stale load replaced \(\$\{reason\}\)/);
   assert.match(app, /supabase-load-stale-result/);
-  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: `manual-\$\{source\}` \}/m);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason, manual: true \}/m);
   assert.match(app, /const supabaseAuthRefreshSyncCooldownMs = 5 \* 60 \* 1000/);
   assert.match(app, /let lastAuthCloudSyncUserKey = ""/);
   assert.match(app, /let lastAuthCloudSyncEventAt = 0/);

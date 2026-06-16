@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v246";
-const BUILD_LABEL = "app-shell-cache-fuel-price-timeout";
-const BUILD_UPDATED_AT = "2026-06-16T17:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v247";
+const BUILD_LABEL = "manual-sync-delay-isolation";
+const BUILD_UPDATED_AT = "2026-06-16T18:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

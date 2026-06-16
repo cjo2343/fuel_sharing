@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.147",
-    buildLabel: "app-shell-cache-fuel-price-timeout",
-    updatedAt: "2026-06-16T17:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v246",
+    version: "2026.06.16.148",
+    buildLabel: "manual-sync-delay-isolation",
+    updatedAt: "2026-06-16T18:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v247",
     releaseNotes: Object.freeze([
+      "Manual Sync now clears stale background/focus delay state before starting and records manual-specific start, success, timeout, skipped-existing-load, and incomplete diagnostics.",
+      "Manual sync timeouts after a recent healthy cloud load are now diagnostic-only instead of reusing an old background timeout as a red Cloud delayed banner.",
       "Core app-shell files now use a cache-first service-worker response with background refresh, reducing repeated static asset downloads and app restart churn during normal use.",
       "Service-worker controller changes are now logged instead of forcing an immediate page reload, preventing deploy/update handoffs from triggering avoidable Supabase reconnect storms.",
       "Live fuel-price lookup now has a short timeout and in-flight guard so a slow public price API cannot stall startup or repeated renders; the app keeps using the configured fallback price.",

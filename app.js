@@ -578,6 +578,18 @@ function shouldSurfaceBackgroundSyncDelay(referenceTime = Date.now()) {
   return !hasRecentHealthyCloudSync(referenceTime, syncDelayHealthyGraceMs);
 }
 
+function shouldSurfaceManualSyncDelay(referenceTime = Date.now()) {
+  return !hasRecentHealthyCloudSync(referenceTime, syncDelayHealthyGraceMs);
+}
+
+function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
+  if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
+    setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
+  }
+  clearSyncDelay(reason);
+  renderSyncHealthBanner();
+}
+
 function clearSyncDelay(reason = "sync-recovered") {
   const hadDelay = Boolean(lastSyncError || lastCloudRetryAt);
   lastSyncError = "";
@@ -2037,6 +2049,9 @@ els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
 });
 
 async function handleManualSyncNow(source = "manual") {
+  const reason = `manual-${source}`;
+  clearSyncDelay(`${reason}-start`);
+  recordSyncDiagnostic("manual-load-start", reason, { reason, source });
   if (!supabaseClient) {
     await loadRemoteState();
     return;
@@ -2054,12 +2069,21 @@ async function handleManualSyncNow(source = "manual") {
   }
   try {
     const loaded = await loadSupabaseStateWithTimeout(
-      { force: true, reason: `manual-${source}` },
+      { force: true, reason, manual: true },
       supabaseStartupLoadTimeoutMs,
       "Manual cloud sync is delayed. You can keep using local data and try again."
     );
-    if (loaded) showAppMessage("Shared data refreshed.");
-    else showAppMessage("Cloud sync did not complete. You can keep using local data and try again.", "warning");
+    if (loaded) {
+      recordSyncDiagnostic("manual-load-success", reason, { reason, source });
+      showAppMessage("Shared data refreshed.");
+    } else if (hasRecentHealthyCloudSync()) {
+      recordSyncDiagnostic("manual-load-quiet-incomplete", "Manual sync did not finish, but a recent healthy cloud sync exists.", { reason, source });
+      restoreHealthySyncStatusAfterQuietSync(`${reason}-recent-healthy`);
+      showAppMessage("Shared data was recently refreshed. Background sync is still settling.", "info");
+    } else {
+      recordSyncDiagnostic("manual-load-incomplete", "Manual sync did not complete and no recent healthy cloud sync was found.", { reason, source });
+      showAppMessage("Cloud sync did not complete. You can keep using local data and try again.", "warning");
+    }
   } finally {
     if (button) {
       button.disabled = false;
@@ -5213,7 +5237,9 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const reason = String(options?.reason || "cloud-sync");
   const startedAt = Date.now();
   const isBackgroundSync = Boolean(options?.background);
+  const isManualSync = Boolean(options?.manual) || /^manual-/.test(reason);
   const shouldShowDelayedStatus = () => {
+    if (isManualSync) return shouldSurfaceManualSyncDelay(startedAt);
     if (!isBackgroundSync) return true;
     return shouldSurfaceBackgroundSyncDelay(startedAt);
   };
@@ -5229,6 +5255,10 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
         render();
         recordSupabaseLoadEvent("cloud-sync-delayed-fallback", timeoutMessage || "cloud sync delayed");
         recordSyncDiagnostic("timeout", timeoutMessage || "Cloud sync timed out.", { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
+      } else if (isManualSync) {
+        restoreHealthySyncStatusAfterQuietSync(`${reason}-timeout-after-healthy-sync`);
+        recordSupabaseLoadEvent("cloud-sync-delayed-manual-quiet", `${reason} timed out after a healthy sync`);
+        recordSyncDiagnostic("manual-load-timeout-after-healthy-sync", `${reason} timed out after a healthy sync`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
       } else {
         recordSupabaseLoadEvent("cloud-sync-delayed-background", `${reason} timed out after a healthy sync`);
         recordSyncDiagnostic("background-timeout", `${reason} timed out after a healthy sync`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
@@ -5251,7 +5281,11 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
     renderSyncHealthBanner();
   }
   if (result === false && !timedOut) {
-    if (isBackgroundSync && !shouldShowDelayedStatus()) {
+    if (isManualSync && !shouldShowDelayedStatus()) {
+      restoreHealthySyncStatusAfterQuietSync(`${reason}-incomplete-after-healthy-sync`);
+      recordSupabaseLoadEvent("manual-sync-incomplete-quiet", `${reason} returned without a fresh load after a healthy sync`);
+      recordSyncDiagnostic("manual-load-incomplete-after-healthy-sync", `${reason} returned without a fresh load after a healthy sync`, { reason, elapsedMs: Date.now() - startedAt });
+    } else if (isBackgroundSync && !shouldShowDelayedStatus()) {
       recordSupabaseLoadEvent("background-sync-incomplete", `${reason} returned without a fresh load after a healthy sync`);
       recordSyncDiagnostic("background-incomplete", `${reason} returned without a fresh load after a healthy sync`, { reason, elapsedMs: Date.now() - startedAt });
     } else {
@@ -14177,6 +14211,9 @@ async function loadSupabaseState(options = {}) {
       markSupabaseLoadTimedOut(`stale load replaced (${reason})`);
     } else {
       recordSupabaseLoadEvent("supabase-load-skip", `already loading (${reason})`);
+      if (/^manual-/.test(reason)) {
+        recordSyncDiagnostic("manual-load-skipped-existing-sync", `Manual sync skipped because another cloud load is already running.`, { reason, loadAgeMs });
+      }
       return false;
     }
   }

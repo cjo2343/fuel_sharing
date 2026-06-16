@@ -117,3 +117,39 @@ assert.match(
   /if \(fuelPriceInFlight\) return;[\s\S]*finally \{[\s\S]*fuelPriceInFlight = false;[\s\S]*scheduleFuelPriceRefresh\(\);[\s\S]*\}/,
   "live fuel price refreshes should not pile up if the public API is slow"
 );
+
+assert.match(
+  appSource,
+  /function shouldSurfaceManualSyncDelay\(referenceTime = Date\.now\(\)\) \{[\s\S]*return !hasRecentHealthyCloudSync\(referenceTime, syncDelayHealthyGraceMs\);[\s\S]*\}/,
+  "manual sync timeouts should also respect a recent healthy cloud sync before showing the red banner"
+);
+
+assert.match(
+  appSource,
+  /async function handleManualSyncNow\(source = "manual"\) \{[\s\S]*clearSyncDelay\(`\$\{reason\}-start`\);[\s\S]*recordSyncDiagnostic\("manual-load-start"/,
+  "manual Sync now should clear stale background/focus delay state before starting and record a manual start diagnostic"
+);
+
+assert.match(
+  appSource,
+  /\{ force: true, reason, manual: true \}/,
+  "manual Sync now should pass an explicit manual flag into the timed Supabase load wrapper"
+);
+
+assert.match(
+  appSource,
+  /if \(isManualSync\) return shouldSurfaceManualSyncDelay\(startedAt\);/,
+  "timed manual syncs should decide delayed-banner visibility through the manual sync policy"
+);
+
+assert.match(
+  appSource,
+  /manual-load-timeout-after-healthy-sync/,
+  "manual sync timeouts after a recent healthy cloud sync should be diagnostic-only instead of red-banner failures"
+);
+
+assert.match(
+  appSource,
+  /manual-load-skipped-existing-sync/,
+  "manual sync attempts skipped by an existing in-flight load should leave a specific diagnostic breadcrumb"
+);
