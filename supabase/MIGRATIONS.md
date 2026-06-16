@@ -69,3 +69,8 @@ Narrows the Supabase Realtime publication to the lightweight `public.ledger_even
 - `023_schema_migration_tracking.sql` adds `public.fuel_ledger_schema_migrations`, backfills known migrations `001` through `023`, and extends Security Health with `schema_migrations` drift detection so admins can see missing migration IDs instead of manually guessing which SQL files were run.
 
 - `024_schema_drift_healthcheck.sql` extends `fuel_ledger_healthcheck` with `schema_drift` checks for expected tables, key columns, and critical RLS policies. It also records `024_schema_drift_healthcheck` in `fuel_ledger_schema_migrations`.
+
+
+### 025_workspace_foundation.sql
+
+Adds private workspace/ledger isolation foundation for future public launch readiness: ledger slugs, invite/public-signup flags defaulting private, membership lookup indexes, and safe list/create workspace RPCs. This does not enable public self-serve onboarding.

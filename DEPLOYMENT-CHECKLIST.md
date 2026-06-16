@@ -501,3 +501,10 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - When applying `023_schema_migration_tracking.sql`, confirm the migration policy references `ledger_members.email` / `current_user_email()` and does not reference a non-existent `ledger_members.auth_user_id` column.
 
 - Apply `supabase/migrations/024_schema_drift_healthcheck.sql` after `023_schema_migration_tracking.sql`; then run Security Health and confirm migration tracking plus schema drift both report OK.
+
+
+### Workspace foundation / public launch readiness
+
+- Apply `supabase/migrations/025_workspace_foundation.sql` before deploying builds that expect workspace readiness diagnostics.
+- Confirm Security Health stays green and reports no missing migrations/schema drift after applying the migration.
+- Public signup remains disabled by default; do not advertise broadly until invite onboarding, per-workspace UI, and rate limits are complete.

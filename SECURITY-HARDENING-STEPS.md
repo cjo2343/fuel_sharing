@@ -164,3 +164,10 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Admin diagnostics includes a **Public launch readiness** card.
 - While the app still uses the shared `main-car` ledger and lacks self-serve workspace/invite onboarding, the card warns that broad public advertising should remain blocked.
 - Build workspace isolation, invite-only onboarding, and abuse/rate-limit monitoring before Reddit-scale traffic.
+
+
+## Workspace isolation foundation
+
+- Ledger rows now have private workspace metadata (`slug`, `invite_required`, `is_public_signup_enabled`) for future multi-ledger onboarding.
+- Public signup remains disabled by default. New private workspace RPCs are groundwork only and must stay invite/private until onboarding and abuse controls are added.
+- Security Health schema drift checks now include the workspace metadata columns.

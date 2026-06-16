@@ -420,6 +420,7 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /migration_id text primary key/);
   assert.match(schema, /'023_schema_migration_tracking'/);
   assert.match(schema, /'024_schema_drift_healthcheck'/);
+  assert.match(schema, /'025_workspace_foundation'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
   assert.match(schema, /'missing_migrations'/);
@@ -444,10 +445,33 @@ function testSchemaDriftHealthcheckExists() {
   assert.match(schema, /'missing_columns'/);
   assert.match(schema, /'missing_policies'/);
   assert.match(schema, /'fuel_ledger_schema_migrations_admin_select'/);
+  assert.match(schema, /\('ledgers', 'slug'\)/);
+  assert.match(schema, /\('ledgers', 'is_public_signup_enabled'\)/);
+  assert.match(schema, /\('ledgers', 'invite_required'\)/);
   assert.match(healthHelpers, /schemaDrift/);
   assert.match(healthHelpers, /Fuel Ledger schema shape matches the app/);
   assert.match(healthHelpers, /schema drift OK/);
   console.log("ok - testSchemaDriftHealthcheckExists");
+}
+
+function testWorkspaceFoundationExists() {
+  assert.match(schema, /add column if not exists slug text/);
+  assert.match(schema, /add column if not exists created_by_member_id uuid/);
+  assert.match(schema, /add column if not exists is_public_signup_enabled boolean not null default false/);
+  assert.match(schema, /add column if not exists invite_required boolean not null default true/);
+  assert.match(schema, /create unique index if not exists ledgers_slug_unique_idx/);
+  assert.match(schema, /create index if not exists ledger_members_email_ledger_active_idx/);
+  assert.match(schema, /create or replace function public\.normalize_ledger_slug\(raw_slug text\)/);
+  assert.match(schema, /create or replace function public\.list_my_ledgers\(\)/);
+  assert.match(schema, /create or replace function public\.create_private_ledger_workspace/);
+  assert.match(schema, /normalized_slug = 'main-car'/);
+  assert.match(schema, /is_public_signup_enabled,\n    invite_required,\n    bootstrap_locked_at/);
+  assert.match(schema, /false,\n    true,\n    now\(\)/);
+  assert.match(schema, /'workspace_readiness', workspace_status\.payload/);
+  assert.match(schema, /'list_my_ledgers'/);
+  assert.match(schema, /'create_private_ledger_workspace'/);
+  assert.match(schema, /'025_workspace_foundation'/);
+  console.log("ok - testWorkspaceFoundationExists");
 }
 
 function testFuelLedgerHealthcheckExists() {
@@ -503,4 +527,5 @@ testRetentionPrivacyCleanupCoversCloudReports();
 testBootstrapLockExists();
 testSchemaMigrationTrackingExists();
 testSchemaDriftHealthcheckExists();
+testWorkspaceFoundationExists();
 testFuelLedgerHealthcheckExists();
