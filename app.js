@@ -8921,6 +8921,15 @@ function clearPaymentActionSavingUi(reason = "payment-action-finished") {
   }
 }
 
+function applyPaymentActionLocally(key, nextStatus, auditEntry, reason = "payment-action-local-apply") {
+  state.paymentStatuses[key] = nextStatus;
+  auditLogDirty = true;
+  state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
+  state.updatedAt = new Date().toISOString();
+  writeLocalState();
+  recordSupabaseLoadEvent(reason, "updated local payment status without full-state remote save");
+}
+
 async function updatePaymentStatus(button) {
   if (!(await confirmFreshCloudStateForCriticalAction("Update payment status"))) return;
   const key = button.dataset.paymentKey;
@@ -8976,21 +8985,23 @@ async function updatePaymentStatus(button) {
     );
     if (!tableSaved) return;
 
+    // Make the completed action visible to the UI and smoke tests as soon as
+    // the normalized/table-primary gate allows the change. The server/Render
+    // write may still merge back a canonical state, but the local payment
+    // status and audit breadcrumb should not wait on that second round trip.
+    applyPaymentActionLocally(key, nextStatus, auditEntry);
+    render();
+
     if (supabaseClient) {
       // The Render/Supabase payment action already persisted the normalized
       // status transactionally. Keep the browser state in sync without calling
       // saveState(), because saveState() queues the generic full-state save stack
       // and causes payment actions to fan out into repeated Supabase saves,
       // reconciliation skips, JSON mirror checks, and ledger event attempts.
-      state.paymentStatuses[key] = nextStatus;
-      auditLogDirty = true;
-      state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
-      writeLocalState();
       lastCloudSaveAt = new Date().toISOString();
       lastCloudSyncAt = lastCloudSaveAt;
       markRemoteSaveSucceeded("Tables");
       scheduleJsonMirrorBackup();
-      recordSupabaseLoadEvent("payment-action-local-apply", "updated local payment status without full-state remote save");
     } else {
       const backendApplied = await withPaymentStatusActionTimeout(
         applyBackendPaymentAction({
@@ -9004,9 +9015,6 @@ async function updatePaymentStatus(button) {
         "Payment status local backend save"
       );
       if (!backendApplied) {
-        state.paymentStatuses[key] = nextStatus;
-        auditLogDirty = true;
-        state.auditLog = auditLog.normalizeAuditEntries([auditEntry, ...(state.auditLog || [])]);
         saveState();
       }
     }

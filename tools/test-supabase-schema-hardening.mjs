@@ -191,6 +191,8 @@ function testJsonWriteReductionGuardrailsExist() {
   assert.match(app, /maybeSaveJsonMirrorBackup\(\{\s*minIntervalMs: auditJsonMirrorBackupIntervalMs,/m);
   assert.doesNotMatch(app, /else \{\s*await maybeSaveJsonMirrorBackup\(\);\s*\}/m, "routine table-primary saves must not upsert the full JSON mirror when no audit backup is dirty");
   assert.match(app, /updated local payment status without full-state remote save/);
+  assert.match(app, /function applyPaymentActionLocally\(key, nextStatus, auditEntry, reason = "payment-action-local-apply"\)/, "payment actions should centralize local status/audit application");
+  assert.match(app, /applyPaymentActionLocally\(key, nextStatus, auditEntry\);[\s\S]*render\(\);[\s\S]*if \(supabaseClient\)/, "payment actions should render the local status/audit breadcrumb before backend merge or JSON backup scheduling");
   assert.match(app, /if \(supabaseClient\) \{[\s\S]*writeLocalState\(\);[\s\S]*scheduleJsonMirrorBackup\(\);[\s\S]*\} else \{[\s\S]*applyBackendPaymentAction/, "Supabase payment actions should update local UI state without queuing the generic full-state remote save stack");
   assert.doesNotMatch(app, /if \(supabaseClient\) \{[\s\S]{0,600}saveState\(\);[\s\S]{0,300}\} else \{[\s\S]*applyBackendPaymentAction/, "Supabase payment actions must not call saveState(), which would fan out into full-state remote saves");
   assert.match(app, /els\.saveJsonBackupNow\?\.addEventListener\("click", async \(\) => \{/);
