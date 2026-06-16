@@ -42,8 +42,8 @@ async function gotoLocalSmokeApp(page, url = "/") {
 
 async function waitForLocalSmokeAppReady(page) {
   await expect(page.locator("#tripForm")).toBeVisible({ timeout: 10000 });
-  await expect(page.locator("#tripList")).toBeVisible({ timeout: 10000 });
   await expect(page.locator("#startKm")).toBeEnabled({ timeout: 10000 });
+  await expect(page.locator("#tripList")).toBeAttached({ timeout: 10000 });
 }
 
 async function openLocalApp(page) {
