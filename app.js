@@ -8,6 +8,7 @@ const userKey = "car-share-current-user";
 const loginCooldownKey = "car-share-login-cooldown-until";
 const pendingLoginEmailKey = "car-share-pending-login-email";
 const rememberedLoginEmailKey = "car-share-remembered-login-email";
+const pendingWorkspaceInviteCodeKey = "fuel-ledger-pending-workspace-invite-code";
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
 const pushConfigUrl = "/api/push-config";
@@ -5171,16 +5172,26 @@ function hydrateLoginInviteCodeInput() {
 }
 
 async function redeemPendingLoginInviteAfterSignIn() {
-  const pendingInviteCode = normalizeInviteCodeInput(localStorage.getItem(pendingWorkspaceInviteCodeKey) || els.loginInviteCode?.value || "");
+  let pendingInviteCode = "";
+  try {
+    pendingInviteCode = normalizeInviteCodeInput(localStorage.getItem(pendingWorkspaceInviteCodeKey) || els.loginInviteCode?.value || "");
+  } catch (error) {
+    console.warn("Could not read pending workspace invite code", error);
+    pendingInviteCode = normalizeInviteCodeInput(els.loginInviteCode?.value || "");
+  }
   if (!pendingInviteCode) return false;
   els.authMessage.textContent = "Signed in. Redeeming workspace invite...";
   if (els.redeemInviteCode) els.redeemInviteCode.value = pendingInviteCode;
-  const redeemed = await redeemWorkspaceInvite(pendingInviteCode);
-  if (redeemed) {
-    localStorage.removeItem(pendingWorkspaceInviteCodeKey);
-    if (els.loginInviteCode) els.loginInviteCode.value = "";
-    els.authMessage.textContent = `Invite accepted. Joined ${getCurrentWorkspaceLabel()}.`;
-    return true;
+  try {
+    const redeemed = await redeemWorkspaceInvite(pendingInviteCode);
+    if (redeemed) {
+      localStorage.removeItem(pendingWorkspaceInviteCodeKey);
+      if (els.loginInviteCode) els.loginInviteCode.value = "";
+      els.authMessage.textContent = `Invite accepted. Joined ${getCurrentWorkspaceLabel()}.`;
+      return true;
+    }
+  } catch (error) {
+    console.warn("Pending workspace invite redemption failed", error);
   }
   els.authMessage.textContent = "Signed in, but the workspace invite could not be redeemed. Check the invite code below or ask the admin for a fresh invite.";
   return false;
@@ -13362,8 +13373,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
-  const [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
-    supabaseClient.from("ledgers").select("*").eq("id", ledgerId).maybeSingle(),
+  const [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
     supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
     supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
     supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
@@ -13372,10 +13382,20 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status").eq("ledger_id", ledgerId)
   ]);
 
-  const firstError = [ledgerResult, membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult].find((result) => result.error)?.error;
+  const firstError = [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult].find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
-  const ledger = ledgerResult.data;
+  const linkedWorkspace = getLinkedWorkspaceForActiveLedger();
+  const ledger = {
+    id: ledgerId,
+    name: linkedWorkspace?.name || jsonFallbackState?.ledgerName || "Fuel Ledger",
+    currency: jsonFallbackState?.currency || defaults.currency,
+    fuel_type: jsonFallbackState?.fuelType || defaults.fuelType,
+    estimated_consumption_l_per_100km: Number(jsonFallbackState?.fuelConsumption) || defaults.fuelConsumption,
+    fuel_tank_capacity_l: Number(jsonFallbackState?.fuelTankCapacity) || defaults.fuelTankCapacity,
+    fallback_fuel_price: Number(jsonFallbackState?.fuelFallbackPrice) || defaults.fuelFallbackPrice,
+    low_fuel_threshold_percent: Number(jsonFallbackState?.fuelWarningThreshold) || defaults.fuelWarningThreshold
+  };
   const members = membersResult.data || [];
   const periods = periodsResult.data || [];
   const tableTrips = tripsResult.data || [];

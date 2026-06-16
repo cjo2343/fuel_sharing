@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.128",
-    buildLabel: "auth-bound-workspace-identity",
-    updatedAt: "2026-06-16T12:50:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v227",
+    version: "2026.06.16.129",
+    buildLabel: "login-invite-identity-hotfix",
+    updatedAt: "2026-06-16T12:58:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v228",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -35,7 +35,8 @@
       "Runtime utility loading now exposes formatMoney from utils.js before app.js and validation checks the Playwright critical-module contract.",
       "Signed-in users can now redeem workspace invite codes in the app, refresh linked workspaces, and switch into the joined workspace.",
       "New users can paste a workspace invite code on the login screen and the app auto-redeems it immediately after email-code sign-in.",
-      "Signed-in workspace identity is now bound to the authenticated ledger member row so invitees cannot inherit the first local admin profile from JSON fallback state."
+      "Signed-in workspace identity is now bound to the authenticated ledger member row so invitees cannot inherit the first local admin profile from JSON fallback state.",
+      "Login invite auto-redeem now has a defined pending-code storage key and member workspace loads avoid direct ledgers reads that regular-member RLS can reject."
     ])
   });
 

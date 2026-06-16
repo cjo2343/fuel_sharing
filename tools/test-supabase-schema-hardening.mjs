@@ -588,6 +588,7 @@ function testCurrentWorkspaceUxScopeExists() {
 function testAuthBoundWorkspaceIdentityExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /let authBoundMemberProfile = null/);
+  assert.match(app, /const pendingWorkspaceInviteCodeKey = "fuel-ledger-pending-workspace-invite-code"/);
   assert.match(app, /async function refreshAuthBoundMemberProfile\(\)/);
   assert.match(app, /getAuthBoundMemberProfileFallback\(\)/);
   assert.match(app, /profile\?\.role === "admin"/);
@@ -595,6 +596,8 @@ function testAuthBoundWorkspaceIdentityExists() {
   assert.match(app, /currentUser = profile\?\.name \|\| ""/);
   assert.match(app, /profile\?\.name && !stateNames\.includes\(profile\.name\)/);
   assert.match(app, /refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
+  assert.doesNotMatch(app, /supabaseClient\.from\("ledgers"\)\.select\("\*"\)\.eq\("id", ledgerId\)\.maybeSingle\(\)/);
+  assert.match(app, /const linkedWorkspace = getLinkedWorkspaceForActiveLedger\(\)/);
   console.log("ok - testAuthBoundWorkspaceIdentityExists");
 }
 

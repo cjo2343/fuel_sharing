@@ -582,3 +582,7 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
   - Bound the selected app member to the signed-in Supabase email and active workspace membership row.
   - Removed the legacy no-email fallback that could treat any signed-in invitee as the first local admin member.
   - Added validation coverage so workspace invite onboarding cannot re-enable member/admin impersonation from the local selector.
+
+- 2026-06-16: Login invite and workspace identity hotfix
+  - Defined the pending login invite-code storage key before auth startup can read it, preventing invite auto-redeem crashes on login.
+  - Normalized table loads no longer query the `ledgers` table directly for regular members; workspace metadata is derived from linked workspace RPC results and fallback state to avoid RLS 403 noise.

@@ -200,3 +200,7 @@ The release-readiness companion checks enforce security-hardening hygiene before
 ### 2026-06-16 auth-bound workspace identity
 
 Invite onboarding now binds the visible app identity to the signed-in Supabase email and active `ledger_members` row. If normalized tables fall back to the JSON mirror, the UI no longer grants admin access through the legacy "first local member is admin" behavior; non-admin invitees remain non-admin and the member selector is locked to their authenticated identity.
+
+- 2026-06-16: Login invite and workspace identity hotfix
+  - Defined the pending login invite-code storage key before auth startup can read it, preventing invite auto-redeem crashes on login.
+  - Normalized table loads no longer query the `ledgers` table directly for regular members; workspace metadata is derived from linked workspace RPC results and fallback state to avoid RLS 403 noise.
