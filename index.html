@@ -747,9 +747,12 @@
             </div>
             <button id="refreshWorkspaceInvites" class="subtle-button" type="button">Refresh</button>
           </div>
-          <p class="section-note">Private-beta workspace tools. Create invite codes for this ledger, review your workspaces, and keep public signup closed until launch readiness is green.</p>
+          <div class="workspace-invites-intro">
+            <p class="section-note">Private-beta workspace tools. Create invite codes for this ledger, review your workspaces, and keep public signup closed until launch readiness is green.</p>
+            <p class="entry-meta">Workspace switching is not enabled yet; current app traffic still uses the configured ledger.</p>
+          </div>
 
-          <div class="data-tools-grid workspace-invites-grid">
+          <div class="workspace-invites-grid">
             <article class="data-tool-card">
               <strong>Create invite</strong>
               <p>Create a one-time or limited-use invite for the current ledger. Codes are shown once and stored hashed in Supabase.</p>
@@ -780,7 +783,7 @@
 
             <article class="data-tool-card">
               <strong>Your workspaces</strong>
-              <p>Shows ledgers linked to your signed-in email. Switching workspaces is not enabled in the UI yet; current app traffic still uses the configured ledger.</p>
+              <p>Shows ledgers linked to your signed-in email. Switching will be enabled in a later launch-readiness pass.</p>
               <div id="workspaceList" class="member-management-list compact-list" aria-live="polite"></div>
             </article>
 

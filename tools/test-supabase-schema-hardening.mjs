@@ -511,6 +511,20 @@ function testInviteOnboardingFoundationExists() {
 }
 
 
+
+function testWorkspaceInviteUxLayoutExists() {
+  const index = readFileSync("index.html", "utf8");
+  const css = readFileSync("styles.css", "utf8");
+  assert.match(index, /class="workspace-invites-intro"/);
+  assert.match(index, /<div class="workspace-invites-grid">/);
+  assert.match(index, /Switching will be enabled in a later launch-readiness pass/);
+  assert.doesNotMatch(index, /data-tools-grid workspace-invites-grid/);
+  assert.match(css, /\.workspace-invites-grid \{[\s\S]*grid-template-columns: minmax\(280px, 0\.9fr\) minmax\(260px, 0\.8fr\) minmax\(300px, 1fr\)/);
+  assert.match(css, /\.workspace-invites-grid \.compact-admin-form \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.workspace-invites-grid \.compact-list \.member-management-row \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  console.log("ok - testWorkspaceInviteUxLayoutExists");
+}
+
 function testCurrentWorkspaceUxScopeExists() {
   const app = readFileSync("app.js", "utf8");
   const index = readFileSync("index.html", "utf8");
@@ -588,5 +602,6 @@ testSchemaMigrationTrackingExists();
 testSchemaDriftHealthcheckExists();
 testWorkspaceFoundationExists();
 testInviteOnboardingFoundationExists();
+testWorkspaceInviteUxLayoutExists();
 testCurrentWorkspaceUxScopeExists();
 testFuelLedgerHealthcheckExists();

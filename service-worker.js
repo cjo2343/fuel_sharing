@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v219";
-const BUILD_LABEL = "current-workspace-insights-scope";
-const BUILD_UPDATED_AT = "2026-06-16T09:20:00.000Z";
+const CACHE_NAME = "fuel-ledger-v220";
+const BUILD_LABEL = "admin-invite-layout-polish";
+const BUILD_UPDATED_AT = "2026-06-16T10:00:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
