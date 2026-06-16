@@ -41,7 +41,7 @@ assert.match(
 
 assert.match(
   appSource,
-  /return startedAt - lastHealthySyncMs > syncDelayHealthyGraceMs;/,
+  /return shouldSurfaceBackgroundSyncDelay\(startedAt\);/,
   "background sync timeouts should only show the delayed banner when the last healthy sync is stale"
 );
 
@@ -49,4 +49,40 @@ assert.doesNotMatch(
   appSource,
   /lastHealthySyncMs < startedAt/,
   "background sync timeouts must not treat every earlier successful sync as stale"
+);
+
+assert.match(
+  appSource,
+  /function hasRecentHealthyCloudSync\(referenceTime = Date\.now\(\), graceMs = syncDelayHealthyGraceMs\)/,
+  "app.js should centralize recent healthy sync checks for background sync decisions"
+);
+
+assert.match(
+  appSource,
+  /if \(result === false && !timedOut\) \{[\s\S]*isBackgroundSync && !shouldShowDelayedStatus\(\)[\s\S]*background-sync-incomplete[\s\S]*markCloudSyncDidNotComplete/,
+  "background focus syncs that return false after a healthy load should not flip the visible banner to delayed"
+);
+
+assert.match(
+  appSource,
+  /let lastFocusSyncAttemptAt = 0;[\s\S]*const recentHealthyFocusSyncGraceMs = 2 \* 60 \* 1000;/,
+  "window-focus syncs should have an explicit attempt cooldown and a short healthy-sync grace window"
+);
+
+assert.match(
+  appSource,
+  /recentFocusAttempt \|\| recentLoadAttempt[\s\S]*focus-sync-skip[\s\S]*recordSyncDiagnostic\("focus-sync-skip"/,
+  "window-focus sync cooldown skips should be recorded as diagnostics instead of delayed sync failures"
+);
+
+assert.match(
+  appSource,
+  /ledgerEventsChannel && ledgerEventsChannelLedgerId === ledgerId[\s\S]*ledger-events-subscription-skip/,
+  "ledger event realtime subscriptions should be reused when the active ledger did not change"
+);
+
+assert.match(
+  appSource,
+  /supabaseStateChannel && supabaseStateChannelLedgerId === ledgerId[\s\S]*realtime-subscription-skip/,
+  "broad realtime subscriptions should be reused when the active ledger did not change"
 );

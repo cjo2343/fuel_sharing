@@ -1,11 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.145",
-    buildLabel: "sync-delay-grace-window",
-    updatedAt: "2026-06-16T17:03:20.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v244",
+    version: "2026.06.16.146",
+    buildLabel: "focus-realtime-sync-hardening",
+    updatedAt: "2026-06-16T17:24:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v245",
     releaseNotes: Object.freeze([
+      "Window-focus cloud refreshes now have explicit attempt/load cooldowns and diagnostics, so skipped background refreshes after a healthy sync do not become false Cloud delayed banners.",
+      "Realtime subscriptions are now reused for the active ledger instead of being recreated on repeated auth/visibility events, reducing Supabase realtime.list_changes churn.",
+      "Background syncs that return without a fresh load after a recent healthy cloud sync are recorded as diagnostics instead of switching the visible sync status to delayed.",
       "Background cloud refresh timeouts now allow a recent healthy sync grace window, preventing a window-focus timeout minutes after a successful load from showing a false Sync delayed banner.",
       "Window-focus cloud refreshes now run as background syncs, so a slow focus refresh after a healthy load no longer raises a scary Sync delayed banner unless the app has no healthy cloud state.",
       "Successful Supabase loads and saves now clear stale Sync delayed warnings immediately, so a load-success diagnostic no longer leaves the red banner stuck on-screen.",

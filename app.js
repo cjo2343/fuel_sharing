@@ -474,7 +474,9 @@ let editingBookingId = null;
 let pendingTripBookingContext = null;
 let pendingFuelTripContext = null;
 let supabaseStateChannel = null;
+let supabaseStateChannelLedgerId = "";
 let ledgerEventsChannel = null;
+let ledgerEventsChannelLedgerId = "";
 const ledgerEventNotificationIds = new Set();
 let lastLedgerEventPublishAt = 0;
 const ledgerEventPublishCooldownMs = 30000;
@@ -495,6 +497,8 @@ let supabaseLoadToken = 0;
 let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
+let lastFocusSyncAttemptAt = 0;
+const recentHealthyFocusSyncGraceMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
 const syncDelayHealthyGraceMs = 10 * 60 * 1000;
 const workspaceInviteRequestTimeoutMs = 8000;
@@ -560,6 +564,15 @@ function recordSyncDiagnostic(stage, detail = "", extra = {}) {
 
 function latestSyncDiagnostics(limit = 5) {
   return syncDiagnostics.slice(-limit).reverse();
+}
+
+function hasRecentHealthyCloudSync(referenceTime = Date.now(), graceMs = syncDelayHealthyGraceMs) {
+  const lastHealthySyncMs = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
+  return Number.isFinite(lastHealthySyncMs) && referenceTime - lastHealthySyncMs <= graceMs;
+}
+
+function shouldSurfaceBackgroundSyncDelay(referenceTime = Date.now()) {
+  return !hasRecentHealthyCloudSync(referenceTime, syncDelayHealthyGraceMs);
 }
 
 function clearSyncDelay(reason = "sync-recovered") {
@@ -2572,6 +2585,10 @@ function supabaseLoadLabel(label) {
     "ledger-event-failed": "Ledger event failures",
     "ledger-event-skip": "Ledger event skips",
     "ledger-events-subscription": "Event notification channel",
+    "ledger-events-subscription-skip": "Event channel reuse",
+    "realtime-subscription-skip": "Realtime subscription reuse",
+    "focus-sync-start": "Focus sync started",
+    "background-sync-incomplete": "Background sync incomplete",
     "realtime-disabled": "Realtime disabled",
     "ledger-event-auto-sync": "Event auto-refresh",
     "ledger-event-auto-sync-scheduled": "Event auto-refresh scheduled",
@@ -5195,9 +5212,7 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const isBackgroundSync = Boolean(options?.background);
   const shouldShowDelayedStatus = () => {
     if (!isBackgroundSync) return true;
-    const lastHealthySyncMs = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
-    if (!Number.isFinite(lastHealthySyncMs)) return true;
-    return startedAt - lastHealthySyncMs > syncDelayHealthyGraceMs;
+    return shouldSurfaceBackgroundSyncDelay(startedAt);
   };
   const timeout = new Promise((resolve) => {
     timeoutId = window.setTimeout(() => {
@@ -5233,7 +5248,12 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
     renderSyncHealthBanner();
   }
   if (result === false && !timedOut) {
-    markCloudSyncDidNotComplete(timeoutMessage || "Cloud sync did not complete.");
+    if (isBackgroundSync && !shouldShowDelayedStatus()) {
+      recordSupabaseLoadEvent("background-sync-incomplete", `${reason} returned without a fresh load after a healthy sync`);
+      recordSyncDiagnostic("background-incomplete", `${reason} returned without a fresh load after a healthy sync`, { reason, elapsedMs: Date.now() - startedAt });
+    } else {
+      markCloudSyncDidNotComplete(timeoutMessage || "Cloud sync did not complete.");
+    }
   }
   return result;
 }
@@ -5250,13 +5270,21 @@ function markCloudSyncDidNotComplete(message = "Cloud sync did not complete.") {
 window.addEventListener("focus", () => {
   if (!supabaseClient || !currentSession || liveSyncEnabled) return;
   const now = Date.now();
-  if (now - lastSupabaseLoadAt < supabaseFocusReloadCooldownMs) {
-    recordSupabaseLoadEvent("focus-sync-skip", "focus cooldown");
+  const recentFocusAttempt = now - Number(lastFocusSyncAttemptAt || 0) < supabaseFocusReloadCooldownMs;
+  const recentLoadAttempt = now - Number(lastSupabaseLoadAt || 0) < supabaseFocusReloadCooldownMs;
+  if (recentFocusAttempt || recentLoadAttempt) {
+    recordSupabaseLoadEvent("focus-sync-skip", recentFocusAttempt ? "focus attempt cooldown" : "cloud load cooldown");
+    recordSyncDiagnostic("focus-sync-skip", recentFocusAttempt ? "Skipped window-focus refresh during focus cooldown." : "Skipped window-focus refresh during load cooldown.", { reason: "window-focus", recentFocusAttempt, recentLoadAttempt });
     return;
   }
+  lastFocusSyncAttemptAt = now;
+  const timeoutMs = hasRecentHealthyCloudSync(now, recentHealthyFocusSyncGraceMs)
+    ? Math.max(supabaseStartupLoadTimeoutMs, recentHealthyFocusSyncGraceMs)
+    : supabaseStartupLoadTimeoutMs;
+  recordSupabaseLoadEvent("focus-sync-start", hasRecentHealthyCloudSync(now) ? "background refresh after healthy sync" : "background refresh without recent healthy sync");
   loadSupabaseStateWithTimeout(
     { reason: "window-focus", background: true },
-    supabaseStartupLoadTimeoutMs,
+    timeoutMs,
     "Focus cloud sync is delayed. You can keep using local data."
   ).catch((error) => {
     console.warn("Focus sync failed", error);
@@ -14495,12 +14523,18 @@ function handleLedgerEventNotification(row) {
 }
 
 function subscribeToLedgerEvents() {
-  if (!supabaseClient || !currentSession || ledgerEventsChannel) return;
+  if (!supabaseClient || !currentSession) return;
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  if (ledgerEventsChannel && ledgerEventsChannelLedgerId === ledgerId) {
+    recordSupabaseLoadEvent("ledger-events-subscription-skip", "already subscribed for active ledger");
+    return;
+  }
+  if (ledgerEventsChannel) unsubscribeFromLedgerEvents();
   if (document.visibilityState === "hidden") {
     recordSupabaseLoadEvent("ledger-events-subscription-skip", "page hidden");
     return;
   }
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  ledgerEventsChannelLedgerId = ledgerId;
   ledgerEventsChannel = supabaseClient
     .channel(`ledger-events:${ledgerId}`)
     .on(
@@ -14518,6 +14552,7 @@ function unsubscribeFromLedgerEvents() {
   if (!supabaseClient || !ledgerEventsChannel) return;
   supabaseClient.removeChannel(ledgerEventsChannel);
   ledgerEventsChannel = null;
+  ledgerEventsChannelLedgerId = "";
   renderSupabaseLoadMonitor();
 }
 
@@ -14557,7 +14592,13 @@ function handleRealtimeVisibilityChange() {
 }
 
 function subscribeToSupabaseState({ force = false } = {}) {
-  if (!supabaseClient || supabaseStateChannel) return;
+  if (!supabaseClient) return;
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  if (supabaseStateChannel && supabaseStateChannelLedgerId === ledgerId) {
+    recordSupabaseLoadEvent("realtime-subscription-skip", "already subscribed for active ledger");
+    return;
+  }
+  if (supabaseStateChannel) unsubscribeFromSupabaseState();
   if (document.visibilityState === "hidden") {
     recordSupabaseLoadEvent("realtime-disabled", "Realtime subscription skipped while page is hidden.");
     return;
@@ -14567,7 +14608,7 @@ function subscribeToSupabaseState({ force = false } = {}) {
     return;
   }
 
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  supabaseStateChannelLedgerId = ledgerId;
   supabaseStateChannel = supabaseClient
     .channel(`ledger:${ledgerId}`)
     .on(
@@ -14589,6 +14630,7 @@ function unsubscribeFromSupabaseState() {
   if (!supabaseClient || !supabaseStateChannel) return;
   supabaseClient.removeChannel(supabaseStateChannel);
   supabaseStateChannel = null;
+  supabaseStateChannelLedgerId = "";
 }
 
 function markLocalChangeQueued() {
