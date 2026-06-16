@@ -541,7 +541,7 @@ function testInviteOnboardingFoundationExists() {
   assert.match(app, /describeInviteRedeemError/);
   assert.match(app, /switchActiveWorkspace\(targetLedger, "invite-redemption"\)/);
   assert.match(app, /supabaseClient\.rpc\("list_my_ledgers"/);
-  assert.match(index, /Codes are shown once and stored hashed/);
+  assert.match(index, /Codes are shown once, stored hashed in Supabase, and are not emailed automatically/);
   console.log("ok - testInviteOnboardingFoundationExists");
 }
 
@@ -553,8 +553,10 @@ function testWorkspaceInviteUxLayoutExists() {
   assert.match(index, /class="workspace-invites-intro"/);
   assert.match(index, /<div class="workspace-invites-grid">/);
   assert.match(index, /Use the top workspace selector or the buttons below to switch the current app scope/);
-  assert.match(index, /Join workspace with invite code/);
-  assert.match(index, /Paste it here while signed in/);
+  assert.match(index, /Join another workspace with invite code/);
+  assert.match(index, /not emailed automatically/);
+  assert.match(index, /send it to the person out-of-band/);
+  assert.match(index, /Already signed in and received another workspace invite/);
   assert.doesNotMatch(index, /data-tools-grid workspace-invites-grid/);
   assert.match(css, /\.workspace-invites-grid \{[\s\S]*grid-template-columns: minmax\(280px, 0\.9fr\) minmax\(260px, 0\.8fr\) minmax\(300px, 1fr\)/);
   assert.match(css, /\.workspace-invites-grid \.compact-admin-form \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
@@ -613,6 +615,7 @@ function testAuthBoundWorkspaceIdentityExists() {
   assert.match(app, /refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
   assert.doesNotMatch(app, /supabaseClient\.from\("ledgers"\)\.select\("\*"\)\.eq\("id", ledgerId\)\.maybeSingle\(\)/);
   assert.match(app, /Paste an invite code to join another workspace/);
+  assert.match(app, /It is not emailed automatically/);
   assert.match(app, /const linkedWorkspace = getLinkedWorkspaceForActiveLedger\(\)/);
   console.log("ok - testAuthBoundWorkspaceIdentityExists");
 }

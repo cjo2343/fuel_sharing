@@ -95,10 +95,10 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Invite</p>
-              <h2 id="inviteRedemptionHeading">Join workspace with invite code</h2>
+              <h2 id="inviteRedemptionHeading">Join another workspace with invite code</h2>
             </div>
           </div>
-          <p class="section-note">Have an invite code? Paste it here while signed in. The app will join the workspace, refresh your workspace list, and switch you into it.</p>
+          <p class="section-note">Already signed in and received another workspace invite? Paste it here to join that workspace, refresh your workspace list, and switch into it.</p>
           <form id="redeemInviteForm" class="auth-form invite-redemption-form">
             <label>
               Invite code
@@ -792,7 +792,7 @@
           <div class="workspace-invites-grid">
             <article class="data-tool-card">
               <strong>Create invite</strong>
-              <p>Create a one-time or limited-use invite for the current ledger. Codes are shown once and stored hashed in Supabase.</p>
+              <p>Create a one-time or limited-use invite for the current ledger. Codes are shown once, stored hashed in Supabase, and are not emailed automatically.</p>
               <form id="createInviteForm" class="member-management-form compact-admin-form">
                 <label>
                   Email restriction <span class="entry-meta">optional</span>
@@ -814,6 +814,7 @@
                   <input id="inviteMaxUses" type="number" min="1" max="25" step="1" value="1" />
                 </label>
                 <button class="primary-button" type="submit">Create invite code</button>
+                <p class="entry-meta invite-share-guidance">After creation, copy the one-time code and send it to the person out-of-band, such as SMS, email, or chat.</p>
               </form>
               <div id="createdInviteResult" class="section-note" aria-live="polite"></div>
             </article>

@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.135",
-    buildLabel: "invite-auth-identity-rsl-fix",
+    version: "2026.06.16.136",
+    buildLabel: "invite-sharing-wording-polish",
     updatedAt: "2026-06-16T14:58:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v234",
+    expectedServiceWorkerCache: "fuel-ledger-v235",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",

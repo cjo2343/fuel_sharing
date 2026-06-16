@@ -622,3 +622,7 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
   - Prevented Supabase workspace sessions from using stale JSON member profiles as authoritative identity before `ledger_members`/`list_my_ledgers` confirms the signed-in user.
   - Stopped Supabase-mode member bootstrap from assigning a new invitee email to the first local JSON admin.
   - Skipped full JSON-to-table ledger reconciliation unless the authenticated workspace member is a confirmed admin, avoiding regular invitee `ledgers` RLS errors.
+
+- 2026-06-16: Invite sharing wording polish
+  - Renamed the signed-in invite redemption card to “Join another workspace with invite code” so users who already joined are not confused.
+  - Clarified that admins must copy the one-time invite code and send it out-of-band; the app does not email invite codes automatically.

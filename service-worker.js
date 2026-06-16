@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v234";
-const BUILD_LABEL = "invite-auth-identity-rsl-fix";
+const CACHE_NAME = "fuel-ledger-v235";
+const BUILD_LABEL = "invite-sharing-wording-polish";
 const BUILD_UPDATED_AT = "2026-06-16T14:58:00.000Z";
 const CORE_ASSETS = [
   "/",

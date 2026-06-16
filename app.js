@@ -10931,9 +10931,10 @@ function renderCreatedInvite(result) {
   const email = result.invited_email || "any signed-in user with this code";
   els.createdInviteResult.innerHTML = `
     <strong>Invite created.</strong>
-    <p>Share this code once with ${escapeHtml(email)}. It cannot be recovered later because Supabase stores only a hash.</p>
+    <p>Copy this one-time code and send it to ${escapeHtml(email)} out-of-band, such as SMS, email, or chat. It is not emailed automatically and cannot be recovered later because Supabase stores only a hash.</p>
     <div class="copyable-code" data-created-invite-code="true">${escapeHtml(inviteCode)}</div>
     <p class="entry-meta">Role: ${escapeHtml(role)} · Expires: ${escapeHtml(formatInviteExpiry(result.expires_at))}</p>
+    <p class="entry-meta">New users can paste this code on the login screen before requesting their email login code. Existing signed-in users can paste it in the Join another workspace card.</p>
   `;
 }
 

@@ -228,3 +228,7 @@ Signed-in invite redemption now treats the Supabase session as the source of tru
 - Supabase workspace sessions now treat local JSON member profiles as display/cache data only until the signed-in email is confirmed by workspace membership.
 - New invitees are no longer bootstrapped onto the first local JSON admin identity while workspace membership is still loading.
 - Full JSON-to-table ledger reconciliation remains admin-only and is skipped for pending/non-admin invite sessions to avoid direct `ledgers` RLS writes.
+
+- 2026-06-16: Invite sharing wording polish
+  - Renamed the signed-in invite redemption card to “Join another workspace with invite code” so users who already joined are not confused.
+  - Clarified that admins must copy the one-time invite code and send it out-of-band; the app does not email invite codes automatically.
