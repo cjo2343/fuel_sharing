@@ -36,6 +36,7 @@ const expected = [
   "024_schema_drift_healthcheck.sql",
   "025_workspace_foundation.sql",
   "026_invite_onboarding_foundation.sql",
+  "027_invite_code_generation_pgcrypto_fix.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -140,6 +141,8 @@ for (const marker of [
   "missing_columns",
   "missing_policies",
   "fuel_ledger_schema_migrations_admin_select",
+  "027_invite_code_generation_pgcrypto_fix",
+  "extensions.gen_random_bytes",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.121",
-    buildLabel: "admin-invite-layout-polish",
-    updatedAt: "2026-06-16T10:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v220",
+    version: "2026.06.16.122",
+    buildLabel: "invite-code-generation-fix",
+    updatedAt: "2026-06-16T10:08:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v221",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -28,7 +28,8 @@
       "Private workspace foundation adds ledger slugs, private-by-default signup flags, membership lookup indexes, and safe list/create workspace RPCs without enabling public onboarding.",
       "Admin now has an Invites & workspaces section for creating/revoking private invite codes and reviewing linked workspaces without using SQL.",
       "Insights and dashboard labels now make clear that statistics are scoped to the currently configured workspace/car, with workspace switching still disabled.",
-      "Admin Invites & workspaces now uses a cleaner responsive layout so invite forms, workspace rows, and invite rows do not overlap."
+      "Admin Invites & workspaces now uses a cleaner responsive layout so invite forms, workspace rows, and invite rows do not overlap.",
+      "Invite creation now uses schema-qualified Supabase pgcrypto random bytes and shows a clear migration message if the database helper is missing."
     ])
   });
 

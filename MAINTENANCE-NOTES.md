@@ -564,3 +564,5 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 
 - 2026-06-16: Polished the Admin Invites & workspaces layout so create-invite controls, workspace rows, and invite rows wrap within their cards on narrower screens.
 - 2026-06-16: Insights and topbar wording now explicitly describe the current workspace/car scope so multi-ledger groundwork does not look like global cross-workspace analytics.
+
+- Invite creation depends on migration `027_invite_code_generation_pgcrypto_fix.sql`, which schema-qualifies `extensions.gen_random_bytes(...)` so Supabase pgcrypto works from RPC search paths.

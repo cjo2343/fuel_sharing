@@ -186,3 +186,5 @@ The release-readiness companion checks enforce security-hardening hygiene before
 
 - 2026-06-16: Polished the Admin Invites & workspaces layout so create-invite controls, workspace rows, and invite rows wrap within their cards on narrower screens.
 - 2026-06-16: Insights and topbar wording now explicitly describe the current workspace/car scope so multi-ledger groundwork does not look like global cross-workspace analytics.
+
+- Invite code generation uses Supabase `pgcrypto` through `extensions.gen_random_bytes(...)`; migration `027_invite_code_generation_pgcrypto_fix.sql` must be applied before invite UI testing.

@@ -513,3 +513,5 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Apply `supabase/migrations/026_invite_onboarding_foundation.sql` after `025_workspace_foundation.sql`.
 - Confirm Security Health shows migration `026_invite_onboarding_foundation` applied and schema drift OK.
 - Keep public signup disabled. Invite RPCs are groundwork only until the workspace selection/join UI and abuse controls are complete.
+
+- Apply `027_invite_code_generation_pgcrypto_fix.sql` after invite onboarding so Admin invite creation can generate hashed one-time codes.

@@ -422,6 +422,7 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /'024_schema_drift_healthcheck'/);
   assert.match(schema, /'025_workspace_foundation'/);
   assert.match(schema, /'026_invite_onboarding_foundation'/);
+  assert.match(schema, /'027_invite_code_generation_pgcrypto_fix'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
   assert.match(schema, /'missing_migrations'/);
@@ -473,6 +474,7 @@ function testWorkspaceFoundationExists() {
   assert.match(schema, /'create_private_ledger_workspace'/);
   assert.match(schema, /'025_workspace_foundation'/);
   assert.match(schema, /'026_invite_onboarding_foundation'/);
+  assert.match(schema, /'027_invite_code_generation_pgcrypto_fix'/);
   console.log("ok - testWorkspaceFoundationExists");
 }
 
@@ -489,7 +491,10 @@ function testInviteOnboardingFoundationExists() {
   assert.match(schema, /create or replace function public\.create_ledger_invite/);
   assert.match(schema, /create or replace function public\.redeem_ledger_invite/);
   assert.match(schema, /create or replace function public\.revoke_ledger_invite/);
+  assert.match(schema, /create extension if not exists pgcrypto with schema extensions/);
   assert.match(schema, /generated_code := 'fl-'/);
+  assert.match(schema, /extensions\.gen_random_bytes\(16\)/);
+  assert.doesNotMatch(schema, /[^.]\bgen_random_bytes\(16\)/, "invite generation should schema-qualify pgcrypto random bytes");
   assert.match(schema, /digest\(coalesce\(invite_code, ''\), 'sha256'\)/);
   assert.match(schema, /Only ledger admins can create invites/);
   assert.match(schema, /A signed-in user email is required to redeem an invite/);
@@ -503,6 +508,8 @@ function testInviteOnboardingFoundationExists() {
   assert.match(index, /id="workspaceInvitesHeading">Invites &amp; workspaces/);
   assert.match(index, /id="createInviteForm"/);
   assert.match(index, /id="inviteList"/);
+  assert.match(app, /describeWorkspaceInviteError/);
+  assert.match(app, /Supabase invite code generator is not installed/);
   assert.match(app, /supabaseClient\.rpc\("create_ledger_invite"/);
   assert.match(app, /supabaseClient\.rpc\("revoke_ledger_invite"/);
   assert.match(app, /supabaseClient\.rpc\("list_my_ledgers"/);

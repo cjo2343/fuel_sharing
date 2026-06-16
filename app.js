@@ -10497,6 +10497,14 @@ function renderCreatedInvite(result) {
   `;
 }
 
+function describeWorkspaceInviteError(error) {
+  const message = String(error?.message || error || "Invite creation failed.");
+  if (/gen_random_bytes/i.test(message) || /pgcrypto/i.test(message)) {
+    return "Supabase invite code generator is not installed. Apply migration 027_invite_code_generation_pgcrypto_fix.sql, then try again.";
+  }
+  return message;
+}
+
 async function createWorkspaceInvite() {
   if (!supabaseClient || !currentSession || !canManageSettings()) return;
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
@@ -10526,7 +10534,7 @@ async function createWorkspaceInvite() {
     await refreshWorkspaceInvites();
     renderCreatedInvite(result);
   } catch (error) {
-    showUserError(`Could not create invite: ${error.message || error}`);
+    showUserError(`Could not create invite: ${describeWorkspaceInviteError(error)}`);
     setWorkspaceInvitesMessage("Invite creation failed.");
   }
 }

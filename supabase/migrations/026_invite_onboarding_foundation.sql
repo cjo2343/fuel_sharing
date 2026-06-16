@@ -1,6 +1,9 @@
 -- Migration 026: Add private invite onboarding foundation for future public workspace joins.
 -- This keeps public signup disabled. Invites are admin-created, signed-in-user redeemed, and scoped to one ledger.
 
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+
 create table if not exists public.ledger_invites (
   id uuid primary key default gen_random_uuid(),
   ledger_id text not null references public.ledgers(id) on delete cascade,
@@ -90,7 +93,7 @@ begin
     raise exception 'Current user is not linked to this ledger' using errcode = '42501';
   end if;
 
-  generated_code := 'fl-' || lower(encode(gen_random_bytes(16), 'hex'));
+  generated_code := 'fl-' || lower(encode(extensions.gen_random_bytes(16), 'hex'));
 
   insert into public.ledger_invites (
     ledger_id,
@@ -309,7 +312,8 @@ as $$
       ('023_schema_migration_tracking'),
       ('024_schema_drift_healthcheck'),
       ('025_workspace_foundation'),
-      ('026_invite_onboarding_foundation')
+      ('026_invite_onboarding_foundation'),
+      ('027_invite_code_generation_pgcrypto_fix')
   ),
   migration_status as (
     select

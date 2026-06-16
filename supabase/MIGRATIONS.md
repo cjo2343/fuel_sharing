@@ -77,3 +77,5 @@ Adds private workspace/ledger isolation foundation for future public launch read
 
 ### 026_invite_onboarding_foundation
 Adds private invite onboarding foundation for future public workspace joins. Admins can create/revoke hashed invite codes and signed-in users can redeem them into a ledger. Public signup remains disabled; this is groundwork for invite-only onboarding, not a public launch switch.
+
+- `027_invite_code_generation_pgcrypto_fix.sql` schema-qualifies pgcrypto random-byte generation for invite codes and records itself in migration tracking.

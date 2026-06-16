@@ -2,7 +2,8 @@
 -- This creates both the legacy JSON backup table and the normalized table-primary backend.
 -- After running, update ledger_members.email for each real user before inviting people.
 
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists public.car_share_ledgers (
   id text primary key,
@@ -3569,7 +3570,7 @@ begin
     raise exception 'Current user is not linked to this ledger' using errcode = '42501';
   end if;
 
-  generated_code := 'fl-' || lower(encode(gen_random_bytes(16), 'hex'));
+  generated_code := 'fl-' || lower(encode(extensions.gen_random_bytes(16), 'hex'));
 
   insert into public.ledger_invites (
     ledger_id,
@@ -3788,7 +3789,8 @@ as $$
       ('023_schema_migration_tracking'),
       ('024_schema_drift_healthcheck'),
       ('025_workspace_foundation'),
-      ('026_invite_onboarding_foundation')
+      ('026_invite_onboarding_foundation'),
+      ('027_invite_code_generation_pgcrypto_fix')
   ),
   migration_status as (
     select
@@ -4003,5 +4005,10 @@ grant execute on function public.fuel_ledger_healthcheck(text) to authenticated;
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('026_invite_onboarding_foundation', 'Private invite onboarding foundation with admin-created invites and signed-in redemption RPCs.')
+on conflict (migration_id) do update set
+  description = excluded.description;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('027_invite_code_generation_pgcrypto_fix', 'Schema-qualify pgcrypto invite code generation so invite RPCs work on deployed Supabase projects.')
 on conflict (migration_id) do update set
   description = excluded.description;
