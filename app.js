@@ -80,6 +80,67 @@ function getWorkspaceOptionLabel(ledger) {
   return String(ledger?.name || ledger?.slug || ledger?.ledger_id || "Current workspace").trim();
 }
 
+function getLinkedWorkspaceForActiveLedger() {
+  const current = getActiveLedgerId();
+  return getWorkspaceLedgerOptions().find((ledger) => String(ledger.ledger_id || "") === String(current || "")) || null;
+}
+
+function inferAuthBoundMemberName(email) {
+  const local = String(email || "").split("@")[0] || "";
+  return local.trim() || "Signed-in member";
+}
+
+function getAuthBoundMemberProfileFallback() {
+  const email = getLoggedInEmail();
+  if (!email) return null;
+  const workspace = getLinkedWorkspaceForActiveLedger();
+  if (!workspace) return null;
+  return {
+    name: inferAuthBoundMemberName(email),
+    email,
+    role: workspace.role === "admin" ? "admin" : "member",
+    mobilepayPhone: "",
+    authBound: true
+  };
+}
+
+function resetAuthBoundMemberProfile() {
+  authBoundMemberProfile = null;
+  authBoundMemberProfileLedgerId = "";
+  authBoundMemberProfileLoaded = false;
+}
+
+async function refreshAuthBoundMemberProfile() {
+  resetAuthBoundMemberProfile();
+  const email = getLoggedInEmail();
+  const ledgerId = getActiveLedgerId();
+  if (!supabaseClient || !currentSession || !email || !ledgerId) return null;
+  try {
+    const { data, error } = await supabaseClient
+      .from("ledger_members")
+      .select("id,name,email,role,is_active,mobilepay_phone")
+      .eq("ledger_id", ledgerId)
+      .eq("is_active", true)
+      .ilike("email", email)
+      .maybeSingle();
+    if (error) throw error;
+    authBoundMemberProfileLoaded = true;
+    if (!data) return null;
+    authBoundMemberProfileLedgerId = ledgerId;
+    authBoundMemberProfile = {
+      name: data.name || inferAuthBoundMemberName(email),
+      email,
+      role: data.role === "admin" ? "admin" : "member",
+      mobilepayPhone: normalizePhone(data.mobilepay_phone || ""),
+      authBound: true
+    };
+    return authBoundMemberProfile;
+  } catch (error) {
+    console.warn("Could not refresh signed-in member profile", error);
+    return null;
+  }
+}
+
 function renderActiveWorkspaceSelector() {
   if (!els.activeWorkspace) return;
   const ledgers = getWorkspaceLedgerOptions();
@@ -107,6 +168,7 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     return;
   }
   setActiveLedgerId(targetLedgerId, { persist: true });
+  await refreshAuthBoundMemberProfile();
   workspaceInviteStatus.loaded = false;
   workspaceInviteStatus.invites = [];
   normalizedTableStatus = { checked: false, ok: false, message: "Workspace changed; reload normalized tables." };
@@ -375,6 +437,9 @@ let closingPeriodInProgress = false;
 let suppressNormalizedBookingWrites = false;
 let currentUser = localStorage.getItem(userKey) || "";
 let currentSession = null;
+let authBoundMemberProfile = null;
+let authBoundMemberProfileLedgerId = "";
+let authBoundMemberProfileLoaded = false;
 let loginCooldownTimer;
 const closedPeriodFilters = {
   query: "",
@@ -811,6 +876,7 @@ els.otpForm.addEventListener("submit", async (event) => {
 els.signOut.addEventListener("click", async () => {
   if (supabaseClient) await supabaseClient.auth.signOut();
   currentSession = null;
+  resetAuthBoundMemberProfile();
   unsubscribeFromLedgerEvents();
   updateAuthUi();
 });
@@ -4963,6 +5029,10 @@ async function initializeSupabase() {
     localStorage.removeItem(pendingLoginEmailKey);
   }
   updateAuthUi();
+  if (currentSession) {
+    await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Initial workspace list refresh failed", error));
+    await refreshAuthBoundMemberProfile();
+  }
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentSession = session;
@@ -4970,8 +5040,11 @@ async function initializeSupabase() {
       localStorage.setItem(rememberedLoginEmailKey, session.user.email);
       localStorage.removeItem(pendingLoginEmailKey);
     }
+    if (!session) resetAuthBoundMemberProfile();
     updateAuthUi();
     if (session) {
+      await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Auth workspace list refresh failed", error));
+      await refreshAuthBoundMemberProfile();
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
       const authEvent = String(event || "auth-change").toLowerCase();
@@ -5454,15 +5527,16 @@ function renderLogEntryPanelsVisibility() {
 }
 
 function renderPeopleSelectors() {
-  const names = getMemberNames();
+  const stateNames = getMemberNames();
   const profile = getCurrentMemberProfile();
   const loggedIn = Boolean(currentSession);
   const knownLoggedInMember = Boolean(profile);
+  const names = profile?.name && !stateNames.includes(profile.name) ? [profile.name, ...stateNames] : stateNames;
 
   if (loggedIn) {
     currentUser = profile?.name || "";
-  } else if (!names.includes(currentUser)) {
-    currentUser = names[0] || "";
+  } else if (!stateNames.includes(currentUser)) {
+    currentUser = stateNames[0] || "";
   }
   if (currentUser) localStorage.setItem(userKey, currentUser);
 
@@ -10565,7 +10639,7 @@ async function refreshLinkedWorkspacesAfterInvite() {
   const { data, error } = await supabaseClient.rpc("list_my_ledgers");
   if (error) throw error;
   workspaceInviteStatus.ledgers = Array.isArray(data) ? data : [];
-  workspaceInviteStatus.loaded = canManageSettings() ? workspaceInviteStatus.loaded : true;
+  workspaceInviteStatus.loaded = true;
   reconcileActiveLedgerSelection();
   renderActiveWorkspaceSelector();
   return workspaceInviteStatus.ledgers;
@@ -11726,15 +11800,17 @@ function getCurrentMemberProfile() {
   const email = getLoggedInEmail();
   if (!email) return null;
 
+  if (authBoundMemberProfile && authBoundMemberProfileLedgerId === getActiveLedgerId()) {
+    return authBoundMemberProfile;
+  }
+
   const match = getMemberNames()
     .map(getMemberProfile)
     .find((profile) => profile.email === email);
   if (match) return match;
 
-  if (noMemberEmailsConfigured()) {
-    const first = getMemberNames()[0];
-    return first ? { ...getMemberProfile(first), role: "admin" } : null;
-  }
+  const linkedFallback = getAuthBoundMemberProfileFallback();
+  if (linkedFallback) return linkedFallback;
 
   return null;
 }
@@ -11748,7 +11824,7 @@ function canManageSettings() {
   if (!supabaseClient) return true;
   if (!currentSession) return false;
   const profile = getCurrentMemberProfile();
-  return profile?.role === "admin" || noMemberEmailsConfigured();
+  return profile?.role === "admin";
 }
 
 function canManageSettlementRequest(settlement) {

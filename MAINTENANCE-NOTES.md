@@ -577,3 +577,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - 2026-06-16: Login-screen invite auto-redeem
   - Added an optional workspace invite-code field to the sign-in screen so new users can paste the admin-created invite before requesting their email code.
   - After successful email-code verification, the app redeems the stored invite, refreshes linked workspaces, switches into the joined workspace, and clears the pending invite code on success.
+
+- 2026-06-16: Auth-bound workspace identity
+  - Bound the selected app member to the signed-in Supabase email and active workspace membership row.
+  - Removed the legacy no-email fallback that could treat any signed-in invitee as the first local admin member.
+  - Added validation coverage so workspace invite onboarding cannot re-enable member/admin impersonation from the local selector.

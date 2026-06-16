@@ -196,3 +196,7 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - 2026-06-16: Login-screen invite auto-redeem
   - Added an optional workspace invite-code field to the sign-in screen so new users can paste the admin-created invite before requesting their email code.
   - After successful email-code verification, the app redeems the stored invite, refreshes linked workspaces, switches into the joined workspace, and clears the pending invite code on success.
+
+### 2026-06-16 auth-bound workspace identity
+
+Invite onboarding now binds the visible app identity to the signed-in Supabase email and active `ledger_members` row. If normalized tables fall back to the JSON mirror, the UI no longer grants admin access through the legacy "first local member is admin" behavior; non-admin invitees remain non-admin and the member selector is locked to their authenticated identity.

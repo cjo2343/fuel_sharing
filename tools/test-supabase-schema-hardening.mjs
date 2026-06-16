@@ -585,6 +585,19 @@ function testCurrentWorkspaceUxScopeExists() {
   console.log("ok - testCurrentWorkspaceUxScopeExists");
 }
 
+function testAuthBoundWorkspaceIdentityExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /let authBoundMemberProfile = null/);
+  assert.match(app, /async function refreshAuthBoundMemberProfile\(\)/);
+  assert.match(app, /getAuthBoundMemberProfileFallback\(\)/);
+  assert.match(app, /profile\?\.role === "admin"/);
+  assert.doesNotMatch(app, /profile\?\.role === "admin" \|\| noMemberEmailsConfigured\(\)/);
+  assert.match(app, /currentUser = profile\?\.name \|\| ""/);
+  assert.match(app, /profile\?\.name && !stateNames\.includes\(profile\.name\)/);
+  assert.match(app, /refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
+  console.log("ok - testAuthBoundWorkspaceIdentityExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -642,4 +655,5 @@ testWorkspaceFoundationExists();
 testInviteOnboardingFoundationExists();
 testWorkspaceInviteUxLayoutExists();
 testCurrentWorkspaceUxScopeExists();
+testAuthBoundWorkspaceIdentityExists();
 testFuelLedgerHealthcheckExists();

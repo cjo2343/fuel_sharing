@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.127",
-    buildLabel: "login-invite-autoredeem",
-    updatedAt: "2026-06-16T12:36:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v226",
+    version: "2026.06.16.128",
+    buildLabel: "auth-bound-workspace-identity",
+    updatedAt: "2026-06-16T12:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v227",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -34,7 +34,8 @@
       "Private-beta workspace switching now lets signed-in users select among ledgers returned by list_my_ledgers(), with trips, bookings, fuel, settlements, insights, and admin tools reloaded for the active workspace.",
       "Runtime utility loading now exposes formatMoney from utils.js before app.js and validation checks the Playwright critical-module contract.",
       "Signed-in users can now redeem workspace invite codes in the app, refresh linked workspaces, and switch into the joined workspace.",
-      "New users can paste a workspace invite code on the login screen and the app auto-redeems it immediately after email-code sign-in."
+      "New users can paste a workspace invite code on the login screen and the app auto-redeems it immediately after email-code sign-in.",
+      "Signed-in workspace identity is now bound to the authenticated ledger member row so invitees cannot inherit the first local admin profile from JSON fallback state."
     ])
   });
 
