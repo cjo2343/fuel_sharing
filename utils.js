@@ -115,6 +115,10 @@ function formatMoneyFor(value, currency) {
   }).format(roundMoney(value))} ${currency}`;
 }
 
+function formatMoney(value, currency = (typeof state !== "undefined" && state?.currency) || "DKK") {
+  return formatMoneyFor(value, currency);
+}
+
 function formatDate(value) {
   return new Intl.DateTimeFormat("en-DK", {
     day: "2-digit",

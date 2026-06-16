@@ -14086,9 +14086,8 @@ function emptyNode(text = "Nothing logged yet.") {
 }
 
 
-function formatMoney(value) {
-  return formatMoneyFor(value, state.currency);
-}
+// formatMoney is defined in utils.js so critical runtime-module smoke checks can
+// verify utility availability before app.js-specific helpers run.
 
 function getLedgerPeriod() {
   const dates = [...state.trips.map((trip) => trip.date), ...state.fuel.map((fuel) => fuel.date)]

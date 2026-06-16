@@ -568,3 +568,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Invite creation depends on migrations `027_invite_code_generation_pgcrypto_fix.sql` and `028_invite_code_hash_pgcrypto_fix.sql`, which schema-qualify `extensions.gen_random_bytes(...)` and `extensions.digest(...)` so Supabase pgcrypto works from RPC search paths.
 
 - 2026-06-16: Active workspace selector is private-beta enabled. It only lists ledgers returned by `list_my_ledgers()`, stores the selected ledger locally, and reloads Supabase reads/writes through `supabaseConfig.activeLedgerId`.
+
+- 2026-06-16: Runtime utility contract hardening
+  - Exposed `formatMoney` from `utils.js` alongside `formatMoneyFor` so critical runtime modules satisfy the Playwright smoke contract before `app.js` loads.
+  - Added `tools/test-runtime-module-contract.mjs` and wired it into `npm run validate`.
+  - Updated build metadata/service-worker cache for the runtime change.
