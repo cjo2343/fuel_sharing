@@ -554,3 +554,10 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Added migration `026_invite_onboarding_foundation.sql` for admin-created ledger invites and signed-in redemption.
 - Invite codes are stored hashed, scoped to a ledger, can expire/revoke, and can be email-restricted.
 - This does not enable public self-serve onboarding; keep the app private-beta until the UI and abuse controls are added.
+
+## Admin invite/workspace UI
+
+- Admin now includes an **Invites & workspaces** panel for private-beta onboarding.
+- Invite codes are created through the `create_ledger_invite` RPC, displayed once, and stored only as hashes in Supabase.
+- Revoking invites uses `revoke_ledger_invite`; admins can also review linked workspaces from `list_my_ledgers`.
+- This does not enable public signup or workspace switching in the app UI yet.

@@ -176,3 +176,10 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Migration `026_invite_onboarding_foundation.sql` adds private, hashed ledger invite codes for future workspace joins.
 - Invite creation and revocation require ledger admin access; invite redemption requires a signed-in user email.
 - Public signup remains disabled. Do not advertise broadly until invite UI, workspace switching, and rate-limit/abuse monitoring are complete.
+
+## Invite/workspace UI guardrails
+
+- Keep the Invites & workspaces panel admin-only.
+- Invite codes must be shown once after creation and never stored in plaintext by the app.
+- Admin invite creation should stay confirmed/warned because admins can manage members, backups, and diagnostics.
+- Public signup remains disabled until workspace isolation, invite onboarding, rate limits, and abuse monitoring are all green.

@@ -477,6 +477,8 @@ function testWorkspaceFoundationExists() {
 }
 
 function testInviteOnboardingFoundationExists() {
+  const app = readFileSync("app.js", "utf8");
+  const index = readFileSync("index.html", "utf8");
   assert.match(schema, /create table if not exists public\.ledger_invites/);
   assert.match(schema, /invite_code_hash text not null/);
   assert.match(schema, /create index if not exists ledger_invites_ledger_active_idx/);
@@ -498,6 +500,13 @@ function testInviteOnboardingFoundationExists() {
   assert.match(schema, /'revoke_ledger_invite'/);
   assert.match(schema, /'invite_onboarding_ready'/);
   assert.match(schema, /'026_invite_onboarding_foundation'/);
+  assert.match(index, /id="workspaceInvitesHeading">Invites &amp; workspaces/);
+  assert.match(index, /id="createInviteForm"/);
+  assert.match(index, /id="inviteList"/);
+  assert.match(app, /supabaseClient\.rpc\("create_ledger_invite"/);
+  assert.match(app, /supabaseClient\.rpc\("revoke_ledger_invite"/);
+  assert.match(app, /supabaseClient\.rpc\("list_my_ledgers"/);
+  assert.match(index, /Codes are shown once and stored hashed/);
   console.log("ok - testInviteOnboardingFoundationExists");
 }
 

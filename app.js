@@ -428,6 +428,14 @@ let memberManagementStatus = {
   error: "",
   rows: []
 };
+let workspaceInviteStatus = {
+  loaded: false,
+  loading: false,
+  error: "",
+  ledgers: [],
+  invites: [],
+  lastCreatedInvite: null
+};
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 const viewStorageKey = "fuel-ledger-active-view";
@@ -573,6 +581,17 @@ const els = {
   newMemberEmail: document.querySelector("#newMemberEmail"),
   newMemberMobilePayPhone: document.querySelector("#newMemberMobilePayPhone"),
   newMemberRole: document.querySelector("#newMemberRole"),
+  workspaceInvitesPanel: document.querySelector(".workspace-invites-panel"),
+  refreshWorkspaceInvites: document.querySelector("#refreshWorkspaceInvites"),
+  createInviteForm: document.querySelector("#createInviteForm"),
+  inviteEmail: document.querySelector("#inviteEmail"),
+  inviteRole: document.querySelector("#inviteRole"),
+  inviteExpiresHours: document.querySelector("#inviteExpiresHours"),
+  inviteMaxUses: document.querySelector("#inviteMaxUses"),
+  createdInviteResult: document.querySelector("#createdInviteResult"),
+  workspaceList: document.querySelector("#workspaceList"),
+  inviteList: document.querySelector("#inviteList"),
+  workspaceInvitesMessage: document.querySelector("#workspaceInvitesMessage"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
   productionActivityReset: document.querySelector("#productionActivityReset"),
@@ -1825,6 +1844,25 @@ els.memberManagementForm?.addEventListener("submit", async (event) => {
 els.refreshMembers?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await refreshMemberManagement();
+});
+
+els.refreshWorkspaceInvites?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await refreshWorkspaceInvites();
+});
+
+els.createInviteForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!canManageSettings()) return;
+  await createWorkspaceInvite();
+});
+
+els.inviteList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-invite-action]");
+  if (!button || !canManageSettings()) return;
+  const row = button.closest("[data-invite-id]");
+  if (!row) return;
+  if (button.dataset.inviteAction === "revoke") await revokeWorkspaceInvite(row.dataset.inviteId);
 });
 
 els.memberManagementList?.addEventListener("click", async (event) => {
@@ -4703,6 +4741,7 @@ function render() {
   renderSystemHealth(ledger);
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
+  renderWorkspaceInvitesPanel();
   renderSupabaseLoadMonitor();
   renderAdminGuardrailOverview();
   renderSyncHealthBanner();
@@ -4717,6 +4756,7 @@ function render() {
   if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
   if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
   if (els.memberManagementPanel) els.memberManagementPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.workspaceInvitesPanel) els.workspaceInvitesPanel.classList.toggle("hidden", !canManageSettings());
   renderSectionNavigation();
   updateEditUi();
 }
@@ -10261,6 +10301,192 @@ async function afterMemberManagementChange(message) {
   await refreshDatabaseDiagnostics().catch(() => {});
   await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
   render();
+}
+
+
+function setWorkspaceInvitesMessage(message = "") {
+  if (els.workspaceInvitesMessage) els.workspaceInvitesMessage.textContent = message;
+}
+
+function formatInviteExpiry(value) {
+  if (!value) return "No expiry reported";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function isInviteActive(invite) {
+  if (!invite || invite.revoked_at) return false;
+  if (Number(invite.uses_count || 0) >= Number(invite.max_uses || 1)) return false;
+  if (invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now()) return false;
+  return true;
+}
+
+function renderWorkspaceInvitesPanel() {
+  if (!els.workspaceList && !els.inviteList) return;
+  if (!workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && supabaseClient && currentSession && canManageSettings()) {
+    refreshWorkspaceInvites().catch((error) => {
+      workspaceInviteStatus.loading = false;
+      workspaceInviteStatus.error = error.message || String(error);
+      renderWorkspaceInvitesPanel();
+    });
+  }
+  if (!canManageSettings()) {
+    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Admin access is required to manage workspace invites.</p>`;
+    if (els.inviteList) els.inviteList.innerHTML = "";
+    return;
+  }
+  if (workspaceInviteStatus.loading) {
+    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Loading workspaces and invites...</p>`;
+    if (els.inviteList) els.inviteList.innerHTML = `<p class="empty-state">Loading invites...</p>`;
+    return;
+  }
+  if (workspaceInviteStatus.error) {
+    const message = escapeHtml(workspaceInviteStatus.error);
+    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Could not load workspace tools: ${message}</p>`;
+    if (els.inviteList) els.inviteList.innerHTML = "";
+    return;
+  }
+
+  const currentLedgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const ledgers = workspaceInviteStatus.ledgers || [];
+  if (els.workspaceList) {
+    els.workspaceList.innerHTML = ledgers.length
+      ? ledgers.map((ledger) => `
+        <div class="member-management-row workspace-row ${ledger.ledger_id === currentLedgerId ? "current" : ""}">
+          <div class="member-field-stack">
+            <strong>${escapeHtml(ledger.name || ledger.slug || ledger.ledger_id)}</strong>
+            <small>${escapeHtml(ledger.ledger_id === currentLedgerId ? "Current configured ledger" : "Linked workspace")}</small>
+          </div>
+          <span class="status-pill ${ledger.role === "admin" ? "status-ok" : ""}">${escapeHtml(ledger.role || "member")}</span>
+          <span class="entry-meta">${ledger.invite_required === false ? "Public signup flag on" : "Invite required"}</span>
+        </div>
+      `).join("")
+      : `<p class="empty-state">No linked workspaces found for this signed-in email.</p>`;
+  }
+
+  const invites = workspaceInviteStatus.invites || [];
+  if (els.inviteList) {
+    els.inviteList.innerHTML = invites.length
+      ? invites.map((invite) => {
+        const active = isInviteActive(invite);
+        const uses = `${Number(invite.uses_count || 0)} / ${Number(invite.max_uses || 1)} used`;
+        return `
+          <div class="member-management-row invite-row ${active ? "" : "inactive"}" data-invite-id="${escapeHtml(invite.id)}">
+            <div class="member-field-stack">
+              <strong>${escapeHtml(invite.invited_email || "Anyone with code")}</strong>
+              <small>${escapeHtml(formatInviteExpiry(invite.expires_at))}</small>
+            </div>
+            <span class="status-pill ${active ? "status-ok" : "status-warning"}">${active ? "Active" : "Inactive"}</span>
+            <span class="entry-meta">${escapeHtml(invite.role || "member")} · ${escapeHtml(uses)}</span>
+            <div class="button-row compact-actions">
+              <button class="danger-button" type="button" data-invite-action="revoke" ${active ? "" : "disabled"}>Revoke</button>
+            </div>
+          </div>
+        `;
+      }).join("")
+      : `<p class="empty-state">No invites found for this ledger.</p>`;
+  }
+}
+
+async function refreshWorkspaceInvites() {
+  if (!supabaseClient || !currentSession) return;
+  if (!canManageSettings()) return;
+  workspaceInviteStatus.loading = true;
+  workspaceInviteStatus.error = "";
+  renderWorkspaceInvitesPanel();
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  try {
+    const [{ data: ledgers, error: ledgersError }, { data: invites, error: invitesError }] = await Promise.all([
+      supabaseClient.rpc("list_my_ledgers"),
+      supabaseClient
+        .from("ledger_invites")
+        .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
+        .eq("ledger_id", ledgerId)
+        .order("created_at", { ascending: false })
+        .limit(25)
+    ]);
+    if (ledgersError) throw ledgersError;
+    if (invitesError) throw invitesError;
+    workspaceInviteStatus.ledgers = Array.isArray(ledgers) ? ledgers : [];
+    workspaceInviteStatus.invites = Array.isArray(invites) ? invites : [];
+    workspaceInviteStatus.loaded = true;
+  } catch (error) {
+    workspaceInviteStatus.error = error.message || String(error);
+  } finally {
+    workspaceInviteStatus.loading = false;
+    renderWorkspaceInvitesPanel();
+  }
+}
+
+function renderCreatedInvite(result) {
+  if (!els.createdInviteResult) return;
+  if (!result) {
+    els.createdInviteResult.textContent = "";
+    return;
+  }
+  const inviteCode = result.invite_code || "";
+  const role = result.role || "member";
+  const email = result.invited_email || "any signed-in user with this code";
+  els.createdInviteResult.innerHTML = `
+    <strong>Invite created.</strong>
+    <p>Share this code once with ${escapeHtml(email)}. It cannot be recovered later because Supabase stores only a hash.</p>
+    <div class="copyable-code" data-created-invite-code="true">${escapeHtml(inviteCode)}</div>
+    <p class="entry-meta">Role: ${escapeHtml(role)} · Expires: ${escapeHtml(formatInviteExpiry(result.expires_at))}</p>
+  `;
+}
+
+async function createWorkspaceInvite() {
+  if (!supabaseClient || !currentSession || !canManageSettings()) return;
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const email = normalizeEmail(els.inviteEmail?.value || "") || null;
+  const role = els.inviteRole?.value === "admin" ? "admin" : "member";
+  const expiresInHours = Math.max(1, Math.min(Number(els.inviteExpiresHours?.value || 168), 720));
+  const maxUses = Math.max(1, Math.min(Number(els.inviteMaxUses?.value || 1), 25));
+  if (role === "admin" && !confirmUserAction("Create an admin invite? Only share admin invites with someone who should manage members, backups, and diagnostics.")) return;
+  setWorkspaceInvitesMessage("Creating invite...");
+  try {
+    const { data, error } = await supabaseClient.rpc("create_ledger_invite", {
+      target_ledger_id: ledgerId,
+      invite_role: role,
+      invite_email: email,
+      expires_in_hours: expiresInHours,
+      max_uses: maxUses
+    });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    workspaceInviteStatus.lastCreatedInvite = result || null;
+    renderCreatedInvite(result);
+    setWorkspaceInvitesMessage("Invite created. Copy the code now; it will not be shown again after refresh.");
+    if (els.inviteEmail) els.inviteEmail.value = "";
+    if (els.inviteRole) els.inviteRole.value = "member";
+    if (els.inviteExpiresHours) els.inviteExpiresHours.value = "168";
+    if (els.inviteMaxUses) els.inviteMaxUses.value = "1";
+    await refreshWorkspaceInvites();
+    renderCreatedInvite(result);
+  } catch (error) {
+    showUserError(`Could not create invite: ${error.message || error}`);
+    setWorkspaceInvitesMessage("Invite creation failed.");
+  }
+}
+
+async function revokeWorkspaceInvite(inviteId) {
+  if (!supabaseClient || !currentSession || !canManageSettings() || !inviteId) return;
+  if (!confirmUserAction("Revoke this invite? The code will stop working immediately.")) return;
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  setWorkspaceInvitesMessage("Revoking invite...");
+  try {
+    const { error } = await supabaseClient.rpc("revoke_ledger_invite", {
+      target_ledger_id: ledgerId,
+      target_invite_id: inviteId
+    });
+    if (error) throw error;
+    setWorkspaceInvitesMessage("Invite revoked.");
+    await refreshWorkspaceInvites();
+  } catch (error) {
+    showUserError(`Could not revoke invite: ${error.message || error}`);
+    setWorkspaceInvitesMessage("Invite revoke failed.");
+  }
 }
 
 

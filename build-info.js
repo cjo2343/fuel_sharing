@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.118",
-    buildLabel: "workspace-foundation",
-    updatedAt: "2026-06-16T08:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v217",
+    version: "2026.06.16.119",
+    buildLabel: "admin-invite-workspace-ui",
+    updatedAt: "2026-06-16T08:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v218",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -25,7 +25,8 @@
       "Security Health now detects schema drift across expected tables, columns, and key RLS policies.",
       "Admin diagnostics now include a plain-language overall health summary plus dedicated migration and schema-shape cards.",
       "Admin diagnostics now includes a public launch readiness card that warns against broad advertising until workspace isolation and invite onboarding exist.",
-      "Private workspace foundation adds ledger slugs, private-by-default signup flags, membership lookup indexes, and safe list/create workspace RPCs without enabling public onboarding."
+      "Private workspace foundation adds ledger slugs, private-by-default signup flags, membership lookup indexes, and safe list/create workspace RPCs without enabling public onboarding.",
+      "Admin now has an Invites & workspaces section for creating/revoking private invite codes and reviewing linked workspaces without using SQL."
     ])
   });
 

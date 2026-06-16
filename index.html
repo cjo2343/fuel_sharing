@@ -729,6 +729,62 @@
           <div id="memberManagementList" class="member-management-list"></div>
         </section>
 
+        <section class="panel wide-panel workspace-invites-panel hidden" data-view="admin" aria-labelledby="workspaceInvitesHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Admin</p>
+              <h2 id="workspaceInvitesHeading">Invites &amp; workspaces</h2>
+            </div>
+            <button id="refreshWorkspaceInvites" class="subtle-button" type="button">Refresh</button>
+          </div>
+          <p class="section-note">Private-beta workspace tools. Create invite codes for this ledger, review your workspaces, and keep public signup closed until launch readiness is green.</p>
+
+          <div class="data-tools-grid workspace-invites-grid">
+            <article class="data-tool-card">
+              <strong>Create invite</strong>
+              <p>Create a one-time or limited-use invite for the current ledger. Codes are shown once and stored hashed in Supabase.</p>
+              <form id="createInviteForm" class="member-management-form compact-admin-form">
+                <label>
+                  Email restriction <span class="entry-meta">optional</span>
+                  <input id="inviteEmail" type="email" autocomplete="off" placeholder="person@example.com" />
+                </label>
+                <label>
+                  Role
+                  <select id="inviteRole">
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <label>
+                  Expires in hours
+                  <input id="inviteExpiresHours" type="number" min="1" max="720" step="1" value="168" />
+                </label>
+                <label>
+                  Max uses
+                  <input id="inviteMaxUses" type="number" min="1" max="25" step="1" value="1" />
+                </label>
+                <button class="primary-button" type="submit">Create invite code</button>
+              </form>
+              <div id="createdInviteResult" class="section-note" aria-live="polite"></div>
+            </article>
+
+            <article class="data-tool-card">
+              <strong>Your workspaces</strong>
+              <p>Shows ledgers linked to your signed-in email. Switching workspaces is not enabled in the UI yet; current app traffic still uses the configured ledger.</p>
+              <div id="workspaceList" class="member-management-list compact-list" aria-live="polite"></div>
+            </article>
+
+            <article class="data-tool-card">
+              <strong>Active invites</strong>
+              <p>Review and revoke current invites for this ledger. Invite codes cannot be recovered after creation.</p>
+              <div id="inviteList" class="member-management-list compact-list" aria-live="polite"></div>
+            </article>
+          </div>
+
+          <p id="workspaceInvitesMessage" class="section-note"></p>
+        </section>
+
+
 
 
 
