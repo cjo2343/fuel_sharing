@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const utilsSource = readFileSync("utils.js", "utf8");
+const appSource = readFileSync("app.js", "utf8");
 
 assert.match(utilsSource, /function\s+formatMoneyFor\s*\(/, "utils.js must expose formatMoneyFor before app.js loads.");
 assert.match(utilsSource, /function\s+formatMoney\s*\(/, "utils.js must expose formatMoney before app.js loads.");
+
+assert.equal(appSource.includes("?.["), false, "app.js should avoid optional chaining bracket syntax for older Safari login/invite screens.");
 
 const sandbox = {
   Intl,

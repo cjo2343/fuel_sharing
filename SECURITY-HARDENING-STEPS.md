@@ -204,3 +204,5 @@ Invite onboarding now binds the visible app identity to the signed-in Supabase e
 - 2026-06-16: Login invite and workspace identity hotfix
   - Defined the pending login invite-code storage key before auth startup can read it, preventing invite auto-redeem crashes on login.
   - Normalized table loads no longer query the `ledgers` table directly for regular members; workspace metadata is derived from linked workspace RPC results and fallback state to avoid RLS 403 noise.
+
+- 2026-06-16: Login/invite runtime syntax compatibility now avoids optional chaining bracket syntax in `app.js`, with validation coverage so older Safari engines cannot be blocked before auth-bound invite handling runs.

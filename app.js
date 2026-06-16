@@ -42,6 +42,10 @@ const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(),
 let auditLogDirty = false;
 
 
+function optionalRecordValue(record, key) {
+  return record && key !== undefined && key !== null ? record[key] : undefined;
+}
+
 function getConfiguredLedgerId() {
   return configuredLedgerId || "main-car";
 }
@@ -4649,8 +4653,8 @@ function renderPaymentEvidenceSummary(payment, options = {}) {
 
 function renderSettlementPaymentStory(payment, ledger, options = {}) {
   const currency = options.currency || state.currency;
-  const person = ledger?.people?.[payment.from] || { km: 0, fuelPaid: 0, tripCost: 0, balance: 0 };
-  const receiver = ledger?.people?.[payment.to] || { fuelPaid: 0, tripCost: 0, balance: 0 };
+  const person = optionalRecordValue(ledger?.people, payment.from) || { km: 0, fuelPaid: 0, tripCost: 0, balance: 0 };
+  const receiver = optionalRecordValue(ledger?.people, payment.to) || { fuelPaid: 0, tripCost: 0, balance: 0 };
   const payerShareKm = Number(person.km || 0);
   const payerFuelShare = Number(person.tripCost || person.shareCost || 0);
   const receiverFuelPaid = Number(receiver.fuelPaid || 0);
@@ -7467,7 +7471,7 @@ function renderSettlements(ledger) {
               <span class="settlement-person">${escapeHtml(item.to)}</span>
             </div>
             ${renderSettlementPaymentStory(item, ledger, { trips: state.trips, fuel: state.fuel, currency: state.currency })}
-            <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, { trips: state.trips, fuel: state.fuel, currency: state.currency, chargedKm: Number(ledger?.people?.[item.from]?.km || 0) }))}</p>
+            <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(item, { trips: state.trips, fuel: state.fuel, currency: state.currency, chargedKm: Number(optionalRecordValue(ledger?.people, item.from)?.km || 0) }))}</p>
             <div class="settlement-detail-row">
               <details class="settlement-details">
                 <summary>Calculation</summary>
@@ -7780,7 +7784,7 @@ function renderPeriodBreakdown(ledger) {
   const fuelByPerson = Object.entries(ledger.fuelByPerson || {})
     .filter(([, amount]) => amount > 0)
     .map(([name, amount]) => {
-      const liters = Number(ledger.fuelLitersByPerson?.[name] || 0);
+      const liters = Number(optionalRecordValue(ledger.fuelLitersByPerson, name) || 0);
       const detail = liters > 0 ? `${formatMoney(amount)} · ${formatNumber(liters)} L` : formatMoney(amount);
       return `<li><span>${escapeHtml(name)}</span><b>${detail}</b></li>`;
     })
@@ -7847,9 +7851,9 @@ function buildPeriodActivityStats(ledger) {
         name: member,
         driverTrips: 0,
         joinedTrips: 0,
-        distanceShare: Number(ledger.people?.[member]?.km || 0),
+        distanceShare: Number(optionalRecordValue(ledger.people, member)?.km || 0),
         fuelLogs: 0,
-        fuelPaid: Number(ledger.people?.[member]?.fuelPaid || 0)
+        fuelPaid: Number(optionalRecordValue(ledger.people, member)?.fuelPaid || 0)
       }
     ])
   );
@@ -7961,8 +7965,8 @@ function renderFuelPaymentList(fuelPayments) {
 }
 
 function renderSettlementMathDetails(settlement, ledger) {
-  const fromPerson = ledger.people?.[settlement.from] || {};
-  const toPerson = ledger.people?.[settlement.to] || {};
+  const fromPerson = optionalRecordValue(ledger.people, settlement.from) || {};
+  const toPerson = optionalRecordValue(ledger.people, settlement.to) || {};
   const fromFuelShare = Number(fromPerson.tripCost || 0);
   const fromFuelPaid = Number(fromPerson.fuelPaid || 0);
   const fromOwes = Math.max(0, fromFuelShare - fromFuelPaid);
@@ -8461,7 +8465,7 @@ async function sendPaymentReminder(button) {
 async function sendClosedPaymentReminder(button) {
   const period = findClosedPeriod(button.dataset.closedPeriodId);
   const index = Number(button.dataset.closedSettlementIndex);
-  const settlement = period?.settlements?.[index];
+  const settlement = optionalRecordValue(period?.settlements, index);
   const key = settlement && period ? settlementKeyForPeriod(settlement, period.id) : "";
   if (!period || !settlement || normalizePaymentStatus(settlement.status) !== "requested" || (!canManageSettlementRequest(settlement) && !canManageSettings())) {
     showPermissionBlocked(describePaymentPermissionMessage(settlement, "requested"));
@@ -8518,7 +8522,7 @@ async function updateClosedPaymentStatus(button) {
   const period = findClosedPeriod(button.dataset.closedPeriodId);
   const index = Number(button.dataset.closedSettlementIndex);
   const nextStatus = normalizePaymentStatus(button.dataset.closedPaymentStatus);
-  const settlement = period?.settlements?.[index];
+  const settlement = optionalRecordValue(period?.settlements, index);
   const previousStatus = normalizePaymentStatus(settlement?.status);
 
   if (!period || !settlement || nextStatus !== "paid" || previousStatus !== "requested" || !canMarkSettlementPaid(settlement)) {
@@ -8747,7 +8751,7 @@ function exportLedgerBackup() {
 }
 
 async function importLedgerBackup() {
-  const file = els.importLedgerFile?.files?.[0];
+  const file = optionalRecordValue(els.importLedgerFile?.files, 0);
   if (!file) return;
 
   try {
@@ -8881,7 +8885,7 @@ function downloadCurrentPeriodReport() {
   const fuelPayers = Object.entries(ledger.fuelByPerson || {}).filter(([, amount]) => Number(amount || 0) > 0);
   if (fuelPayers.length) {
     for (const [name, amount] of fuelPayers) {
-      const liters = Number(ledger.fuelLitersByPerson?.[name] || 0);
+      const liters = Number(optionalRecordValue(ledger.fuelLitersByPerson, name) || 0);
       lines.push(`- ${name}: ${formatMoney(amount)}${liters > 0 ? ` · ${formatNumber(liters)} L` : ""}`);
     }
   } else {
@@ -11452,7 +11456,7 @@ function renderPeriodSettlements(period) {
                     <span class="archive-payment-person">${escapeHtml(settlement.to)}</span>
                   </div>
                   <p>${escapeHtml(statusNote)}</p>
-                  <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(settlement, { trips: period.trips || [], fuel: period.fuel || [], currency: period.currency || state.currency, chargedKm: Number(period?.ledger?.people?.[settlement.from]?.km || settlement?.km || 0) }))}</p>
+                  <p class="payment-evidence-line">${escapeHtml(renderPaymentEvidenceSummary(settlement, { trips: period.trips || [], fuel: period.fuel || [], currency: period.currency || state.currency, chargedKm: Number(optionalRecordValue(period?.ledger?.people, settlement.from)?.km || settlement?.km || 0) }))}</p>
                 </div>
                 <div class="archive-payment-amount">
                   <b>${amountText}</b>
@@ -11799,7 +11803,7 @@ function normalizeMemberProfiles(members, profiles) {
 }
 
 function getMemberProfile(name) {
-  const profile = state.memberProfiles?.[name] || {};
+  const profile = optionalRecordValue(state.memberProfiles, name) || {};
   return { name, email: normalizeEmail(profile.email || ""), role: profile.role === "admin" ? "admin" : "member", mobilepayPhone: normalizePhone(profile.mobilepayPhone || profile.mobilepay_phone || "") };
 }
 

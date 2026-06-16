@@ -586,3 +586,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - 2026-06-16: Login invite and workspace identity hotfix
   - Defined the pending login invite-code storage key before auth startup can read it, preventing invite auto-redeem crashes on login.
   - Normalized table loads no longer query the `ledgers` table directly for regular members; workspace metadata is derived from linked workspace RPC results and fallback state to avoid RLS 403 noise.
+
+- 2026-06-16: Safari invite/login syntax hotfix
+  - Removed optional chaining bracket syntax from `app.js` so older Safari engines do not throw a parse error during invite creation or login invite auto-redeem.
+  - Added runtime contract coverage to block `?.[` syntax from returning in `app.js`.
+  - Bumped runtime metadata to `2026.06.16.130` / `fuel-ledger-v229`.

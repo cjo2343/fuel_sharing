@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.129",
-    buildLabel: "login-invite-identity-hotfix",
-    updatedAt: "2026-06-16T12:58:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v228",
+    version: "2026.06.16.130",
+    buildLabel: "safari-invite-syntax-hotfix",
+    updatedAt: "2026-06-16T13:18:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v229",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -36,7 +36,8 @@
       "Signed-in users can now redeem workspace invite codes in the app, refresh linked workspaces, and switch into the joined workspace.",
       "New users can paste a workspace invite code on the login screen and the app auto-redeems it immediately after email-code sign-in.",
       "Signed-in workspace identity is now bound to the authenticated ledger member row so invitees cannot inherit the first local admin profile from JSON fallback state.",
-      "Login invite auto-redeem now has a defined pending-code storage key and member workspace loads avoid direct ledgers reads that regular-member RLS can reject."
+      "Login invite auto-redeem now has a defined pending-code storage key and member workspace loads avoid direct ledgers reads that regular-member RLS can reject.",
+      "Invite/login runtime now avoids optional chaining bracket syntax so older Safari engines do not stop on a parse error during create-invite and auto-redeem flows."
     ])
   });
 
