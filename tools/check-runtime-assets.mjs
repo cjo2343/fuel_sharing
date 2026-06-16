@@ -73,6 +73,9 @@ const expectedCache = buildInfo.match(/expectedServiceWorkerCache:\s*["']([^"']+
 assert.ok(cacheName, "service-worker.js must expose CACHE_NAME");
 assert.equal(cacheName, expectedCache, "service-worker.js CACHE_NAME must match build-info.js expectedServiceWorkerCache");
 assert.ok(serviceWorker.includes("core-asset-cache-failure"), "service worker should log cache install failures for diagnostics");
+assert.ok(serviceWorker.includes("function cacheFirstCoreAsset"), "service worker should serve core app-shell assets from cache first");
+assert.ok(serviceWorker.includes("eventlessRefreshCoreAsset"), "service worker should refresh cached app-shell assets in the background");
+assert.ok(serviceWorker.includes("core-asset-refresh-failure"), "service worker should log background cache refresh failures for diagnostics");
 assert.ok(serviceWorker.includes("function sanitizeNotificationUrl"), "service worker should sanitize notification click URLs");
 assert.ok(serviceWorker.includes("candidate.origin !== self.location.origin"), "notification click URLs must be restricted to same-origin paths");
 

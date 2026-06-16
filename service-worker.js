@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v245";
-const BUILD_LABEL = "focus-realtime-sync-hardening";
-const BUILD_UPDATED_AT = "2026-06-16T17:24:00.000Z";
+const CACHE_NAME = "fuel-ledger-v246";
+const BUILD_LABEL = "app-shell-cache-fuel-price-timeout";
+const BUILD_UPDATED_AT = "2026-06-16T17:45:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -68,12 +68,55 @@ self.addEventListener("message", (event) => {
   }
 });
 
+function cacheKeyForRequest(request) {
+  const url = new URL(request.url);
+  return `${url.pathname}${url.search}`;
+}
+
+function isCoreAssetRequest(request) {
+  const key = cacheKeyForRequest(request);
+  return CORE_ASSETS.includes(key) || (request.mode === "navigate" && key === "/");
+}
+
+async function cacheFirstCoreAsset(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) {
+    eventlessRefreshCoreAsset(cache, request);
+    return cached;
+  }
+  const response = await fetch(request);
+  if (response && response.ok) cache.put(request, response.clone());
+  return response;
+}
+
+function eventlessRefreshCoreAsset(cache, request) {
+  fetch(request)
+    .then((response) => {
+      if (response && response.ok) return cache.put(request, response.clone());
+      return null;
+    })
+    .catch((error) => {
+      console.warn("core-asset-refresh-failure", error);
+    });
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  if (isCoreAssetRequest(request)) {
+    event.respondWith(
+      cacheFirstCoreAsset(request).catch(() => caches.match(request).then((response) => {
+        if (response) return response;
+        if (request.mode === "navigate") return caches.match("/");
+        return new Response("Offline", { status: 503, statusText: "Offline" });
+      }))
+    );
+    return;
+  }
   event.respondWith(
     fetch(request).catch(() => caches.match(request).then((response) => {
       if (response) return response;

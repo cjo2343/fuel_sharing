@@ -86,3 +86,34 @@ assert.match(
   /supabaseStateChannel && supabaseStateChannelLedgerId === ledgerId[\s\S]*realtime-subscription-skip/,
   "broad realtime subscriptions should be reused when the active ledger did not change"
 );
+
+
+assert.match(
+  appSource,
+  /recordSyncDiagnostic\("service-worker-controllerchange", "New app shell is active and will be used on the next natural page load\."\)/,
+  "service worker controller changes should be diagnostic-only instead of forcing an immediate reload"
+);
+
+assert.doesNotMatch(
+  appSource,
+  /controllerchange[\s\S]{0,250}window\.location\.reload\(\)/,
+  "service worker controller changes should not force reloads that recreate Supabase sessions and realtime sockets"
+);
+
+assert.match(
+  appSource,
+  /const fuelPriceFetchTimeoutMs = 3500;[\s\S]*let fuelPriceInFlight = false;/,
+  "live fuel price refresh should have a short timeout and in-flight guard"
+);
+
+assert.match(
+  appSource,
+  /function fetchFuelPriceWithTimeout\(url, timeoutMs = fuelPriceFetchTimeoutMs\)[\s\S]*AbortController[\s\S]*controller\.abort\(\)/,
+  "live fuel price fetches should be abortable so a slow public API cannot stall the app"
+);
+
+assert.match(
+  appSource,
+  /if \(fuelPriceInFlight\) return;[\s\S]*finally \{[\s\S]*fuelPriceInFlight = false;[\s\S]*scheduleFuelPriceRefresh\(\);[\s\S]*\}/,
+  "live fuel price refreshes should not pile up if the public API is slow"
+);

@@ -320,7 +320,7 @@ for (const match of declarationSource.matchAll(/\b(?:async\s+)?function\s+[A-Za-
 
 const allowed = new Set([
   'Array','Boolean','Date','Error','EvalError','Function','JSON','Map','Math','Number','Object','Promise','RangeError','ReferenceError','RegExp','Set','String','SyntaxError','TypeError','URL','URLSearchParams','WeakMap','WeakSet','parseFloat','parseInt','isFinite','isNaN','decodeURIComponent','encodeURIComponent','clearInterval','clearTimeout','setInterval','setTimeout','queueMicrotask','structuredClone',
-  'alert','atob','btoa','confirm','fetch','localStorage','navigator','open','prompt','requestAnimationFrame','scrollTo','sessionStorage','document','window','Blob','File','FileReader','FormData','Headers','Notification','Response','Request','CustomEvent','Event','KeyboardEvent','MouseEvent','crypto',
+  'AbortController','alert','atob','btoa','confirm','fetch','localStorage','navigator','open','prompt','requestAnimationFrame','scrollTo','sessionStorage','document','window','Blob','File','FileReader','FormData','Headers','Notification','Response','Request','CustomEvent','Event','KeyboardEvent','MouseEvent','crypto',
   'Uint8Array','console','supabase','createClient','Trips','logs','PushManager','ServiceWorkerRegistration','TextDecoder','TextEncoder','resolve','reject'
 ]);
 

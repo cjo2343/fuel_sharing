@@ -513,6 +513,9 @@ let pushSupported = false;
 let pushEnabled = false;
 let latestFuelPrice = null;
 let fuelPriceTimer = null;
+const fuelPriceRefreshIntervalMs = 60 * 60 * 1000;
+const fuelPriceFetchTimeoutMs = 3500;
+let fuelPriceInFlight = false;
 let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
 let lastJsonMirrorSaveAt = "";
@@ -8165,11 +8168,25 @@ function renderFuelEstimateCard(ledger) {
   `;
 }
 
-async function refreshFuelPriceEstimate() {
+function scheduleFuelPriceRefresh(delayMs = fuelPriceRefreshIntervalMs) {
   window.clearTimeout(fuelPriceTimer);
+  fuelPriceTimer = window.setTimeout(refreshFuelPriceEstimate, delayMs);
+}
+
+function fetchFuelPriceWithTimeout(url, timeoutMs = fuelPriceFetchTimeoutMs) {
+  if (typeof AbortController === "undefined") return fetch(url);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => window.clearTimeout(timeout));
+}
+
+async function refreshFuelPriceEstimate() {
+  if (fuelPriceInFlight) return;
+  window.clearTimeout(fuelPriceTimer);
+  fuelPriceInFlight = true;
   const fuelType = state.fuelType || defaults.fuelType;
   try {
-    const response = await fetch(`${fuelPriceUrl}?fuelType=${encodeURIComponent(fuelType)}`);
+    const response = await fetchFuelPriceWithTimeout(`${fuelPriceUrl}?fuelType=${encodeURIComponent(fuelType)}`);
     if (response.ok) {
       const data = await response.json();
       if (data?.price) {
@@ -8178,9 +8195,11 @@ async function refreshFuelPriceEstimate() {
       }
     }
   } catch (error) {
-    // The app falls back to the configured manual price if the public price API is unavailable.
+    // The app falls back to the configured manual price if the public price API is unavailable or slow.
+  } finally {
+    fuelPriceInFlight = false;
+    scheduleFuelPriceRefresh();
   }
-  fuelPriceTimer = window.setTimeout(refreshFuelPriceEstimate, 60 * 60 * 1000);
 }
 
 function getFuelValidationWarnings(ledger) {
@@ -12485,11 +12504,12 @@ async function initializePwa() {
 
   if ("serviceWorker" in navigator) {
     try {
-      let refreshingForNewServiceWorker = false;
+      let serviceWorkerControllerChanged = false;
       navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (refreshingForNewServiceWorker) return;
-        refreshingForNewServiceWorker = true;
-        window.location.reload();
+        if (serviceWorkerControllerChanged) return;
+        serviceWorkerControllerChanged = true;
+        recordSyncDiagnostic("service-worker-controllerchange", "New app shell is active and will be used on the next natural page load.");
+        recordSupabaseLoadEvent("service-worker-controllerchange", "Skipped automatic reload to avoid app-shell reconnect churn.");
       });
 
       const registration = await navigator.serviceWorker.register("/service-worker.js");
