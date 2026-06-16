@@ -5253,7 +5253,7 @@ window.addEventListener("focus", () => {
     return;
   }
   loadSupabaseStateWithTimeout(
-    { reason: "window-focus" },
+    { reason: "window-focus", background: true },
     supabaseStartupLoadTimeoutMs,
     "Focus cloud sync is delayed. You can keep using local data."
   ).catch((error) => {

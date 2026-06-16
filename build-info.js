@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.143",
-    buildLabel: "sync-delay-success-clear",
-    updatedAt: "2026-06-16T18:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v242",
+    version: "2026.06.16.144",
+    buildLabel: "focus-sync-background-timeout",
+    updatedAt: "2026-06-16T18:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v243",
     releaseNotes: Object.freeze([
+      "Window-focus cloud refreshes now run as background syncs, so a slow focus refresh after a healthy load no longer raises a scary Sync delayed banner unless the app has no healthy cloud state.",
       "Successful Supabase loads and saves now clear stale Sync delayed warnings immediately, so a load-success diagnostic no longer leaves the red banner stuck on-screen.",
       "Sync delayed warnings now include an expandable in-app diagnostic trail with the failing step, timeout/error detail, session state, ledger id, and network status so phone/PWA issues are visible without opening the console.",
       "The Supabase load monitor now surfaces the latest sync diagnostic alongside recent app-side Supabase activity.",

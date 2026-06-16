@@ -241,7 +241,7 @@ function testSupabaseLoadTimeoutGuardExists() {
   assert.match(app, /cloud-sync-delayed-background/);
   assert.match(app, /shouldShowDelayedStatus/);
   assert.match(app, /reason: `auth-\$\{authEvent\}`/);
-  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ reason: "window-focus" \}/m);
+  assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ reason: "window-focus", background: true \}/m);
   assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "login" \}/m);
   assert.match(app, /loadSupabaseStateWithTimeout\(\s*\{ force: true, reason: "ledger-event-auto-sync" \}/m);
   assert.ok(app.includes(`if (isCurrentSupabaseLoad(loadToken)) {

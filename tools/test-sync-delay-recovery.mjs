@@ -26,3 +26,9 @@ assert.match(
   /function markRemoteSaveSucceeded\(label\) \{[\s\S]*clearSyncDelay\(`save-success:\$\{label \|\| "cloud"\}`\);[\s\S]*setSyncStatus\(label\);[\s\S]*\}/,
   "successful Supabase saves should also clear stale delayed-sync errors"
 );
+
+assert.match(
+  appSource,
+  /loadSupabaseStateWithTimeout\(\s*\{ reason: "window-focus", background: true \}/,
+  "window-focus refresh should be treated as a background sync so a timeout after a healthy load does not show a scary delayed banner"
+);
