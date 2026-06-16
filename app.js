@@ -8620,18 +8620,6 @@ async function updatePaymentStatus(button) {
   }
 
   const nextStatus = requestedStatus;
-  pendingSettlementRequestKeys.add(key);
-  button.disabled = true;
-  button.textContent = nextStatus === "requested" ? "Requesting..." : nextStatus === "paid" ? "Marking paid..." : "Reopening...";
-  setSyncStatus("Saving");
-
-  const tableSaved = await saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus);
-  if (!tableSaved) {
-    pendingSettlementRequestKeys.delete(key);
-    render();
-    return;
-  }
-
   const paymentAuditInfo = buildPaymentAuditInfo(settlement, previousStatus, nextStatus);
   const auditEntry = makeAuditEntry({
     type: nextStatus === "requested" ? "payment_requested" : nextStatus === "paid" ? "payment_marked_paid" : "payment_reopened",
@@ -8641,6 +8629,18 @@ async function updatePaymentStatus(button) {
     detail: paymentAuditInfo.detail,
     metadata: paymentAuditInfo.metadata
   });
+  pendingSettlementRequestKeys.add(key);
+  button.disabled = true;
+  button.textContent = nextStatus === "requested" ? "Requesting..." : nextStatus === "paid" ? "Marking paid..." : "Reopening...";
+  setSyncStatus("Saving");
+
+  const tableSaved = await saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, { previousStatus, auditEntry });
+  if (!tableSaved) {
+    pendingSettlementRequestKeys.delete(key);
+    render();
+    return;
+  }
+
   const backendApplied = await applyBackendPaymentAction({
     action: "payment_status",
     scope: "current",
@@ -13262,13 +13262,45 @@ async function saveSettlementRequestStatusRpc(context, payload) {
   };
 }
 
+async function applyPaymentStatusActionRpc(context, payload, options = {}) {
+  const auditEntry = options.auditEntry || {};
+  const { data, error } = await supabaseClient.rpc("apply_payment_status_action", {
+    target_ledger_id: context.ledgerId,
+    target_open_period_id: context.openPeriodId,
+    payer_member_id: payload.from_member_id,
+    recipient_member_id: payload.to_member_id,
+    amount_value: payload.amount,
+    currency_value: payload.currency,
+    previous_status: normalizePaymentStatus(options.previousStatus),
+    next_status: payload.status,
+    audit_summary: auditEntry.summary || "",
+    audit_detail: auditEntry.detail || "",
+    audit_metadata: auditEntry.metadata || {},
+    current_pair_keys: currentSettlementPairKeys(context)
+  });
+
+  if (!error) return { ok: true, data };
+
+  return {
+    ok: false,
+    error,
+    shouldFallback: isMissingPaymentStatusActionRpcError(error)
+  };
+}
+
 function isMissingSettlementRequestStatusRpcError(error) {
   const code = String(error?.code || "");
   const message = String(error?.message || error || "");
   return code === "PGRST202" || (/upsert_settlement_request_status/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message));
 }
 
-async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus) {
+function isMissingPaymentStatusActionRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || error || "");
+  return code === "PGRST202" || (/apply_payment_status_action/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message));
+}
+
+async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, options = {}) {
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
   if (!supabaseClient || !currentSession) return true;
   try {
@@ -13306,12 +13338,30 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       payload.paid_at = null;
     }
 
+    const actionRpcResult = options.auditEntry
+      ? await applyPaymentStatusActionRpc(context, payload, options)
+      : { ok: false, shouldFallback: true };
+    if (actionRpcResult.ok) {
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: "Backend payment action RPC saved the settlement status, stale-row cleanup, and ledger event in one database transaction. JSON audit remains a backup."
+      };
+      return true;
+    }
+
+    if (options.auditEntry && !actionRpcResult.shouldFallback) throw actionRpcResult.error || new Error("Could not save payment action.");
+
+    if (options.auditEntry) {
+      console.warn("Payment action RPC is unavailable; falling back to settlement request transaction RPC. Apply the latest supabase-schema.sql to enable backend-owned payment actions.", actionRpcResult.error);
+    }
+
     const rpcResult = await saveSettlementRequestStatusRpc(context, payload);
     if (rpcResult.ok) {
       normalizedTableStatus = {
         checked: true,
         ok: true,
-        message: "Table-primary write saved the settlement request status and stale-row cleanup through the database transaction RPC. JSON will be updated as backup."
+        message: "Table-primary write saved the settlement request status and stale-row cleanup through the database transaction RPC. Apply the latest Supabase schema to add backend-owned payment ledger events."
       };
       return true;
     }

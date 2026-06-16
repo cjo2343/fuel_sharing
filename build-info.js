@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.151",
-    buildLabel: "syncing-stale-failsafe",
-    updatedAt: "2026-06-16T19:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v250",
+    version: "2026.06.16.152",
+    buildLabel: "payment-action-rpc-foundation",
+    updatedAt: "2026-06-16T19:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v251",
     releaseNotes: Object.freeze([
+      "Payment status changes now prefer a backend-owned Supabase RPC that saves the normalized settlement status, stale-row cleanup, and lightweight ledger event in one database transaction, with fallback for databases that have not applied migration 031 yet.",
       "Visible Syncing status now has a central failsafe and diagnostics, so skipped/background sync paths cannot leave the top bar stuck until manual Sync now is clicked.",
       "Recoverable focus/manual sync delay warnings are now suppressed after a recent healthy normalized-table sync, so stale timeout banners do not reappear after the app has already loaded successfully.",
       "Admin database diagnostics now show a clear timeout/error message instead of staying on Loading forever when a Supabase diagnostics read hangs.",

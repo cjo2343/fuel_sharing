@@ -646,3 +646,4 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Migration `030_onboarding_abuse_rate_limits.sql` adds `public.ledger_onboarding_rate_limits` and `enforce_onboarding_rate_limit(...)` for private workspace creation, invite creation, and invite redemption.
 - Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
+- Payment-status changes are moving RPC-first: keep `apply_payment_status_action` deployed before removing the browser fallback, and preserve tests for payment status plus audit/event breadcrumbs.

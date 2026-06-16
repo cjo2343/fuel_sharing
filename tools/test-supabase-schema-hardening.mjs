@@ -40,11 +40,14 @@ function testSettlementRequestTriggerIsInstalled() {
 function testSettlementRequestTransactionRpcExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(schema, /create or replace function public\.upsert_settlement_request_status\(/);
+  assert.match(schema, /create or replace function public\.apply_payment_status_action\(/);
   assert.match(schema, /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id \|\| ':settlement:' \|\| target_open_period_id::text\)\)/);
   assert.match(schema, /Only ledger members can save settlement requests/);
   assert.match(schema, /Settlement request status and stale-row cleanup should be transactional|cancelled_stale_count/);
   assert.match(schema, /grant execute on function public\.upsert_settlement_request_status\(text, uuid, uuid, uuid, numeric, text, text, text\[\]\) to authenticated/);
+  assert.match(schema, /grant execute on function public\.apply_payment_status_action\(text, uuid, uuid, uuid, numeric, text, text, text, text, text, jsonb, text\[\]\) to authenticated/);
   assert.match(schema, /'upsert_settlement_request_status'/);
+  assert.match(schema, /'apply_payment_status_action'/);
   assert.match(app, /saveSettlementRequestStatusRpc/);
   assert.match(app, /isMissingSettlementRequestStatusRpcError/);
   assert.match(app, /currentSettlementPairKeys/);
@@ -686,6 +689,7 @@ function testOnboardingAbuseRateLimitFoundationExists() {
   assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('create_ledger_invite', target_ledger_id, 20, 60\)/);
   assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('redeem_ledger_invite', null, 8, 60\)/);
   assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
+  assert.match(schema, /'031_payment_status_action_rpc'/);
   assert.match(schema, /'abuse_rate_limit_ready'/);
   console.log("ok - testOnboardingAbuseRateLimitFoundationExists");
 }

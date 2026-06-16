@@ -40,6 +40,7 @@ const expected = [
   "028_invite_code_hash_pgcrypto_fix.sql",
   "029_invite_redeem_return_ambiguity_fix.sql",
   "030_onboarding_abuse_rate_limits.sql",
+  "031_payment_status_action_rpc.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -157,6 +158,10 @@ for (const marker of [
   "perform public.enforce_onboarding_rate_limit('create_ledger_invite'",
   "perform public.enforce_onboarding_rate_limit('redeem_ledger_invite'",
   "abuse_rate_limit_ready",
+  "031_payment_status_action_rpc",
+  "create or replace function public.apply_payment_status_action",
+  "grant execute on function public.apply_payment_status_action",
+  "backend_action', 'apply_payment_status_action",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);
