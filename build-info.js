@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.131",
-    buildLabel: "workspace-invite-refresh-hotfix",
-    updatedAt: "2026-06-16T13:34:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v230",
+    version: "2026.06.16.132",
+    buildLabel: "admin-invite-autorefresh-fix",
+    updatedAt: "2026-06-16T13:46:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v231",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -38,7 +38,8 @@
       "Signed-in workspace identity is now bound to the authenticated ledger member row so invitees cannot inherit the first local admin profile from JSON fallback state.",
       "Login invite auto-redeem now has a defined pending-code storage key and member workspace loads avoid direct ledgers reads that regular-member RLS can reject.",
       "Invite/login runtime now avoids optional chaining bracket syntax so older Safari engines do not stop on a parse error during create-invite and auto-redeem flows.",
-      "Admin invite refresh now has a fail-safe timeout and always leaves the Refresh button usable instead of staying on Loading workspaces."
+      "Admin invite refresh now has a fail-safe timeout and always leaves the Refresh button usable instead of staying on Loading workspaces.",
+      "Admin invite tools now auto-refresh when the Admin tab opens or auth/workspace readiness changes, and invite creation no longer waits on invite-list refresh before showing the one-time code."
     ])
   });
 

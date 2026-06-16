@@ -208,3 +208,9 @@ Invite onboarding now binds the visible app identity to the signed-in Supabase e
 - 2026-06-16: Login/invite runtime syntax compatibility now avoids optional chaining bracket syntax in `app.js`, with validation coverage so older Safari engines cannot be blocked before auth-bound invite handling runs.
 
 - 2026-06-16: Admin invite refresh fail-safe now times out stalled workspace/invite RPC reads, keeps the Refresh button usable, and renders a clear retry message instead of leaving private-beta invite management in a permanent loading state.
+
+### 2026-06-16 — Admin invite auto-refresh hardening
+
+- Admin invite/workspace tools now schedule their refresh when the Admin tab opens and when auth/workspace readiness changes.
+- Create-invite now uses the same timeout guard as refresh and does not block the one-time invite code display behind the invite-list refresh.
+- This keeps private-beta invite onboarding usable while still failing closed through Supabase RPC/RLS when the signed-in user is not an admin.

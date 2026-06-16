@@ -594,6 +594,8 @@ let workspaceInviteStatus = {
   invites: [],
   lastCreatedInvite: null
 };
+let workspaceInviteRefreshPromise = null;
+let workspaceInviteRefreshQueued = false;
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 const viewStorageKey = "fuel-ledger-active-view";
@@ -1450,6 +1452,7 @@ function setActiveView(view) {
   activeView = requestedView === "admin" && !canManageSettings() ? "log" : requestedView;
   localStorage.setItem(viewStorageKey, activeView);
   render();
+  if (activeView === "admin") scheduleWorkspaceInviteRefresh("admin-tab-open");
 }
 
 function renderSectionNavigation() {
@@ -2029,7 +2032,7 @@ els.refreshMembers?.addEventListener("click", async () => {
 
 els.refreshWorkspaceInvites?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await refreshWorkspaceInvites();
+  await (scheduleWorkspaceInviteRefresh("manual-refresh") || Promise.resolve());
 });
 
 els.createInviteForm?.addEventListener("submit", async (event) => {
@@ -5038,6 +5041,7 @@ async function initializeSupabase() {
   if (currentSession) {
     await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Initial workspace list refresh failed", error));
     await refreshAuthBoundMemberProfile();
+    scheduleWorkspaceInviteRefresh("startup-session");
   }
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
@@ -5051,6 +5055,7 @@ async function initializeSupabase() {
     if (session) {
       await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Auth workspace list refresh failed", error));
       await refreshAuthBoundMemberProfile();
+      scheduleWorkspaceInviteRefresh("auth-session");
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
       const authEvent = String(event || "auth-change").toLowerCase();
@@ -10754,17 +10759,18 @@ function isInviteActive(invite) {
 
 function renderWorkspaceInvitesPanel() {
   if (!els.workspaceList && !els.inviteList) return;
-  if (!workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && supabaseClient && currentSession && canManageSettings()) {
-    refreshWorkspaceInvites().catch((error) => {
-      workspaceInviteStatus.loading = false;
-      workspaceInviteStatus.error = error.message || String(error);
-      renderWorkspaceInvitesPanel();
-    });
-  }
   if (!canManageSettings()) {
     if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Admin access is required to manage workspace invites.</p>`;
     if (els.inviteList) els.inviteList.innerHTML = "";
     return;
+  }
+  if (supabaseClient && !currentSession) {
+    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Sign in before loading workspace invites.</p>`;
+    if (els.inviteList) els.inviteList.innerHTML = `<p class="empty-state">Sign in to review invites.</p>`;
+    return;
+  }
+  if (!workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && canRefreshWorkspaceInviteTools()) {
+    scheduleWorkspaceInviteRefresh("admin-panel-render");
   }
   if (workspaceInviteStatus.loading) {
     if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Loading workspaces and invites...</p>`;
@@ -10823,7 +10829,34 @@ function renderWorkspaceInvitesPanel() {
   }
 }
 
-async function refreshWorkspaceInvites() {
+function canRefreshWorkspaceInviteTools() {
+  return Boolean(supabaseClient && currentSession && canManageSettings());
+}
+
+function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
+  if (!canRefreshWorkspaceInviteTools()) return null;
+  if (workspaceInviteStatus.loading && workspaceInviteRefreshPromise) {
+    workspaceInviteRefreshQueued = true;
+    return workspaceInviteRefreshPromise;
+  }
+  workspaceInviteRefreshPromise = refreshWorkspaceInvites({ reason }).finally(() => {
+    workspaceInviteRefreshPromise = null;
+    if (workspaceInviteRefreshQueued) {
+      workspaceInviteRefreshQueued = false;
+      scheduleWorkspaceInviteRefresh(`${reason}-queued`);
+    }
+  });
+  return workspaceInviteRefreshPromise;
+}
+
+async function ensureWorkspaceInviteToolsReady(reason = "workspace-invite-ready") {
+  if (!canRefreshWorkspaceInviteTools()) return false;
+  if (workspaceInviteStatus.loaded && !workspaceInviteStatus.loading) return true;
+  await (scheduleWorkspaceInviteRefresh(reason) || Promise.resolve());
+  return workspaceInviteStatus.loaded && !workspaceInviteStatus.error;
+}
+
+async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   if (!supabaseClient || !currentSession) return;
   if (!canManageSettings()) return;
   if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = true;
@@ -10889,6 +10922,8 @@ function describeWorkspaceInviteError(error) {
 
 async function createWorkspaceInvite() {
   if (!supabaseClient || !currentSession || !canManageSettings()) return;
+  await ensureWorkspaceInviteToolsReady("before-create-invite").catch(() => false);
+  reconcileActiveLedgerSelection();
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const email = normalizeEmail(els.inviteEmail?.value || "") || null;
   const role = els.inviteRole?.value === "admin" ? "admin" : "member";
@@ -10897,13 +10932,16 @@ async function createWorkspaceInvite() {
   if (role === "admin" && !confirmUserAction("Create an admin invite? Only share admin invites with someone who should manage members, backups, and diagnostics.")) return;
   setWorkspaceInvitesMessage("Creating invite...");
   try {
-    const { data, error } = await supabaseClient.rpc("create_ledger_invite", {
-      target_ledger_id: ledgerId,
-      invite_role: role,
-      invite_email: email,
-      expires_in_hours: expiresInHours,
-      max_uses: maxUses
-    });
+    const { data, error } = await withWorkspaceInviteRequestTimeout(
+      supabaseClient.rpc("create_ledger_invite", {
+        target_ledger_id: ledgerId,
+        invite_role: role,
+        invite_email: email,
+        expires_in_hours: expiresInHours,
+        max_uses: maxUses
+      }),
+      "Invite creation"
+    );
     if (error) throw error;
     const result = Array.isArray(data) ? data[0] : data;
     workspaceInviteStatus.lastCreatedInvite = result || null;
@@ -10913,11 +10951,13 @@ async function createWorkspaceInvite() {
     if (els.inviteRole) els.inviteRole.value = "member";
     if (els.inviteExpiresHours) els.inviteExpiresHours.value = "168";
     if (els.inviteMaxUses) els.inviteMaxUses.value = "1";
-    await refreshWorkspaceInvites();
+    scheduleWorkspaceInviteRefresh("after-create-invite");
     renderCreatedInvite(result);
   } catch (error) {
     showUserError(`Could not create invite: ${describeWorkspaceInviteError(error)}`);
     setWorkspaceInvitesMessage("Invite creation failed.");
+  } finally {
+    renderWorkspaceInvitesPanel();
   }
 }
 

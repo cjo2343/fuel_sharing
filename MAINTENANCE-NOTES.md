@@ -596,3 +596,7 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
   - Wrapped linked-workspace and invite-list refresh requests in an 8 second timeout so the Invites & workspaces cards do not stay on “Loading...” forever if Supabase/RLS/network stalls.
   - Refresh now re-enables the button and renders a clear retry/error message instead of leaving the admin panel stuck.
   - Bumped runtime metadata to `2026.06.16.131` / `fuel-ledger-v230`.
+
+- 2026-06-16: Admin invite auto-refresh hardening
+  - Admin Invites & workspaces now refreshes when the Admin tab opens and after auth/workspace readiness changes, rather than requiring a manual Refresh first.
+  - Invite creation now shows the one-time invite code as soon as the RPC succeeds and refreshes the invite list in the background so a stalled list request cannot leave the form stuck on “Creating invite...”.

@@ -615,6 +615,22 @@ function testWorkspaceInviteRefreshFailSafeExists() {
   console.log("ok - testWorkspaceInviteRefreshFailSafeExists");
 }
 
+function testWorkspaceInviteAutoRefreshExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /let workspaceInviteRefreshPromise = null/);
+  assert.match(app, /function scheduleWorkspaceInviteRefresh\(reason = "workspace-invite-refresh"\)/);
+  assert.match(app, /function canRefreshWorkspaceInviteTools\(\)/);
+  assert.match(app, /async function ensureWorkspaceInviteToolsReady\(reason = "workspace-invite-ready"\)/);
+  assert.match(app, /if \(activeView === "admin"\) scheduleWorkspaceInviteRefresh\("admin-tab-open"\)/);
+  assert.match(app, /scheduleWorkspaceInviteRefresh\("startup-session"\)/);
+  assert.match(app, /scheduleWorkspaceInviteRefresh\("auth-session"\)/);
+  assert.match(app, /scheduleWorkspaceInviteRefresh\("admin-panel-render"\)/);
+  assert.match(app, /await ensureWorkspaceInviteToolsReady\("before-create-invite"\)/);
+  assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\.rpc\("create_ledger_invite"/);
+  assert.match(app, /scheduleWorkspaceInviteRefresh\("after-create-invite"\)/);
+  console.log("ok - testWorkspaceInviteAutoRefreshExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -674,4 +690,5 @@ testWorkspaceInviteUxLayoutExists();
 testCurrentWorkspaceUxScopeExists();
 testAuthBoundWorkspaceIdentityExists();
 testWorkspaceInviteRefreshFailSafeExists();
+testWorkspaceInviteAutoRefreshExists();
 testFuelLedgerHealthcheckExists();
