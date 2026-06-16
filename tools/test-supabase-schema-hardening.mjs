@@ -303,8 +303,14 @@ function testAdminDiagnosticsUxExists() {
   assert.match(app, /function getSchemaMigrationDiagnostics\(\)/);
   assert.match(app, /function getSchemaDriftDiagnostics\(\)/);
   assert.match(app, /function getAdminHealthSummary\(/);
+  assert.match(app, /function getPublicLaunchReadinessDiagnostics\(\)/);
   assert.match(app, /title: "Overall health"/);
   assert.match(app, /All core checks look healthy/);
+  assert.match(app, /title: "Public launch readiness"/);
+  assert.match(app, /Private beta only/);
+  assert.match(app, /Do not advertise broadly yet/);
+  assert.match(app, /workspace\/invite onboarding before Reddit-scale traffic/);
+  assert.match(app, /public launch readiness/);
   assert.match(app, /title: "RPC availability"/);
   assert.match(app, /title: "Migrations"/);
   assert.match(app, /title: "Schema shape"/);

@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.116",
-    buildLabel: "admin-health-summary-polish",
-    updatedAt: "2026-06-16T07:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v215",
+    version: "2026.06.16.117",
+    buildLabel: "public-launch-readiness-summary",
+    updatedAt: "2026-06-16T07:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v216",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -23,7 +23,8 @@
       "Settlement request status updates now use a transaction RPC when available so payment status saves and stale payment-line cleanup succeed or fail together.",
       "Security Health now reports Fuel Ledger schema migration tracking so missing Supabase migration IDs are visible after deployment.",
       "Security Health now detects schema drift across expected tables, columns, and key RLS policies.",
-      "Admin diagnostics now include a plain-language overall health summary plus dedicated migration and schema-shape cards."
+      "Admin diagnostics now include a plain-language overall health summary plus dedicated migration and schema-shape cards.",
+      "Admin diagnostics now includes a public launch readiness card that warns against broad advertising until workspace isolation and invite onboarding exist."
     ])
   });
 

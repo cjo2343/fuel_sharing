@@ -2531,18 +2531,42 @@ function getSchemaDriftDiagnostics() {
   };
 }
 
-function getAdminHealthSummary({ rpcDiagnostics, realtimePublicationDiagnostics, schemaMigrationDiagnostics, schemaDriftDiagnostics, normalizedStatus }) {
+function getPublicLaunchReadinessDiagnostics() {
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const publicLaunchRisks = [];
+  if (ledgerId === "main-car") {
+    publicLaunchRisks.push("shared main-car ledger");
+  }
+  if (!supabaseClient) {
+    return {
+      status: "Local/private only",
+      detail: "Public launch readiness is checked after Supabase is configured.",
+      level: "warning"
+    };
+  }
+  publicLaunchRisks.push("no self-serve workspace isolation yet");
+  publicLaunchRisks.push("no invite-only onboarding gate yet");
+  publicLaunchRisks.push("no public signup rate-limit dashboard yet");
+  return {
+    status: "Private beta only",
+    detail: `Do not advertise broadly yet: ${publicLaunchRisks.join(", ")}. Build workspace/invite onboarding before Reddit-scale traffic.`,
+    level: "warning"
+  };
+}
+
+function getAdminHealthSummary({ rpcDiagnostics, realtimePublicationDiagnostics, schemaMigrationDiagnostics, schemaDriftDiagnostics, publicLaunchReadinessDiagnostics, normalizedStatus }) {
   const warningTitles = [];
   if (normalizedTableStatus?.checked && !normalizedTableStatus.ok) warningTitles.push("table health");
   if (rpcDiagnostics.level !== "ok") warningTitles.push("RPC availability");
   if (schemaMigrationDiagnostics.level !== "ok") warningTitles.push("migration tracking");
   if (schemaDriftDiagnostics.level !== "ok") warningTitles.push("schema drift");
   if (realtimePublicationDiagnostics.level !== "ok") warningTitles.push("Realtime publication");
+  if (publicLaunchReadinessDiagnostics.level !== "ok") warningTitles.push("public launch readiness");
   if (pendingLocalChanges > 0 || lastSyncError) warningTitles.push("sync state");
   if (!warningTitles.length && normalizedStatus === "Healthy") {
     return {
       status: "All core checks look healthy",
-      detail: "Cloud tables, RPCs, migrations, schema shape, sync state, and backup guardrails are all green from the latest available checks.",
+      detail: "Cloud tables, RPCs, migrations, schema shape, sync state, backup guardrails, and launch readiness are green from the latest available checks.",
       level: "ok"
     };
   }
@@ -2635,11 +2659,13 @@ function renderAdminGuardrailOverview() {
   const realtimePublicationDiagnostics = getRealtimePublicationDiagnostics();
   const schemaMigrationDiagnostics = getSchemaMigrationDiagnostics();
   const schemaDriftDiagnostics = getSchemaDriftDiagnostics();
+  const publicLaunchReadinessDiagnostics = getPublicLaunchReadinessDiagnostics();
   const healthSummary = getAdminHealthSummary({
     rpcDiagnostics,
     realtimePublicationDiagnostics,
     schemaMigrationDiagnostics,
     schemaDriftDiagnostics,
+    publicLaunchReadinessDiagnostics,
     normalizedStatus
   });
 
@@ -2692,6 +2718,12 @@ function renderAdminGuardrailOverview() {
         status: realtimePublicationDiagnostics.status,
         detail: realtimePublicationDiagnostics.detail,
         level: realtimePublicationDiagnostics.level
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Public launch readiness",
+        status: publicLaunchReadinessDiagnostics.status,
+        detail: publicLaunchReadinessDiagnostics.detail,
+        level: publicLaunchReadinessDiagnostics.level
       })}
       ${adminGuardrailStatusCard({
         title: "Backup guardrails",

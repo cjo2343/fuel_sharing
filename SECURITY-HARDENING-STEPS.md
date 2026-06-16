@@ -158,3 +158,9 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Admin diagnostics now show a plain-language **Overall health** card before the detailed checks.
 - Migration tracking and schema drift are shown as separate cards so admins can quickly tell whether Supabase upgrades are applied and the database shape still matches the app.
 - Keep these cards backed by Security Health data; do not hide migration/schema warnings behind a generic green status.
+
+### Public launch readiness guardrail
+
+- Admin diagnostics includes a **Public launch readiness** card.
+- While the app still uses the shared `main-car` ledger and lacks self-serve workspace/invite onboarding, the card warns that broad public advertising should remain blocked.
+- Build workspace isolation, invite-only onboarding, and abuse/rate-limit monitoring before Reddit-scale traffic.

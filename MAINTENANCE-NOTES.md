@@ -539,3 +539,7 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 
 - The admin guardrail overview now includes an Overall health summary plus dedicated Migrations and Schema shape cards.
 - When changing Security Health or Supabase healthcheck payloads, update the admin diagnostics cards and `testAdminDiagnosticsUxExists` so the plain-language summary remains accurate.
+
+## Public launch readiness UX
+
+Admin diagnostics now surfaces a public-launch readiness warning so operators see that the current deployment is private-beta oriented. Broad public launch should wait for workspace isolation, invite-only onboarding, and abuse/rate-limit monitoring.
