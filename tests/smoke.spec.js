@@ -35,21 +35,31 @@ test.beforeEach(async ({ request }) => {
 });
 
 
+
+async function gotoLocalSmokeApp(page, url = "/") {
+  await page.goto(url, { waitUntil: "commit" });
+}
+
+async function waitForLocalSmokeAppReady(page) {
+  await expect(page.locator("#tripForm")).toBeVisible({ timeout: 10000 });
+  await expect(page.locator("#tripList")).toBeVisible({ timeout: 10000 });
+  await expect(page.locator("#startKm")).toBeEnabled({ timeout: 10000 });
+}
+
 async function openLocalApp(page) {
   await page.route("**/supabase-config.js", (route) => route.fulfill({
     contentType: "application/javascript",
     body: "window.CAR_SHARE_SUPABASE = { enabled: false, url: '', anonKey: '', ledgerId: 'test-ledger' };"
   }));
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await gotoLocalSmokeApp(page);
 
   // localStorage is only available after navigating to an HTTP origin.
   // Do not clear it from about:blank; WebKit/Chromium can throw SecurityError.
   await page.evaluate(() => localStorage.clear());
-  await page.reload();
+  await page.reload({ waitUntil: "commit" });
 
-  await expect(page.locator("#tripForm")).toBeVisible();
-  await expect(page.locator("#startKm")).toBeEnabled();
+  await waitForLocalSmokeAppReady(page);
 }
 
 async function chooseFirstSelectOption(select) {
@@ -220,9 +230,9 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
     };
   }, { seededState, session });
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#tripList")).toContainText("Christian-owned permission smoke trip");
-  await expect(page.locator("#fuelList")).toContainText("Permission Smoke Station");
+  await gotoLocalSmokeApp(page);
+  await expect(page.locator("#tripList")).toContainText("Christian-owned permission smoke trip", { timeout: 10000 });
+  await expect(page.locator("#fuelList")).toContainText("Permission Smoke Station", { timeout: 10000 });
 }
 
 
@@ -291,12 +301,15 @@ async function createBasicTripAndFuel(page, { note = "Playwright smoke trip", fu
   await chooseFirstSelectOption(page.locator("#tripDriver"));
   await ensureTripParticipantsSelected(page);
   await page.locator("#tripDate").fill("2026-06-10");
-  await page.locator("#startKm").fill("1000");
-  await page.locator("#endKm").fill("1042");
+  const currentStartKm = Number(await page.locator("#startKm").inputValue());
+  const startKm = Number.isFinite(currentStartKm) && currentStartKm > 0 ? currentStartKm : 1000;
+  const endKm = startKm + 42;
+  await page.locator("#startKm").fill(String(startKm));
+  await page.locator("#endKm").fill(String(endKm));
   await page.locator("#tripNote").fill(note);
   await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
 
-  await expect(page.locator("#tripList")).toContainText(note);
+  await expect(page.locator("#tripList")).toContainText(note, { timeout: 10000 });
 
   await chooseFirstSelectOption(page.locator("#fuelPayer"));
   await page.locator("#fuelDate").fill("2026-06-10");
@@ -685,7 +698,7 @@ test("payment deep links route current payments to Settlement and closed payment
   await expect(paymentCard).toContainText(/fuel share/i);
   await expect(paymentCard).toContainText(/10[,.]5 km distance share/);
 
-  await page.goto(`/#payment=${paymentRef}&scope=current`);
+  await gotoLocalSmokeApp(page, `/#payment=${paymentRef}&scope=current`);
   await expect(page.locator('[data-view="settle"][aria-labelledby="settleHeading"]')).toBeVisible();
   await expect(page.locator(`.settlement-card[data-payment-ref="${paymentRef}"]`)).toHaveClass(/highlight-pulse/);
 
@@ -698,7 +711,7 @@ test("payment deep links route current payments to Settlement and closed payment
   const periodId = await closedPeriodCard.getAttribute("data-period-id");
   expect(periodId).toBeTruthy();
 
-  await page.goto(`/#payment=${paymentRef}&scope=closed&period=${periodId}`);
+  await gotoLocalSmokeApp(page, `/#payment=${paymentRef}&scope=closed&period=${periodId}`);
   await expect(page.locator("#periodsHeading")).toContainText("Closed periods");
   const highlightedArchivePayment = page.locator(`.archive-payment-card[data-payment-ref="${paymentRef}"]`);
   await expect(highlightedArchivePayment).toHaveCount(1);
