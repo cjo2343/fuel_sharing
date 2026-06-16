@@ -3613,6 +3613,8 @@ declare
   existing_member public.ledger_members%rowtype;
   base_name text;
   saved_member_id uuid;
+  redeemed_ledger_id text;
+  redeemed_role text;
 begin
   if current_email is null or btrim(current_email) = '' then
     raise exception 'A signed-in user email is required to redeem an invite.' using errcode = 'P0001';
@@ -3649,7 +3651,7 @@ begin
         role = case when existing_member.role = 'admin' then 'admin' else invite_row.role end,
         updated_at = now()
     where id = existing_member.id
-    returning id, ledger_id, role into saved_member_id, ledger_id, role;
+    returning public.ledger_members.id, public.ledger_members.ledger_id, public.ledger_members.role into saved_member_id, redeemed_ledger_id, redeemed_role;
   else
     base_name := split_part(current_email, '@', 1);
     if exists (select 1 from public.ledger_members lm where lm.ledger_id = invite_row.ledger_id and lm.name = base_name) then
@@ -3668,7 +3670,7 @@ begin
       current_email,
       invite_row.role,
       true
-    ) returning id, ledger_id, role into saved_member_id, ledger_id, role;
+    ) returning public.ledger_members.id, public.ledger_members.ledger_id, public.ledger_members.role into saved_member_id, redeemed_ledger_id, redeemed_role;
   end if;
 
   update public.ledger_invites
@@ -3676,7 +3678,9 @@ begin
       updated_at = now()
   where id = invite_row.id;
 
-  member_id := saved_member_id;
+  redeem_ledger_invite.ledger_id := redeemed_ledger_id;
+  redeem_ledger_invite.member_id := saved_member_id;
+  redeem_ledger_invite.role := redeemed_role;
   return next;
 end;
 $$;
@@ -4018,3 +4022,12 @@ insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('028_invite_code_hash_pgcrypto_fix', 'Schema-qualify pgcrypto invite code hashing so invite RPCs work on deployed Supabase projects.')
 on conflict (migration_id) do update set
   description = excluded.description;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '029_invite_redeem_return_ambiguity_fix',
+  'Fixes ambiguous ledger_id/role return-column references in redeem_ledger_invite so login invite auto-redemption and signed-in dashboard redemption work without requiring a second paste.'
+)
+on conflict (migration_id) do update set
+  description = excluded.description,
+  applied_at = now();

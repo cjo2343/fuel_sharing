@@ -214,3 +214,7 @@ Invite onboarding now binds the visible app identity to the signed-in Supabase e
 - Admin invite/workspace tools now schedule their refresh when the Admin tab opens and when auth/workspace readiness changes.
 - Create-invite now uses the same timeout guard as refresh and does not block the one-time invite code display behind the invite-list refresh.
 - This keeps private-beta invite onboarding usable while still failing closed through Supabase RPC/RLS when the signed-in user is not an admin.
+
+### 2026-06-16 invite redemption ambiguity fix
+
+Apply `supabase/migrations/029_invite_redeem_return_ambiguity_fix.sql` after the invite pgcrypto migrations. It redefines `redeem_ledger_invite` so return columns are assigned explicitly instead of colliding with table columns named `ledger_id` and `role`. This keeps the login-screen invite auto-redeem flow from failing and avoids making users paste the same workspace code again on the dashboard.

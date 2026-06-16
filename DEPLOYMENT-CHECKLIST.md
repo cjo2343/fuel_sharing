@@ -515,3 +515,8 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Keep public signup disabled. Invite RPCs are groundwork only until the workspace selection/join UI and abuse controls are complete.
 
 - Apply `027_invite_code_generation_pgcrypto_fix.sql` and `028_invite_code_hash_pgcrypto_fix.sql` after invite onboarding so Admin invite creation can generate and hash one-time codes.
+
+### Invite redemption migration 029 tracking column check
+
+- Before applying `029_invite_redeem_return_ambiguity_fix.sql`, confirm the SQL writes to `public.fuel_ledger_schema_migrations (migration_id, description)` only. Existing deployed migration-tracking tables do not have a `notes` column, so release SQL must not use `(migration_id, notes)`.
+- After applying migration 029, verify Security Health shows latest expected/applied migration `029_invite_redeem_return_ambiguity_fix` before retrying invite auto-redemption.

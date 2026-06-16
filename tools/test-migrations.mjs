@@ -38,6 +38,7 @@ const expected = [
   "026_invite_onboarding_foundation.sql",
   "027_invite_code_generation_pgcrypto_fix.sql",
   "028_invite_code_hash_pgcrypto_fix.sql",
+  "029_invite_redeem_return_ambiguity_fix.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -146,9 +147,20 @@ for (const marker of [
   "extensions.gen_random_bytes",
   "028_invite_code_hash_pgcrypto_fix",
   "extensions.digest",
+  "029_invite_redeem_return_ambiguity_fix",
+  "redeem_ledger_invite.ledger_id := redeemed_ledger_id",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);
 }
+
+assert.ok(
+  !migrationText.includes("fuel_ledger_schema_migrations (migration_id, notes)"),
+  "migrations should write schema migration tracking notes into the existing description column, not a non-existent notes column"
+);
+assert.ok(
+  !consolidatedSchema.includes("fuel_ledger_schema_migrations (migration_id, notes)"),
+  "consolidated schema should not reference a non-existent schema migration notes column"
+);
 
 console.log("ok - migration files are present, ordered, and cover critical schema markers");

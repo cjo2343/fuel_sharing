@@ -600,3 +600,14 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - 2026-06-16: Admin invite auto-refresh hardening
   - Admin Invites & workspaces now refreshes when the Admin tab opens and after auth/workspace readiness changes, rather than requiring a manual Refresh first.
   - Invite creation now shows the one-time invite code as soon as the RPC succeeds and refreshes the invite list in the background so a stalled list request cannot leave the form stuck on “Creating invite...”.
+
+- 2026-06-16: Invite redemption ambiguity hotfix
+  - Added migration `029_invite_redeem_return_ambiguity_fix.sql` to explicitly assign `redeem_ledger_invite` output columns after member insert/update.
+  - This fixes Supabase errors like `column reference "ledger_id" is ambiguous` during login invite auto-redemption and dashboard invite redemption.
+  - Bumped runtime cache to `fuel-ledger-v232` because login/invite runtime metadata changed.
+
+### Invite redemption migration tracking hotfix
+
+- Fixed migration `029_invite_redeem_return_ambiguity_fix.sql` and `supabase-schema.sql` to record migration metadata in the existing `description` column instead of a non-existent `notes` column.
+- Added validation coverage so future migrations cannot insert into `public.fuel_ledger_schema_migrations (migration_id, notes)` or update `notes = excluded.notes`.
+- Updated the deployment checklist with an explicit migration 029 tracking-column check before applying invite redemption SQL.

@@ -477,6 +477,7 @@ function testWorkspaceFoundationExists() {
   assert.match(schema, /'026_invite_onboarding_foundation'/);
   assert.match(schema, /'027_invite_code_generation_pgcrypto_fix'/);
   assert.match(schema, /'028_invite_code_hash_pgcrypto_fix'/);
+  assert.match(schema, /'029_invite_redeem_return_ambiguity_fix'/);
   console.log("ok - testWorkspaceFoundationExists");
 }
 
@@ -502,6 +503,15 @@ function testInviteOnboardingFoundationExists() {
   assert.match(schema, /Only ledger admins can create invites/);
   assert.match(schema, /A signed-in user email is required to redeem an invite/);
   assert.match(schema, /This invite is for a different email address/);
+  assert.match(schema, /redeemed_ledger_id text/);
+  assert.match(schema, /returning public\.ledger_members\.id, public\.ledger_members\.ledger_id, public\.ledger_members\.role/);
+  assert.match(schema, /redeem_ledger_invite\.ledger_id := redeemed_ledger_id/);
+  assert.match(schema, /redeem_ledger_invite\.member_id := saved_member_id/);
+  assert.match(schema, /redeem_ledger_invite\.role := redeemed_role/);
+  assert.doesNotMatch(schema, /returning id, ledger_id, role into saved_member_id, ledger_id, role/, "invite redemption should not return into ambiguous output column names");
+  assert.match(schema, /'029_invite_redeem_return_ambiguity_fix'/);
+  assert.doesNotMatch(schema, /fuel_ledger_schema_migrations \(migration_id, notes\)/, "schema migration tracking should use description, not a non-existent notes column");
+  assert.doesNotMatch(schema, /notes = excluded\.notes/, "schema migration tracking should not update a non-existent notes column");
   assert.match(schema, /'ledger_invites'/);
   assert.match(schema, /'create_ledger_invite'/);
   assert.match(schema, /'redeem_ledger_invite'/);
