@@ -533,12 +533,20 @@ let lastSyncDiagnostic = null;
 const syncDiagnostics = [];
 let lastDataIoDiagnostic = null;
 const dataIoDiagnostics = [];
+let dataIoOperationCounter = 0;
+
+function createDataIoOperationId(source = "data-io") {
+  dataIoOperationCounter += 1;
+  const safeSource = String(source || "data-io").replace(/[^a-z0-9_-]/gi, "-").slice(0, 40) || "data-io";
+  return `${safeSource}-${Date.now().toString(36)}-${dataIoOperationCounter.toString(36)}`;
+}
 
 function summarizeDataIoTarget(meta = {}) {
   return meta.endpoint || meta.rpc || meta.table || meta.route || meta.source || "unknown";
 }
 
 function dataIoSignature(entry = {}) {
+  if (entry.operationId) return `op:${entry.operationId}`;
   return [
     entry.source || "unknown",
     entry.route || "unknown",
@@ -582,6 +590,7 @@ function recordDataIoDiagnostic(phase, meta = {}) {
     rpc: meta.rpc || "",
     endpoint: meta.endpoint || "",
     operation: meta.operation || "",
+    operationId: meta.operationId || "",
     detail: meta.detail || "",
     ok: meta.ok === true,
     ledgerId: supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : "",
@@ -613,18 +622,20 @@ function recordDataIoDiagnostic(phase, meta = {}) {
 }
 
 async function traceDataIo(meta, operation) {
-  recordDataIoDiagnostic("start", { ...meta, ok: true });
+  const operationId = meta.operationId || createDataIoOperationId(meta.source);
+  const tracedMeta = { ...meta, operationId };
+  recordDataIoDiagnostic("start", { ...tracedMeta, ok: true });
   try {
     const result = await operation();
     const error = result?.error || null;
     if (error) {
-      recordDataIoDiagnostic("error", { ...meta, error });
+      recordDataIoDiagnostic("error", { ...tracedMeta, error });
     } else {
-      recordDataIoDiagnostic("success", { ...meta, ok: true });
+      recordDataIoDiagnostic("success", { ...tracedMeta, ok: true });
     }
     return result;
   } catch (error) {
-    recordDataIoDiagnostic("exception", { ...meta, error });
+    recordDataIoDiagnostic("exception", { ...tracedMeta, error });
     throw error;
   }
 }
@@ -13630,12 +13641,14 @@ async function applyPaymentStatusActionRpc(context, payload, options = {}) {
 }
 
 async function applyPaymentStatusActionViaRender(context, payload, options = {}, rpcPayload = {}) {
+  const operationId = options.operationId || createDataIoOperationId("settlement-request-save");
+  const traceMeta = { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, operationId };
   if (!currentSession?.access_token) {
     return { ok: false, shouldFallback: true, backend: "render-api", error: new Error("No active Supabase session for Render payment action API.") };
   }
 
   try {
-    recordDataIoDiagnostic("start", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, ok: true });
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), paymentStatusActionTimeoutMs);
     const response = await fetch(renderPaymentStatusActionUrl, {
@@ -13666,14 +13679,14 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-payment-action", `${payload.status} via Render backend API`);
-      recordDataIoDiagnostic("success", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, ok: true });
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true });
       return { ok: true, data: result.result, backend: "render-api" };
     }
 
     const message = result?.message || result?.error || text || `Render payment action failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    recordDataIoDiagnostic("error", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, error, detail: `HTTP ${response.status}` });
+    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}` });
     return {
       ok: false,
       error,
@@ -13681,7 +13694,7 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
       backend: "render-api"
     };
   } catch (error) {
-    recordDataIoDiagnostic(error?.name === "AbortError" ? "timeout" : "exception", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, error });
+    recordDataIoDiagnostic(error?.name === "AbortError" ? "timeout" : "exception", { ...traceMeta, error });
     console.warn("Render payment action API failed; falling back to direct Supabase RPC", error);
     if (error?.name === "AbortError") {
       error = paymentActionTimeoutError("Render payment action API", paymentStatusActionTimeoutMs);
@@ -13704,7 +13717,6 @@ function isMissingPaymentStatusActionRpcError(error) {
 
 async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, options = {}) {
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
-  recordDataIoDiagnostic("start", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: nextStatus, ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
@@ -13742,8 +13754,11 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       payload.paid_at = null;
     }
 
+    const actionRpcOptions = options.auditEntry
+      ? { ...options, operationId: createDataIoOperationId("settlement-request-save") }
+      : options;
     const actionRpcResult = options.auditEntry
-      ? await applyPaymentStatusActionRpc(context, payload, options)
+      ? await applyPaymentStatusActionRpc(context, payload, actionRpcOptions)
       : { ok: false, shouldFallback: true };
     if (actionRpcResult.ok) {
       normalizedTableStatus = {
@@ -13751,7 +13766,6 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
         ok: true,
         message: `${actionRpcResult.backend === "render-api" ? "Render backend API" : "Backend payment action RPC"} saved the settlement status, stale-row cleanup, and ledger event in one database transaction. JSON audit remains a backup.`
       };
-      recordDataIoDiagnostic("success", { source: "settlement-request-save", route: actionRpcResult.backend || "backend", rpc: actionRpcResult.backend === "supabase-rpc" ? "apply_payment_status_action" : "", endpoint: actionRpcResult.backend === "render-api" ? renderPaymentStatusActionUrl : "", operation: nextStatus, ok: true });
       return true;
     }
 
@@ -13768,7 +13782,6 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
         ok: true,
         message: "Table-primary write saved the settlement request status and stale-row cleanup through the database transaction RPC. Apply the latest Supabase schema to add backend-owned payment ledger events."
       };
-      recordDataIoDiagnostic("success", { source: "settlement-request-save", route: "supabase-rpc", rpc: "upsert_settlement_request_status", operation: nextStatus, ok: true });
       return true;
     }
 
@@ -13779,7 +13792,6 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       .from("settlement_requests")
       .upsert(payload, { onConflict: "period_id,from_member_id,to_member_id" }));
     if (result.error) throw result.error;
-    recordDataIoDiagnostic("success", { source: "settlement-request-save", route: "direct-table", table: "settlement_requests", operation: nextStatus, ok: true, detail: "Saved through guarded table fallback." });
 
     await pruneStaleSettlementRequests(context).catch((error) => {
       console.warn("Could not prune stale settlement request rows", error);

@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.158",
-    buildLabel: "admin-diagnostics-dashboard",
-    updatedAt: "2026-06-16T22:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v257",
+    version: "2026.06.16.159",
+    buildLabel: "data-io-operation-id-pairing",
+    updatedAt: "2026-06-16T23:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v258",
     releaseNotes: Object.freeze([
+      "Data I/O operation pairing now uses unique operation IDs, so simultaneous Render payment starts and finishes cannot leave orphaned active rows in Admin diagnostics.",
       "Admin diagnostics now separates admin/manual diagnostic timeouts from core cloud sync warnings and presents load activity in wide dashboard cards with grouped operations.",
       "Data I/O diagnostics now pair start/success/error events into operation rows with status and duration, so an old start entry no longer looks like a stuck write when a matching ok event exists.",
       "Data I/O flight recorder now records each normalized read/write source, route, table/RPC/API endpoint, result, and Supabase error so stuck Saving/Syncing states show the real failing operation instead of a generic status.",

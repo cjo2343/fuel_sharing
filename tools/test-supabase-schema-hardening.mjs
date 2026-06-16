@@ -720,7 +720,12 @@ function testDataIoFlightRecorderExists() {
   const app = readFileSync("app.js", "utf8");
   assert.match(app, /const dataIoDiagnostics = \[\]/);
   assert.match(app, /function recordDataIoDiagnostic\(phase, meta = \{\}\)/);
+  assert.match(app, /let dataIoOperationCounter = 0/);
+  assert.match(app, /function createDataIoOperationId\(source = "data-io"\)/);
+  assert.match(app, /if \(entry\.operationId\) return `op:\$\{entry\.operationId\}`/);
+  assert.match(app, /operationId: meta\.operationId \|\| ""/);
   assert.match(app, /async function traceDataIo\(meta, operation\)/);
+  assert.match(app, /const operationId = meta\.operationId \|\| createDataIoOperationId\(meta\.source\)/);
   assert.match(app, /data-io-failure/);
   assert.match(app, /Latest data I\/O/);
   assert.match(app, /latestDataIoDiagnostic/);
@@ -736,6 +741,7 @@ function testDataIoFlightRecorderExists() {
   assert.match(app, /route: "render-api"/);
   assert.match(app, /route: "supabase-rpc"/);
   assert.match(app, /route: "direct-table"/);
+  assert.match(app, /const traceMeta = \{ source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload\.status, operationId \}/);
   assert.match(app, /Refusing to upsert ledgers without slug/);
   assert.match(app, /ledgers upsert blocked before Supabase because slug is required/);
   console.log("ok - testDataIoFlightRecorderExists");
