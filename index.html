@@ -791,8 +791,9 @@
 
           <div class="workspace-invites-grid">
             <article class="data-tool-card">
-              <strong>Create invite</strong>
-              <p>Create a one-time or limited-use invite for the current ledger. Codes are shown once, stored hashed in Supabase, and are not emailed automatically.</p>
+              <strong>Create invite for current workspace</strong>
+              <p id="inviteWorkspaceScope" class="workspace-invite-scope">Creating invite for: Current workspace. This code joins only that workspace.</p>
+              <p>Create a one-time or limited-use invite for the selected workspace only. Codes are shown once, stored hashed in Supabase, and are not emailed automatically.</p>
               <form id="createInviteForm" class="member-management-form compact-admin-form">
                 <label>
                   Email restriction <span class="entry-meta">optional</span>
@@ -814,7 +815,7 @@
                   <input id="inviteMaxUses" type="number" min="1" max="25" step="1" value="1" />
                 </label>
                 <button class="primary-button" type="submit">Create invite code</button>
-                <p class="entry-meta invite-share-guidance">After creation, copy the one-time code and send it to the person out-of-band, such as SMS, email, or chat.</p>
+                <p class="entry-meta invite-share-guidance">After creation, copy the one-time code and send it to the person out-of-band, such as SMS, email, or chat. The code is only for the workspace named above.</p>
               </form>
               <div id="createdInviteResult" class="section-note" aria-live="polite"></div>
             </article>

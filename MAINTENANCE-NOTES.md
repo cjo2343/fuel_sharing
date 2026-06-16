@@ -626,3 +626,7 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - 2026-06-16: Invite sharing wording polish
   - Renamed the signed-in invite redemption card to “Join another workspace with invite code” so users who already joined are not confused.
   - Clarified that admins must copy the one-time invite code and send it out-of-band; the app does not email invite codes automatically.
+
+- 2026-06-16: Workspace-scoped invite wording polish
+  - Admin invite creation now shows the exact current workspace and clarifies that created codes join only that workspace.
+  - Created invite results include the workspace name so admins know which group the one-time code belongs to before sharing it out-of-band.

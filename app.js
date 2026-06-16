@@ -770,6 +770,7 @@ const els = {
   inviteExpiresHours: document.querySelector("#inviteExpiresHours"),
   inviteMaxUses: document.querySelector("#inviteMaxUses"),
   createdInviteResult: document.querySelector("#createdInviteResult"),
+  inviteWorkspaceScope: document.querySelector("#inviteWorkspaceScope"),
   workspaceList: document.querySelector("#workspaceList"),
   inviteList: document.querySelector("#inviteList"),
   workspaceInvitesMessage: document.querySelector("#workspaceInvitesMessage"),
@@ -10782,7 +10783,14 @@ function isInviteActive(invite) {
   return true;
 }
 
+function renderInviteWorkspaceScope() {
+  if (!els.inviteWorkspaceScope) return;
+  const context = getCurrentWorkspaceContext();
+  els.inviteWorkspaceScope.textContent = `Creating invite for: ${context.label}. Codes created here join only this workspace.`;
+}
+
 function renderWorkspaceInvitesPanel() {
+  renderInviteWorkspaceScope();
   if (!els.workspaceList && !els.inviteList) return;
   if (!canManageSettings()) {
     if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Admin access is required to manage workspace invites.</p>`;
@@ -10929,11 +10937,14 @@ function renderCreatedInvite(result) {
   const inviteCode = result.invite_code || "";
   const role = result.role || "member";
   const email = result.invited_email || "any signed-in user with this code";
+  const context = getCurrentWorkspaceContext();
+  const workspaceLabel = result.workspace_name || result.ledger_name || context.label;
   els.createdInviteResult.innerHTML = `
-    <strong>Invite created.</strong>
+    <strong>Invite created for ${escapeHtml(workspaceLabel)}.</strong>
+    <p>This code joins <strong>${escapeHtml(workspaceLabel)}</strong> only. It will not add the person to your other workspaces.</p>
     <p>Copy this one-time code and send it to ${escapeHtml(email)} out-of-band, such as SMS, email, or chat. It is not emailed automatically and cannot be recovered later because Supabase stores only a hash.</p>
     <div class="copyable-code" data-created-invite-code="true">${escapeHtml(inviteCode)}</div>
-    <p class="entry-meta">Role: ${escapeHtml(role)} · Expires: ${escapeHtml(formatInviteExpiry(result.expires_at))}</p>
+    <p class="entry-meta">Workspace: ${escapeHtml(workspaceLabel)} · Role: ${escapeHtml(role)} · Expires: ${escapeHtml(formatInviteExpiry(result.expires_at))}</p>
     <p class="entry-meta">New users can paste this code on the login screen before requesting their email login code. Existing signed-in users can paste it in the Join another workspace card.</p>
   `;
 }
@@ -10950,7 +10961,8 @@ async function createWorkspaceInvite() {
   if (!supabaseClient || !currentSession || !canManageSettings()) return;
   await ensureWorkspaceInviteToolsReady("before-create-invite").catch(() => false);
   reconcileActiveLedgerSelection();
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const ledgerId = getActiveLedgerId();
+  const context = getCurrentWorkspaceContext();
   const email = normalizeEmail(els.inviteEmail?.value || "") || null;
   const role = els.inviteRole?.value === "admin" ? "admin" : "member";
   const expiresInHours = Math.max(1, Math.min(Number(els.inviteExpiresHours?.value || 168), 720));
@@ -10972,7 +10984,7 @@ async function createWorkspaceInvite() {
     const result = Array.isArray(data) ? data[0] : data;
     workspaceInviteStatus.lastCreatedInvite = result || null;
     renderCreatedInvite(result);
-    setWorkspaceInvitesMessage("Invite created. Copy the code now; it will not be shown again after refresh.");
+    setWorkspaceInvitesMessage(`Invite created for ${context.label}. Copy the code now; it will not be shown again after refresh.`);
     if (els.inviteEmail) els.inviteEmail.value = "";
     if (els.inviteRole) els.inviteRole.value = "member";
     if (els.inviteExpiresHours) els.inviteExpiresHours.value = "168";
@@ -10990,7 +11002,7 @@ async function createWorkspaceInvite() {
 async function revokeWorkspaceInvite(inviteId) {
   if (!supabaseClient || !currentSession || !canManageSettings() || !inviteId) return;
   if (!confirmUserAction("Revoke this invite? The code will stop working immediately.")) return;
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const ledgerId = getActiveLedgerId();
   setWorkspaceInvitesMessage("Revoking invite...");
   try {
     const { error } = await supabaseClient.rpc("revoke_ledger_invite", {
