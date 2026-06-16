@@ -406,6 +406,7 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /create table if not exists public\.fuel_ledger_schema_migrations/);
   assert.match(schema, /migration_id text primary key/);
   assert.match(schema, /'023_schema_migration_tracking'/);
+  assert.match(schema, /'024_schema_drift_healthcheck'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
   assert.match(schema, /'missing_migrations'/);
@@ -415,6 +416,25 @@ function testSchemaMigrationTrackingExists() {
   assert.match(healthHelpers, /missingSchemaMigrations/);
   assert.match(healthHelpers, /Fuel Ledger schema migrations are applied/);
   console.log("ok - testSchemaMigrationTrackingExists");
+}
+
+function testSchemaDriftHealthcheckExists() {
+  const healthHelpers = readFileSync("security-health-helpers.js", "utf8");
+  assert.match(schema, /'schema_drift', jsonb_build_object/);
+  assert.match(schema, /expected_tables\(table_name\) as/);
+  assert.match(schema, /expected_columns\(table_name, column_name\) as/);
+  assert.match(schema, /expected_policies\(table_name, policy_name\) as/);
+  assert.match(schema, /information_schema\.tables/);
+  assert.match(schema, /information_schema\.columns/);
+  assert.match(schema, /from pg_policies pp/);
+  assert.match(schema, /'missing_tables'/);
+  assert.match(schema, /'missing_columns'/);
+  assert.match(schema, /'missing_policies'/);
+  assert.match(schema, /'fuel_ledger_schema_migrations_admin_select'/);
+  assert.match(healthHelpers, /schemaDrift/);
+  assert.match(healthHelpers, /Fuel Ledger schema shape matches the app/);
+  assert.match(healthHelpers, /schema drift OK/);
+  console.log("ok - testSchemaDriftHealthcheckExists");
 }
 
 function testFuelLedgerHealthcheckExists() {
@@ -469,4 +489,5 @@ testTestLabReportStoreExists();
 testRetentionPrivacyCleanupCoversCloudReports();
 testBootstrapLockExists();
 testSchemaMigrationTrackingExists();
+testSchemaDriftHealthcheckExists();
 testFuelLedgerHealthcheckExists();

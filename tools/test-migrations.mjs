@@ -33,6 +33,7 @@ const expected = [
   "021_cloud_test_lab_report_retention.sql",
   "022_settlement_request_transaction_rpc.sql",
   "023_schema_migration_tracking.sql",
+  "024_schema_drift_healthcheck.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -128,6 +129,15 @@ for (const marker of [
   "'schema_migrations'",
   "missing_migrations",
   "latest_expected",
+  "'024_schema_drift_healthcheck'",
+  "'schema_drift', jsonb_build_object",
+  "expected_tables(table_name) as",
+  "expected_columns(table_name, column_name) as",
+  "expected_policies(table_name, policy_name) as",
+  "missing_tables",
+  "missing_columns",
+  "missing_policies",
+  "fuel_ledger_schema_migrations_admin_select",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

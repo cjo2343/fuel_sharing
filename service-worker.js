@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v213";
-const BUILD_LABEL = "schema-migration-tracking";
+const CACHE_NAME = "fuel-ledger-v214";
+const BUILD_LABEL = "schema-drift-healthcheck";
 const BUILD_UPDATED_AT = "2026-06-16T03:14:00.000Z";
 const CORE_ASSETS = [
   "/",

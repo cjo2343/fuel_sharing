@@ -68,6 +68,17 @@
         `Missing migration(s): ${missingSchemaMigrations.join(", ")}. Run the latest Supabase migrations in order.`,
       );
     }
+    const schemaDrift = asObject(data.schema_drift);
+    const missingDriftTables = asArray(schemaDrift.missing_tables).filter(Boolean);
+    const missingDriftColumns = asArray(schemaDrift.missing_columns).filter(Boolean);
+    const missingDriftPolicies = asArray(schemaDrift.missing_policies).filter(Boolean);
+    const driftIssues = [...missingDriftTables, ...missingDriftColumns, ...missingDriftPolicies];
+    if (driftIssues.length) {
+      return fail(
+        "Fuel Ledger schema shape matches the app",
+        `Missing schema object(s): ${driftIssues.slice(0, 12).join(", ")}${driftIssues.length > 12 ? `, and ${driftIssues.length - 12} more` : ""}. Run the latest Supabase migrations or re-apply supabase-schema.sql.`,
+      );
+    }
     const realtimePublication = asObject(data.realtime_publication);
     const realtimeExtraTables = asArray(realtimePublication.extra_tables).filter(Boolean);
     const ledgerEventsEnabled = realtimePublication.ledger_events_enabled;
@@ -77,6 +88,7 @@
     if (schemaMigrations.latest_expected) {
       details.push(`schema migrations ${schemaMigrations.latest_applied || "unknown"}/${schemaMigrations.latest_expected}`);
     }
+    if (schemaDrift.ok === true) details.push("schema drift OK");
     if (ledgerEventsEnabled === false) details.push("ledger_events is not in Realtime publication");
     if (realtimeExtraTables.length) details.push(`${realtimeExtraTables.length} extra Realtime table(s) published`);
     if (data.ledger_id) details.push(`ledger ${data.ledger_id}`);

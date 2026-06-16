@@ -532,3 +532,5 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 ### Schema migration tracking policy fix
 - Migration tracking uses the existing email-based member/auth helpers (`current_user_email()` and `ledger_members.email`).
 - Do not introduce `ledger_members.auth_user_id`; the live schema links Supabase users to ledger members by normalized email.
+
+- Security Health now includes schema drift detection for expected Fuel Ledger tables, columns, and RLS policies, in addition to migration tracking.

@@ -150,3 +150,5 @@ The release-readiness companion checks enforce security-hardening hygiene before
 
 ### Migration tracking auth compatibility
 - Schema migration tracking keeps admin visibility tied to the existing email-based ledger membership model. Validation fails if a migration references a non-existent `ledger_members.auth_user_id` column.
+
+- Security Health schema drift detection checks expected tables, key columns, and critical RLS policies so a migration marker alone cannot hide a manually drifted schema.
