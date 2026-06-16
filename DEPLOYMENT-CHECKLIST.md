@@ -527,3 +527,5 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Migration `030_onboarding_abuse_rate_limits.sql` adds `public.ledger_onboarding_rate_limits` and `enforce_onboarding_rate_limit(...)` for private workspace creation, invite creation, and invite redemption.
 - Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
+
+- Verify Admin database diagnostics either completes or shows a timeout instead of staying on Loading, and confirm stale JSON backup timestamps are informational when normalized table health is green.

@@ -119,6 +119,8 @@
     throw rpcResult.error;
   }
 
+  const databaseDiagnosticsTimeoutMs = 12000;
+
   async function refreshDatabaseDiagnostics() {
     if (!supabaseClient || !currentSession) {
       databaseDiagnosticsStatus = {
@@ -133,6 +135,18 @@
   
     databaseDiagnosticsStatus = { checked: true, loading: true, error: "", rows: [] };
     render();
+    const diagnosticsStartedAt = Date.now();
+    const diagnosticsTimeoutId = window.setTimeout(() => {
+      if (!databaseDiagnosticsStatus.loading) return;
+      databaseDiagnosticsStatus = {
+        checked: true,
+        loading: false,
+        error: `Database diagnostics timed out after ${Math.round(databaseDiagnosticsTimeoutMs / 1000)} seconds. The app data can still be healthy; try Refresh diagnostics again or use Supabase Security Health for a narrower check.`,
+        rows: []
+      };
+      if (typeof recordSupabaseLoadEvent === "function") recordSupabaseLoadEvent("database-diagnostics-timeout", `${Date.now() - diagnosticsStartedAt}ms`);
+      render();
+    }, databaseDiagnosticsTimeoutMs);
   
     try {
       if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
@@ -242,6 +256,8 @@
         error: error.message || String(error),
         rows: []
       };
+    } finally {
+      window.clearTimeout(diagnosticsTimeoutId);
     }
   
     render();

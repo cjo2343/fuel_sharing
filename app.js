@@ -582,6 +582,28 @@ function shouldSurfaceManualSyncDelay(referenceTime = Date.now()) {
   return !hasRecentHealthyCloudSync(referenceTime, syncDelayHealthyGraceMs);
 }
 
+function isRecoverableSyncDelayMessage(message = "") {
+  return /sync is delayed|sync timed out|taking longer|did not complete|background sync|manual cloud sync/i.test(String(message || ""));
+}
+
+function hasRecentHardSyncFailure(limit = 6) {
+  return latestSyncDiagnostics(limit).some((entry) => /^(save-error|load-error|json-mirror-load-error|normalized-table-fallback)$/i.test(String(entry.stage || "")));
+}
+
+function clearRecoverableSyncDelayAfterHealthySync(reason = "healthy-sync") {
+  if (!lastSyncError && !lastCloudRetryAt) return false;
+  if (pendingLocalChanges > 0) return false;
+  if (!hasRecentHealthyCloudSync(Date.now(), syncDelayHealthyGraceMs)) return false;
+  if (!isRecoverableSyncDelayMessage(lastSyncError || "Cloud sync is delayed.")) return false;
+  if (hasRecentHardSyncFailure()) return false;
+  clearSyncDelay(reason);
+  if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "delayed") {
+    setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
+  }
+  recordSupabaseLoadEvent("stale-sync-delay-suppressed", reason);
+  return true;
+}
+
 function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
   if (els.syncStatus && String(els.syncStatus.dataset.status || "") === "syncing") {
     setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
@@ -2050,6 +2072,7 @@ els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
 
 async function handleManualSyncNow(source = "manual") {
   const reason = `manual-${source}`;
+  clearRecoverableSyncDelayAfterHealthySync(`${reason}-preflight`);
   clearSyncDelay(`${reason}-start`);
   recordSyncDiagnostic("manual-load-start", reason, { reason, source });
   if (!supabaseClient) {
@@ -5640,6 +5663,8 @@ function renderPeriodEntryLock() {
 }
 
 function buildSyncHealthBannerState() {
+  clearRecoverableSyncDelayAfterHealthySync("render-banner-after-healthy-sync");
+
   if (supabaseClient && !currentSession) {
     return {
       level: "warning",
@@ -11389,15 +11414,20 @@ function buildSystemHealthChecks(ledger) {
   });
 
   const syncStatus = els.syncStatus?.dataset.status || "";
-  const databaseSaveOk = ["cloud", "tables", "shared"].includes(syncStatus);
+  const hasHealthyDatabaseSync = hasRecentHealthyCloudSync(Date.now(), 24 * 60 * 60 * 1000);
+  const databaseSaveOk = ["cloud", "tables", "shared"].includes(syncStatus) || (normalizedReadModeActive && hasHealthyDatabaseSync && !lastSyncError);
   checks.push({
-    level: databaseSaveOk ? "ok" : (syncStatus === "saving" || syncStatus === "syncing" ? "warning" : "issue"),
-    title: "Database saving",
-    message: lastCloudSaveAt
-      ? `Last database save: ${new Date(lastCloudSaveAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}. ${normalizedReadModeActive ? "Normalized tables are the primary save target; JSON is only a backup snapshot." : "Cloud JSON is the current save target."}`
-      : lastSyncError
-        ? `Last save/load error: ${lastSyncError}.`
-        : "No confirmed database save yet in this session."
+    level: databaseSaveOk ? "ok" : (syncStatus === "saving" || syncStatus === "syncing" || hasHealthyDatabaseSync ? "warning" : "issue"),
+    title: normalizedReadModeActive ? "Database tables" : "Database saving",
+    message: normalizedReadModeActive
+      ? (lastCloudSyncAt
+        ? `Latest normalized-table sync: ${new Date(lastCloudSyncAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}. JSON is only a manual/periodic backup snapshot, so an older JSON backup timestamp is not a primary database failure.`
+        : "Normalized tables are the primary save target. No confirmed table sync timestamp is available yet in this session.")
+      : lastCloudSaveAt
+        ? `Last cloud JSON save: ${new Date(lastCloudSaveAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}.`
+        : lastSyncError
+          ? `Last save/load error: ${lastSyncError}.`
+          : "No confirmed database save yet in this session."
   });
 
   checks.push({
@@ -14228,6 +14258,7 @@ async function loadSupabaseState(options = {}) {
   lastSupabaseLoadAt = now;
 
   try {
+    clearRecoverableSyncDelayAfterHealthySync(`load-start:${reason}`);
     setSyncStatus("Syncing");
     recordSyncDiagnostic("load-start", reason, { force });
     const { data, error } = await supabaseClient

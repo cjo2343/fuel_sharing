@@ -1,0 +1,22 @@
+import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+
+const adminToolsSource = readFileSync(new URL("../admin-tools.js", import.meta.url), "utf8");
+
+assert.match(
+  adminToolsSource,
+  /const databaseDiagnosticsTimeoutMs = 12000;/,
+  "database diagnostics should have a visible timeout instead of spinning forever"
+);
+
+assert.match(
+  adminToolsSource,
+  /window\.setTimeout\([\s\S]*Database diagnostics timed out after[\s\S]*loading: false[\s\S]*render\(\)/,
+  "database diagnostics timeout should render a clear failed state"
+);
+
+assert.match(
+  adminToolsSource,
+  /finally \{[\s\S]*window\.clearTimeout\(diagnosticsTimeoutId\)/,
+  "database diagnostics should clear its timeout after completion"
+);

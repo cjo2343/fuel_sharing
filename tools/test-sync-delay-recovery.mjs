@@ -153,3 +153,22 @@ assert.match(
   /manual-load-skipped-existing-sync/,
   "manual sync attempts skipped by an existing in-flight load should leave a specific diagnostic breadcrumb"
 );
+
+
+assert.match(
+  appSource,
+  /function clearRecoverableSyncDelayAfterHealthySync\(reason = "healthy-sync"\)[\s\S]*hasRecentHealthyCloudSync\(Date\.now\(\), syncDelayHealthyGraceMs\)[\s\S]*clearSyncDelay\(reason\)/,
+  "recoverable manual/focus sync delay warnings should be cleared after a recent healthy normalized-table sync"
+);
+
+assert.match(
+  appSource,
+  /function buildSyncHealthBannerState\(\) \{[\s\S]*clearRecoverableSyncDelayAfterHealthySync\("render-banner-after-healthy-sync"\)/,
+  "the visible sync-health banner should suppress stale recoverable delay state before rendering"
+);
+
+assert.match(
+  appSource,
+  /title: normalizedReadModeActive \? "Database tables" : "Database saving"[\s\S]*JSON is only a manual\/periodic backup snapshot/,
+  "Admin follow-up should describe normalized table health separately from the JSON backup snapshot"
+);

@@ -1,11 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.149",
-    buildLabel: "payment-request-audit-summary",
-    updatedAt: "2026-06-16T18:32:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v248",
+    version: "2026.06.16.150",
+    buildLabel: "sync-warning-diagnostics-clarity",
+    updatedAt: "2026-06-16T18:42:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v249",
     releaseNotes: Object.freeze([
+      "Recoverable focus/manual sync delay warnings are now suppressed after a recent healthy normalized-table sync, so stale timeout banners do not reappear after the app has already loaded successfully.",
+      "Admin database diagnostics now show a clear timeout/error message instead of staying on Loading forever when a Supabase diagnostics read hangs.",
+      "The Admin follow-up database card now labels normalized database-table health separately from the JSON backup snapshot so an old JSON backup timestamp no longer looks like a primary database failure.",
       "Payment request audit entries now include the visible Payment requested/marked paid/reopened wording in their stored summary, so local/server-backed smoke tests and history views agree on the audit breadcrumb.",
       "Manual Sync now clears stale background/focus delay state before starting and records manual-specific start, success, timeout, skipped-existing-load, and incomplete diagnostics.",
       "Manual sync timeouts after a recent healthy cloud load are now diagnostic-only instead of reusing an old background timeout as a red Cloud delayed banner.",
