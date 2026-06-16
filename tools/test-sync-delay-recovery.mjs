@@ -251,3 +251,22 @@ assert.match(
   /setSyncStatus\("Syncing", \{ source: "server-load" \}\)[\s\S]*setSyncStatus\("Saving", \{ source: "server-save" \}\)/,
   "server fallback load/save paths should name their visible sync source"
 );
+
+
+assert.match(
+  appSource,
+  /function dataIoStatusForPhase\(phase, ok\) \{[\s\S]*if \(\/skip\/i\.test\(normalizedPhase\)\) return "skipped";[\s\S]*if \(ok \|\| normalizedPhase === "success"\) return "ok";/,
+  "data I/O skip phases should render as skipped even when ok=true, instead of looking like active ok rows"
+);
+
+assert.match(
+  appSource,
+  /const duration = Number\.isFinite\(operation\.durationMs\) \? formatDurationMs\(operation\.durationMs\) : status === "active" \? "active" : "instant";/,
+  "finished standalone data I/O diagnostics should not display as active when they have no paired duration"
+);
+
+assert.match(
+  appSource,
+  /const highActivity = lastMinute >= 20 \|\| \(lastMinute >= 10 && lastFiveMinutes >= 50\);[\s\S]*const coolingDown = !highActivity && lastFiveMinutes >= 50;/,
+  "Admin activity severity should cool down when the last minute is quiet even if the five-minute window still contains old bursts"
+);

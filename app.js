@@ -608,10 +608,11 @@ function dataIoSignature(entry = {}) {
 }
 
 function dataIoStatusForPhase(phase, ok) {
-  if (ok || phase === "success") return "ok";
-  if (/timeout/i.test(phase || "")) return "timeout";
-  if (/blocked|error|exception|fail/i.test(phase || "")) return "failed";
-  if (/skip/i.test(phase || "")) return "skipped";
+  const normalizedPhase = String(phase || "");
+  if (/timeout/i.test(normalizedPhase)) return "timeout";
+  if (/skip/i.test(normalizedPhase)) return "skipped";
+  if (/blocked|error|exception|fail/i.test(normalizedPhase)) return "failed";
+  if (ok || normalizedPhase === "success") return "ok";
   return "active";
 }
 
@@ -2938,13 +2939,15 @@ function getSupabaseLoadSummary({ windowMinutes = 10 } = {}) {
   const lastMinute = events.filter((entry) => now - Number(entry.at || 0) <= 60 * 1000).length;
   const lastFiveMinutes = events.filter((entry) => now - Number(entry.at || 0) <= 5 * 60 * 1000).length;
   const byLabel = summarizeSupabaseLoadEvents(events);
-  const highActivity = lastMinute >= 20 || lastFiveMinutes >= 50;
+  const highActivity = lastMinute >= 20 || (lastMinute >= 10 && lastFiveMinutes >= 50);
+  const coolingDown = !highActivity && lastFiveMinutes >= 50;
   return {
     windowMinutes,
     total: events.length,
     lastMinute,
     lastFiveMinutes,
     highActivity,
+    coolingDown,
     byLabel,
     latest: events.slice(0, 25)
   };
@@ -3044,7 +3047,9 @@ function renderSupabaseLoadMonitor() {
   const statusClass = summary.highActivity ? "has-warning" : "";
   const statusText = summary.highActivity
     ? "High app-side Supabase activity detected. Export a load report if Supabase CPU is elevated."
-    : "No high app-side Supabase activity detected in the last 10 minutes.";
+    : summary.coolingDown
+      ? "Activity was high earlier in the 5-minute window, but the last minute is cooling down."
+      : "No high app-side Supabase activity detected in the last 10 minutes.";
   const activityGroups = latestSupabaseActivityGroups(8);
   const healthySyncLabel = lastCloudSyncAt ? new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" }) : "Not yet";
   const latestOperationStatus = latestDataIoOp?.status || "idle";
@@ -3083,7 +3088,7 @@ function renderSupabaseLoadMonitor() {
             const entry = operation.latest || operation.start || {};
             const timeSource = operation.finish || operation.start || entry;
             const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
-            const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : "active";
+            const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
             return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${entry.endpoint || entry.rpc || entry.table ? `→ ${escapeHtml(entry.endpoint || entry.rpc || entry.table)}` : ""}</small></div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
           }).join("")}
         </div>

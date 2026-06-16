@@ -2,10 +2,12 @@
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
     version: "2026.06.17.165",
-    buildLabel: "visible-sync-source-gate",
-    updatedAt: "2026-06-17T01:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v264",
+    buildLabel: "data-io-skip-duration-clarity",
+    updatedAt: "2026-06-17T02:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v265",
     releaseNotes: Object.freeze([
+      "Skipped/guarded data I/O diagnostics now render as skipped/instant instead of OK/active, so ledger-directory skip breadcrumbs no longer look like stuck writes.",
+      "Admin activity severity now cools down when the last minute is quiet even if the previous five-minute window still contains an old burst.",
       "Visible Saving/Syncing status is now source-gated: background focus, realtime, admin diagnostics, and service-worker paths are blocked from setting the top-bar badge and instead record a diagnostic with the attempted source.",
       "Payment actions now apply the local requested/paid/reopened status and audit breadcrumb before waiting on the local backend merge, so smoke tests and users see the persisted result immediately while keeping the full-state save fanout reduction.",
       "Successful Supabase/Render payment actions now update local UI state without queuing the generic full-state remote save stack, reducing duplicate Supabase saves, reconciliation skips, JSON mirror checks, and ledger event attempts after one payment click.",
