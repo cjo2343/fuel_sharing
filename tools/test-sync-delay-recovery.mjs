@@ -291,8 +291,8 @@ assert.match(
 
 assert.match(
   appSource,
-  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*restoreHealthySyncStatusAfterQuietSync\(reason\)[\s\S]*clearVisibleSavingFailsafe\(\)/,
-  "payment actions should clear either stuck Saving or Syncing status in their finally cleanup"
+  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*finishForegroundOperationsBySource\("payment-status-action", reason\)[\s\S]*finishForegroundOperationsBySource\("settlement-request-save", reason\)[\s\S]*restoreHealthySyncStatusAfterQuietSync\(reason\)[\s\S]*clearVisibleSavingFailsafe\(\)/,
+  "payment actions should clear payment and settlement foreground operations in their finally cleanup"
 );
 
 assert.match(
@@ -303,8 +303,20 @@ assert.match(
 
 assert.match(
   appSource,
-  /saveSettlementRequestToNormalizedTableFirst\(settlement, nextStatus, \{ previousStatus, auditEntry \}\),[\s\S]*"Payment status normalized save",[\s\S]*paymentStatusActionNormalizedTimeoutMs/,
-  "the payment action outer watchdog should use the longer normalized-save timeout so stale 15-second timeout diagnostics do not fire after successful cleanup"
+  /saveSettlementRequestToNormalizedTableFirst\(settlement, nextStatus, \{ previousStatus, auditEntry, skipVisibleSaving: true \}\),[\s\S]*"Payment status normalized save",[\s\S]*paymentStatusActionNormalizedTimeoutMs/,
+  "the payment action outer watchdog should use one visible payment foreground operation and avoid starting a second settlement save latch"
+);
+
+assert.match(
+  appSource,
+  /error\.isRenderPaymentActionTimeout = true;[\s\S]*return \{ ok: false, error, shouldFallback: false, backend: "render-api" \}/,
+  "Render payment API timeouts should reset the foreground action instead of falling through to a second direct Supabase fallback that can leave Saving active"
+);
+
+assert.match(
+  appSource,
+  /recordSupabaseLoadEvent\("payment-action-backend-start"[\s\S]*recordSyncDiagnostic\("payment-action-backend-start"/,
+  "payment actions should record whether the backend write path was actually reached"
 );
 
 

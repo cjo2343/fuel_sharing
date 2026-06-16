@@ -9163,6 +9163,8 @@ async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = 
 
 function clearPaymentActionSavingUi(reason = "payment-action-finished") {
   recordSyncDiagnostic("payment-action-finished", reason, { reason });
+  finishForegroundOperationsBySource("payment-status-action", reason);
+  finishForegroundOperationsBySource("settlement-request-save", reason);
   if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
     restoreHealthySyncStatusAfterQuietSync(reason);
   }
@@ -9228,7 +9230,7 @@ async function updatePaymentStatus(button) {
   let actionSucceeded = false;
   try {
     const tableSaved = await withPaymentStatusActionTimeout(
-      saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, { previousStatus, auditEntry }),
+      saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, { previousStatus, auditEntry, skipVisibleSaving: true }),
       "Payment status normalized save",
       paymentStatusActionNormalizedTimeoutMs
     );
@@ -13944,6 +13946,8 @@ async function applyPaymentStatusActionRpc(context, payload, options = {}) {
     current_pair_keys: currentSettlementPairKeys(context)
   };
 
+  recordSupabaseLoadEvent("payment-action-backend-start", payload.status || "payment-status");
+  recordSyncDiagnostic("payment-action-backend-start", "Attempting Render backend payment action.", { backend: "render-api", operation: payload.status });
   const renderResult = await applyPaymentStatusActionViaRender(context, payload, options, rpcPayload);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
@@ -14017,6 +14021,8 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
     console.warn("Render payment action API failed; falling back to direct Supabase RPC", error);
     if (error?.name === "AbortError") {
       error = paymentActionTimeoutError("Render payment action API", paymentStatusActionTimeoutMs);
+      error.isRenderPaymentActionTimeout = true;
+      return { ok: false, error, shouldFallback: false, backend: "render-api" };
     }
     return { ok: false, error, shouldFallback: true, backend: "render-api" };
   }
@@ -14038,7 +14044,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
   if (!supabaseClient || !currentSession) return true;
   try {
-    setSyncStatus("Saving", { source: "settlement-request-save" });
+    if (!options.skipVisibleSaving) setSyncStatus("Saving", { source: "settlement-request-save" });
     const context = await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
     if (!context) return true;
     recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
