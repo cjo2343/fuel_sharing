@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.148",
-    buildLabel: "manual-sync-delay-isolation",
-    updatedAt: "2026-06-16T18:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v247",
+    version: "2026.06.16.149",
+    buildLabel: "payment-request-audit-summary",
+    updatedAt: "2026-06-16T18:32:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v248",
     releaseNotes: Object.freeze([
+      "Payment request audit entries now include the visible Payment requested/marked paid/reopened wording in their stored summary, so local/server-backed smoke tests and history views agree on the audit breadcrumb.",
       "Manual Sync now clears stale background/focus delay state before starting and records manual-specific start, success, timeout, skipped-existing-load, and incomplete diagnostics.",
       "Manual sync timeouts after a recent healthy cloud load are now diagnostic-only instead of reusing an old background timeout as a red Cloud delayed banner.",
       "Core app-shell files now use a cache-first service-worker response with background refresh, reducing repeated static asset downloads and app restart churn during normal use.",

@@ -4441,10 +4441,10 @@ function buildPaymentAuditInfo(settlement, previousStatus, nextStatus) {
   const nextLabel = statusLabel(nextStatus);
   const routeText = `${from} → ${to}`;
   const summary = nextStatus === "paid"
-    ? `${from} paid ${to} · ${amountText}`
+    ? `Payment marked paid · ${from} paid ${to} · ${amountText}`
     : nextStatus === "requested"
-      ? `${routeText} · ${amountText}`
-      : `${routeText} · ${amountText}`;
+      ? `Payment requested · ${routeText} · ${amountText}`
+      : `Payment reopened · ${routeText} · ${amountText}`;
   const detail = `${formatPaymentRef(paymentRef)} · Status: ${previousLabel} → ${nextLabel} · ${from} pays ${to} · ${amountText}`;
   return {
     summary,

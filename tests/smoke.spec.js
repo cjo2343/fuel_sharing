@@ -305,7 +305,10 @@ async function waitForPaymentRequestSaved(page, { timeout = 10000 } = {}) {
     const statuses = Object.values(saved.paymentStatuses || {});
     const auditEntries = Array.isArray(saved.auditLog) ? saved.auditLog : [];
     const hasRequestedStatus = statuses.includes("requested");
-    const hasRequestedAudit = auditEntries.some((entry) => `${entry?.summary || ""} ${entry?.detail || ""} ${entry?.type || ""}`.includes("Payment requested"));
+    const hasRequestedAudit = auditEntries.some((entry) => (
+      entry?.type === "payment_requested"
+      || `${entry?.summary || ""} ${entry?.detail || ""}`.includes("Payment requested")
+    ));
     return { hasRequestedStatus, hasRequestedAudit };
   }, {
     timeout,
