@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v239";
-const BUILD_LABEL = "workspace-sync-completion-hotfix";
-const BUILD_UPDATED_AT = "2026-06-16T16:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v240";
+const BUILD_LABEL = "onboarding-rate-limit-foundation";
+const BUILD_UPDATED_AT = "2026-06-16T16:30:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

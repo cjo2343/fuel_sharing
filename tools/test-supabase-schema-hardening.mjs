@@ -309,7 +309,7 @@ function testAdminDiagnosticsUxExists() {
   assert.match(app, /title: "Public launch readiness"/);
   assert.match(app, /Private beta only/);
   assert.match(app, /Do not advertise broadly yet/);
-  assert.match(app, /workspace\/invite onboarding before Reddit-scale traffic/);
+  assert.match(app, /workspace\/invite onboarding, rate-limit monitoring, and abuse review/);
   assert.match(app, /public launch readiness/);
   assert.match(app, /title: "RPC availability"/);
   assert.match(app, /title: "Migrations"/);
@@ -673,7 +673,21 @@ function testPrivateWorkspaceCreationUiExists() {
   assert.match(app, /supabaseClient\.rpc\("create_private_ledger_workspace"/);
   assert.match(app, /switchActiveWorkspace\(newLedgerId, "create-workspace"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("after-create-workspace"\)/);
+  assert.match(app, /workspace\/invite abuse rate-limit migration not confirmed/);
+  assert.match(app, /abuse_rate_limit_ready/);
   console.log("ok - testPrivateWorkspaceCreationUiExists");
+}
+
+function testOnboardingAbuseRateLimitFoundationExists() {
+  assert.match(schema, /create table if not exists public\.ledger_onboarding_rate_limits/);
+  assert.match(schema, /create or replace function public\.enforce_onboarding_rate_limit/);
+  assert.match(schema, /unique \(action, actor_email, ledger_scope, window_started_at\)/);
+  assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('create_private_workspace', null, 3, 60\)/);
+  assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('create_ledger_invite', target_ledger_id, 20, 60\)/);
+  assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('redeem_ledger_invite', null, 8, 60\)/);
+  assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
+  assert.match(schema, /'abuse_rate_limit_ready'/);
+  console.log("ok - testOnboardingAbuseRateLimitFoundationExists");
 }
 
 function testFuelLedgerHealthcheckExists() {
@@ -738,4 +752,5 @@ testWorkspaceSyncCompletionGuardExists();
 testWorkspaceInviteRefreshFailSafeExists();
 testWorkspaceInviteAutoRefreshExists();
 testPrivateWorkspaceCreationUiExists();
+testOnboardingAbuseRateLimitFoundationExists();
 testFuelLedgerHealthcheckExists();

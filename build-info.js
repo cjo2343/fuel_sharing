@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.140",
-    buildLabel: "workspace-sync-completion-hotfix",
-    updatedAt: "2026-06-16T16:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v239",
+    version: "2026.06.16.141",
+    buildLabel: "onboarding-rate-limit-foundation",
+    updatedAt: "2026-06-16T16:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v240",
     releaseNotes: Object.freeze([
+      "Onboarding abuse/rate-limit foundation now throttles private workspace creation, invite creation, and invite redemption through Supabase migration 030.",
       "Private workspace creation UI lets signed-in users create invite-only workspaces, become admin, switch into them, and invite others.",
       "Workspace-triggered cloud refreshes now always clear the Syncing badge on success, failure, or timeout so private workspace switching and creation do not leave stale syncing UI.",
       "Period close now takes the same admin safety backup path before archiving current activity.",

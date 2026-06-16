@@ -2805,12 +2805,18 @@ function getPublicLaunchReadinessDiagnostics() {
       level: "warning"
     };
   }
-  publicLaunchRisks.push("workspace creation is private-beta and still needs abuse/rate-limit monitoring");
-  publicLaunchRisks.push("no invite-only onboarding gate yet");
+  const rpcHealth = getLatestHealthcheckRpcPayload();
+  const workspaceReadiness = rpcHealth?.workspace_readiness && typeof rpcHealth.workspace_readiness === "object"
+    ? rpcHealth.workspace_readiness
+    : null;
+  if (!workspaceReadiness?.abuse_rate_limit_ready) {
+    publicLaunchRisks.push("workspace/invite abuse rate-limit migration not confirmed");
+  }
+  publicLaunchRisks.push("invite-only onboarding still needs real-user testing");
   publicLaunchRisks.push("no public signup rate-limit dashboard yet");
   return {
     status: "Private beta only",
-    detail: `Do not advertise broadly yet: ${publicLaunchRisks.join(", ")}. Build workspace/invite onboarding before Reddit-scale traffic.`,
+    detail: `Do not advertise broadly yet: ${publicLaunchRisks.join(", ")}. Keep public signup off until workspace/invite onboarding, rate-limit monitoring, and abuse review are proven under real traffic.`,
     level: "warning"
   };
 }

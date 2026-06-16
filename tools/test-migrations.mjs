@@ -39,6 +39,7 @@ const expected = [
   "027_invite_code_generation_pgcrypto_fix.sql",
   "028_invite_code_hash_pgcrypto_fix.sql",
   "029_invite_redeem_return_ambiguity_fix.sql",
+  "030_onboarding_abuse_rate_limits.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -149,6 +150,13 @@ for (const marker of [
   "extensions.digest",
   "029_invite_redeem_return_ambiguity_fix",
   "redeem_ledger_invite.ledger_id := redeemed_ledger_id",
+  "030_onboarding_abuse_rate_limits",
+  "create table if not exists public.ledger_onboarding_rate_limits",
+  "create or replace function public.enforce_onboarding_rate_limit",
+  "perform public.enforce_onboarding_rate_limit('create_private_workspace'",
+  "perform public.enforce_onboarding_rate_limit('create_ledger_invite'",
+  "perform public.enforce_onboarding_rate_limit('redeem_ledger_invite'",
+  "abuse_rate_limit_ready",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

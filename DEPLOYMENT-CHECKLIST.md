@@ -520,3 +520,10 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 
 - Before applying `029_invite_redeem_return_ambiguity_fix.sql`, confirm the SQL writes to `public.fuel_ledger_schema_migrations (migration_id, description)` only. Existing deployed migration-tracking tables do not have a `notes` column, so release SQL must not use `(migration_id, notes)`.
 - After applying migration 029, verify Security Health shows latest expected/applied migration `029_invite_redeem_return_ambiguity_fix` before retrying invite auto-redemption.
+
+
+### 2026-06-16 onboarding abuse/rate-limit foundation
+
+- Migration `030_onboarding_abuse_rate_limits.sql` adds `public.ledger_onboarding_rate_limits` and `enforce_onboarding_rate_limit(...)` for private workspace creation, invite creation, and invite redemption.
+- Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
+- This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.

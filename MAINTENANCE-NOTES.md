@@ -639,3 +639,10 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - 2026-06-16: Workspace sync completion hotfix
   - Workspace switch/create/invite refresh paths now fail closed out of the visible Syncing state when cloud loading returns false without a timeout.
   - Added validation coverage so completed workspace cloud refresh attempts must either return to Cloud/Database or show Delayed instead of staying stuck on Syncing.
+
+
+### 2026-06-16 onboarding abuse/rate-limit foundation
+
+- Migration `030_onboarding_abuse_rate_limits.sql` adds `public.ledger_onboarding_rate_limits` and `enforce_onboarding_rate_limit(...)` for private workspace creation, invite creation, and invite redemption.
+- Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
+- This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.

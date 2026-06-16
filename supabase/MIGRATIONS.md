@@ -81,3 +81,7 @@ Adds private invite onboarding foundation for future public workspace joins. Adm
 - `027_invite_code_generation_pgcrypto_fix.sql` schema-qualifies pgcrypto random-byte generation for invite codes and records itself in migration tracking.
 - `028_invite_code_hash_pgcrypto_fix.sql` schema-qualifies pgcrypto hashing for invite code storage and records itself in migration tracking.
 - `029_invite_redeem_return_ambiguity_fix.sql` fixes ambiguous `ledger_id`/`role` return-column references in `redeem_ledger_invite`, so invite redemption works from the login auto-redeem flow and the signed-in dashboard join form.
+
+### 030_onboarding_abuse_rate_limits
+
+Adds server-side onboarding abuse monitoring/rate-limit storage and enforces throttles on private workspace creation, invite creation, and invite redemption. Public signup remains disabled.
