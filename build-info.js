@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.168",
-    buildLabel: "global-foreground-operation-tracker",
-    updatedAt: "2026-06-16T22:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v268",
+    version: "2026.06.17.169",
+    buildLabel: "payment-timeout-activity-cleanup",
+    updatedAt: "2026-06-16T23:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v269",
     releaseNotes: Object.freeze([
+      "Payment status saves now keep the short Render/API abort but give the outer normalized save enough time to fall back cleanly, preventing stale 15-second payment timeout warnings after the foreground operation already finished.",
+      "The Supabase load monitor now counts only real app-side load/save activity for the headline activity number, while diagnostic breadcrumbs remain visible below without inflating the scary high-activity warning.",
       "Visible Saving is now driven by a central foreground operation tracker shared by trips, fuel, bookings, payments, server saves, and Supabase saves; if Saving appears, Admin shows the active operation and stale operations auto-clear after 20 seconds.",
       "Debounced remote saves now serialize while a previous save is still running, coalescing follow-up saves instead of overlapping cloud writes that can make sync appear stuck.",
       "Visible Saving status now has its own failsafe and payment-action finally cleanup, so a timed-out payment confirmation cannot leave the top bar stuck on Saving changes after Cloud Load and Data I/O are idle.",

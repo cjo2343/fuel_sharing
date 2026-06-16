@@ -18,6 +18,7 @@ const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
 const renderPaymentStatusActionUrl = "/api/payments/status-action";
 const paymentStatusActionTimeoutMs = 15000;
+const paymentStatusActionNormalizedTimeoutMs = 45000;
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const securityHealthCooldownMs = 2 * 60 * 1000;
 const generatedTestPrefix = "auto-test-";
@@ -3086,9 +3087,27 @@ function getSupabaseLoadEvents(windowMs = 10 * 60 * 1000) {
     .sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
 }
 
-function summarizeSupabaseLoadEvents(events) {
+function isSupabaseLoadNoiseEvent(entry = {}) {
+  const label = String(entry.label || "");
+  return Boolean(entry.diagnostic)
+    || label.startsWith("sync-diagnostic:")
+    || label === "foreground-operation-start"
+    || label === "foreground-operation-finished"
+    || label === "foreground-operation-timeout"
+    || label === "saving-stale-cleared"
+    || label === "syncing-stale-cleared"
+    || label === "sync-delay-cleared";
+}
+
+function supabaseLoadActivityEvents(events = []) {
+  return (events || []).filter((entry) => !isSupabaseLoadNoiseEvent(entry));
+}
+
+function summarizeSupabaseLoadEvents(events, options = {}) {
+  const includeDiagnostics = options.includeDiagnostics === true;
   const byLabel = {};
   for (const entry of events || []) {
+    if (!includeDiagnostics && isSupabaseLoadNoiseEvent(entry)) continue;
     const label = entry.label || "supabase";
     byLabel[label] = (byLabel[label] || 0) + 1;
   }
@@ -3098,19 +3117,23 @@ function summarizeSupabaseLoadEvents(events) {
 function getSupabaseLoadSummary({ windowMinutes = 10 } = {}) {
   const now = Date.now();
   const events = getSupabaseLoadEvents(windowMinutes * 60 * 1000);
-  const lastMinute = events.filter((entry) => now - Number(entry.at || 0) <= 60 * 1000).length;
-  const lastFiveMinutes = events.filter((entry) => now - Number(entry.at || 0) <= 5 * 60 * 1000).length;
+  const activityEvents = supabaseLoadActivityEvents(events);
+  const lastMinute = activityEvents.filter((entry) => now - Number(entry.at || 0) <= 60 * 1000).length;
+  const lastFiveMinutes = activityEvents.filter((entry) => now - Number(entry.at || 0) <= 5 * 60 * 1000).length;
   const byLabel = summarizeSupabaseLoadEvents(events);
+  const diagnosticByLabel = summarizeSupabaseLoadEvents(events, { includeDiagnostics: true });
   const highActivity = lastMinute >= 20 || (lastMinute >= 10 && lastFiveMinutes >= 50);
   const coolingDown = !highActivity && lastFiveMinutes >= 50;
   return {
     windowMinutes,
-    total: events.length,
+    total: activityEvents.length,
+    rawTotal: events.length,
     lastMinute,
     lastFiveMinutes,
     highActivity,
     coolingDown,
     byLabel,
+    diagnosticByLabel,
     latest: events.slice(0, 25)
   };
 }
@@ -9206,7 +9229,8 @@ async function updatePaymentStatus(button) {
   try {
     const tableSaved = await withPaymentStatusActionTimeout(
       saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, { previousStatus, auditEntry }),
-      "Payment status normalized save"
+      "Payment status normalized save",
+      paymentStatusActionNormalizedTimeoutMs
     );
     if (!tableSaved) return;
 

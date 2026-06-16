@@ -267,8 +267,14 @@ assert.match(
 
 assert.match(
   appSource,
-  /const highActivity = lastMinute >= 20 \|\| \(lastMinute >= 10 && lastFiveMinutes >= 50\);[\s\S]*const coolingDown = !highActivity && lastFiveMinutes >= 50;/,
-  "Admin activity severity should cool down when the last minute is quiet even if the five-minute window still contains old bursts"
+  /function isSupabaseLoadNoiseEvent\(entry = \{\}\)[\s\S]*label\.startsWith\("sync-diagnostic:"\)[\s\S]*function supabaseLoadActivityEvents\(events = \[\]\)[\s\S]*filter\(\(entry\) => !isSupabaseLoadNoiseEvent\(entry\)\)/,
+  "Admin activity totals should ignore diagnostic breadcrumbs and foreground-operation bookkeeping so the headline number reflects real app-side load/save work"
+);
+
+assert.match(
+  appSource,
+  /const activityEvents = supabaseLoadActivityEvents\(events\);[\s\S]*const lastMinute = activityEvents\.filter[\s\S]*const highActivity = lastMinute >= 20 \|\| \(lastMinute >= 10 && lastFiveMinutes >= 50\);[\s\S]*const coolingDown = !highActivity && lastFiveMinutes >= 50;/,
+  "Admin activity severity should use filtered real activity and cool down when the last minute is quiet"
 );
 
 assert.match(
@@ -287,6 +293,18 @@ assert.match(
   appSource,
   /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*restoreHealthySyncStatusAfterQuietSync\(reason\)[\s\S]*clearVisibleSavingFailsafe\(\)/,
   "payment actions should clear either stuck Saving or Syncing status in their finally cleanup"
+);
+
+assert.match(
+  appSource,
+  /const paymentStatusActionTimeoutMs = 15000;[\s\S]*const paymentStatusActionNormalizedTimeoutMs = 45000;/,
+  "payment actions should keep the short Render/API abort but give the outer normalized save enough time to fall back before reporting a timeout"
+);
+
+assert.match(
+  appSource,
+  /saveSettlementRequestToNormalizedTableFirst\(settlement, nextStatus, \{ previousStatus, auditEntry \}\),[\s\S]*"Payment status normalized save",[\s\S]*paymentStatusActionNormalizedTimeoutMs/,
+  "the payment action outer watchdog should use the longer normalized-save timeout so stale 15-second timeout diagnostics do not fire after successful cleanup"
 );
 
 
