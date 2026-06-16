@@ -647,3 +647,4 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
 - Render backend payment-action API is now the preferred browser path for payment request/paid/reopen; keep the endpoint session-verified and keep the direct Supabase RPC fallback until deployed clients are confirmed healthy.
+- Data I/O flight-recorder diagnostics should stay enabled around normalized writes so future stuck Saving/Syncing reports identify the exact source, route, table/RPC/API, and Supabase error.

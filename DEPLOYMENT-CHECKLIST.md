@@ -528,3 +528,4 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
 - Confirm Render has `SUPABASE_URL` and `SUPABASE_ANON_KEY` configured before relying on `/api/payments/status-action`; payment actions should still fall back to direct Supabase RPC if the Render endpoint is unavailable during rollout.
+- After sync/save debugging patches, verify Admin diagnostics shows the latest Data I/O source/route/table or RPC for any failed write instead of only a generic Saving/Syncing status.

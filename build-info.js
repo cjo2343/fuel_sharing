@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.155",
-    buildLabel: "payment-action-stuck-state-guard",
-    updatedAt: "2026-06-16T22:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v254",
+    version: "2026.06.16.156",
+    buildLabel: "data-io-root-cause-tracing",
+    updatedAt: "2026-06-16T22:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v255",
     releaseNotes: Object.freeze([
+      "Data I/O flight recorder now records each normalized read/write source, route, table/RPC/API endpoint, result, and Supabase error so stuck Saving/Syncing states show the real failing operation instead of a generic status.",
+      "Ledger upserts are now blocked before Supabase when slug is missing, and the block is recorded as a data I/O diagnostic so the old ledgers.slug failure path is easy to identify.",
       "Payment request buttons now have a guaranteed timeout/finally cleanup, so Requesting/Saving cannot stay stuck if the Render/Supabase payment path hangs or falls back.",
       "Settlement/payment status saves now skip admin ledger-directory reconciliation, so requesting or reopening a payment cannot upsert ledgers without the required slug and force JSON fallback.",
       "Admin ledger directory reconciliation now includes a slug whenever it does upsert ledgers, preventing the not-null slug constraint from failing on settings/member syncs.",

@@ -703,7 +703,7 @@ function testSettlementPaymentSaveSkipsLedgerUpsert() {
   assert.match(app, /async function getNormalizedWriteContext\(options = \{\}\)/);
   assert.match(app, /const syncDirectory = options\.syncDirectory !== false/);
   assert.match(app, /if \(syncDirectory && canManageSettings\(\)\)/);
-  assert.match(app, /getNormalizedWriteContext\(\{ syncDirectory: false \}\)/);
+  assert.match(app, /getNormalizedWriteContext\(\{ syncDirectory: false, source: "settlement-request-save" \}\)/);
   assert.match(app, /settlement-directory-sync-skip/);
   assert.match(app, /slug: String\(ledgerId \|\| getConfiguredLedgerId\(\)\)\.trim\(\) \|\| getConfiguredLedgerId\(\)/);
   assert.doesNotMatch(app, /async function saveSettlementRequestToNormalizedTableFirst[\s\S]*?\.from\("ledgers"\)\.upsert/, "settlement payment status saves must not directly upsert ledgers");
@@ -713,6 +713,28 @@ function testSettlementPaymentSaveSkipsLedgerUpsert() {
   assert.match(app, /payment-action-timeout/);
   assert.match(app, /AbortController/);
   console.log("ok - testSettlementPaymentSaveSkipsLedgerUpsert");
+}
+
+
+function testDataIoFlightRecorderExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /const dataIoDiagnostics = \[\]/);
+  assert.match(app, /function recordDataIoDiagnostic\(phase, meta = \{\}\)/);
+  assert.match(app, /async function traceDataIo\(meta, operation\)/);
+  assert.match(app, /data-io-failure/);
+  assert.match(app, /Latest data I\/O/);
+  assert.match(app, /latestDataIoDiagnostic/);
+  assert.match(app, /dataIoDiagnostics: latestDataIoDiagnostics\(10\)/);
+  assert.match(app, /source: "trip-save"/);
+  assert.match(app, /source: "fuel-save"/);
+  assert.match(app, /source: "booking-save"/);
+  assert.match(app, /source: "settlement-request-save"/);
+  assert.match(app, /route: "render-api"/);
+  assert.match(app, /route: "supabase-rpc"/);
+  assert.match(app, /route: "direct-table"/);
+  assert.match(app, /Refusing to upsert ledgers without slug/);
+  assert.match(app, /ledgers upsert blocked before Supabase because slug is required/);
+  console.log("ok - testDataIoFlightRecorderExists");
 }
 
 function testFuelLedgerHealthcheckExists() {
@@ -779,4 +801,5 @@ testWorkspaceInviteAutoRefreshExists();
 testPrivateWorkspaceCreationUiExists();
 testOnboardingAbuseRateLimitFoundationExists();
 testSettlementPaymentSaveSkipsLedgerUpsert();
+testDataIoFlightRecorderExists();
 testFuelLedgerHealthcheckExists();

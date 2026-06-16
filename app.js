@@ -531,6 +531,73 @@ let lastSyncError = "";
 let lastCloudRetryAt = "";
 let lastSyncDiagnostic = null;
 const syncDiagnostics = [];
+let lastDataIoDiagnostic = null;
+const dataIoDiagnostics = [];
+
+function summarizeDataIoTarget(meta = {}) {
+  return meta.endpoint || meta.rpc || meta.table || meta.route || meta.source || "unknown";
+}
+
+function recordDataIoDiagnostic(phase, meta = {}) {
+  const diagnostic = {
+    at: new Date().toISOString(),
+    phase: String(phase || "data-io"),
+    source: String(meta.source || "unknown"),
+    route: String(meta.route || "unknown"),
+    table: meta.table || "",
+    rpc: meta.rpc || "",
+    endpoint: meta.endpoint || "",
+    operation: meta.operation || "",
+    detail: meta.detail || "",
+    ok: meta.ok === true,
+    ledgerId: supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : "",
+    activeLedgerId,
+    hasSession: Boolean(currentSession),
+    pendingLocalChanges,
+    error: summarizeSupabaseError(meta.error)
+  };
+  lastDataIoDiagnostic = diagnostic;
+  dataIoDiagnostics.push(diagnostic);
+  while (dataIoDiagnostics.length > 30) dataIoDiagnostics.shift();
+  const target = summarizeDataIoTarget(diagnostic);
+  const label = diagnostic.ok ? `data-io:${diagnostic.source}:ok` : `data-io:${diagnostic.source}:${diagnostic.phase}`;
+  const detail = diagnostic.detail || diagnostic.error?.message || `${diagnostic.route} ${target}`;
+  recordSupabaseLoadEvent(label, detail, { dataIo: true });
+  if (!diagnostic.ok && /fail|error|timeout|blocked/i.test(diagnostic.phase)) {
+    recordSyncDiagnostic("data-io-failure", `${diagnostic.source} via ${diagnostic.route} failed at ${target}: ${diagnostic.error?.message || diagnostic.detail || "unknown error"}`, {
+      source: diagnostic.source,
+      route: diagnostic.route,
+      table: diagnostic.table,
+      rpc: diagnostic.rpc,
+      endpoint: diagnostic.endpoint,
+      operation: diagnostic.operation,
+      error: meta.error
+    });
+  }
+  renderSupabaseLoadMonitor();
+  return diagnostic;
+}
+
+async function traceDataIo(meta, operation) {
+  recordDataIoDiagnostic("start", { ...meta, ok: true });
+  try {
+    const result = await operation();
+    const error = result?.error || null;
+    if (error) {
+      recordDataIoDiagnostic("error", { ...meta, error });
+    } else {
+      recordDataIoDiagnostic("success", { ...meta, ok: true });
+    }
+    return result;
+  } catch (error) {
+    recordDataIoDiagnostic("exception", { ...meta, error });
+    throw error;
+  }
+}
+
+function latestDataIoDiagnostics(limit = 6) {
+  return dataIoDiagnostics.slice(-limit).reverse();
+}
 
 function summarizeSupabaseError(error) {
   if (!error) return null;
@@ -2738,6 +2805,8 @@ function buildSupabaseLoadReport() {
     },
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
+    dataIoDiagnostics: latestDataIoDiagnostics(10),
+    latestDataIoDiagnostic: lastDataIoDiagnostic,
     normalizedTableStatus,
     supabaseSecurityStatus
   };
@@ -2766,12 +2835,21 @@ function renderSupabaseLoadMonitor() {
       <p><strong>In-app notifications:</strong> ${ledgerEventsChannel ? "Event channel active" : "Waiting for login"}. Uses only the lightweight <code>ledger_events</code> stream, not broad table realtime, and auto-refreshes safely after events.</p>
       <p><strong>Last confirmed sync:</strong> ${lastCloudSyncAt ? escapeHtml(new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" })) : "Not yet in this session"}</p>
       ${lastSyncDiagnostic ? `<p><strong>Latest sync diagnostic:</strong> ${escapeHtml(lastSyncDiagnostic.stage)} — ${escapeHtml(lastSyncDiagnostic.detail || lastSyncDiagnostic.error?.message || "No detail")}</p>` : ""}
+      ${lastDataIoDiagnostic ? `<p><strong>Latest data I/O:</strong> ${escapeHtml(lastDataIoDiagnostic.source)} via ${escapeHtml(lastDataIoDiagnostic.route)}${lastDataIoDiagnostic.table ? ` → ${escapeHtml(lastDataIoDiagnostic.table)}` : lastDataIoDiagnostic.rpc ? ` → ${escapeHtml(lastDataIoDiagnostic.rpc)}` : lastDataIoDiagnostic.endpoint ? ` → ${escapeHtml(lastDataIoDiagnostic.endpoint)}` : ""} — ${escapeHtml(lastDataIoDiagnostic.detail || lastDataIoDiagnostic.error?.message || lastDataIoDiagnostic.phase || "No detail")}</p>` : ""}
     </div>
     ${topLabels.length ? `
       <ul class="included-fuel-list compact-diagnostics-list">
         ${topLabels.map(([label, count]) => `<li><span>${escapeHtml(supabaseLoadLabel(label))}</span><b>${count}</b></li>`).join("")}
       </ul>
     ` : `<p class="entry-meta">No tracked Supabase/app-sync activity yet in this browser session.</p>`}
+    ${latestDataIoDiagnostics(6).length ? `
+      <details class="test-lab-action-group">
+        <summary>Latest data I/O</summary>
+        <ul class="test-lab-check-list">
+          ${latestDataIoDiagnostics(6).map((entry) => `<li><strong>${escapeHtml(new Date(entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}</strong> · ${escapeHtml(entry.source)} via ${escapeHtml(entry.route)}${entry.table ? ` → ${escapeHtml(entry.table)}` : entry.rpc ? ` → ${escapeHtml(entry.rpc)}` : entry.endpoint ? ` → ${escapeHtml(entry.endpoint)}` : ""}${entry.detail || entry.error?.message ? ` — ${escapeHtml(entry.detail || entry.error?.message)}` : ""}</li>`).join("")}
+        </ul>
+      </details>
+    ` : ""}
     ${latest.length ? `
       <details class="test-lab-action-group">
         <summary>Latest activity</summary>
@@ -12856,13 +12934,22 @@ async function getNormalizedWriteContext(options = {}) {
   // saving settlement_requests.
   if (syncDirectory && canManageSettings()) {
     await syncLedgerDirectoryForAdmin(ledgerId);
+  } else {
+    recordDataIoDiagnostic("skip", {
+      source: options.source || "normalized-write-context",
+      route: "direct-table",
+      table: "ledgers",
+      operation: "upsert",
+      ok: true,
+      detail: syncDirectory ? "Skipped ledger directory sync because current user cannot manage settings." : "Skipped ledger directory sync for this write source."
+    });
   }
 
-  const membersResult = await supabaseClient
+  const membersResult = await traceDataIo({ source: options.source || "normalized-write-context", route: "direct-table", table: "ledger_members", operation: "select" }, () => supabaseClient
     .from("ledger_members")
     .select("id,name,email")
     .eq("ledger_id", ledgerId)
-    .eq("is_active", true);
+    .eq("is_active", true));
   if (membersResult.error) throw membersResult.error;
 
   const members = membersResult.data || [];
@@ -12875,8 +12962,22 @@ async function getNormalizedWriteContext(options = {}) {
   return { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
 }
 
-async function upsertLedgerSettings(ledgerPayload) {
-  const result = await supabaseClient.from("ledgers").upsert(ledgerPayload).select("id").single();
+async function upsertLedgerSettings(ledgerPayload, source = "ledger-directory-sync") {
+  if (!ledgerPayload?.slug) {
+    const error = new Error("Refusing to upsert ledgers without slug.");
+    recordDataIoDiagnostic("blocked", {
+      source,
+      route: "direct-table",
+      table: "ledgers",
+      operation: "upsert",
+      detail: "ledgers upsert blocked before Supabase because slug is required",
+      error
+    });
+    throw error;
+  }
+  const result = await traceDataIo({ source, route: "direct-table", table: "ledgers", operation: "upsert" }, () =>
+    supabaseClient.from("ledgers").upsert(ledgerPayload).select("id").single()
+  );
   if (!result.error) return result.data;
 
   // Older production databases may not have fuel_tank_capacity_l yet. Keep the
@@ -12886,7 +12987,9 @@ async function upsertLedgerSettings(ledgerPayload) {
   if ((code === "PGRST204" || message.includes("fuel_tank_capacity_l")) && Object.prototype.hasOwnProperty.call(ledgerPayload, "fuel_tank_capacity_l")) {
     const fallbackPayload = { ...ledgerPayload };
     delete fallbackPayload.fuel_tank_capacity_l;
-    const fallbackResult = await supabaseClient.from("ledgers").upsert(fallbackPayload).select("id").single();
+    const fallbackResult = await traceDataIo({ source: `${source}:fallback`, route: "direct-table", table: "ledgers", operation: "upsert" }, () =>
+      supabaseClient.from("ledgers").upsert(fallbackPayload).select("id").single()
+    );
     if (!fallbackResult.error) return fallbackResult.data;
     throw fallbackResult.error;
   }
@@ -12933,10 +13036,11 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
 
 async function saveTripToNormalizedTablesFirst(trip) {
   recordSupabaseLoadEvent("trip-table-write", trip?.id ? `trip ${String(trip.id).slice(0, 8)}` : "trip");
+  recordDataIoDiagnostic("start", { source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
-    const context = await getNormalizedWriteContext();
+    const context = await getNormalizedWriteContext({ source: "trip-save" });
     if (!context) return true;
     const payload = {
       legacy_id: trip.id,
@@ -12961,6 +13065,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
         ok: true,
         message: "Table-primary write saved the trip and participants through the database transaction RPC. JSON will be updated as backup."
       };
+      recordDataIoDiagnostic("success", { source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "save", ok: true });
       return true;
     }
 
@@ -12968,6 +13073,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
 
     console.warn("Trip transaction RPC is unavailable; falling back to guarded table writes. Apply the latest supabase-schema.sql to enable atomic trip writes.", rpcResult.error);
     await saveTripWithParticipantsGuardedTableUpdates(payload, participantMemberIds);
+    recordDataIoDiagnostic("success", { source: "trip-save", route: "direct-table", table: "trips", operation: "upsert", ok: true, detail: "Saved through guarded table fallback." });
 
     normalizedTableStatus = {
       checked: true,
@@ -12976,6 +13082,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
     };
     return true;
   } catch (error) {
+    recordDataIoDiagnostic("error", { source: "trip-save", route: "normalized-write", operation: "save", error });
     console.warn("Table-primary trip write failed", error);
     normalizedTableStatus = {
       checked: true,
@@ -12990,7 +13097,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
 
 
 async function saveTripWithParticipantsRpc(context, payload, participantMemberIds) {
-  const { data, error } = await supabaseClient.rpc("upsert_trip_with_participants", {
+  const { data, error } = await traceDataIo({ source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "rpc" }, () => supabaseClient.rpc("upsert_trip_with_participants", {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
     legacy_trip_id: payload.legacy_id,
@@ -13000,7 +13107,7 @@ async function saveTripWithParticipantsRpc(context, payload, participantMemberId
     end_km_value: payload.end_km,
     note_value: payload.note,
     participant_member_ids: participantMemberIds
-  });
+  }));
 
   if (!error) return { ok: true, data };
 
@@ -13018,23 +13125,23 @@ function isMissingTripTransactionRpcError(error) {
 }
 
 async function saveTripWithParticipantsGuardedTableUpdates(payload, participantMemberIds) {
-  const tripResult = await supabaseClient
+  const tripResult = await traceDataIo({ source: "trip-save", route: "direct-table", table: "trips", operation: "upsert" }, () => supabaseClient
     .from("trips")
     .upsert(payload, { onConflict: "ledger_id,legacy_id" })
     .select("id")
-    .single();
+    .single());
   if (tripResult.error) throw tripResult.error;
 
   const tripId = tripResult.data.id;
-  const deleteParticipants = await supabaseClient.from("trip_participants").delete().eq("trip_id", tripId);
+  const deleteParticipants = await traceDataIo({ source: "trip-save", route: "direct-table", table: "trip_participants", operation: "delete" }, () => supabaseClient.from("trip_participants").delete().eq("trip_id", tripId));
   if (deleteParticipants.error) throw deleteParticipants.error;
 
   const participantPayloads = participantMemberIds.map((memberId) => ({ trip_id: tripId, member_id: memberId }));
   if (!participantPayloads.length) throw new Error("Trip must include at least one participant.");
 
-  const participantResult = await supabaseClient
+  const participantResult = await traceDataIo({ source: "trip-save", route: "direct-table", table: "trip_participants", operation: "upsert" }, () => supabaseClient
     .from("trip_participants")
-    .upsert(participantPayloads, { onConflict: "trip_id,member_id" });
+    .upsert(participantPayloads, { onConflict: "trip_id,member_id" }));
   if (participantResult.error) throw participantResult.error;
 
   return tripId;
@@ -13042,7 +13149,7 @@ async function saveTripWithParticipantsGuardedTableUpdates(payload, participantM
 
 
 async function saveFuelPaymentRpc(context, payload) {
-  const { data, error } = await supabaseClient.rpc("upsert_fuel_payment", {
+  const { data, error } = await traceDataIo({ source: "fuel-save", route: "supabase-rpc", rpc: "upsert_fuel_payment", operation: "rpc" }, () => supabaseClient.rpc("upsert_fuel_payment", {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
     legacy_fuel_id: payload.legacy_id,
@@ -13060,7 +13167,7 @@ async function saveFuelPaymentRpc(context, payload) {
     user_lat_value: payload.user_lat,
     user_lng_value: payload.user_lng,
     full_tank_value: payload.full_tank
-  });
+  }));
 
   if (!error) return { ok: true, data };
 
@@ -13078,19 +13185,20 @@ function isMissingFuelPaymentRpcError(error) {
 }
 
 async function saveFuelWithGuardedTableUpdate(payload) {
-  const fuelResult = await supabaseClient
+  const fuelResult = await traceDataIo({ source: "fuel-save", route: "direct-table", table: "fuel_payments", operation: "upsert" }, () => supabaseClient
     .from("fuel_payments")
-    .upsert(payload, { onConflict: "ledger_id,legacy_id" });
+    .upsert(payload, { onConflict: "ledger_id,legacy_id" }));
   if (fuelResult.error) throw fuelResult.error;
   return true;
 }
 
 async function saveFuelToNormalizedTablesFirst(fuel) {
   recordSupabaseLoadEvent("fuel-table-write", fuel?.id ? `fuel ${String(fuel.id).slice(0, 8)}` : "fuel");
+  recordDataIoDiagnostic("start", { source: "fuel-save", route: "supabase-rpc", rpc: "upsert_fuel_payment", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
-    const context = await getNormalizedWriteContext();
+    const context = await getNormalizedWriteContext({ source: "fuel-save" });
     if (!context) return true;
     const liters = nullableNumber(fuel.liters);
     const amount = Number(fuel.amount || 0);
@@ -13129,8 +13237,10 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       ok: true,
       message: "Table-primary write saved the fuel log to normalized tables. JSON will be updated as backup."
     };
+    recordDataIoDiagnostic("success", { source: "fuel-save", route: rpcResult.ok ? "supabase-rpc" : "direct-table", rpc: rpcResult.ok ? "upsert_fuel_payment" : "", table: rpcResult.ok ? "" : "fuel_payments", operation: "save", ok: true });
     return true;
   } catch (error) {
+    recordDataIoDiagnostic("error", { source: "fuel-save", route: "normalized-write", operation: "save", error });
     console.warn("Table-primary fuel write failed", error);
     normalizedTableStatus = {
       checked: true,
@@ -13145,14 +13255,14 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
 
 
 async function saveBookingRpc(context, payload) {
-  const { data, error } = await supabaseClient.rpc("upsert_car_booking", {
+  const { data, error } = await traceDataIo({ source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "rpc" }, () => supabaseClient.rpc("upsert_car_booking", {
     target_ledger_id: context.ledgerId,
     legacy_booking_id: payload.legacy_id,
     booking_member_id: payload.member_id,
     start_at_value: payload.start_at,
     end_at_value: payload.end_at,
     purpose_value: payload.purpose
-  });
+  }));
 
   if (!error) return { ok: true, data };
 
@@ -13170,9 +13280,9 @@ function isMissingBookingTransactionRpcError(error) {
 }
 
 async function saveBookingWithGuardedTableUpdate(payload) {
-  const bookingResult = await supabaseClient
+  const bookingResult = await traceDataIo({ source: "booking-save", route: "direct-table", table: "car_bookings", operation: "upsert" }, () => supabaseClient
     .from("car_bookings")
-    .upsert(payload, { onConflict: "ledger_id,legacy_id" });
+    .upsert(payload, { onConflict: "ledger_id,legacy_id" }));
   if (bookingResult.error) throw bookingResult.error;
 }
 
@@ -13193,10 +13303,11 @@ async function softDeleteBookingRpc(context, legacyBookingId) {
 
 async function saveBookingToNormalizedTablesFirst(booking) {
   recordSupabaseLoadEvent("booking-table-write", booking?.id ? `booking ${String(booking.id).slice(0, 8)}` : "booking");
+  recordDataIoDiagnostic("start", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
-    const context = await getNormalizedWriteContext();
+    const context = await getNormalizedWriteContext({ source: "booking-save" });
     if (!context) return true;
     const payload = {
       legacy_id: booking.id,
@@ -13218,6 +13329,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
         ok: true,
         message: "Table-primary write saved the booking through the database transaction RPC. JSON will be updated as backup."
       };
+      recordDataIoDiagnostic("success", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
       return true;
     }
 
@@ -13225,6 +13337,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
 
     console.warn("Booking transaction RPC is unavailable; falling back to direct table write. Apply the latest supabase-schema.sql to enable hardened booking writes.", rpcResult.error);
     await saveBookingWithGuardedTableUpdate(payload);
+    recordDataIoDiagnostic("success", { source: "booking-save", route: "direct-table", table: "car_bookings", operation: "upsert", ok: true, detail: "Saved through guarded table fallback." });
 
     normalizedTableStatus = {
       checked: true,
@@ -13233,6 +13346,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
     };
     return true;
   } catch (error) {
+    recordDataIoDiagnostic("error", { source: "booking-save", route: "normalized-write", operation: "save", error });
     console.warn("Table-primary booking write failed", error);
     if (isMissingBookingTableError(error)) {
       normalizedTableStatus = {
@@ -13268,11 +13382,11 @@ async function pruneStaleSettlementRequests(context) {
       .filter(Boolean)
   );
 
-  const existing = await supabaseClient
+  const existing = await traceDataIo({ source: "settlement-request-prune", route: "direct-table", table: "settlement_requests", operation: "select-stale" }, () => supabaseClient
     .from("settlement_requests")
     .select("id,from_member_id,to_member_id")
     .eq("ledger_id", context.ledgerId)
-    .eq("period_id", context.openPeriodId);
+    .eq("period_id", context.openPeriodId));
   if (existing.error) throw existing.error;
 
   const staleIds = (existing.data || [])
@@ -13282,10 +13396,10 @@ async function pruneStaleSettlementRequests(context) {
 
   // RLS allows ledger members to update settlement request rows, but not necessarily delete them.
   // Mark old payment-line rows as cancelled so they do not count in health checks or reload state.
-  const cancellation = await supabaseClient
+  const cancellation = await traceDataIo({ source: "settlement-request-prune", route: "direct-table", table: "settlement_requests", operation: "cancel-stale" }, () => supabaseClient
     .from("settlement_requests")
     .update({ status: "cancelled", updated_at: new Date().toISOString() })
-    .in("id", staleIds);
+    .in("id", staleIds));
   if (cancellation.error) throw cancellation.error;
 }
 
@@ -13301,7 +13415,7 @@ function currentSettlementPairKeys(context) {
 }
 
 async function saveSettlementRequestStatusRpc(context, payload) {
-  const { data, error } = await supabaseClient.rpc("upsert_settlement_request_status", {
+  const { data, error } = await traceDataIo({ source: "settlement-request-save", route: "supabase-rpc", rpc: "upsert_settlement_request_status", operation: "rpc" }, () => supabaseClient.rpc("upsert_settlement_request_status", {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
     payer_member_id: payload.from_member_id,
@@ -13310,7 +13424,7 @@ async function saveSettlementRequestStatusRpc(context, payload) {
     currency_value: payload.currency,
     next_status: payload.status,
     current_pair_keys: currentSettlementPairKeys(context)
-  });
+  }));
 
   if (!error) return { ok: true, data };
 
@@ -13341,7 +13455,7 @@ async function applyPaymentStatusActionRpc(context, payload, options = {}) {
   const renderResult = await applyPaymentStatusActionViaRender(context, payload, options, rpcPayload);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
-  const { data, error } = await supabaseClient.rpc("apply_payment_status_action", rpcPayload);
+  const { data, error } = await traceDataIo({ source: "settlement-request-save", route: "supabase-rpc", rpc: "apply_payment_status_action", operation: rpcPayload.next_status || "payment-status" }, () => supabaseClient.rpc("apply_payment_status_action", rpcPayload));
 
   if (!error) return { ok: true, data, backend: "supabase-rpc" };
 
@@ -13359,6 +13473,7 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
   }
 
   try {
+    recordDataIoDiagnostic("start", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, ok: true });
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), paymentStatusActionTimeoutMs);
     const response = await fetch(renderPaymentStatusActionUrl, {
@@ -13389,12 +13504,14 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-payment-action", `${payload.status} via Render backend API`);
+      recordDataIoDiagnostic("success", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, ok: true });
       return { ok: true, data: result.result, backend: "render-api" };
     }
 
     const message = result?.message || result?.error || text || `Render payment action failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
+    recordDataIoDiagnostic("error", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, error, detail: `HTTP ${response.status}` });
     return {
       ok: false,
       error,
@@ -13402,6 +13519,7 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
       backend: "render-api"
     };
   } catch (error) {
+    recordDataIoDiagnostic(error?.name === "AbortError" ? "timeout" : "exception", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: payload.status, error });
     console.warn("Render payment action API failed; falling back to direct Supabase RPC", error);
     if (error?.name === "AbortError") {
       error = paymentActionTimeoutError("Render payment action API", paymentStatusActionTimeoutMs);
@@ -13424,10 +13542,11 @@ function isMissingPaymentStatusActionRpcError(error) {
 
 async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, options = {}) {
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
+  recordDataIoDiagnostic("start", { source: "settlement-request-save", route: "render-api", endpoint: renderPaymentStatusActionUrl, operation: nextStatus, ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
-    const context = await getNormalizedWriteContext({ syncDirectory: false });
+    const context = await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
     if (!context) return true;
     recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
 
@@ -13470,6 +13589,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
         ok: true,
         message: `${actionRpcResult.backend === "render-api" ? "Render backend API" : "Backend payment action RPC"} saved the settlement status, stale-row cleanup, and ledger event in one database transaction. JSON audit remains a backup.`
       };
+      recordDataIoDiagnostic("success", { source: "settlement-request-save", route: actionRpcResult.backend || "backend", rpc: actionRpcResult.backend === "supabase-rpc" ? "apply_payment_status_action" : "", endpoint: actionRpcResult.backend === "render-api" ? renderPaymentStatusActionUrl : "", operation: nextStatus, ok: true });
       return true;
     }
 
@@ -13486,16 +13606,18 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
         ok: true,
         message: "Table-primary write saved the settlement request status and stale-row cleanup through the database transaction RPC. Apply the latest Supabase schema to add backend-owned payment ledger events."
       };
+      recordDataIoDiagnostic("success", { source: "settlement-request-save", route: "supabase-rpc", rpc: "upsert_settlement_request_status", operation: nextStatus, ok: true });
       return true;
     }
 
     if (!rpcResult.shouldFallback) throw rpcResult.error || new Error("Could not save settlement request status.");
 
     console.warn("Settlement request transaction RPC is unavailable; falling back to guarded table writes. Apply the latest supabase-schema.sql to enable atomic settlement request writes.", rpcResult.error);
-    const result = await supabaseClient
+    const result = await traceDataIo({ source: "settlement-request-save", route: "direct-table", table: "settlement_requests", operation: nextStatus }, () => supabaseClient
       .from("settlement_requests")
-      .upsert(payload, { onConflict: "period_id,from_member_id,to_member_id" });
+      .upsert(payload, { onConflict: "period_id,from_member_id,to_member_id" }));
     if (result.error) throw result.error;
+    recordDataIoDiagnostic("success", { source: "settlement-request-save", route: "direct-table", table: "settlement_requests", operation: nextStatus, ok: true, detail: "Saved through guarded table fallback." });
 
     await pruneStaleSettlementRequests(context).catch((error) => {
       console.warn("Could not prune stale settlement request rows", error);
@@ -13508,6 +13630,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
     };
     return true;
   } catch (error) {
+    recordDataIoDiagnostic("error", { source: "settlement-request-save", route: "normalized-write", operation: nextStatus, error });
     console.warn("Table-primary settlement request write failed", error);
     normalizedTableStatus = {
       checked: true,
@@ -13523,7 +13646,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
 async function softDeleteNormalizedEntryFirst(type, id) {
   if (!supabaseClient || !currentSession) return true;
   try {
-    const context = await getNormalizedWriteContext();
+    const context = await getNormalizedWriteContext({ source: `${type || "entry"}-delete` });
     if (!context) return true;
     const table = type === "trips" ? "trips" : type === "fuel" ? "fuel_payments" : type === "bookings" ? "car_bookings" : null;
     if (!table) return true;
