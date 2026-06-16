@@ -52,6 +52,7 @@ for (const helper of [
   "settlement-calculations.js",
   "ui-messages.js",
   "sync-status-helpers.js",
+  "fuel-price-helpers.js",
   "location-privacy-helpers.js",
   "period-closing-helpers.js",
   "stress-test-helpers.js",
