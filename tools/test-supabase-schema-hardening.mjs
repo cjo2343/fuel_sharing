@@ -300,7 +300,14 @@ function testAdminDiagnosticsUxExists() {
   assert.match(app, /Broad Live Sync is off by default/);
   assert.match(app, /function getRpcAvailabilityDiagnostics\(\)/);
   assert.match(app, /function getRealtimePublicationDiagnostics\(\)/);
+  assert.match(app, /function getSchemaMigrationDiagnostics\(\)/);
+  assert.match(app, /function getSchemaDriftDiagnostics\(\)/);
+  assert.match(app, /function getAdminHealthSummary\(/);
+  assert.match(app, /title: "Overall health"/);
+  assert.match(app, /All core checks look healthy/);
   assert.match(app, /title: "RPC availability"/);
+  assert.match(app, /title: "Migrations"/);
+  assert.match(app, /title: "Schema shape"/);
   assert.match(app, /title: "Realtime publication"/);
   assert.match(app, /Run Security Health to see whether only lightweight ledger_events is published for Realtime/);
   assert.match(app, /Keep public\.ledger_events published/);

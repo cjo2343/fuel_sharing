@@ -534,3 +534,8 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 - Do not introduce `ledger_members.auth_user_id`; the live schema links Supabase users to ledger members by normalized email.
 
 - Security Health now includes schema drift detection for expected Fuel Ledger tables, columns, and RLS policies, in addition to migration tracking.
+
+## Admin diagnostics UX polish
+
+- The admin guardrail overview now includes an Overall health summary plus dedicated Migrations and Schema shape cards.
+- When changing Security Health or Supabase healthcheck payloads, update the admin diagnostics cards and `testAdminDiagnosticsUxExists` so the plain-language summary remains accurate.

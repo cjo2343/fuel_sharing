@@ -2430,6 +2430,136 @@ function getRealtimePublicationDiagnostics() {
   };
 }
 
+
+function getSchemaMigrationDiagnostics() {
+  if (!supabaseClient) {
+    return {
+      status: "Local-only mode",
+      detail: "Migration tracking is checked after signing in to Supabase.",
+      level: "ok"
+    };
+  }
+  if (!canManageSettings()) {
+    return {
+      status: "Admin check required",
+      detail: "Migration status is shown after an admin runs Security Health.",
+      level: "warning"
+    };
+  }
+  const rpcHealth = getLatestHealthcheckRpcPayload();
+  if (!supabaseSecurityStatus?.checked && !rpcHealth) {
+    return {
+      status: "Not checked yet",
+      detail: "Run Security Health to confirm every Supabase migration has been applied.",
+      level: "warning"
+    };
+  }
+  const migrations = rpcHealth?.schema_migrations && typeof rpcHealth.schema_migrations === "object"
+    ? rpcHealth.schema_migrations
+    : null;
+  if (!migrations) {
+    return {
+      status: "Legacy healthcheck",
+      detail: "Apply the schema migration tracking migration to show missing migration IDs here.",
+      level: "warning"
+    };
+  }
+  const missing = Array.isArray(migrations.missing_migrations) ? migrations.missing_migrations.filter(Boolean) : [];
+  const extra = Array.isArray(migrations.extra_migrations) ? migrations.extra_migrations.filter(Boolean) : [];
+  if (missing.length) {
+    return {
+      status: `${missing.length} migration${missing.length === 1 ? "" : "s"} missing`,
+      detail: `Run missing migration${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}.`,
+      level: "warning"
+    };
+  }
+  const latestApplied = migrations.latest_applied || "unknown";
+  const latestExpected = migrations.latest_expected || "unknown";
+  return {
+    status: "Migrations current",
+    detail: `Applied ${latestApplied}; expected ${latestExpected}${extra.length ? ` · extra tracked: ${extra.join(", ")}` : ""}.`,
+    level: "ok"
+  };
+}
+
+function getSchemaDriftDiagnostics() {
+  if (!supabaseClient) {
+    return {
+      status: "Local-only mode",
+      detail: "Schema shape is checked after signing in to Supabase.",
+      level: "ok"
+    };
+  }
+  if (!canManageSettings()) {
+    return {
+      status: "Admin check required",
+      detail: "Schema drift details are shown after an admin runs Security Health.",
+      level: "warning"
+    };
+  }
+  const rpcHealth = getLatestHealthcheckRpcPayload();
+  if (!supabaseSecurityStatus?.checked && !rpcHealth) {
+    return {
+      status: "Not checked yet",
+      detail: "Run Security Health to inspect expected tables, columns, and key policies.",
+      level: "warning"
+    };
+  }
+  const drift = rpcHealth?.schema_drift && typeof rpcHealth.schema_drift === "object" ? rpcHealth.schema_drift : null;
+  if (!drift) {
+    return {
+      status: "Legacy healthcheck",
+      detail: "Apply the schema drift healthcheck migration to show table, column, and policy drift here.",
+      level: "warning"
+    };
+  }
+  const missingTables = Array.isArray(drift.missing_tables) ? drift.missing_tables.filter(Boolean) : [];
+  const missingColumns = Array.isArray(drift.missing_columns) ? drift.missing_columns.filter(Boolean) : [];
+  const missingPolicies = Array.isArray(drift.missing_policies) ? drift.missing_policies.filter(Boolean) : [];
+  const issues = [...missingTables, ...missingColumns, ...missingPolicies];
+  if (issues.length) {
+    return {
+      status: `${issues.length} schema item${issues.length === 1 ? "" : "s"} missing`,
+      detail: `Missing: ${issues.slice(0, 5).join(", ")}${issues.length > 5 ? `, and ${issues.length - 5} more` : ""}.`,
+      level: "warning"
+    };
+  }
+  return {
+    status: "Schema shape OK",
+    detail: "Expected tables, columns, and key RLS policies were found by Security Health.",
+    level: "ok"
+  };
+}
+
+function getAdminHealthSummary({ rpcDiagnostics, realtimePublicationDiagnostics, schemaMigrationDiagnostics, schemaDriftDiagnostics, normalizedStatus }) {
+  const warningTitles = [];
+  if (normalizedTableStatus?.checked && !normalizedTableStatus.ok) warningTitles.push("table health");
+  if (rpcDiagnostics.level !== "ok") warningTitles.push("RPC availability");
+  if (schemaMigrationDiagnostics.level !== "ok") warningTitles.push("migration tracking");
+  if (schemaDriftDiagnostics.level !== "ok") warningTitles.push("schema drift");
+  if (realtimePublicationDiagnostics.level !== "ok") warningTitles.push("Realtime publication");
+  if (pendingLocalChanges > 0 || lastSyncError) warningTitles.push("sync state");
+  if (!warningTitles.length && normalizedStatus === "Healthy") {
+    return {
+      status: "All core checks look healthy",
+      detail: "Cloud tables, RPCs, migrations, schema shape, sync state, and backup guardrails are all green from the latest available checks.",
+      level: "ok"
+    };
+  }
+  if (!supabaseSecurityStatus?.checked && supabaseClient && canManageSettings()) {
+    return {
+      status: "Run Security Health for a fresh read",
+      detail: "The summary updates after live Supabase health checks finish.",
+      level: "warning"
+    };
+  }
+  return {
+    status: "Needs review",
+    detail: `Check ${warningTitles.join(", ")} before using destructive admin tools.`,
+    level: "warning"
+  };
+}
+
 function getRpcAvailabilityDiagnostics() {
   if (!supabaseClient) {
     return {
@@ -2503,9 +2633,24 @@ function renderAdminGuardrailOverview() {
     : `Last confirmed sync: ${formatAdminTimestamp(lastCloudSyncAt || lastCloudSaveAt)}`;
   const rpcDiagnostics = getRpcAvailabilityDiagnostics();
   const realtimePublicationDiagnostics = getRealtimePublicationDiagnostics();
+  const schemaMigrationDiagnostics = getSchemaMigrationDiagnostics();
+  const schemaDriftDiagnostics = getSchemaDriftDiagnostics();
+  const healthSummary = getAdminHealthSummary({
+    rpcDiagnostics,
+    realtimePublicationDiagnostics,
+    schemaMigrationDiagnostics,
+    schemaDriftDiagnostics,
+    normalizedStatus
+  });
 
   els.adminGuardrailOverview.innerHTML = `
     <div class="admin-guardrail-grid" data-admin-diagnostics-overview="true">
+      ${adminGuardrailStatusCard({
+        title: "Overall health",
+        status: healthSummary.status,
+        detail: healthSummary.detail,
+        level: healthSummary.level
+      })}
       ${adminGuardrailStatusCard({
         title: "Release",
         status: build.version ? `${build.version} · ${build.buildLabel || "unlabeled"}` : "Build info unavailable",
@@ -2529,6 +2674,18 @@ function renderAdminGuardrailOverview() {
         status: rpcDiagnostics.status,
         detail: rpcDiagnostics.detail,
         level: rpcDiagnostics.level
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Migrations",
+        status: schemaMigrationDiagnostics.status,
+        detail: schemaMigrationDiagnostics.detail,
+        level: schemaMigrationDiagnostics.level
+      })}
+      ${adminGuardrailStatusCard({
+        title: "Schema shape",
+        status: schemaDriftDiagnostics.status,
+        detail: schemaDriftDiagnostics.detail,
+        level: schemaDriftDiagnostics.level
       })}
       ${adminGuardrailStatusCard({
         title: "Realtime publication",

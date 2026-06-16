@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v214";
-const BUILD_LABEL = "schema-drift-healthcheck";
-const BUILD_UPDATED_AT = "2026-06-16T03:14:00.000Z";
+const CACHE_NAME = "fuel-ledger-v215";
+const BUILD_LABEL = "admin-health-summary-polish";
+const BUILD_UPDATED_AT = "2026-06-16T07:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

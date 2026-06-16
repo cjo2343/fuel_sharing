@@ -152,3 +152,9 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Schema migration tracking keeps admin visibility tied to the existing email-based ledger membership model. Validation fails if a migration references a non-existent `ledger_members.auth_user_id` column.
 
 - Security Health schema drift detection checks expected tables, key columns, and critical RLS policies so a migration marker alone cannot hide a manually drifted schema.
+
+## Admin health summary UX polish
+
+- Admin diagnostics now show a plain-language **Overall health** card before the detailed checks.
+- Migration tracking and schema drift are shown as separate cards so admins can quickly tell whether Supabase upgrades are applied and the database shape still matches the app.
+- Keep these cards backed by Security Health data; do not hide migration/schema warnings behind a generic green status.
