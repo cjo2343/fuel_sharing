@@ -12971,8 +12971,8 @@ async function initializePwa() {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         if (serviceWorkerControllerChanged) return;
         serviceWorkerControllerChanged = true;
-        recordSyncDiagnostic("service-worker-controllerchange", "New app shell is active and will be used on the next natural page load.");
-        recordSupabaseLoadEvent("service-worker-controllerchange", "Skipped automatic reload to avoid app-shell reconnect churn.");
+        recordSyncDiagnostic("service-worker-controllerchange", "App update is ready; close/reopen once so page files and the service-worker cache use the same build.");
+        recordSupabaseLoadEvent("service-worker-controllerchange", "Update handoff recorded without forcing reload or cloud reconnects.");
       });
 
       const registration = await navigator.serviceWorker.register("/service-worker.js");
@@ -12981,7 +12981,8 @@ async function initializePwa() {
         if (!newWorker) return;
         newWorker.addEventListener("statechange", () => {
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            newWorker.postMessage({ type: "SKIP_WAITING" });
+            recordSyncDiagnostic("service-worker-update-ready", "New app shell is waiting; close/reopen once to switch builds cleanly.");
+            recordSupabaseLoadEvent("service-worker-update-ready", "Waiting service worker will activate after old pages are closed.");
           }
         });
       });

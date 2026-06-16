@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.161",
-    buildLabel: "admin-diagnostics-readable-layout",
-    updatedAt: "2026-06-16T23:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v260",
+    version: "2026.06.17.162",
+    buildLabel: "service-worker-version-consistency",
+    updatedAt: "2026-06-17T00:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v261",
     releaseNotes: Object.freeze([
+      "Service-worker version handoff is now stricter: build-info.js is network-first, core runtime assets stay stable within one cache, and update-ready states tell users to close/reopen instead of showing random cache mismatches.",
       "Admin diagnostics now uses a full-width readable layout for Supabase activity and data I/O operation rows, preventing long technical labels from collapsing into vertical letter stacks.",
       "Background window-focus and realtime-triggered cloud loads now defer while foreground writes or recent healthy syncs exist, preventing user actions from competing with automatic refreshes.",
       "Active data I/O operations now age into timeout status in Admin diagnostics instead of appearing active forever when a finish event is missing.",
@@ -112,6 +113,34 @@
     });
   }
 
+  function parseBuildInfoSource(source) {
+    if (!source) return null;
+    const version = source.match(/version:\s*["']([^"']+)["']/)?.[1] || null;
+    const buildLabel = source.match(/buildLabel:\s*["']([^"']+)["']/)?.[1] || null;
+    const updatedAt = source.match(/updatedAt:\s*["']([^"']+)["']/)?.[1] || null;
+    const expectedServiceWorkerCache = source.match(/expectedServiceWorkerCache:\s*["']([^"']+)["']/)?.[1] || null;
+    if (!version && !buildLabel && !expectedServiceWorkerCache) return null;
+    return { version, buildLabel, updatedAt, expectedServiceWorkerCache };
+  }
+
+  async function requestLatestDeployedBuildInfo(timeoutMs = 1600) {
+    if (typeof fetch !== "function" || typeof AbortController === "undefined") return null;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`/build-info.js?version-check=${Date.now()}`, {
+        cache: "no-store",
+        signal: controller.signal
+      });
+      if (!response.ok) return null;
+      return parseBuildInfoSource(await response.text());
+    } catch (error) {
+      return null;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
   function escapeBuildInfoText(value) {
     return String(value || "")
       .replace(/&/g, "&amp;")
@@ -121,18 +150,29 @@
       .replace(/'/g, "&#39;");
   }
 
-  function renderBuildInfoPanel(target, serviceWorkerInfo = null) {
+  function renderBuildInfoPanel(target, serviceWorkerInfo = null, deployedInfo = null) {
     if (!target) return;
     const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Not reported yet";
-    const cacheMatches = serviceWorkerInfo?.cacheName
+    const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
+    const pageIsOlderThanDeploy = Boolean(deployedInfo?.expectedServiceWorkerCache && deployedInfo.expectedServiceWorkerCache !== BUILD_INFO.expectedServiceWorkerCache);
+    const cacheMatchesLoadedPage = serviceWorkerInfo?.cacheName
       ? serviceWorkerInfo.cacheName === BUILD_INFO.expectedServiceWorkerCache
       : null;
-    const cacheClass = cacheMatches === false ? "warning" : "ok";
-    const cacheNote = cacheMatches === false
-      ? "Cache mismatch — close/reopen the app or refresh once."
-      : cacheMatches === true
-        ? "Cache matches this build."
-        : "Reload once if this looks stale.";
+    const cacheMatchesDeploy = serviceWorkerInfo?.cacheName && deployedCache
+      ? serviceWorkerInfo.cacheName === deployedCache
+      : null;
+    const updatePending = pageIsOlderThanDeploy || (cacheMatchesLoadedPage === false && cacheMatchesDeploy === true);
+    const cacheClass = updatePending ? "warning" : cacheMatchesLoadedPage === false ? "warning" : "ok";
+    const cacheNote = updatePending
+      ? "Update ready — close/reopen once so page files and the service worker use the same build."
+      : cacheMatchesLoadedPage === false
+        ? "Update handoff in progress — close/reopen once if this persists."
+        : cacheMatchesLoadedPage === true
+          ? "Cache matches this loaded build."
+          : "Reload once if this looks stale.";
+    const latestDeployLabel = deployedInfo?.buildLabel || BUILD_INFO.buildLabel;
+    const latestDeployCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
+    const latestDeployVersion = deployedInfo?.version || BUILD_INFO.version;
     const releaseNotes = (BUILD_INFO.releaseNotes || [])
       .map((note) => `<li>${escapeBuildInfoText(note)}</li>`)
       .join("");
@@ -152,17 +192,23 @@
           <p>${formatDateTime(BUILD_INFO.updatedAt)}</p>
         </article>
         <article class="diagnostic-card ${cacheClass}">
-          <strong>Service worker cache</strong>
-          <p>${serviceWorkerCache}</p>
+          <strong>Update status</strong>
+          <p>${updatePending ? "Update ready" : cacheMatchesLoadedPage === false ? "Handoff" : "Current"}</p>
           <small>${cacheNote}</small>
         </article>
         <article class="diagnostic-card ok">
-          <strong>Expected cache</strong>
+          <strong>Loaded page cache</strong>
           <p>${BUILD_INFO.expectedServiceWorkerCache}</p>
         </article>
         <article class="diagnostic-card ok">
-          <strong>PWA status</strong>
-          <p>${serviceWorkerStatus()}</p>
+          <strong>Latest deployed</strong>
+          <p>${escapeBuildInfoText(latestDeployLabel)}</p>
+          <small>${escapeBuildInfoText(latestDeployVersion)} · ${escapeBuildInfoText(latestDeployCache)}</small>
+        </article>
+        <article class="diagnostic-card ${cacheClass}">
+          <strong>Service worker cache</strong>
+          <p>${serviceWorkerCache}</p>
+          <small>${cacheMatchesDeploy ? "Matches latest deployed cache." : serviceWorkerStatus()}</small>
         </article>
         <article class="diagnostic-card ok release-note-card">
           <strong>Latest notes</strong>
@@ -172,17 +218,20 @@
     `;
   }
 
-  function renderBuildInfo(serviceWorkerInfo = null) {
+  function renderBuildInfo(serviceWorkerInfo = null, deployedInfo = null) {
     document.querySelectorAll("#buildInfoPanel, #aboutBuildInfoPanel").forEach((target) => {
-      renderBuildInfoPanel(target, serviceWorkerInfo);
+      renderBuildInfoPanel(target, serviceWorkerInfo, deployedInfo);
     });
   }
 
   async function refreshBuildInfo() {
-    renderBuildInfo(null);
-    const serviceWorkerInfo = await requestServiceWorkerInfo();
-    renderBuildInfo(serviceWorkerInfo);
-    return serviceWorkerInfo;
+    renderBuildInfo(null, null);
+    const [serviceWorkerInfo, deployedInfo] = await Promise.all([
+      requestServiceWorkerInfo(),
+      requestLatestDeployedBuildInfo()
+    ]);
+    renderBuildInfo(serviceWorkerInfo, deployedInfo);
+    return { serviceWorkerInfo, deployedInfo };
   }
 
   window.FuelBuildInfo = {

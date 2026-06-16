@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v260";
-const BUILD_LABEL = "admin-diagnostics-readable-layout";
-const BUILD_UPDATED_AT = "2026-06-16T23:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v261";
+const BUILD_LABEL = "service-worker-version-consistency";
+const BUILD_UPDATED_AT = "2026-06-17T00:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -23,7 +23,6 @@ const CORE_ASSETS = [
   "/notifications.js",
   "/admin-tools.js",
   "/permission-helpers.js",
-  "/build-info.js",
   "/booking-calendar.js",
   "/trip-actions.js",
   "/trip-rendering.js",
@@ -44,20 +43,17 @@ self.addEventListener("install", (event) => {
         console.warn("core-asset-cache-failure", error);
       })
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
   );
-  self.clients.claim();
 });
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") {
-    self.skipWaiting();
-    return;
+      return;
   }
   if (event.data?.type === "GET_BUILD_INFO") {
     event.ports?.[0]?.postMessage({
@@ -81,24 +77,27 @@ function isCoreAssetRequest(request) {
 async function cacheFirstCoreAsset(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
-  if (cached) {
-    eventlessRefreshCoreAsset(cache, request);
-    return cached;
-  }
+  if (cached) return cached;
   const response = await fetch(request);
   if (response && response.ok) cache.put(request, response.clone());
   return response;
 }
 
-function eventlessRefreshCoreAsset(cache, request) {
-  fetch(request)
-    .then((response) => {
-      if (response && response.ok) return cache.put(request, response.clone());
-      return null;
-    })
-    .catch((error) => {
-      console.warn("core-asset-refresh-failure", error);
-    });
+async function networkFirstBuildInfo(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const networkRequest = new Request(request, { cache: "no-store" });
+    const response = await fetch(networkRequest);
+    if (response && response.ok) {
+      await cache.put(request, response.clone());
+      return response;
+    }
+  } catch (error) {
+    console.warn("build-info-network-failure", error);
+  }
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  return new Response("Build info unavailable", { status: 503, statusText: "Offline" });
 }
 
 self.addEventListener("fetch", (event) => {
@@ -107,6 +106,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname === "/build-info.js") {
+    event.respondWith(networkFirstBuildInfo(request));
+    return;
+  }
   if (isCoreAssetRequest(request)) {
     event.respondWith(
       cacheFirstCoreAsset(request).catch(() => caches.match(request).then((response) => {

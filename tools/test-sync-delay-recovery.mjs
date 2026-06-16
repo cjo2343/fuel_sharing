@@ -109,8 +109,14 @@ assert.match(
 
 assert.match(
   appSource,
-  /recordSyncDiagnostic\("service-worker-controllerchange", "New app shell is active and will be used on the next natural page load\."\)/,
-  "service worker controller changes should be diagnostic-only instead of forcing an immediate reload"
+  /recordSyncDiagnostic\("service-worker-controllerchange", "App update is ready; close\/reopen once so page files and the service-worker cache use the same build\."\)/,
+  "service worker controller changes should explain the clean close/reopen version handoff"
+);
+
+assert.match(
+  appSource,
+  /service-worker-update-ready[\s\S]*Waiting service worker will activate after old pages are closed\./,
+  "service worker updates should wait for close/reopen instead of forcing mixed-version control"
 );
 
 assert.doesNotMatch(

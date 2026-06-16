@@ -30,7 +30,11 @@ assert.ok(coreAssets.includes("/vendor/supabase-js-2.43.4/26.supabase.js"), "ser
 
 for (const script of scripts) {
   assert.ok(existsSync(script), `${script} referenced by index.html must exist`);
-  assert.ok(normalizedCoreAssets.has(script), `${script} referenced by index.html must be cached by service-worker.js CORE_ASSETS`);
+  if (script === "build-info.js") {
+    assert.ok(!normalizedCoreAssets.has(script), "build-info.js must stay out of CORE_ASSETS so version checks are network-first");
+  } else {
+    assert.ok(normalizedCoreAssets.has(script), `${script} referenced by index.html must be cached by service-worker.js CORE_ASSETS`);
+  }
 }
 
 for (const asset of coreAssets.filter((asset) => asset.endsWith(".js"))) {
@@ -74,8 +78,11 @@ assert.ok(cacheName, "service-worker.js must expose CACHE_NAME");
 assert.equal(cacheName, expectedCache, "service-worker.js CACHE_NAME must match build-info.js expectedServiceWorkerCache");
 assert.ok(serviceWorker.includes("core-asset-cache-failure"), "service worker should log cache install failures for diagnostics");
 assert.ok(serviceWorker.includes("function cacheFirstCoreAsset"), "service worker should serve core app-shell assets from cache first");
-assert.ok(serviceWorker.includes("eventlessRefreshCoreAsset"), "service worker should refresh cached app-shell assets in the background");
-assert.ok(serviceWorker.includes("core-asset-refresh-failure"), "service worker should log background cache refresh failures for diagnostics");
+assert.ok(serviceWorker.includes("function networkFirstBuildInfo"), "service worker should fetch build-info.js network-first for version consistency");
+assert.ok(serviceWorker.includes("build-info-network-failure"), "service worker should log build-info network failures for diagnostics");
+assert.ok(!serviceWorker.includes("eventlessRefreshCoreAsset"), "service worker must not mutate versioned runtime files inside an existing cache");
+assert.ok(!serviceWorker.includes("self.skipWaiting();"), "service worker updates should wait for a clean close/reopen instead of taking over old pages");
+assert.ok(!serviceWorker.includes("self.clients.claim();"), "service worker updates should not claim already-loaded pages with a different app shell");
 assert.ok(serviceWorker.includes("function sanitizeNotificationUrl"), "service worker should sanitize notification click URLs");
 assert.ok(serviceWorker.includes("candidate.origin !== self.location.origin"), "notification click URLs must be restricted to same-origin paths");
 
