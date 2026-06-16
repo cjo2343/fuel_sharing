@@ -401,6 +401,22 @@ function testBootstrapLockExists() {
   console.log("ok - testBootstrapLockExists");
 }
 
+function testSchemaMigrationTrackingExists() {
+  const healthHelpers = readFileSync("security-health-helpers.js", "utf8");
+  assert.match(schema, /create table if not exists public\.fuel_ledger_schema_migrations/);
+  assert.match(schema, /migration_id text primary key/);
+  assert.match(schema, /'023_schema_migration_tracking'/);
+  assert.match(schema, /'schema_migrations', jsonb_build_object/);
+  assert.match(schema, /'latest_expected'/);
+  assert.match(schema, /'missing_migrations'/);
+  assert.match(schema, /grant select on public\.fuel_ledger_schema_migrations to authenticated/);
+  assert.doesNotMatch(schema, /auth_user_id/, "schema migration tracking must use email-based member auth, not a non-existent auth_user_id column");
+  assert.match(schema, /lower\(lm\.email\) = public\.current_user_email\(\)/);
+  assert.match(healthHelpers, /missingSchemaMigrations/);
+  assert.match(healthHelpers, /Fuel Ledger schema migrations are applied/);
+  console.log("ok - testSchemaMigrationTrackingExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -452,4 +468,5 @@ testSyncHealthBannerExists();
 testTestLabReportStoreExists();
 testRetentionPrivacyCleanupCoversCloudReports();
 testBootstrapLockExists();
+testSchemaMigrationTrackingExists();
 testFuelLedgerHealthcheckExists();

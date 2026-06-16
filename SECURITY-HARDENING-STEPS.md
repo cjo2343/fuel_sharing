@@ -141,3 +141,12 @@ The release-readiness companion checks enforce security-hardening hygiene before
 
 
 - Settlement request status updates now prefer `upsert_settlement_request_status`, keeping the payment status row and stale-payment-line cleanup in one database transaction; keep the regression tests wired into validation.
+
+### 2026-06-16 - Schema migration tracking
+
+- Added `public.fuel_ledger_schema_migrations` so applied Supabase migrations are recorded in the database.
+- Security Health now reports schema migration drift, including the latest expected migration and any missing migration IDs.
+- Future migrations from `023` onward must update the migration tracker; validation fails if a new migration omits the tracker insert.
+
+### Migration tracking auth compatibility
+- Schema migration tracking keeps admin visibility tied to the existing email-based ledger membership model. Validation fails if a migration references a non-existent `ledger_members.auth_user_id` column.

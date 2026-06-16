@@ -30,6 +30,28 @@ function testRpcProbeNormalization() {
   const missingClose = helper.normalizeHealthcheckRpcResult({ data: { ok: true, close_settlement_period_exists: false } });
   assert.equal(missingClose.ok, false);
   assert.match(missingClose.detail, /close_settlement_period is missing/);
+
+  const tracked = helper.normalizeHealthcheckRpcResult({
+    data: {
+      ok: true,
+      close_settlement_period_exists: true,
+      critical_rpcs: { close_settlement_period: true },
+      schema_migrations: { latest_expected: "023_schema_migration_tracking", latest_applied: "023_schema_migration_tracking", missing_migrations: [] }
+    }
+  });
+  assert.equal(tracked.ok, true);
+  assert.match(tracked.detail, /schema migrations 023_schema_migration_tracking\/023_schema_migration_tracking/);
+
+  const missingMigration = helper.normalizeHealthcheckRpcResult({
+    data: {
+      ok: true,
+      close_settlement_period_exists: true,
+      critical_rpcs: { close_settlement_period: true },
+      schema_migrations: { latest_expected: "023_schema_migration_tracking", latest_applied: "022_settlement_request_transaction_rpc", missing_migrations: ["023_schema_migration_tracking"] }
+    }
+  });
+  assert.equal(missingMigration.ok, false);
+  assert.match(missingMigration.detail, /Missing migration\(s\): 023_schema_migration_tracking/);
 }
 
 function testLocalSecurityChecks() {

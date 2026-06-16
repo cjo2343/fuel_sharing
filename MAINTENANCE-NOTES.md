@@ -522,3 +522,13 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 
 
 - When payment/settlement logic changes, run Security Health after applying migration 022 and confirm `upsert_settlement_request_status` is available so stale payment-line cleanup stays transactional.
+
+## 2026-06-16 - Schema migration tracking
+
+- Added database-side migration tracking with `public.fuel_ledger_schema_migrations`.
+- Security Health can now show missing Fuel Ledger migration IDs so admins no longer need to infer applied migrations from function/table existence checks.
+- Validation now requires migrations `023` and newer to update the migration tracker.
+
+### Schema migration tracking policy fix
+- Migration tracking uses the existing email-based member/auth helpers (`current_user_email()` and `ledger_members.email`).
+- Do not introduce `ledger_members.auth_user_id`; the live schema links Supabase users to ledger members by normalized email.

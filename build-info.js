@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.15.113",
-    buildLabel: "settlement-request-transaction-rpc",
-    updatedAt: "2026-06-16T02:13:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v212",
+    version: "2026.06.16.114",
+    buildLabel: "schema-migration-tracking",
+    updatedAt: "2026-06-16T03:14:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v213",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -20,7 +20,8 @@
       "Retention cleanup now prunes old cloud Test Lab report history while keeping the newest reports and never touching ledger accounting history.",
       "Diagnostic report redaction now covers JWTs, Authorization values, API keys, passwords, cookies, and sensitive URL query parameters without hiding build versions or timestamps.",
       "Booking-to-trip conversion now preserves planned estimate participants even if the trip form briefly re-renders to the default all-member selection before submit.",
-      "Settlement request status updates now use a transaction RPC when available so payment status saves and stale payment-line cleanup succeed or fail together."
+      "Settlement request status updates now use a transaction RPC when available so payment status saves and stale payment-line cleanup succeed or fail together.",
+      "Security Health now reports Fuel Ledger schema migration tracking so missing Supabase migration IDs are visible after deployment."
     ])
   });
 

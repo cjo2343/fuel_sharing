@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v212";
-const BUILD_LABEL = "settlement-request-transaction-rpc";
-const BUILD_UPDATED_AT = "2026-06-16T02:13:00.000Z";
+const CACHE_NAME = "fuel-ledger-v213";
+const BUILD_LABEL = "schema-migration-tracking";
+const BUILD_UPDATED_AT = "2026-06-16T03:14:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

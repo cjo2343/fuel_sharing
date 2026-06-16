@@ -65,3 +65,5 @@ Narrows the Supabase Realtime publication to the lightweight `public.ledger_even
 
 
 - `022_settlement_request_transaction_rpc.sql` adds `upsert_settlement_request_status` so settlement payment status updates and stale request cancellation happen atomically, and adds the RPC to Security Health critical checks.
+
+- `023_schema_migration_tracking.sql` adds `public.fuel_ledger_schema_migrations`, backfills known migrations `001` through `023`, and extends Security Health with `schema_migrations` drift detection so admins can see missing migration IDs instead of manually guessing which SQL files were run.

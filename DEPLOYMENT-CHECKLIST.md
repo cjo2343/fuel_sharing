@@ -490,3 +490,12 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 
 
 - Apply migration `022_settlement_request_transaction_rpc.sql` before deploying runtime assets that call `upsert_settlement_request_status`; Security Health should show the settlement request transaction RPC in the critical RPC list.
+
+### Schema migration tracking check
+
+- Apply `supabase/migrations/023_schema_migration_tracking.sql` after `022_settlement_request_transaction_rpc.sql`.
+- Run Security Health after deployment and verify schema migrations show the latest expected migration with no missing migration IDs.
+- For future migrations, confirm the migration inserts its own ID into `public.fuel_ledger_schema_migrations` and that `npm run validate` passes.
+
+### Migration tracking deployment note
+- When applying `023_schema_migration_tracking.sql`, confirm the migration policy references `ledger_members.email` / `current_user_email()` and does not reference a non-existent `ledger_members.auth_user_id` column.

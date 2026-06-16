@@ -60,12 +60,23 @@
     if (missingCriticalRpcs.length) {
       return fail("Critical write RPCs are installed", `Missing RPC(s): ${missingCriticalRpcs.join(", ")}. Run the latest Supabase migrations before disabling table fallbacks.`);
     }
+    const schemaMigrations = asObject(data.schema_migrations);
+    const missingSchemaMigrations = asArray(schemaMigrations.missing_migrations).filter(Boolean);
+    if (missingSchemaMigrations.length) {
+      return fail(
+        "Fuel Ledger schema migrations are applied",
+        `Missing migration(s): ${missingSchemaMigrations.join(", ")}. Run the latest Supabase migrations in order.`,
+      );
+    }
     const realtimePublication = asObject(data.realtime_publication);
     const realtimeExtraTables = asArray(realtimePublication.extra_tables).filter(Boolean);
     const ledgerEventsEnabled = realtimePublication.ledger_events_enabled;
     const details = [];
     if (Object.keys(criticalRpcs).length) details.push(`${Object.keys(criticalRpcs).length} critical RPC(s) available`);
     else if (closeRpc === true) details.push("close_settlement_period exists");
+    if (schemaMigrations.latest_expected) {
+      details.push(`schema migrations ${schemaMigrations.latest_applied || "unknown"}/${schemaMigrations.latest_expected}`);
+    }
     if (ledgerEventsEnabled === false) details.push("ledger_events is not in Realtime publication");
     if (realtimeExtraTables.length) details.push(`${realtimeExtraTables.length} extra Realtime table(s) published`);
     if (data.ledger_id) details.push(`ledger ${data.ledger_id}`);

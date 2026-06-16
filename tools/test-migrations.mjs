@@ -32,6 +32,7 @@ const expected = [
   "020_bootstrap_lock.sql",
   "021_cloud_test_lab_report_retention.sql",
   "022_settlement_request_transaction_rpc.sql",
+  "023_schema_migration_tracking.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -44,8 +45,35 @@ files.forEach((file, index) => {
   assert.ok(/^-- Migration \d{3}:/m.test(content), `${file} should start with a migration comment`);
 });
 
+files.forEach((file) => {
+  const migrationNumber = Number(file.slice(0, 3));
+  if (migrationNumber >= 23) {
+    const content = readFileSync(join(migrationDir, file), "utf8");
+    const migrationId = file.replace(/\.sql$/, "").replace(/^0*(\d+)_/, (match, number) => `${number.padStart(3, "0")}_`);
+    assert.ok(
+      content.includes("public.fuel_ledger_schema_migrations"),
+      `${file} should update the Fuel Ledger schema migration tracker`,
+    );
+    assert.ok(
+      content.includes(migrationId),
+      `${file} should insert its own migration id (${migrationId}) into the tracker`,
+    );
+  }
+});
+
 const migrationText = files.map((file) => readFileSync(join(migrationDir, file), "utf8")).join("\n");
 const consolidatedSchema = readFileSync("supabase-schema.sql", "utf8");
+
+assert.doesNotMatch(
+  migrationText,
+  /auth_user_id/,
+  "migrations must not reference ledger_members.auth_user_id; live member auth is email-based",
+);
+assert.doesNotMatch(
+  consolidatedSchema,
+  /auth_user_id/,
+  "consolidated schema must not reference ledger_members.auth_user_id; live member auth is email-based",
+);
 
 for (const marker of [
   "create table if not exists public.ledger_events",
@@ -94,6 +122,12 @@ for (const marker of [
   "create or replace function public.upsert_settlement_request_status",
   "grant execute on function public.upsert_settlement_request_status",
   "upsert_settlement_request_status",
+  "create table if not exists public.fuel_ledger_schema_migrations",
+  "grant select on public.fuel_ledger_schema_migrations to authenticated",
+  "'023_schema_migration_tracking'",
+  "'schema_migrations'",
+  "missing_migrations",
+  "latest_expected",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);
