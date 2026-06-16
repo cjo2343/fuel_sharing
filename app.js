@@ -910,6 +910,59 @@ function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
   renderSyncHealthBanner();
 }
 
+function forceClearVisibleForegroundSyncStatus(reason = "foreground-sync-finished") {
+  const previousStatus = String(els.syncStatus?.dataset?.status || "");
+  const previousSavingSource = visibleSavingSource;
+  const previousSyncingSource = visibleSyncingSource;
+  const wasForegroundVisible = previousStatus === "saving" || previousStatus === "syncing" || visibleSavingStartedAt || visibleSyncingStartedAt;
+
+  clearVisibleSavingFailsafe();
+  clearVisibleSyncingFailsafe();
+  visibleSavingStartedAt = 0;
+  visibleSavingSource = "";
+  visibleSyncingStartedAt = 0;
+  visibleSyncingSource = "";
+  clearSyncDelay(`foreground-sync-force-cleared:${reason}`);
+
+  const label = getHealthySyncStatusLabel();
+  const display = window.FuelSyncStatus?.syncDisplayForStatus
+    ? window.FuelSyncStatus.syncDisplayForStatus(label, {
+        pendingCount: pendingLocalChanges,
+        lastCloudSaveAt,
+        lastCloudSyncAt,
+        lastLocalSaveAt,
+        lastSyncError,
+        lastCloudRetryAt
+      })
+    : { text: label === "Tables" ? "Database" : label, status: String(label || "").toLowerCase(), detail: "" };
+
+  if (els.syncStatus) {
+    els.syncStatus.textContent = display.text;
+    els.syncStatus.dataset.status = display.status;
+  }
+  if (els.syncDetail) {
+    els.syncDetail.textContent = display.detail;
+  }
+  if (wasForegroundVisible) {
+    recordSyncDiagnostic("foreground-sync-force-cleared", reason, {
+      reason,
+      previousStatus,
+      previousSavingSource,
+      previousSyncingSource,
+      nextStatus: display.status
+    });
+    recordSupabaseLoadEvent("foreground-sync-force-cleared", reason);
+  }
+  renderSyncHealthBanner();
+  return true;
+}
+
+function forceClearIdleForegroundSyncStatus(reason = "foreground-sync-idle") {
+  if (!els.syncStatus || !["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) return false;
+  if (hasForegroundWriteInFlight() || hasActiveDataIoOperation()) return false;
+  return forceClearVisibleForegroundSyncStatus(reason);
+}
+
 function clearVisibleSavingFailsafe() {
   if (visibleSavingFailsafeTimer) {
     window.clearTimeout(visibleSavingFailsafeTimer);
@@ -935,8 +988,7 @@ function clearStaleVisibleSavingStatus(reason = "saving-failsafe") {
     recordSyncDiagnostic("saving-failsafe-wait", "Saving badge is still tied to an active foreground write.", { reason, savingAgeMs, activeDataIo, visibleSavingSource });
     return false;
   }
-  clearSyncDelay(`saving-stale-cleared:${reason}`);
-  setSyncStatus(getHealthySyncStatusLabel());
+  forceClearVisibleForegroundSyncStatus(`saving-stale-cleared:${reason}`);
   recordSupabaseLoadEvent("saving-stale-cleared", reason);
   recordSyncDiagnostic("saving-stale-cleared", "Stale visible Saving state was cleared automatically.", { reason, savingAgeMs, activeDataIo, foregroundWriteActive, visibleSavingSource });
   renderSupabaseLoadMonitor();
@@ -9008,9 +9060,15 @@ async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = 
 function clearPaymentActionSavingUi(reason = "payment-action-finished") {
   recordSyncDiagnostic("payment-action-finished", reason, { reason });
   if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
-    restoreHealthySyncStatusAfterQuietSync(reason);
+    forceClearVisibleForegroundSyncStatus(reason);
+  } else {
+    clearVisibleSavingFailsafe();
+    clearVisibleSyncingFailsafe();
   }
-  clearVisibleSavingFailsafe();
+
+  window.setTimeout(() => {
+    forceClearIdleForegroundSyncStatus(`${reason}:post-render`);
+  }, 0);
 }
 
 function applyPaymentActionLocally(key, nextStatus, auditEntry, reason = "payment-action-local-apply") {
@@ -9137,6 +9195,7 @@ async function updatePaymentStatus(button) {
     button.textContent = actionSucceeded ? paymentActionCompleteLabel(nextStatus) : paymentActionCompleteLabel(previousStatus);
     clearPaymentActionSavingUi(actionSucceeded ? "payment-action-success" : "payment-action-reset");
     render();
+    clearPaymentActionSavingUi(actionSucceeded ? "payment-action-success:after-render" : "payment-action-reset:after-render");
   }
 
   // Requesting or marking a payment must never close the period automatically.

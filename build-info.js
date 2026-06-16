@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.167",
-    buildLabel: "remote-save-queue-serialization",
-    updatedAt: "2026-06-16T22:09:49.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v267",
+    version: "2026.06.17.168",
+    buildLabel: "foreground-sync-force-clear",
+    updatedAt: "2026-06-16T22:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v268",
     releaseNotes: Object.freeze([
+      "Payment actions now force-clear the visible Saving/Syncing latch both before and after render, so a finished or timed-out request cannot leave the top bar stuck after Cloud Load and Data I/O are idle.",
       "Debounced remote saves now serialize while a previous save is still running, coalescing follow-up saves instead of overlapping cloud writes that can make sync appear stuck.",
       "Visible Saving status now has its own failsafe and payment-action finally cleanup, so a timed-out payment confirmation cannot leave the top bar stuck on Saving changes after Cloud Load and Data I/O are idle.",
       "Skipped/guarded data I/O diagnostics now render as skipped/instant instead of OK/active, so ledger-directory skip breadcrumbs no longer look like stuck writes.",

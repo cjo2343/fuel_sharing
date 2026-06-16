@@ -279,14 +279,27 @@ assert.match(
 
 assert.match(
   appSource,
-  /function clearStaleVisibleSavingStatus\(reason = "saving-failsafe"\)[\s\S]*saving-stale-cleared[\s\S]*setSyncStatus\(getHealthySyncStatusLabel\(\)\)/,
-  "stale visible Saving state should clear back to the latest healthy cloud/database status"
+  /function clearStaleVisibleSavingStatus\(reason = "saving-failsafe"\)[\s\S]*saving-stale-cleared[\s\S]*forceClearVisibleForegroundSyncStatus/,
+  "stale visible Saving state should force-clear back to the latest healthy cloud/database status"
 );
 
 assert.match(
   appSource,
-  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*restoreHealthySyncStatusAfterQuietSync\(reason\)[\s\S]*clearVisibleSavingFailsafe\(\)/,
-  "payment actions should clear either stuck Saving or Syncing status in their finally cleanup"
+  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*forceClearVisibleForegroundSyncStatus\(reason\)[\s\S]*forceClearIdleForegroundSyncStatus/,
+  "payment actions should force-clear either stuck Saving or Syncing status in their finally cleanup and after render"
+);
+
+
+assert.match(
+  appSource,
+  /function forceClearVisibleForegroundSyncStatus\(reason = "foreground-sync-finished"\)[\s\S]*visibleSavingStartedAt = 0;[\s\S]*visibleSyncingStartedAt = 0;[\s\S]*els\.syncDetail\.textContent = display\.detail;[\s\S]*foreground-sync-force-cleared/,
+  "foreground save/sync cleanup should reset the internal latch and the visible top-bar/detail directly"
+);
+
+assert.match(
+  appSource,
+  /render\(\);\n    clearPaymentActionSavingUi\(actionSucceeded \? "payment-action-success:after-render" : "payment-action-reset:after-render"\);/,
+  "payment actions should clear visible Saving again after render in case render-time state reopens the badge"
 );
 
 assert.match(
