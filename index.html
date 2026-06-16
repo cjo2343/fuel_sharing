@@ -791,6 +791,23 @@
 
           <div class="workspace-invites-grid">
             <article class="data-tool-card">
+              <strong>Create new workspace</strong>
+              <p>Start a private workspace for another car, family, or group. You become admin of the new workspace, then you can create invite codes for that workspace.</p>
+              <form id="createWorkspaceForm" class="member-management-form compact-admin-form">
+                <label>
+                  Workspace name
+                  <input id="newWorkspaceName" type="text" autocomplete="off" maxlength="80" placeholder="e.g. Family Van" />
+                </label>
+                <label>
+                  Workspace slug <span class="entry-meta">optional</span>
+                  <input id="newWorkspaceSlug" type="text" autocomplete="off" maxlength="80" placeholder="family-van" />
+                </label>
+                <button class="primary-button" type="submit">Create workspace</button>
+                <p class="entry-meta">Private by default. Public signup stays off; people join this workspace only with an invite code you create after switching into it.</p>
+              </form>
+              <div id="createWorkspaceMessage" class="section-note" aria-live="polite"></div>
+            </article>
+            <article class="data-tool-card">
               <strong>Create invite for current workspace</strong>
               <p id="inviteWorkspaceScope" class="workspace-invite-scope">Creating invite for: Current workspace. This code joins only that workspace.</p>
               <p>Create a one-time or limited-use invite for the selected workspace only. Codes are shown once, stored hashed in Supabase, and are not emailed automatically.</p>

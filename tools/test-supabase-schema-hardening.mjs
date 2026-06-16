@@ -650,6 +650,20 @@ function testWorkspaceInviteAutoRefreshExists() {
   console.log("ok - testWorkspaceInviteAutoRefreshExists");
 }
 
+function testPrivateWorkspaceCreationUiExists() {
+  const html = readFileSync("index.html", "utf8");
+  const app = readFileSync("app.js", "utf8");
+  assert.match(html, /id="createWorkspaceForm"/);
+  assert.match(html, /id="newWorkspaceName"/);
+  assert.match(html, /Create new workspace/);
+  assert.match(html, /Public signup stays off/);
+  assert.match(app, /async function createPrivateWorkspaceFromUi\(\)/);
+  assert.match(app, /supabaseClient\.rpc\("create_private_ledger_workspace"/);
+  assert.match(app, /switchActiveWorkspace\(newLedgerId, "create-workspace"\)/);
+  assert.match(app, /scheduleWorkspaceInviteRefresh\("after-create-workspace"\)/);
+  console.log("ok - testPrivateWorkspaceCreationUiExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -710,4 +724,5 @@ testCurrentWorkspaceUxScopeExists();
 testAuthBoundWorkspaceIdentityExists();
 testWorkspaceInviteRefreshFailSafeExists();
 testWorkspaceInviteAutoRefreshExists();
+testPrivateWorkspaceCreationUiExists();
 testFuelLedgerHealthcheckExists();

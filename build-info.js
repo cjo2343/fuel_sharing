@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.138",
-    buildLabel: "safari-healthcheck-guard-hotfix",
-    updatedAt: "2026-06-16T15:36:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v237",
+    version: "2026.06.16.139",
+    buildLabel: "private-workspace-creation-ui",
+    updatedAt: "2026-06-16T15:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v238",
     releaseNotes: Object.freeze([
+      "Private workspace creation UI lets signed-in users create invite-only workspaces, become admin, switch into them, and invite others.",
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
       "Deployment and hardening docs now explain the backup-before-destructive-action rule.",

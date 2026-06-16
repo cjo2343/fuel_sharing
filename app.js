@@ -764,6 +764,10 @@ const els = {
   newMemberRole: document.querySelector("#newMemberRole"),
   workspaceInvitesPanel: document.querySelector(".workspace-invites-panel"),
   refreshWorkspaceInvites: document.querySelector("#refreshWorkspaceInvites"),
+  createWorkspaceForm: document.querySelector("#createWorkspaceForm"),
+  newWorkspaceName: document.querySelector("#newWorkspaceName"),
+  newWorkspaceSlug: document.querySelector("#newWorkspaceSlug"),
+  createWorkspaceMessage: document.querySelector("#createWorkspaceMessage"),
   createInviteForm: document.querySelector("#createInviteForm"),
   inviteEmail: document.querySelector("#inviteEmail"),
   inviteRole: document.querySelector("#inviteRole"),
@@ -2052,6 +2056,11 @@ els.refreshWorkspaceInvites?.addEventListener("click", async () => {
   await (scheduleWorkspaceInviteRefresh("manual-refresh") || Promise.resolve());
 });
 
+els.createWorkspaceForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await createPrivateWorkspaceFromUi();
+});
+
 els.createInviteForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
@@ -2796,7 +2805,7 @@ function getPublicLaunchReadinessDiagnostics() {
       level: "warning"
     };
   }
-  publicLaunchRisks.push("no self-serve workspace isolation yet");
+  publicLaunchRisks.push("workspace creation is private-beta and still needs abuse/rate-limit monitoring");
   publicLaunchRisks.push("no invite-only onboarding gate yet");
   publicLaunchRisks.push("no public signup rate-limit dashboard yet");
   return {
@@ -10781,6 +10790,75 @@ function isInviteActive(invite) {
   if (Number(invite.uses_count || 0) >= Number(invite.max_uses || 1)) return false;
   if (invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now()) return false;
   return true;
+}
+
+function setCreateWorkspaceMessage(message, tone = "") {
+  if (!els.createWorkspaceMessage) return;
+  els.createWorkspaceMessage.textContent = message || "";
+  els.createWorkspaceMessage.classList.toggle("error-text", tone === "error");
+  els.createWorkspaceMessage.classList.toggle("success-text", tone === "success");
+}
+
+function normalizeWorkspaceSlugInput(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function describeWorkspaceCreateError(error) {
+  const message = String(error && error.message ? error.message : error || "Workspace creation failed.");
+  if (/already in use|duplicate|23505/i.test(message)) return "That workspace slug is already in use. Try another name or custom slug.";
+  if (/signed-in user email|JWT|auth|not authenticated/i.test(message)) return "Sign in before creating a workspace.";
+  if (/row-level security|permission|403/i.test(message)) return "Supabase blocked workspace creation. Check that migration 025_workspace_foundation.sql is applied and the user is signed in.";
+  return message;
+}
+
+async function createPrivateWorkspaceFromUi() {
+  if (!supabaseClient || !currentSession) {
+    setCreateWorkspaceMessage("Sign in before creating a workspace.", "error");
+    return;
+  }
+  const name = String(els.newWorkspaceName && els.newWorkspaceName.value || "").trim();
+  const slug = normalizeWorkspaceSlugInput(els.newWorkspaceSlug && els.newWorkspaceSlug.value || name);
+  if (!name || name.length < 3) {
+    setCreateWorkspaceMessage("Enter a workspace name with at least 3 characters.", "error");
+    return;
+  }
+  if (!slug || slug.length < 3) {
+    setCreateWorkspaceMessage("Enter a workspace slug with at least 3 letters or numbers.", "error");
+    return;
+  }
+  const submitButton = els.createWorkspaceForm ? els.createWorkspaceForm.querySelector('button[type="submit"]') : null;
+  if (submitButton) submitButton.disabled = true;
+  setCreateWorkspaceMessage("Creating private workspace...");
+  try {
+    const response = await withWorkspaceInviteRequestTimeout(
+      supabaseClient.rpc("create_private_ledger_workspace", {
+        workspace_name: name,
+        workspace_slug: slug
+      }),
+      "Workspace creation"
+    );
+    if (response.error) throw response.error;
+    const result = Array.isArray(response.data) ? response.data[0] : response.data;
+    const newLedgerId = result && result.ledger_id ? result.ledger_id : slug;
+    if (els.newWorkspaceName) els.newWorkspaceName.value = "";
+    if (els.newWorkspaceSlug) els.newWorkspaceSlug.value = "";
+    workspaceInviteStatus.loaded = false;
+    await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Workspace list refresh after create failed", error));
+    await switchActiveWorkspace(newLedgerId, "create-workspace");
+    setCreateWorkspaceMessage(`Created ${result && result.name ? result.name : name}. You are admin of this private workspace. Create invite codes here to add other people.`, "success");
+    scheduleWorkspaceInviteRefresh("after-create-workspace");
+  } catch (error) {
+    setCreateWorkspaceMessage(describeWorkspaceCreateError(error), "error");
+    showUserError(`Could not create workspace: ${describeWorkspaceCreateError(error)}`);
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+    renderWorkspaceInvitesPanel();
+  }
 }
 
 function renderInviteWorkspaceScope() {

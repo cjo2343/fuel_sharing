@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v237";
-const BUILD_LABEL = "safari-healthcheck-guard-hotfix";
-const BUILD_UPDATED_AT = "2026-06-16T15:36:00.000Z";
+const CACHE_NAME = "fuel-ledger-v238";
+const BUILD_LABEL = "private-workspace-creation-ui";
+const BUILD_UPDATED_AT = "2026-06-16T15:45:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
