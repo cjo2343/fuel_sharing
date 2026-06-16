@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.160",
-    buildLabel: "foreground-write-background-load-guard",
-    updatedAt: "2026-06-16T23:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v259",
+    version: "2026.06.16.161",
+    buildLabel: "admin-diagnostics-readable-layout",
+    updatedAt: "2026-06-16T23:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v260",
     releaseNotes: Object.freeze([
+      "Admin diagnostics now uses a full-width readable layout for Supabase activity and data I/O operation rows, preventing long technical labels from collapsing into vertical letter stacks.",
       "Background window-focus and realtime-triggered cloud loads now defer while foreground writes or recent healthy syncs exist, preventing user actions from competing with automatic refreshes.",
       "Active data I/O operations now age into timeout status in Admin diagnostics instead of appearing active forever when a finish event is missing.",
       "Data I/O operation pairing now uses unique operation IDs, so simultaneous Render payment starts and finishes cannot leave orphaned active rows in Admin diagnostics.",

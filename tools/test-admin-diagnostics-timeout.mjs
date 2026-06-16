@@ -20,3 +20,38 @@ assert.match(
   /finally \{[\s\S]*window\.clearTimeout\(diagnosticsTimeoutId\)/,
   "database diagnostics should clear its timeout after completion"
 );
+
+
+const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const stylesSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+assert.match(
+  indexSource,
+  /data-tool-card supabase-load-monitor-card/,
+  "supabase load monitor should span the full admin tools grid instead of being squeezed into one narrow card"
+);
+
+assert.match(
+  stylesSource,
+  /\.supabase-load-monitor-card \{[\s\S]*grid-column: 1 \/ -1;/,
+  "supabase load monitor card should have full-width layout space"
+);
+
+assert.match(
+  stylesSource,
+  /\.admin-operation-row \{[\s\S]*grid-template-columns: minmax\(18rem, 1fr\)/,
+  "data I/O operation rows should reserve readable space for source and endpoint text"
+);
+
+assert.match(
+  stylesSource,
+  /@media \(max-width: 860px\) \{[\s\S]*\.admin-operation-row \{[\s\S]*grid-template-columns: 1fr;/,
+  "data I/O operation rows should stack before narrow columns cause vertical letter wrapping"
+);
+
+assert.match(
+  appSource,
+  /Latest data I\/O operations/,
+  "admin diagnostics should keep the latest data I/O operation section visible"
+);
