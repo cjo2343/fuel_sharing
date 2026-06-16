@@ -729,3 +729,7 @@ limit 5;
 ```
 
 Expected highlights: `fuel_ledger_healthcheck.ok = true`, all `critical_rpcs` values are `true`, Realtime publishes only `public.ledger_events`, and new cloud report saves create fresh `test_lab_reports` rows.
+
+### Supabase Preview status check note
+
+GitHub may show a separate **Supabase Preview** status created by the Supabase GitHub App. That check is separate from this repo's **Validate Fuel Ledger** workflow. If Validate Fuel Ledger passes but Supabase Preview fails immediately with `Failed to create Preview Branch: unexpected status 502`, review the Supabase GitHub integration/preview-branch settings before changing app code. The expected working directory is `.` when the repo root contains the `supabase/` folder.
