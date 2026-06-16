@@ -253,3 +253,4 @@ Signed-in invite redemption now treats the Supabase session as the source of tru
 - Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
 - Backend-route foundation now uses Render `/api/payments/status-action` to verify the user session server-side before calling the payment action RPC, reducing browser-owned payment coordination while preserving RLS/auth checks.
+- Keep security header/CSP validation notes aligned whenever backend/API routes or local server header tests change, including Render payment-action API work.

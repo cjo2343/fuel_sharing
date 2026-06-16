@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Companion coverage note: Render payment action API changes keep local server security header checks active for backend routes.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 

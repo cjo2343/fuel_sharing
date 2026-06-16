@@ -12786,18 +12786,21 @@ async function ensureOpenSettlementPeriod(ledgerId) {
   return supabaseHelpers.ensureOpenSettlementPeriod(supabaseClient, ledgerId);
 }
 
-async function getNormalizedWriteContext() {
+async function getNormalizedWriteContext(options = {}) {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const syncDirectory = options.syncDirectory !== false;
 
   // Important: regular members are allowed to write trips, fuel, and settlement
   // request rows, but they are not allowed to update ledger settings or the
   // member directory. Do not upsert ledgers/ledger_members here for every save,
   // otherwise non-admin trip/fuel saves fail before reaching the table they are
-  // actually allowed to write.
-  if (canManageSettings()) {
+  // actually allowed to write. Settlement/payment status saves also skip this
+  // directory reconciliation so a payment action never touches ledgers while
+  // saving settlement_requests.
+  if (syncDirectory && canManageSettings()) {
     await syncLedgerDirectoryForAdmin(ledgerId);
   }
 
@@ -12840,6 +12843,7 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
   const now = new Date().toISOString();
   const ledgerPayload = {
     id: ledgerId,
+    slug: String(ledgerId || getConfiguredLedgerId()).trim() || getConfiguredLedgerId(),
     name: "Fuel Ledger",
     currency: state.currency || "DKK",
     fuel_type: state.fuelType || defaults.fuelType,
@@ -13363,8 +13367,9 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving");
-    const context = await getNormalizedWriteContext();
+    const context = await getNormalizedWriteContext({ syncDirectory: false });
     if (!context) return true;
+    recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
 
     const fromMemberId = context.memberIdsByName[settlement.from] || null;
     const toMemberId = context.memberIdsByName[settlement.to] || null;

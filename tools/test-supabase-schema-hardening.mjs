@@ -697,6 +697,19 @@ function testOnboardingAbuseRateLimitFoundationExists() {
   console.log("ok - testOnboardingAbuseRateLimitFoundationExists");
 }
 
+
+function testSettlementPaymentSaveSkipsLedgerUpsert() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /async function getNormalizedWriteContext\(options = \{\}\)/);
+  assert.match(app, /const syncDirectory = options\.syncDirectory !== false/);
+  assert.match(app, /if \(syncDirectory && canManageSettings\(\)\)/);
+  assert.match(app, /getNormalizedWriteContext\(\{ syncDirectory: false \}\)/);
+  assert.match(app, /settlement-directory-sync-skip/);
+  assert.match(app, /slug: String\(ledgerId \|\| getConfiguredLedgerId\(\)\)\.trim\(\) \|\| getConfiguredLedgerId\(\)/);
+  assert.doesNotMatch(app, /async function saveSettlementRequestToNormalizedTableFirst[\s\S]*?\.from\("ledgers"\)\.upsert/, "settlement payment status saves must not directly upsert ledgers");
+  console.log("ok - testSettlementPaymentSaveSkipsLedgerUpsert");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -760,4 +773,5 @@ testWorkspaceInviteRefreshFailSafeExists();
 testWorkspaceInviteAutoRefreshExists();
 testPrivateWorkspaceCreationUiExists();
 testOnboardingAbuseRateLimitFoundationExists();
+testSettlementPaymentSaveSkipsLedgerUpsert();
 testFuelLedgerHealthcheckExists();

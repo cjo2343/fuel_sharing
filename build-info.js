@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.153",
-    buildLabel: "render-payment-action-api",
-    updatedAt: "2026-06-16T20:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v252",
+    version: "2026.06.16.154",
+    buildLabel: "settlement-ledger-slug-guard",
+    updatedAt: "2026-06-16T21:40:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v253",
     releaseNotes: Object.freeze([
+      "Settlement/payment status saves now skip admin ledger-directory reconciliation, so requesting or reopening a payment cannot upsert ledgers without the required slug and force JSON fallback.",
+      "Admin ledger directory reconciliation now includes a slug whenever it does upsert ledgers, preventing the not-null slug constraint from failing on settings/member syncs.",
       "Payment status changes now prefer the existing Render web service API, which verifies the signed-in Supabase session and calls the backend payment action RPC before the browser falls back to direct Supabase RPC.",
       "Payment status changes now prefer a backend-owned Supabase RPC that saves the normalized settlement status, stale-row cleanup, and lightweight ledger event in one database transaction, with fallback for databases that have not applied migration 031 yet.",
       "Visible Syncing status now has a central failsafe and diagnostics, so skipped/background sync paths cannot leave the top bar stuck until manual Sync now is clicked.",
