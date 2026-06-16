@@ -480,6 +480,7 @@ let lastSupabaseLoadAt = 0;
 const supabaseLoadCooldownMs = 60 * 1000;
 const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
+const workspaceInviteRequestTimeoutMs = 8000;
 const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
 let lastAuthCloudSyncUserKey = "";
 let lastAuthCloudSyncAt = 0;
@@ -10714,6 +10715,29 @@ function setWorkspaceInvitesMessage(message = "") {
   if (els.workspaceInvitesMessage) els.workspaceInvitesMessage.textContent = message;
 }
 
+function describeWorkspaceRefreshError(error) {
+  const message = String(error?.message || error || "Workspace invite refresh failed.");
+  if (/timed out/i.test(message)) return "Workspace invite refresh timed out. Check your connection and try Refresh again.";
+  if (/JWT|auth|not authenticated|permission|403|row-level security/i.test(message)) return "Could not load workspace invite tools for this signed-in user. Refresh after sign-in, or check the workspace admin role.";
+  return message;
+}
+
+async function withWorkspaceInviteRequestTimeout(requestPromise, label, timeoutMs = workspaceInviteRequestTimeoutMs) {
+  let timeoutId = null;
+  try {
+    return await Promise.race([
+      Promise.resolve(requestPromise),
+      new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 function formatInviteExpiry(value) {
   if (!value) return "No expiry reported";
   const date = new Date(value);
@@ -10802,28 +10826,38 @@ function renderWorkspaceInvitesPanel() {
 async function refreshWorkspaceInvites() {
   if (!supabaseClient || !currentSession) return;
   if (!canManageSettings()) return;
+  if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = true;
   workspaceInviteStatus.loading = true;
   workspaceInviteStatus.error = "";
   renderWorkspaceInvitesPanel();
   try {
-    const { data: ledgers, error: ledgersError } = await supabaseClient.rpc("list_my_ledgers");
+    const { data: ledgers, error: ledgersError } = await withWorkspaceInviteRequestTimeout(
+      supabaseClient.rpc("list_my_ledgers"),
+      "Workspace list refresh"
+    );
     if (ledgersError) throw ledgersError;
     workspaceInviteStatus.ledgers = Array.isArray(ledgers) ? ledgers : [];
     reconcileActiveLedgerSelection();
     const ledgerId = getActiveLedgerId();
-    const { data: invites, error: invitesError } = await supabaseClient
-      .from("ledger_invites")
-      .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
-      .eq("ledger_id", ledgerId)
-      .order("created_at", { ascending: false })
-      .limit(25);
+    const { data: invites, error: invitesError } = await withWorkspaceInviteRequestTimeout(
+      supabaseClient
+        .from("ledger_invites")
+        .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
+        .eq("ledger_id", ledgerId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+      "Invite list refresh"
+    );
     if (invitesError) throw invitesError;
     workspaceInviteStatus.invites = Array.isArray(invites) ? invites : [];
     workspaceInviteStatus.loaded = true;
   } catch (error) {
-    workspaceInviteStatus.error = error.message || String(error);
+    workspaceInviteStatus.error = describeWorkspaceRefreshError(error);
+    workspaceInviteStatus.loaded = true;
+    workspaceInviteStatus.invites = [];
   } finally {
     workspaceInviteStatus.loading = false;
+    if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = false;
     renderWorkspaceInvitesPanel();
   }
 }

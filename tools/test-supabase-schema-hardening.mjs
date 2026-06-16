@@ -601,6 +601,20 @@ function testAuthBoundWorkspaceIdentityExists() {
   console.log("ok - testAuthBoundWorkspaceIdentityExists");
 }
 
+function testWorkspaceInviteRefreshFailSafeExists() {
+  const app = readFileSync("app.js", "utf8");
+  assert.match(app, /const workspaceInviteRequestTimeoutMs = 8000/);
+  assert.match(app, /function describeWorkspaceRefreshError\(error\)/);
+  assert.match(app, /Workspace invite refresh timed out/);
+  assert.match(app, /async function withWorkspaceInviteRequestTimeout\(requestPromise, label/);
+  assert.match(app, /Promise\.race\(\[/);
+  assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\.rpc\("list_my_ledgers"\)/);
+  assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\s*\.from\("ledger_invites"\)/);
+  assert.match(app, /workspaceInviteStatus\.loaded = true;\s*workspaceInviteStatus\.invites = \[\];/);
+  assert.match(app, /els\.refreshWorkspaceInvites\.disabled = false/);
+  console.log("ok - testWorkspaceInviteRefreshFailSafeExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -659,4 +673,5 @@ testInviteOnboardingFoundationExists();
 testWorkspaceInviteUxLayoutExists();
 testCurrentWorkspaceUxScopeExists();
 testAuthBoundWorkspaceIdentityExists();
+testWorkspaceInviteRefreshFailSafeExists();
 testFuelLedgerHealthcheckExists();

@@ -591,3 +591,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
   - Removed optional chaining bracket syntax from `app.js` so older Safari engines do not throw a parse error during invite creation or login invite auto-redeem.
   - Added runtime contract coverage to block `?.[` syntax from returning in `app.js`.
   - Bumped runtime metadata to `2026.06.16.130` / `fuel-ledger-v229`.
+
+- 2026-06-16: Admin invite refresh fail-safe
+  - Wrapped linked-workspace and invite-list refresh requests in an 8 second timeout so the Invites & workspaces cards do not stay on “Loading...” forever if Supabase/RLS/network stalls.
+  - Refresh now re-enables the button and renders a clear retry/error message instead of leaving the admin panel stuck.
+  - Bumped runtime metadata to `2026.06.16.131` / `fuel-ledger-v230`.

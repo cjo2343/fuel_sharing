@@ -206,3 +206,5 @@ Invite onboarding now binds the visible app identity to the signed-in Supabase e
   - Normalized table loads no longer query the `ledgers` table directly for regular members; workspace metadata is derived from linked workspace RPC results and fallback state to avoid RLS 403 noise.
 
 - 2026-06-16: Login/invite runtime syntax compatibility now avoids optional chaining bracket syntax in `app.js`, with validation coverage so older Safari engines cannot be blocked before auth-bound invite handling runs.
+
+- 2026-06-16: Admin invite refresh fail-safe now times out stalled workspace/invite RPC reads, keeps the Refresh button usable, and renders a clear retry message instead of leaving private-beta invite management in a permanent loading state.
