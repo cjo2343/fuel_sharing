@@ -13,7 +13,7 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Shared car</p>
+          <p id="topbarWorkspaceScope" class="eyebrow">Current workspace</p>
           <h1>Fuel Ledger</h1>
         </div>
         <div class="topbar-tools">
@@ -125,7 +125,7 @@
               <h2 id="tripEstimatorHeading">Estimate trip cost</h2>
             </div>
           </div>
-          <p class="section-note">Estimate a planned booking using your historical fuel data when available, otherwise the car's diesel settings and current/fallback fuel price.</p>
+          <p class="section-note">Estimate a planned booking for the currently selected workspace/car using historical fuel data when available, otherwise the workspace diesel settings and current/fallback fuel price.</p>
           <form id="tripEstimatorForm" class="form-grid">
             <label>
               Planned distance, km
@@ -151,7 +151,7 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Calendar</p>
-              <h2 id="bookingCalendarHeading">Car bookings</h2>
+              <h2 id="bookingCalendarHeading">Current workspace bookings</h2>
             </div>
             <div class="booking-view-controls" role="group" aria-label="Booking calendar view">
               <button class="subtle-button compact-button" type="button" data-booking-calendar-view="list">List</button>
@@ -379,14 +379,24 @@
 
 
 
+        <section class="panel wide-panel workspace-scope-panel" data-view="insights" aria-labelledby="workspaceScopeHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Scope</p>
+              <h2 id="workspaceScopeHeading">Current workspace insights</h2>
+            </div>
+          </div>
+          <div id="workspaceScopeSummary" class="workspace-scope-summary empty-state">Insights are scoped to the currently configured workspace.</div>
+        </section>
+
         <section class="panel wide-panel fuel-intelligence-panel" data-view="insights" aria-labelledby="fuelIntelligenceHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Intelligence</p>
-              <h2 id="fuelIntelligenceHeading">Fuel intelligence</h2>
+              <h2 id="fuelIntelligenceHeading">Fuel intelligence for this workspace</h2>
             </div>
           </div>
-          <p class="section-note">Historical fuel statistics for planning, sanity checks, and future prediction features.</p>
+          <p class="section-note">Historical fuel statistics for the currently selected workspace/car. These numbers do not combine data across other ledgers.</p>
           <div id="fuelIntelligence" class="fuel-intelligence empty-state">Fuel intelligence will appear when there is trip or fuel data.</div>
         </section>
 
@@ -394,10 +404,10 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Stations</p>
-              <h2 id="stationInsightsHeading">Station insights</h2>
+              <h2 id="stationInsightsHeading">Station insights for this workspace</h2>
             </div>
           </div>
-          <p class="section-note">Compare logged fuel stations, DKK/L, usage frequency, and receipts worth reviewing.</p>
+          <p class="section-note">Compare fuel stations logged in the current workspace, including DKK/L, usage frequency, and receipts worth reviewing.</p>
           <div id="stationInsights" class="station-insights empty-state">Station insights will appear when fuel logs include station and liters.</div>
         </section>
 
@@ -405,10 +415,10 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Predictions</p>
-              <h2 id="smartPredictionsHeading">Smart predictions</h2>
+              <h2 id="smartPredictionsHeading">Smart predictions for this workspace</h2>
             </div>
           </div>
-          <p class="section-note">Explainable ML-lite checks for trip planning, current-period health, fuel-log anomalies, and monthly usage signals.</p>
+          <p class="section-note">Explainable checks for this workspace only: trip planning, current-period health, fuel-log anomalies, and monthly usage signals.</p>
           <div id="smartPredictions" class="smart-predictions empty-state">Smart predictions will appear when there is trip or fuel data.</div>
         </section>
 
@@ -416,10 +426,10 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Usage</p>
-              <h2 id="monthlySummaryHeading">Monthly member summaries</h2>
+              <h2 id="monthlySummaryHeading">Monthly member summaries for this workspace</h2>
             </div>
           </div>
-          <p class="section-note">Monthly distance, fuel paid, estimated fuel share and balance by person. Useful once stress-test data has been reset and real production data is being logged.</p>
+          <p class="section-note">Monthly distance, fuel paid, estimated fuel share and balance by person in the current workspace. Other workspaces stay separate.</p>
           <div id="monthlyMemberSummaries" class="monthly-summary empty-state">Monthly summaries will appear when there is trip or fuel data.</div>
         </section>
 

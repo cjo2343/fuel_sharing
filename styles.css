@@ -4774,3 +4774,39 @@ body.auth-locked #authPanel .text-button {
 .workspace-row.current {
   border-color: var(--accent-color, #2563eb);
 }
+
+.workspace-scope-summary {
+  margin-top: 0.75rem;
+}
+
+.workspace-scope-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.workspace-scope-grid article {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.85rem;
+  background: var(--surface-muted);
+}
+
+.workspace-scope-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workspace-scope-grid strong {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.workspace-scope-grid small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+}

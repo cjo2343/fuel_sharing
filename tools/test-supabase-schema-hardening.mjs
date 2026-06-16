@@ -510,6 +510,29 @@ function testInviteOnboardingFoundationExists() {
   console.log("ok - testInviteOnboardingFoundationExists");
 }
 
+
+function testCurrentWorkspaceUxScopeExists() {
+  const app = readFileSync("app.js", "utf8");
+  const index = readFileSync("index.html", "utf8");
+  const css = readFileSync("styles.css", "utf8");
+  assert.match(index, /id="topbarWorkspaceScope"/);
+  assert.match(index, /id="workspaceScopeHeading">Current workspace insights/);
+  assert.match(index, /id="workspaceScopeSummary"/);
+  assert.match(index, /Fuel intelligence for this workspace/);
+  assert.match(index, /Station insights for this workspace/);
+  assert.match(index, /Smart predictions for this workspace/);
+  assert.match(index, /Monthly member summaries for this workspace/);
+  assert.match(index, /Other workspaces stay separate/);
+  assert.match(app, /function getCurrentWorkspaceContext\(\)/);
+  assert.match(app, /function getCurrentWorkspaceLabel\(\)/);
+  assert.match(app, /function renderWorkspaceScopeSummary\(ledger = calculateLedger\(\)\)/);
+  assert.match(app, /Insights are per workspace/);
+  assert.match(app, /app traffic still uses this configured ledger/);
+  assert.match(app, /renderWorkspaceScopeSummary\(ledger\);/);
+  assert.match(css, /\.workspace-scope-grid/);
+  console.log("ok - testCurrentWorkspaceUxScopeExists");
+}
+
 function testFuelLedgerHealthcheckExists() {
   assert.match(schema, /create or replace function public\.fuel_ledger_healthcheck\(target_ledger_id text default 'main-car'\)/);
   assert.match(schema, /to_regprocedure\('public\.close_settlement_period\(text, uuid, jsonb\)'\) is not null/);
@@ -565,4 +588,5 @@ testSchemaMigrationTrackingExists();
 testSchemaDriftHealthcheckExists();
 testWorkspaceFoundationExists();
 testInviteOnboardingFoundationExists();
+testCurrentWorkspaceUxScopeExists();
 testFuelLedgerHealthcheckExists();

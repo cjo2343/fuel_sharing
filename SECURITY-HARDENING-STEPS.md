@@ -183,3 +183,5 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Invite codes must be shown once after creation and never stored in plaintext by the app.
 - Admin invite creation should stay confirmed/warned because admins can manage members, backups, and diagnostics.
 - Public signup remains disabled until workspace isolation, invite onboarding, rate limits, and abuse monitoring are all green.
+
+- 2026-06-16: Insights and topbar wording now explicitly describe the current workspace/car scope so multi-ledger groundwork does not look like global cross-workspace analytics.

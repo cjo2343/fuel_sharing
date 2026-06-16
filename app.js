@@ -466,6 +466,7 @@ const els = {
   authMessage: document.querySelector("#authMessage"),
   signOut: document.querySelector("#signOut"),
   currentUser: document.querySelector("#currentUser"),
+  topbarWorkspaceScope: document.querySelector("#topbarWorkspaceScope"),
   syncStatus: document.querySelector("#syncStatus"),
   syncDetail: document.querySelector("#syncDetail"),
   syncNow: document.querySelector("#syncNow"),
@@ -538,6 +539,7 @@ const els = {
   tripEstimateDestination: document.querySelector("#tripEstimateDestination"),
   tripEstimatorParticipants: document.querySelector("#tripEstimatorParticipants"),
   tripEstimateResult: document.querySelector("#tripEstimateResult"),
+  workspaceScopeSummary: document.querySelector("#workspaceScopeSummary"),
   fuelIntelligence: document.querySelector("#fuelIntelligence"),
   stationInsights: document.querySelector("#stationInsights"),
   smartPredictions: document.querySelector("#smartPredictions"),
@@ -4714,6 +4716,64 @@ function renderAuditLog() {
   els.auditLog.innerHTML = entries.map(renderAuditEntryCard).join("");
 }
 
+
+function getCurrentWorkspaceContext() {
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const linkedLedgers = Array.isArray(workspaceInviteStatus.ledgers) ? workspaceInviteStatus.ledgers : [];
+  const linked = linkedLedgers.find((ledger) => ledger.ledger_id === ledgerId) || null;
+  const label = String(linked?.name || linked?.slug || ledgerId || "current workspace").trim();
+  const slug = String(linked?.slug || ledgerId || "").trim();
+  const role = String(linked?.role || (canManageSettings() ? "admin" : "member")).trim();
+  return {
+    ledgerId,
+    label: label || "Current workspace",
+    slug,
+    role,
+    inviteRequired: linked?.invite_required !== false,
+    switchingEnabled: false
+  };
+}
+
+function getCurrentWorkspaceLabel() {
+  return getCurrentWorkspaceContext().label;
+}
+
+function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
+  const context = getCurrentWorkspaceContext();
+  if (els.topbarWorkspaceScope) {
+    els.topbarWorkspaceScope.textContent = `Current workspace · ${context.label}`;
+  }
+  if (!els.workspaceScopeSummary) return;
+  const tripCount = Number(Array.isArray(state.trips) ? state.trips.length : 0);
+  const fuelCount = Number(Array.isArray(state.fuel) ? state.fuel.length : 0);
+  const bookingCount = Number(Array.isArray(state.bookings) ? state.bookings.length : 0);
+  els.workspaceScopeSummary.className = "workspace-scope-summary";
+  els.workspaceScopeSummary.innerHTML = `
+    <div class="workspace-scope-grid">
+      <article>
+        <span>Workspace</span>
+        <strong>${escapeHtml(context.label)}</strong>
+        <small>${escapeHtml(context.slug || context.ledgerId)}</small>
+      </article>
+      <article>
+        <span>Current scope</span>
+        <strong>Insights are per workspace</strong>
+        <small>This view uses only the currently configured ledger, not every workspace you belong to.</small>
+      </article>
+      <article>
+        <span>Current period</span>
+        <strong>${tripCount} trips · ${fuelCount} fuel logs</strong>
+        <small>${bookingCount} booking${bookingCount === 1 ? "" : "s"} · ${formatNumber(ledger?.totalKm || 0)} km logged.</small>
+      </article>
+      <article>
+        <span>Workspace switching</span>
+        <strong>Not enabled yet</strong>
+        <small>Admin can review linked workspaces, but app traffic still uses this configured ledger.</small>
+      </article>
+    </div>
+  `;
+}
+
 function render() {
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
   renderSettings();
@@ -4734,6 +4794,7 @@ function render() {
   renderBookingActivityLog();
   renderClosedPeriods();
   renderTripEstimate();
+  renderWorkspaceScopeSummary(ledger);
   renderFuelIntelligence(ledger);
   renderStationInsights(ledger);
   renderSmartPredictions(ledger);

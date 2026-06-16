@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.119",
-    buildLabel: "admin-invite-workspace-ui",
-    updatedAt: "2026-06-16T08:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v218",
+    version: "2026.06.16.120",
+    buildLabel: "current-workspace-insights-scope",
+    updatedAt: "2026-06-16T09:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v219",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -26,7 +26,8 @@
       "Admin diagnostics now include a plain-language overall health summary plus dedicated migration and schema-shape cards.",
       "Admin diagnostics now includes a public launch readiness card that warns against broad advertising until workspace isolation and invite onboarding exist.",
       "Private workspace foundation adds ledger slugs, private-by-default signup flags, membership lookup indexes, and safe list/create workspace RPCs without enabling public onboarding.",
-      "Admin now has an Invites & workspaces section for creating/revoking private invite codes and reviewing linked workspaces without using SQL."
+      "Admin now has an Invites & workspaces section for creating/revoking private invite codes and reviewing linked workspaces without using SQL.",
+      "Insights and dashboard labels now make clear that statistics are scoped to the currently configured workspace/car, with workspace switching still disabled."
     ])
   });
 

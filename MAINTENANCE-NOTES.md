@@ -561,3 +561,5 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Invite codes are created through the `create_ledger_invite` RPC, displayed once, and stored only as hashes in Supabase.
 - Revoking invites uses `revoke_ledger_invite`; admins can also review linked workspaces from `list_my_ledgers`.
 - This does not enable public signup or workspace switching in the app UI yet.
+
+- 2026-06-16: Insights and topbar wording now explicitly describe the current workspace/car scope so multi-ledger groundwork does not look like global cross-workspace analytics.
