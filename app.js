@@ -16,6 +16,7 @@ const fuelPriceUrl = "/api/fuel-price";
 const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
+const renderPaymentStatusActionUrl = "/api/payments/status-action";
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const securityHealthCooldownMs = 2 * 60 * 1000;
 const generatedTestPrefix = "auto-test-";
@@ -13264,7 +13265,7 @@ async function saveSettlementRequestStatusRpc(context, payload) {
 
 async function applyPaymentStatusActionRpc(context, payload, options = {}) {
   const auditEntry = options.auditEntry || {};
-  const { data, error } = await supabaseClient.rpc("apply_payment_status_action", {
+  const rpcPayload = {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
     payer_member_id: payload.from_member_id,
@@ -13277,15 +13278,72 @@ async function applyPaymentStatusActionRpc(context, payload, options = {}) {
     audit_detail: auditEntry.detail || "",
     audit_metadata: auditEntry.metadata || {},
     current_pair_keys: currentSettlementPairKeys(context)
-  });
+  };
 
-  if (!error) return { ok: true, data };
+  const renderResult = await applyPaymentStatusActionViaRender(context, payload, options, rpcPayload);
+  if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
+
+  const { data, error } = await supabaseClient.rpc("apply_payment_status_action", rpcPayload);
+
+  if (!error) return { ok: true, data, backend: "supabase-rpc" };
 
   return {
     ok: false,
     error,
-    shouldFallback: isMissingPaymentStatusActionRpcError(error)
+    shouldFallback: isMissingPaymentStatusActionRpcError(error),
+    backend: "supabase-rpc"
   };
+}
+
+async function applyPaymentStatusActionViaRender(context, payload, options = {}, rpcPayload = {}) {
+  if (!currentSession?.access_token) {
+    return { ok: false, shouldFallback: true, backend: "render-api", error: new Error("No active Supabase session for Render payment action API.") };
+  }
+
+  try {
+    const response = await fetch(renderPaymentStatusActionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({
+        context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
+        settlement: {
+          from_member_id: payload.from_member_id,
+          to_member_id: payload.to_member_id,
+          amount: payload.amount,
+          currency: payload.currency,
+          status: payload.status
+        },
+        previousStatus: normalizePaymentStatus(options.previousStatus),
+        auditEntry: options.auditEntry || {},
+        currentPairKeys: currentSettlementPairKeys(context)
+      })
+    });
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-payment-action", `${payload.status} via Render backend API`);
+      return { ok: true, data: result.result, backend: "render-api" };
+    }
+
+    const message = result?.message || result?.error || text || `Render payment action failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    return {
+      ok: false,
+      error,
+      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
+      backend: "render-api"
+    };
+  } catch (error) {
+    console.warn("Render payment action API failed; falling back to direct Supabase RPC", error);
+    return { ok: false, error, shouldFallback: true, backend: "render-api" };
+  }
 }
 
 function isMissingSettlementRequestStatusRpcError(error) {
@@ -13345,7 +13403,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
       normalizedTableStatus = {
         checked: true,
         ok: true,
-        message: "Backend payment action RPC saved the settlement status, stale-row cleanup, and ledger event in one database transaction. JSON audit remains a backup."
+        message: `${actionRpcResult.backend === "render-api" ? "Render backend API" : "Backend payment action RPC"} saved the settlement status, stale-row cleanup, and ledger event in one database transaction. JSON audit remains a backup.`
       };
       return true;
     }

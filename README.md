@@ -733,4 +733,4 @@ Expected highlights: `fuel_ledger_healthcheck.ok = true`, all `critical_rpcs` va
 ### Supabase Preview status check note
 
 GitHub may show a separate **Supabase Preview** status created by the Supabase GitHub App. That check is separate from this repo's **Validate Fuel Ledger** workflow. If Validate Fuel Ledger passes but Supabase Preview fails immediately with `Failed to create Preview Branch: unexpected status 502`, review the Supabase GitHub integration/preview-branch settings before changing app code. The expected working directory is `.` when the repo root contains the `supabase/` folder.
-- Payment request/paid/reopen actions now prefer a Supabase backend RPC (`apply_payment_status_action`) so the database owns the settlement status, stale-row cleanup, and realtime ledger event transaction.
+- Payment request/paid/reopen actions now prefer the existing Render backend API (`/api/payments/status-action`), which verifies the signed-in Supabase session and calls the backend payment action RPC before falling back to direct browser RPC during migration.

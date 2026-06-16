@@ -909,6 +909,56 @@ def save_supabase_reminder_state(state):
     )
 
 
+
+def call_supabase_rpc_as_user(function_name, body=None, user_token=None):
+    if not supabase_url() or not supabase_anon_key():
+        raise RuntimeError("Supabase server environment variables are missing")
+    if not user_token:
+        raise PermissionError("Missing Supabase user token")
+    return request_json(
+        f"{supabase_url()}/rest/v1/rpc/{function_name}",
+        method="POST",
+        body=body or {},
+        token=user_token,
+        api_key=supabase_anon_key(),
+    )
+
+
+def build_payment_status_rpc_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Payment action payload must be an object")
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    settlement = payload.get("settlement") if isinstance(payload.get("settlement"), dict) else {}
+    audit = payload.get("auditEntry") if isinstance(payload.get("auditEntry"), dict) else {}
+
+    required = {
+        "target_ledger_id": context.get("ledgerId") or payload.get("ledgerId"),
+        "target_open_period_id": context.get("openPeriodId") or payload.get("openPeriodId"),
+        "payer_member_id": settlement.get("from_member_id") or payload.get("from_member_id"),
+        "recipient_member_id": settlement.get("to_member_id") or payload.get("to_member_id"),
+        "amount_value": settlement.get("amount", payload.get("amount")),
+        "currency_value": settlement.get("currency") or payload.get("currency") or "DKK",
+        "previous_status": payload.get("previousStatus") or payload.get("previous_status") or "open",
+        "next_status": payload.get("nextStatus") or payload.get("next_status") or settlement.get("status"),
+        "audit_summary": audit.get("summary") or payload.get("audit_summary") or "",
+        "audit_detail": audit.get("detail") or payload.get("audit_detail") or "",
+        "audit_metadata": audit.get("metadata") if isinstance(audit.get("metadata"), dict) else (payload.get("audit_metadata") if isinstance(payload.get("audit_metadata"), dict) else {}),
+        "current_pair_keys": payload.get("currentPairKeys") if isinstance(payload.get("currentPairKeys"), list) else (payload.get("current_pair_keys") if isinstance(payload.get("current_pair_keys"), list) else []),
+    }
+
+    missing = [name for name in ("target_ledger_id", "target_open_period_id", "payer_member_id", "recipient_member_id", "next_status") if not required.get(name)]
+    if missing:
+        raise ValueError(f"Missing payment action field(s): {', '.join(missing)}")
+
+    try:
+        required["amount_value"] = float(required["amount_value"] or 0)
+    except (TypeError, ValueError):
+        raise ValueError("Payment action amount must be numeric")
+
+    required["current_pair_keys"] = [str(value) for value in required["current_pair_keys"] if str(value or "").strip()]
+    return required
+
 def run_scheduled_payment_reminders_from_supabase(dry_run=False):
     state, source = load_supabase_reminder_state()
     result = run_scheduled_payment_reminders(state, dry_run=dry_run)
@@ -1060,6 +1110,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/payment-action":
             self.apply_payment_action()
             return
+        if self.path == "/api/payments/status-action":
+            self.apply_payment_status_action_backend()
+            return
         if self.path == "/api/run-reminders":
             self.run_reminders()
             return
@@ -1089,6 +1142,31 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "state": read_state()})
+
+    def apply_payment_status_action_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before updating payment status")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            rpc_payload = build_payment_status_rpc_payload(payload)
+            result = call_supabase_rpc_as_user("apply_payment_status_action", rpc_payload, user_token=token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(401, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def save_push_subscription(self):
         user = current_supabase_user(self)

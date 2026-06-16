@@ -527,4 +527,4 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - Migration `030_onboarding_abuse_rate_limits.sql` adds `public.ledger_onboarding_rate_limits` and `enforce_onboarding_rate_limit(...)` for private workspace creation, invite creation, and invite redemption.
 - Security Health reports `workspace_readiness.abuse_rate_limit_ready` after the migration is applied.
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
-- After applying migration `031_payment_status_action_rpc`, run Security Health and request/mark/reopen one payment to confirm the backend action RPC path works before relying on the browser fallback.
+- Confirm Render has `SUPABASE_URL` and `SUPABASE_ANON_KEY` configured before relying on `/api/payments/status-action`; payment actions should still fall back to direct Supabase RPC if the Render endpoint is unavailable during rollout.

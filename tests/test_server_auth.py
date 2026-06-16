@@ -50,6 +50,37 @@ class LedgerApiAuthTests(unittest.TestCase):
             self.assertTrue(server.authorize_ledger_api(handler))
             self.assertIsNone(handler.error)
 
+class RenderPaymentActionPayloadTests(unittest.TestCase):
+    def test_build_payment_status_rpc_payload_from_frontend_contract(self):
+        payload = server.build_payment_status_rpc_payload({
+            "context": {"ledgerId": "main-car", "openPeriodId": "11111111-1111-1111-1111-111111111111"},
+            "settlement": {
+                "from_member_id": "22222222-2222-2222-2222-222222222222",
+                "to_member_id": "33333333-3333-3333-3333-333333333333",
+                "amount": "123.45",
+                "currency": "DKK",
+                "status": "requested",
+            },
+            "previousStatus": "open",
+            "auditEntry": {"summary": "Payment requested", "detail": "Payment requested detail", "metadata": {"paymentRef": "pay-1"}},
+            "currentPairKeys": ["22222222-2222-2222-2222-222222222222->33333333-3333-3333-3333-333333333333", ""],
+        })
+
+        self.assertEqual(payload["target_ledger_id"], "main-car")
+        self.assertEqual(payload["next_status"], "requested")
+        self.assertEqual(payload["previous_status"], "open")
+        self.assertEqual(payload["amount_value"], 123.45)
+        self.assertEqual(payload["audit_summary"], "Payment requested")
+        self.assertEqual(payload["audit_metadata"], {"paymentRef": "pay-1"})
+        self.assertEqual(payload["current_pair_keys"], ["22222222-2222-2222-2222-222222222222->33333333-3333-3333-3333-333333333333"])
+
+    def test_build_payment_status_rpc_payload_rejects_missing_member(self):
+        with self.assertRaises(ValueError):
+            server.build_payment_status_rpc_payload({
+                "context": {"ledgerId": "main-car", "openPeriodId": "11111111-1111-1111-1111-111111111111"},
+                "settlement": {"to_member_id": "33333333-3333-3333-3333-333333333333", "status": "requested"},
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

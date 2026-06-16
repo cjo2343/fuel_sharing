@@ -51,7 +51,10 @@ function testSettlementRequestTransactionRpcExists() {
   assert.match(app, /saveSettlementRequestStatusRpc/);
   assert.match(app, /isMissingSettlementRequestStatusRpcError/);
   assert.match(app, /currentSettlementPairKeys/);
-  assert.match(app, /stale-row cleanup through the database transaction RPC/);
+  assert.match(app, /renderPaymentStatusActionUrl = "\/api\/payments\/status-action"/);
+  assert.match(app, /async function applyPaymentStatusActionViaRender/);
+  assert.match(app, /Authorization": `Bearer \${currentSession\.access_token}`/);
+  assert.match(app, /stale-row cleanup through the database transaction RPC|Render backend API.*ledger event/);
   console.log("ok - testSettlementRequestTransactionRpcExists");
 }
 

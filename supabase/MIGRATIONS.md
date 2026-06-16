@@ -85,7 +85,3 @@ Adds private invite onboarding foundation for future public workspace joins. Adm
 ### 030_onboarding_abuse_rate_limits
 
 Adds server-side onboarding abuse monitoring/rate-limit storage and enforces throttles on private workspace creation, invite creation, and invite redemption. Public signup remains disabled.
-### 031_payment_status_action_rpc
-
-Adds `public.apply_payment_status_action(...)`, a backend-owned payment action RPC that updates the normalized settlement request row, cancels stale open-period settlement rows, and emits a lightweight `ledger_events` entry in one database transaction. The app falls back to the older settlement-request RPC when this migration is not deployed yet.
-
