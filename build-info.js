@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.165",
-    buildLabel: "data-io-skip-duration-clarity",
-    updatedAt: "2026-06-17T02:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v265",
+    version: "2026.06.17.166",
+    buildLabel: "visible-saving-autoclear",
+    updatedAt: "2026-06-17T02:40:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v266",
     releaseNotes: Object.freeze([
+      "Visible Saving status now has its own failsafe and payment-action finally cleanup, so a timed-out payment confirmation cannot leave the top bar stuck on Saving changes after Cloud Load and Data I/O are idle.",
       "Skipped/guarded data I/O diagnostics now render as skipped/instant instead of OK/active, so ledger-directory skip breadcrumbs no longer look like stuck writes.",
       "Admin activity severity now cools down when the last minute is quiet even if the previous five-minute window still contains an old burst.",
       "Visible Saving/Syncing status is now source-gated: background focus, realtime, admin diagnostics, and service-worker paths are blocked from setting the top-bar badge and instead record a diagnostic with the attempted source.",
