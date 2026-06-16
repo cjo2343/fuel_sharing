@@ -279,27 +279,33 @@ assert.match(
 
 assert.match(
   appSource,
-  /function clearStaleVisibleSavingStatus\(reason = "saving-failsafe"\)[\s\S]*saving-stale-cleared[\s\S]*forceClearVisibleForegroundSyncStatus/,
-  "stale visible Saving state should force-clear back to the latest healthy cloud/database status"
+  /function clearStaleVisibleSavingStatus\(reason = "saving-failsafe"\)[\s\S]*saving-stale-cleared[\s\S]*setSyncStatus\(getHealthySyncStatusLabel\(\)\)/,
+  "stale visible Saving state should clear back to the latest healthy cloud/database status"
 );
 
 assert.match(
   appSource,
-  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*forceClearVisibleForegroundSyncStatus\(reason\)[\s\S]*forceClearIdleForegroundSyncStatus/,
-  "payment actions should force-clear either stuck Saving or Syncing status in their finally cleanup and after render"
+  /function clearPaymentActionSavingUi\(reason = "payment-action-finished"\)[\s\S]*\["saving", "syncing"\]\.includes\(String\(els\.syncStatus\.dataset\.status \|\| ""\)\)[\s\S]*restoreHealthySyncStatusAfterQuietSync\(reason\)[\s\S]*clearVisibleSavingFailsafe\(\)/,
+  "payment actions should clear either stuck Saving or Syncing status in their finally cleanup"
 );
 
 
 assert.match(
   appSource,
-  /function forceClearVisibleForegroundSyncStatus\(reason = "foreground-sync-finished"\)[\s\S]*visibleSavingStartedAt = 0;[\s\S]*visibleSyncingStartedAt = 0;[\s\S]*els\.syncDetail\.textContent = display\.detail;[\s\S]*foreground-sync-force-cleared/,
-  "foreground save/sync cleanup should reset the internal latch and the visible top-bar/detail directly"
+  /const foregroundOperationStaleMs = 20000;[\s\S]*const foregroundOperations = new Map\(\);[\s\S]*function beginForegroundOperation\(source = "foreground-write"[\s\S]*function finishAllForegroundOperations\(reason = "foreground-operation-finished"\)/,
+  "visible Saving should be backed by a central foreground operation tracker instead of independent stuck latches"
 );
 
 assert.match(
   appSource,
-  /render\(\);\n    clearPaymentActionSavingUi\(actionSucceeded \? "payment-action-success:after-render" : "payment-action-reset:after-render"\);/,
-  "payment actions should clear visible Saving again after render in case render-time state reopens the badge"
+  /function setSyncStatus\(label, options = \{\}\)[\s\S]*display\.status === "saving"[\s\S]*beginForegroundOperation\(requestedSource[\s\S]*finishAllForegroundOperations\(`status:\$\{String\(label \|\| display\.status \|\| "cleared"\)\}`\)/,
+  "setSyncStatus should derive visible Saving from foreground operations and clear them when leaving Saving"
+);
+
+assert.match(
+  appSource,
+  /<span>Foreground save<\/span>[\s\S]*foregroundSummary[\s\S]*If Saving is visible, this card must name the operation causing it\./,
+  "Admin diagnostics should show the active foreground save causing the visible Saving badge"
 );
 
 assert.match(

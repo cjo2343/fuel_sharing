@@ -1,6 +1,6 @@
 const CACHE_NAME = "fuel-ledger-v268";
-const BUILD_LABEL = "foreground-sync-force-clear";
-const BUILD_UPDATED_AT = "2026-06-16T22:30:00.000Z";
+const BUILD_LABEL = "global-foreground-operation-tracker";
+const BUILD_UPDATED_AT = "2026-06-16T22:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

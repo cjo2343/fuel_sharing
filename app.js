@@ -511,6 +511,10 @@ let visibleSyncingFailsafeTimer = null;
 let visibleSavingStartedAt = 0;
 let visibleSavingSource = "";
 let visibleSavingFailsafeTimer = null;
+const foregroundOperationStaleMs = 20000;
+const foregroundOperations = new Map();
+let foregroundOperationCounter = 0;
+let foregroundOperationWatchdogTimer = null;
 
 const visibleSyncBackgroundSources = new Set([
   "admin-diagnostics",
@@ -553,6 +557,126 @@ function shouldAllowVisibleSyncStatus(label, source) {
   // Unknown foreground writes still pass, but they are recorded so the next
   // bug report names the source instead of just saying Saving/Syncing.
   return true;
+}
+
+
+function createForegroundOperationId(source = "foreground") {
+  foregroundOperationCounter += 1;
+  const safeSource = normalizeVisibleSyncSource(source, "foreground").replace(/[^a-z0-9_-]/gi, "-").slice(0, 48) || "foreground";
+  return `${safeSource}-${Date.now().toString(36)}-${foregroundOperationCounter.toString(36)}`;
+}
+
+function foregroundOperationList(referenceTime = Date.now()) {
+  purgeStaleForegroundOperations("list", referenceTime);
+  return Array.from(foregroundOperations.values())
+    .sort((a, b) => Number(b.startedAt || 0) - Number(a.startedAt || 0));
+}
+
+function latestForegroundOperation(referenceTime = Date.now()) {
+  return foregroundOperationList(referenceTime)[0] || null;
+}
+
+function hasActiveForegroundOperation(referenceTime = Date.now()) {
+  return foregroundOperationList(referenceTime).length > 0;
+}
+
+function foregroundOperationSummary(referenceTime = Date.now()) {
+  const active = foregroundOperationList(referenceTime);
+  if (!active.length) return "No foreground save is active.";
+  return active
+    .map((operation) => {
+      const ageSeconds = Math.max(0, Math.round((referenceTime - Number(operation.startedAt || referenceTime)) / 1000));
+      return `${operation.source || "foreground"} (${ageSeconds}s)`;
+    })
+    .join(", ");
+}
+
+function scheduleForegroundOperationWatchdog() {
+  if (foregroundOperationWatchdogTimer) window.clearTimeout(foregroundOperationWatchdogTimer);
+  if (!foregroundOperations.size) {
+    foregroundOperationWatchdogTimer = null;
+    return;
+  }
+  foregroundOperationWatchdogTimer = window.setTimeout(() => {
+    purgeStaleForegroundOperations("watchdog");
+    if (!foregroundOperations.size && els.syncStatus && String(els.syncStatus.dataset.status || "") === "saving") {
+      clearStaleVisibleSavingStatus("foreground-watchdog");
+    } else {
+      scheduleForegroundOperationWatchdog();
+    }
+    renderSupabaseLoadMonitor();
+  }, foregroundOperationStaleMs + 250);
+}
+
+function beginForegroundOperation(source = "foreground-write", meta = {}) {
+  const normalizedSource = normalizeVisibleSyncSource(source, "foreground-write");
+  const now = Date.now();
+  purgeStaleForegroundOperations("begin", now);
+  const existing = Array.from(foregroundOperations.values()).find((operation) => operation.source === normalizedSource);
+  if (existing) {
+    existing.lastSeenAt = now;
+    scheduleForegroundOperationWatchdog();
+    return existing.id;
+  }
+  const id = meta.id || createForegroundOperationId(normalizedSource);
+  foregroundOperations.set(id, {
+    id,
+    source: normalizedSource,
+    detail: meta.detail || "",
+    startedAt: now,
+    lastSeenAt: now
+  });
+  recordSupabaseLoadEvent("foreground-operation-start", normalizedSource);
+  recordSyncDiagnostic("foreground-operation-start", normalizedSource, { source: normalizedSource, operationId: id });
+  scheduleForegroundOperationWatchdog();
+  renderSupabaseLoadMonitor();
+  return id;
+}
+
+function finishForegroundOperation(id, reason = "foreground-operation-finished") {
+  if (!id || !foregroundOperations.has(id)) return false;
+  const operation = foregroundOperations.get(id);
+  foregroundOperations.delete(id);
+  const ageMs = Date.now() - Number(operation.startedAt || Date.now());
+  recordSupabaseLoadEvent("foreground-operation-finished", `${operation.source}; ${reason}`);
+  recordSyncDiagnostic("foreground-operation-finished", `${operation.source} finished: ${reason}`, { source: operation.source, operationId: id, ageMs });
+  scheduleForegroundOperationWatchdog();
+  renderSupabaseLoadMonitor();
+  return true;
+}
+
+function finishForegroundOperationsBySource(source = "", reason = "foreground-operation-finished") {
+  const normalizedSource = normalizeVisibleSyncSource(source, "foreground-write");
+  let cleared = 0;
+  Array.from(foregroundOperations.entries()).forEach(([id, operation]) => {
+    if (!source || operation.source === normalizedSource) {
+      if (finishForegroundOperation(id, reason)) cleared += 1;
+    }
+  });
+  return cleared;
+}
+
+function finishAllForegroundOperations(reason = "foreground-operation-finished") {
+  let cleared = 0;
+  Array.from(foregroundOperations.keys()).forEach((id) => {
+    if (finishForegroundOperation(id, reason)) cleared += 1;
+  });
+  return cleared;
+}
+
+function purgeStaleForegroundOperations(reason = "stale", referenceTime = Date.now()) {
+  let cleared = 0;
+  Array.from(foregroundOperations.entries()).forEach(([id, operation]) => {
+    const ageMs = referenceTime - Number(operation.startedAt || referenceTime);
+    if (ageMs >= foregroundOperationStaleMs) {
+      foregroundOperations.delete(id);
+      cleared += 1;
+      recordSupabaseLoadEvent("foreground-operation-timeout", `${operation.source}; ${Math.round(ageMs / 1000)}s; ${reason}`);
+      recordSyncDiagnostic("foreground-operation-timeout", `${operation.source} was auto-cleared after ${Math.round(ageMs / 1000)}s.`, { source: operation.source, operationId: id, ageMs, reason });
+    }
+  });
+  if (cleared) scheduleForegroundOperationWatchdog();
+  return cleared;
 }
 function recordBlockedVisibleSyncStatus(label, source, options = {}) {
   const normalizedSource = normalizeVisibleSyncSource(source, label);
@@ -777,7 +901,7 @@ function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoO
 }
 
 function hasForegroundWriteInFlight(referenceTime = Date.now()) {
-  return pendingSettlementRequestKeys.size > 0 || hasActiveDataIoOperation(referenceTime, dataIoOperationStaleMs);
+  return hasActiveForegroundOperation(referenceTime) || pendingSettlementRequestKeys.size > 0 || hasActiveDataIoOperation(referenceTime, dataIoOperationStaleMs);
 }
 
 function shouldDeferBackgroundCloudLoad(reason = "background", referenceTime = Date.now()) {
@@ -910,59 +1034,6 @@ function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
   renderSyncHealthBanner();
 }
 
-function forceClearVisibleForegroundSyncStatus(reason = "foreground-sync-finished") {
-  const previousStatus = String(els.syncStatus?.dataset?.status || "");
-  const previousSavingSource = visibleSavingSource;
-  const previousSyncingSource = visibleSyncingSource;
-  const wasForegroundVisible = previousStatus === "saving" || previousStatus === "syncing" || visibleSavingStartedAt || visibleSyncingStartedAt;
-
-  clearVisibleSavingFailsafe();
-  clearVisibleSyncingFailsafe();
-  visibleSavingStartedAt = 0;
-  visibleSavingSource = "";
-  visibleSyncingStartedAt = 0;
-  visibleSyncingSource = "";
-  clearSyncDelay(`foreground-sync-force-cleared:${reason}`);
-
-  const label = getHealthySyncStatusLabel();
-  const display = window.FuelSyncStatus?.syncDisplayForStatus
-    ? window.FuelSyncStatus.syncDisplayForStatus(label, {
-        pendingCount: pendingLocalChanges,
-        lastCloudSaveAt,
-        lastCloudSyncAt,
-        lastLocalSaveAt,
-        lastSyncError,
-        lastCloudRetryAt
-      })
-    : { text: label === "Tables" ? "Database" : label, status: String(label || "").toLowerCase(), detail: "" };
-
-  if (els.syncStatus) {
-    els.syncStatus.textContent = display.text;
-    els.syncStatus.dataset.status = display.status;
-  }
-  if (els.syncDetail) {
-    els.syncDetail.textContent = display.detail;
-  }
-  if (wasForegroundVisible) {
-    recordSyncDiagnostic("foreground-sync-force-cleared", reason, {
-      reason,
-      previousStatus,
-      previousSavingSource,
-      previousSyncingSource,
-      nextStatus: display.status
-    });
-    recordSupabaseLoadEvent("foreground-sync-force-cleared", reason);
-  }
-  renderSyncHealthBanner();
-  return true;
-}
-
-function forceClearIdleForegroundSyncStatus(reason = "foreground-sync-idle") {
-  if (!els.syncStatus || !["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) return false;
-  if (hasForegroundWriteInFlight() || hasActiveDataIoOperation()) return false;
-  return forceClearVisibleForegroundSyncStatus(reason);
-}
-
 function clearVisibleSavingFailsafe() {
   if (visibleSavingFailsafeTimer) {
     window.clearTimeout(visibleSavingFailsafeTimer);
@@ -980,17 +1051,19 @@ function scheduleVisibleSavingFailsafe(source = "saving") {
 
 function clearStaleVisibleSavingStatus(reason = "saving-failsafe") {
   if (!els.syncStatus || String(els.syncStatus.dataset.status || "") !== "saving") return false;
+  purgeStaleForegroundOperations(reason);
   const savingAgeMs = visibleSavingStartedAt ? Date.now() - visibleSavingStartedAt : visibleSavingFailsafeMs;
-  const activeDataIo = hasActiveDataIoOperation() ? 1 : 0;
-  const foregroundWriteActive = hasForegroundWriteInFlight();
-  if ((activeDataIo || foregroundWriteActive) && savingAgeMs < visibleSavingFailsafeMs) {
+  const foregroundWriteActive = hasActiveForegroundOperation();
+  if (foregroundWriteActive && savingAgeMs < visibleSavingFailsafeMs) {
     scheduleVisibleSavingFailsafe(reason);
-    recordSyncDiagnostic("saving-failsafe-wait", "Saving badge is still tied to an active foreground write.", { reason, savingAgeMs, activeDataIo, visibleSavingSource });
+    recordSyncDiagnostic("saving-failsafe-wait", "Saving badge is still tied to an active foreground operation.", { reason, savingAgeMs, activeForeground: foregroundOperationSummary(), visibleSavingSource });
     return false;
   }
-  forceClearVisibleForegroundSyncStatus(`saving-stale-cleared:${reason}`);
+  finishAllForegroundOperations(`saving-stale-cleared:${reason}`);
+  clearSyncDelay(`saving-stale-cleared:${reason}`);
+  setSyncStatus(getHealthySyncStatusLabel());
   recordSupabaseLoadEvent("saving-stale-cleared", reason);
-  recordSyncDiagnostic("saving-stale-cleared", "Stale visible Saving state was cleared automatically.", { reason, savingAgeMs, activeDataIo, foregroundWriteActive, visibleSavingSource });
+  recordSyncDiagnostic("saving-stale-cleared", "Stale visible Saving state was cleared automatically.", { reason, savingAgeMs, foregroundWriteActive, activeForeground: foregroundOperationSummary(), visibleSavingSource });
   renderSupabaseLoadMonitor();
   return true;
 }
@@ -3142,6 +3215,8 @@ function renderSupabaseLoadMonitor() {
   const activityGroups = latestSupabaseActivityGroups(8);
   const healthySyncLabel = lastCloudSyncAt ? new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" }) : "Not yet";
   const latestOperationStatus = latestDataIoOp?.status || "idle";
+  const activeForeground = foregroundOperationList();
+  const foregroundSummary = foregroundOperationSummary();
   els.supabaseLoadMonitor.innerHTML = `
     <div class="admin-diagnostics-dashboard">
       <article class="admin-metric-card ${statusClass}">
@@ -3161,6 +3236,12 @@ function renderSupabaseLoadMonitor() {
         <strong>${escapeHtml(latestOperationStatus)}</strong>
         <small>${latestDataIoOp ? escapeHtml(formatDataIoOperationLine(latestDataIoOp)) : "No operation yet"}</small>
         <p>Grouped by operation so start/finish pairs are readable.</p>
+      </article>
+      <article class="admin-metric-card ${activeForeground.length ? "warning" : "ok"}">
+        <span>Foreground save</span>
+        <strong>${activeForeground.length ? "Active" : "Idle"}</strong>
+        <small>${escapeHtml(foregroundSummary)}</small>
+        <p>If Saving is visible, this card must name the operation causing it.</p>
       </article>
       <article class="admin-metric-card ${ledgerEventsChannel ? "ok" : "warning"}">
         <span>Realtime</span>
@@ -9060,15 +9141,9 @@ async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = 
 function clearPaymentActionSavingUi(reason = "payment-action-finished") {
   recordSyncDiagnostic("payment-action-finished", reason, { reason });
   if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
-    forceClearVisibleForegroundSyncStatus(reason);
-  } else {
-    clearVisibleSavingFailsafe();
-    clearVisibleSyncingFailsafe();
+    restoreHealthySyncStatusAfterQuietSync(reason);
   }
-
-  window.setTimeout(() => {
-    forceClearIdleForegroundSyncStatus(`${reason}:post-render`);
-  }, 0);
+  clearVisibleSavingFailsafe();
 }
 
 function applyPaymentActionLocally(key, nextStatus, auditEntry, reason = "payment-action-local-apply") {
@@ -9195,7 +9270,6 @@ async function updatePaymentStatus(button) {
     button.textContent = actionSucceeded ? paymentActionCompleteLabel(nextStatus) : paymentActionCompleteLabel(previousStatus);
     clearPaymentActionSavingUi(actionSucceeded ? "payment-action-success" : "payment-action-reset");
     render();
-    clearPaymentActionSavingUi(actionSucceeded ? "payment-action-success:after-render" : "payment-action-reset:after-render");
   }
 
   // Requesting or marking a payment must never close the period automatically.
@@ -15518,18 +15592,21 @@ function setSyncStatus(label, options = {}) {
   els.syncStatus.dataset.status = display.status;
 
   if (display.status === "saving") {
+    beginForegroundOperation(requestedSource, { detail: String(label || "Saving") });
     if (!visibleSavingStartedAt) {
       visibleSavingStartedAt = Date.now();
       visibleSavingSource = requestedSource;
-      recordSyncDiagnostic("saving-start", visibleSavingSource, { source: visibleSavingSource });
+      recordSyncDiagnostic("saving-start", visibleSavingSource, { source: visibleSavingSource, activeForeground: foregroundOperationSummary() });
     }
     scheduleVisibleSavingFailsafe(visibleSavingSource);
   } else if (visibleSavingStartedAt) {
     const savingAgeMs = Date.now() - visibleSavingStartedAt;
+    const clearedForeground = finishAllForegroundOperations(`status:${String(label || display.status || "cleared")}`);
     recordSyncDiagnostic("saving-clear", String(label || display.status || "cleared"), {
       source: visibleSavingSource,
       nextStatus: display.status,
-      savingAgeMs
+      savingAgeMs,
+      clearedForeground
     });
     visibleSavingStartedAt = 0;
     visibleSavingSource = "";

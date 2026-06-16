@@ -2,11 +2,11 @@
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
     version: "2026.06.17.168",
-    buildLabel: "foreground-sync-force-clear",
-    updatedAt: "2026-06-16T22:30:00.000Z",
+    buildLabel: "global-foreground-operation-tracker",
+    updatedAt: "2026-06-16T22:35:00.000Z",
     expectedServiceWorkerCache: "fuel-ledger-v268",
     releaseNotes: Object.freeze([
-      "Payment actions now force-clear the visible Saving/Syncing latch both before and after render, so a finished or timed-out request cannot leave the top bar stuck after Cloud Load and Data I/O are idle.",
+      "Visible Saving is now driven by a central foreground operation tracker shared by trips, fuel, bookings, payments, server saves, and Supabase saves; if Saving appears, Admin shows the active operation and stale operations auto-clear after 20 seconds.",
       "Debounced remote saves now serialize while a previous save is still running, coalescing follow-up saves instead of overlapping cloud writes that can make sync appear stuck.",
       "Visible Saving status now has its own failsafe and payment-action finally cleanup, so a timed-out payment confirmation cannot leave the top bar stuck on Saving changes after Cloud Load and Data I/O are idle.",
       "Skipped/guarded data I/O diagnostics now render as skipped/instant instead of OK/active, so ledger-directory skip breadcrumbs no longer look like stuck writes.",
