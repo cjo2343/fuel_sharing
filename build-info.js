@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.137",
-    buildLabel: "workspace-scoped-invite-polish",
-    updatedAt: "2026-06-16T15:24:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v236",
+    version: "2026.06.16.138",
+    buildLabel: "safari-healthcheck-guard-hotfix",
+    updatedAt: "2026-06-16T15:36:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v237",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -43,7 +43,8 @@
       "Invite redemption now fixes the Supabase ledger_id return-column ambiguity so login auto-redeem works without pasting the workspace code again on the dashboard.",
       "Invite redemption now treats the Supabase session as the signed-in source of truth, clears stale sign-in prompts, and keeps pending invitees from inheriting the old local admin identity while membership loads.",
       "Supabase workspace sessions now ignore stale JSON member-profile authority until workspace membership confirms the signed-in user, preventing invitees from appearing as the first local admin and avoiding regular-member ledger reconciliation writes.",
-      "Admin invite creation now labels the exact current workspace, and created codes state that they join only that workspace so invite codes do not feel global."
+      "Admin invite creation now labels the exact current workspace, and created codes state that they join only that workspace so invite codes do not feel global.",
+      "Runtime JavaScript now avoids optional catch binding syntax so older Safari/WebKit engines do not stop on a parse error, and Admin guardrails handle missing Security Health rows without crashing."
     ])
   });
 

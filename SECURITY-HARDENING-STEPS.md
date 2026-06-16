@@ -236,3 +236,8 @@ Signed-in invite redemption now treats the Supabase session as the source of tru
 - 2026-06-16: Workspace-scoped invite wording polish
   - Admin invite creation now shows the exact current workspace and clarifies that created codes join only that workspace.
   - Created invite results include the workspace name so admins know which group the one-time code belongs to before sharing it out-of-band.
+
+### 2026-06-16 Safari parser and Admin health guard hotfix
+- Runtime JavaScript now avoids optional catch binding syntax for older Safari/WebKit compatibility.
+- Admin guardrail rendering no longer dereferences `healthcheck.ok` when the healthcheck row is absent.
+- Validation now blocks reintroducing optional catch binding syntax in root runtime JavaScript files.

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v236";
-const BUILD_LABEL = "workspace-scoped-invite-polish";
-const BUILD_UPDATED_AT = "2026-06-16T15:24:00.000Z";
+const CACHE_NAME = "fuel-ledger-v237";
+const BUILD_LABEL = "safari-healthcheck-guard-hotfix";
+const BUILD_UPDATED_AT = "2026-06-16T15:36:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -87,7 +87,7 @@ self.addEventListener("push", (event) => {
   let payload = { title: "Fuel Ledger", body: "You have a new payment request.", url: "/" };
   try {
     payload = { ...payload, ...event.data.json() };
-  } catch {
+  } catch (error) {
     if (event.data) payload.body = event.data.text();
   }
 
@@ -107,7 +107,7 @@ function sanitizeNotificationUrl(value) {
     const candidate = new URL(value || "/", self.location.origin);
     if (candidate.origin !== self.location.origin) return "/";
     return `${candidate.pathname}${candidate.search}${candidate.hash}` || "/";
-  } catch {
+  } catch (error) {
     return "/";
   }
 }

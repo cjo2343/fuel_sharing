@@ -216,7 +216,7 @@ function getMobilePayReturnPrompt(key) {
       return null;
     }
     return prompt;
-  } catch {
+  } catch (error) {
     localStorage.removeItem(mobilePayReturnKey);
     return null;
   }
@@ -234,7 +234,7 @@ function rememberMobilePayReturnPrompt(settlement) {
         openedAt: Date.now()
       })
     );
-  } catch {
+  } catch (error) {
     // Ignore storage errors. The payment still happens in MobilePay.
   }
 }
@@ -1284,7 +1284,7 @@ function captureFuelLocation() {
             ? "Pick the correct station below, or type it manually."
             : "No nearby stations found. You can still type the station manually.";
         }
-      } catch {
+      } catch (error) {
         if (els.fuelLocationStatus) els.fuelLocationStatus.textContent = "Could not load nearby stations. You can still type the station manually.";
       } finally {
         if (els.useFuelLocation) els.useFuelLocation.disabled = false;
@@ -2866,8 +2866,8 @@ function getRpcAvailabilityDiagnostics() {
     : null;
   if (!criticalRpcs) {
     return {
-      status: healthcheck.ok ? "Legacy healthcheck passed" : "Needs review",
-      detail: healthcheck?.ok
+      status: healthcheck && healthcheck.ok ? "Legacy healthcheck passed" : "Needs review",
+      detail: healthcheck && healthcheck.ok
         ? "Apply the RPC health visibility migration to show all critical RPCs before relying on production write/admin tools."
         : (healthcheck?.detail || "Security Health reported an RPC issue."),
       level: "warning"
@@ -3867,7 +3867,7 @@ async function cleanupGeneratedTestDataWithReport() {
 function cloneForTestLab(value) {
   try {
     return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
-  } catch {
+  } catch (error) {
     return JSON.parse(JSON.stringify(value));
   }
 }
@@ -8051,7 +8051,7 @@ async function refreshFuelPriceEstimate() {
         render();
       }
     }
-  } catch {
+  } catch (error) {
     // The app falls back to the configured manual price if the public price API is unavailable.
   }
   fuelPriceTimer = window.setTimeout(refreshFuelPriceEstimate, 60 * 60 * 1000);
@@ -8745,7 +8745,7 @@ async function copySettlement(button) {
     await navigator.clipboard.writeText(text);
     button.textContent = "Copied";
     showAppMessage("Amount copied.");
-  } catch {
+  } catch (error) {
     const helper = document.createElement("textarea");
     helper.value = text;
     helper.setAttribute("readonly", "");
@@ -11705,7 +11705,7 @@ function parseTripFormBookingParticipantsDataset() {
   try {
     const parsed = JSON.parse(els.tripForm.dataset.sourceBookingParticipants);
     return normalizeBookingTripParticipants(parsed);
-  } catch {
+  } catch (error) {
     return [];
   }
 }

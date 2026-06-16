@@ -3,7 +3,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey));
       return normalizeState(saved);
-    } catch {
+    } catch (error) {
       return structuredClone(defaults);
     }
   }

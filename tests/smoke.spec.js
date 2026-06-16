@@ -806,9 +806,9 @@ test("payment status actions do not mutate booking records or emit normalized sy
 test("non-admin members see clear permission messages for entries owned by someone else", async ({ page }) => {
   await openLocalAppAsEmilieWithChristianEntries(page);
 
-  await expect(page.locator("#currentUser")).toHaveValue("emilie");
-  await expect(page.locator("#tripList")).toContainText("Only Christian, the trip creator, or an admin can edit or delete this trip. You are signed in as emilie.");
-  await expect(page.locator("#fuelList")).toContainText("Only Christian, the fuel payer/creator, or an admin can edit or delete this fuel log. You are signed in as emilie.");
+  await expect(page.locator("#currentUser")).toHaveValue("Emilie");
+  await expect(page.locator("#tripList")).toContainText("Only Christian, the trip creator, or an admin can edit or delete this trip. You are signed in as Emilie.");
+  await expect(page.locator("#fuelList")).toContainText("Only Christian, the fuel payer/creator, or an admin can edit or delete this fuel log. You are signed in as Emilie.");
   await expect(page.locator('[data-edit="trips:permission-trip-1"]')).toHaveCount(0);
   await expect(page.locator('[data-delete="trips:permission-trip-1"]')).toHaveCount(0);
   await expect(page.locator('[data-edit="fuel:permission-fuel-1"]')).toHaveCount(0);

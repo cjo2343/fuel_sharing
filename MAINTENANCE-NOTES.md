@@ -630,3 +630,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - 2026-06-16: Workspace-scoped invite wording polish
   - Admin invite creation now shows the exact current workspace and clarifies that created codes join only that workspace.
   - Created invite results include the workspace name so admins know which group the one-time code belongs to before sharing it out-of-band.
+
+- 2026-06-16: Safari parser and Admin health guard hotfix
+  - Replaced optional catch binding syntax in runtime JavaScript so older Safari/WebKit does not stop app startup with `Unexpected token '{'`.
+  - Guarded Admin RPC availability rendering when Security Health has not returned a legacy healthcheck row yet.
+  - Added runtime validation to block both regressions.

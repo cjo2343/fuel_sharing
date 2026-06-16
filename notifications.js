@@ -14,7 +14,7 @@
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       return Boolean(subscription && Notification.permission === "granted");
-    } catch {
+    } catch (error) {
       return false;
     }
   }
