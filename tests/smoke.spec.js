@@ -62,6 +62,12 @@ async function openLocalApp(page) {
   await waitForLocalSmokeAppReady(page);
 }
 
+
+async function openBookView(page) {
+  await page.locator('[data-view-tab="book"]').click();
+  await expect(page.locator("#tripEstimateDistance")).toBeVisible({ timeout: 10000 });
+}
+
 async function chooseFirstSelectOption(select) {
   const options = await select.locator("option").evaluateAll((items) =>
     items.map((item) => item.value).filter(Boolean)
@@ -869,8 +875,7 @@ test("build info is visible to all users in About and admin panels", async ({ pa
 test("trip planner uses tank capacity for remaining-range guidance", async ({ page }) => {
   await openLocalApp(page);
 
-  await page.locator('[data-view-tab="book"]').click();
-  await expect(page.locator("#tripEstimateDistance")).toBeVisible();
+  await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("350");
   await page.locator("#tripEstimatorParticipants input").first().check();
 
@@ -911,7 +916,7 @@ test("tank capacity settings persist and drive trip planner output", async ({ pa
   await expect(page.locator("#fuelTankCapacity")).toHaveValue("60");
   await expect(page.locator("#fuelWarningThreshold")).toHaveValue("75");
 
-  await page.locator('[data-view-tab="book"]').click();
+  await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("300");
   await page.locator("#tripEstimatorParticipants input").first().check();
   await expect(page.locator("#tripEstimateResult")).toContainText("Tank capacity");
@@ -941,7 +946,7 @@ test("trip planner subtracts planned distance from full-tank baseline without st
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
-  await page.locator('[data-view-tab="book"]').click();
+  await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("366");
   await page.locator("#tripEstimatorParticipants input").first().check();
 
@@ -981,7 +986,7 @@ test("trip planner warns when planned trip crosses configured tank range thresho
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
-  await page.locator('[data-view-tab="book"]').click();
+  await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("200");
   await page.locator("#tripEstimatorParticipants input").first().check();
 
@@ -1057,7 +1062,7 @@ test("smart tank range uses actual data, not unsaved plan estimate", async ({ pa
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
-  await page.locator('[data-view-tab="book"]').click();
+  await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("366");
   await page.locator("#tripEstimatorParticipants input").first().check();
   await expect(page.locator("#tripEstimateResult")).toContainText(/45[0-5][,.][0-9] km left|45[0-5] km left/);
@@ -1070,7 +1075,7 @@ test("smart tank range uses actual data, not unsaved plan estimate", async ({ pa
 
 test("plan estimate can be copied into a real booking", async ({ page, request }) => {
   await openLocalApp(page);
-  await page.locator('[data-view-tab="book"]').click();
+  await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("123");
   await page.locator("#tripEstimateStart").fill("Roskilde");
   await page.locator("#tripEstimateDestination").fill("Aarhus");
