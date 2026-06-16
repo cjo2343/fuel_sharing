@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.164",
-    buildLabel: "payment-action-visible-local-contract",
-    updatedAt: "2026-06-17T01:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v263",
+    version: "2026.06.17.165",
+    buildLabel: "visible-sync-source-gate",
+    updatedAt: "2026-06-17T01:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v264",
     releaseNotes: Object.freeze([
+      "Visible Saving/Syncing status is now source-gated: background focus, realtime, admin diagnostics, and service-worker paths are blocked from setting the top-bar badge and instead record a diagnostic with the attempted source.",
       "Payment actions now apply the local requested/paid/reopened status and audit breadcrumb before waiting on the local backend merge, so smoke tests and users see the persisted result immediately while keeping the full-state save fanout reduction.",
       "Successful Supabase/Render payment actions now update local UI state without queuing the generic full-state remote save stack, reducing duplicate Supabase saves, reconciliation skips, JSON mirror checks, and ledger event attempts after one payment click.",
       "Service-worker version handoff is now stricter: build-info.js is network-first, core runtime assets stay stable within one cache, and update-ready states tell users to close/reopen instead of showing random cache mismatches.",

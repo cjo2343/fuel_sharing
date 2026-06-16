@@ -649,3 +649,4 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Render backend payment-action API is now the preferred browser path for payment request/paid/reopen; keep the endpoint session-verified and keep the direct Supabase RPC fallback until deployed clients are confirmed healthy.
 - Data I/O flight-recorder diagnostics should stay enabled around normalized writes so future stuck Saving/Syncing reports identify the exact source, route, table/RPC/API, and Supabase error.
 - Service-worker version consistency: keep build-info.js out of the cache-first app shell and avoid skipWaiting/clients.claim so old pages are not silently controlled by a new runtime cache.
+- Visible sync-status changes must pass an explicit source; background focus/realtime/admin/service-worker paths should record diagnostics instead of setting the top-bar Saving/Syncing badge.

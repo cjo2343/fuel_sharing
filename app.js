@@ -507,6 +507,55 @@ const visibleSyncingFailsafeMs = 30000;
 let visibleSyncingStartedAt = 0;
 let visibleSyncingSource = "";
 let visibleSyncingFailsafeTimer = null;
+
+const visibleSyncBackgroundSources = new Set([
+  "admin-diagnostics",
+  "auth-initial_session",
+  "auth-session_updated",
+  "auth-token_refreshed",
+  "focus-refresh",
+  "ledger-event",
+  "manual-admin",
+  "realtime",
+  "realtime-refresh",
+  "service-worker",
+  "supabase-realtime",
+  "visibilitychange",
+  "window-focus"
+]);
+const visibleSyncForegroundPrefixes = [
+  "critical-action:",
+  "manual-",
+  "startup",
+  "workspace-"
+];
+function normalizeVisibleSyncSource(source, label = "") {
+  return String(source || label || "unknown-visible-sync").trim() || "unknown-visible-sync";
+}
+function isBackgroundVisibleSyncSource(source) {
+  const normalized = normalizeVisibleSyncSource(source).toLowerCase();
+  if (visibleSyncBackgroundSources.has(normalized)) return true;
+  return /(^|[-:])(background|focus|realtime|service-worker|admin-diagnostics)([-:]|$)/.test(normalized);
+}
+function isForegroundVisibleSyncSource(source) {
+  const normalized = normalizeVisibleSyncSource(source).toLowerCase();
+  return visibleSyncForegroundPrefixes.some((prefix) => normalized.startsWith(prefix));
+}
+function shouldAllowVisibleSyncStatus(label, source) {
+  const normalizedLabel = String(label || "").toLowerCase();
+  const normalizedSource = normalizeVisibleSyncSource(source, label);
+  if (normalizedLabel !== "saving" && normalizedLabel !== "syncing") return true;
+  if (isBackgroundVisibleSyncSource(normalizedSource)) return false;
+  // Unknown foreground writes still pass, but they are recorded so the next
+  // bug report names the source instead of just saying Saving/Syncing.
+  return true;
+}
+function recordBlockedVisibleSyncStatus(label, source, options = {}) {
+  const normalizedSource = normalizeVisibleSyncSource(source, label);
+  const detail = `${normalizedSource} attempted to show visible ${String(label || "sync")} from a background/diagnostic path.`;
+  recordSupabaseLoadEvent("visible-sync-status-blocked", detail);
+  recordSyncDiagnostic("visible-sync-status-blocked", detail, { label, source: normalizedSource, ...options });
+}
 const workspaceInviteRequestTimeoutMs = 8000;
 const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
 let lastAuthCloudSyncUserKey = "";
@@ -8073,7 +8122,7 @@ async function confirmFreshCloudStateForCriticalAction(actionLabel) {
       : `${actionLabel} changes shared data. Your last confirmed cloud sync is more than 10 minutes old. Sync now before continuing?`;
   if (!confirmUserAction(message)) return false;
   const loaded = await loadSupabaseStateWithTimeout(
-    { force: true, reason: `critical-action:${actionLabel}` },
+    { force: true, reason: `critical-action:${actionLabel}`, manual: true },
     supabaseStartupLoadTimeoutMs,
     `${actionLabel} cloud refresh is delayed.`
   );
@@ -8212,7 +8261,7 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
   if (!supabaseClient || !currentSession) return true;
 
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: "period-close" });
     const context = await getNormalizedWriteContext();
     if (!context?.openPeriodId) return true;
 
@@ -13282,7 +13331,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
   recordDataIoDiagnostic("start", { source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: "trip-save" });
     const context = await getNormalizedWriteContext({ source: "trip-save" });
     if (!context) return true;
     const payload = {
@@ -13440,7 +13489,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   recordDataIoDiagnostic("start", { source: "fuel-save", route: "supabase-rpc", rpc: "upsert_fuel_payment", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: "fuel-save" });
     const context = await getNormalizedWriteContext({ source: "fuel-save" });
     if (!context) return true;
     const liters = nullableNumber(fuel.liters);
@@ -13549,7 +13598,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
   recordDataIoDiagnostic("start", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: "booking-save" });
     const context = await getNormalizedWriteContext({ source: "booking-save" });
     if (!context) return true;
     const payload = {
@@ -13789,7 +13838,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
   if (!supabaseClient || !currentSession) return true;
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: "settlement-request-save" });
     const context = await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
     if (!context) return true;
     recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
@@ -14755,7 +14804,7 @@ async function loadRemoteState() {
   }
 
   try {
-    setSyncStatus("Syncing");
+    setSyncStatus("Syncing", { source: "server-load" });
     const response = await fetch(apiStateUrl);
     if (!response.ok) throw new Error("State request failed");
     const remoteState = normalizeState(await response.json());
@@ -14787,7 +14836,7 @@ async function saveRemoteState() {
   }
 
   try {
-    setSyncStatus("Saving");
+    setSyncStatus("Saving", { source: "server-save" });
     const response = await fetch(apiStateUrl, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -15345,6 +15394,13 @@ function markRemoteSaveFailed(error, fallbackMessage = "Could not save shared da
 }
 
 function setSyncStatus(label, options = {}) {
+  const requestedSource = normalizeVisibleSyncSource(options.source, label);
+  if (!shouldAllowVisibleSyncStatus(label, requestedSource)) {
+    recordBlockedVisibleSyncStatus(label, requestedSource, options);
+    if (String(label || "").toLowerCase() === "saving" || String(label || "").toLowerCase() === "syncing") {
+      return;
+    }
+  }
   const display = window.FuelSyncStatus?.syncDisplayForStatus
     ? window.FuelSyncStatus.syncDisplayForStatus(label, {
         pendingCount: pendingLocalChanges,
@@ -15362,7 +15418,7 @@ function setSyncStatus(label, options = {}) {
   if (display.status === "syncing") {
     if (!visibleSyncingStartedAt) {
       visibleSyncingStartedAt = Date.now();
-      visibleSyncingSource = String(options.source || label || "syncing");
+      visibleSyncingSource = requestedSource;
       recordSyncDiagnostic("syncing-start", visibleSyncingSource, { source: visibleSyncingSource });
     }
     scheduleVisibleSyncingFailsafe(visibleSyncingSource);

@@ -221,3 +221,33 @@ assert.match(
   /recordSyncDiagnostic\("syncing-clear"[\s\S]*clearVisibleSyncingFailsafe\(\)/,
   "leaving Syncing should centrally record a clear diagnostic and cancel the failsafe"
 );
+
+assert.match(
+  appSource,
+  /const visibleSyncBackgroundSources = new Set\(\[[\s\S]*"focus-refresh"[\s\S]*"realtime"[\s\S]*"service-worker"[\s\S]*"window-focus"[\s\S]*\]\);/,
+  "background/focus/realtime/service-worker sources should be explicitly classified before they can affect the visible sync badge"
+);
+
+assert.match(
+  appSource,
+  /function shouldAllowVisibleSyncStatus\(label, source\)[\s\S]*isBackgroundVisibleSyncSource\(normalizedSource\)[\s\S]*return false;/,
+  "background sources should be blocked from setting visible Saving/Syncing status"
+);
+
+assert.match(
+  appSource,
+  /function setSyncStatus\(label, options = \{\}\) \{[\s\S]*const requestedSource = normalizeVisibleSyncSource\(options\.source, label\);[\s\S]*recordBlockedVisibleSyncStatus\(label, requestedSource, options\);[\s\S]*return;/,
+  "setSyncStatus should centrally block background attempts to show Saving/Syncing and record the blocked source"
+);
+
+assert.match(
+  appSource,
+  /setSyncStatus\("Saving", \{ source: "trip-save" \}\)[\s\S]*setSyncStatus\("Saving", \{ source: "fuel-save" \}\)[\s\S]*setSyncStatus\("Saving", \{ source: "booking-save" \}\)[\s\S]*setSyncStatus\("Saving", \{ source: "settlement-request-save" \}\)/,
+  "foreground data writes should name their visible Saving source so stuck status reports identify the real write path"
+);
+
+assert.match(
+  appSource,
+  /setSyncStatus\("Syncing", \{ source: "server-load" \}\)[\s\S]*setSyncStatus\("Saving", \{ source: "server-save" \}\)/,
+  "server fallback load/save paths should name their visible sync source"
+);

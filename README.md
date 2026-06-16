@@ -736,3 +736,4 @@ GitHub may show a separate **Supabase Preview** status created by the Supabase G
 - Payment request/paid/reopen actions now prefer the existing Render backend API (`/api/payments/status-action`), which verifies the signed-in Supabase session and calls the backend payment action RPC before falling back to direct browser RPC during migration.
 - Admin diagnostics include a Data I/O flight recorder for recent normalized reads/writes, showing whether an action used Render API, Supabase RPC, direct table fallback, or JSON fallback.
 - Version checks distinguish the loaded page build, latest deployed build, and active service-worker cache so update handoffs ask users to close/reopen instead of showing random cache mismatches.
+- Sync status is source-gated so background diagnostics, focus refreshes, realtime hints, and service-worker checks stay in Admin diagnostics instead of taking over the main top-bar status.
