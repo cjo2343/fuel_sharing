@@ -511,12 +511,18 @@ function testInviteOnboardingFoundationExists() {
   assert.match(index, /id="workspaceInvitesHeading">Invites &amp; workspaces/);
   assert.match(index, /id="createInviteForm"/);
   assert.match(index, /id="inviteList"/);
+  assert.match(index, /id="inviteRedemptionPanel"/);
+  assert.match(index, /id="redeemInviteForm"/);
+  assert.match(index, /id="redeemInviteCode"/);
   assert.match(app, /describeWorkspaceInviteError/);
   assert.match(app, /Supabase invite code generator is not installed/);
   assert.match(app, /027_invite_code_generation_pgcrypto_fix/);
   assert.match(app, /028_invite_code_hash_pgcrypto_fix/);
   assert.match(app, /supabaseClient\.rpc\("create_ledger_invite"/);
   assert.match(app, /supabaseClient\.rpc\("revoke_ledger_invite"/);
+  assert.match(app, /supabaseClient\.rpc\("redeem_ledger_invite"/);
+  assert.match(app, /describeInviteRedeemError/);
+  assert.match(app, /switchActiveWorkspace\(targetLedger, "invite-redemption"\)/);
   assert.match(app, /supabaseClient\.rpc\("list_my_ledgers"/);
   assert.match(index, /Codes are shown once and stored hashed/);
   console.log("ok - testInviteOnboardingFoundationExists");
@@ -530,10 +536,13 @@ function testWorkspaceInviteUxLayoutExists() {
   assert.match(index, /class="workspace-invites-intro"/);
   assert.match(index, /<div class="workspace-invites-grid">/);
   assert.match(index, /Use the top workspace selector or the buttons below to switch the current app scope/);
+  assert.match(index, /Join workspace with invite code/);
+  assert.match(index, /Paste it here while signed in/);
   assert.doesNotMatch(index, /data-tools-grid workspace-invites-grid/);
   assert.match(css, /\.workspace-invites-grid \{[\s\S]*grid-template-columns: minmax\(280px, 0\.9fr\) minmax\(260px, 0\.8fr\) minmax\(300px, 1fr\)/);
   assert.match(css, /\.workspace-invites-grid \.compact-admin-form \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.workspace-invites-grid \.compact-list \.member-management-row \{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.invite-redemption-panel \.invite-redemption-form/);
   console.log("ok - testWorkspaceInviteUxLayoutExists");
 }
 

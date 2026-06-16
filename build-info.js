@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.16.125",
-    buildLabel: "runtime-utils-contract-fix",
-    updatedAt: "2026-06-16T11:08:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v224",
+    version: "2026.06.16.126",
+    buildLabel: "invite-redemption-ui",
+    updatedAt: "2026-06-16T11:24:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v225",
     releaseNotes: Object.freeze([
       "Period close now takes the same admin safety backup path before archiving current activity.",
       "Destructive admin backup reasons are listed in code and checked by validation.",
@@ -32,7 +32,8 @@
       "Invite creation now uses schema-qualified Supabase pgcrypto random bytes and shows a clear migration message if the database helper is missing.",
       "Invite code hashing now also uses schema-qualified Supabase pgcrypto digest and shows a clear migration message if the hash helper is missing.",
       "Private-beta workspace switching now lets signed-in users select among ledgers returned by list_my_ledgers(), with trips, bookings, fuel, settlements, insights, and admin tools reloaded for the active workspace.",
-      "Runtime utility loading now exposes formatMoney from utils.js before app.js and validation checks the Playwright critical-module contract."
+      "Runtime utility loading now exposes formatMoney from utils.js before app.js and validation checks the Playwright critical-module contract.",
+      "Signed-in users can now redeem workspace invite codes in the app, refresh linked workspaces, and switch into the joined workspace."
     ])
   });
 

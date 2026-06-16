@@ -78,6 +78,25 @@
           <p id="authMessage" class="section-note"></p>
         </section>
 
+
+        <section id="inviteRedemptionPanel" data-view="log" class="panel wide-panel invite-redemption-panel hidden" aria-labelledby="inviteRedemptionHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Invite</p>
+              <h2 id="inviteRedemptionHeading">Join workspace with invite code</h2>
+            </div>
+          </div>
+          <p class="section-note">Have an invite code? Paste it here while signed in. The app will join the workspace, refresh your workspace list, and switch you into it.</p>
+          <form id="redeemInviteForm" class="auth-form invite-redemption-form">
+            <label>
+              Invite code
+              <input id="redeemInviteCode" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Paste invite code" />
+            </label>
+            <button id="redeemInviteButton" class="primary-button" type="submit">Join workspace</button>
+          </form>
+          <p id="redeemInviteMessage" class="section-note" aria-live="polite"></p>
+        </section>
+
         <section id="pwaPanel" data-view="log" class="panel pwa-panel wide-panel hidden" aria-labelledby="pwaHeading">
           <div>
             <p class="eyebrow">Phone setup</p>

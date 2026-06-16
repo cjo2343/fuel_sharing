@@ -175,7 +175,7 @@ The release-readiness companion checks enforce security-hardening hygiene before
 ### Invite-only onboarding foundation
 - Migration `026_invite_onboarding_foundation.sql` adds private, hashed ledger invite codes for future workspace joins.
 - Invite creation and revocation require ledger admin access; invite redemption requires a signed-in user email.
-- Public signup remains disabled. Do not advertise broadly until invite UI, workspace switching, and rate-limit/abuse monitoring are complete.
+- Public signup remains disabled. Do not advertise broadly until invite redemption UI and workspace switching have been tested under real use and server/Supabase-side rate-limit/abuse monitoring are complete.
 
 ## Invite/workspace UI guardrails
 
@@ -190,3 +190,5 @@ The release-readiness companion checks enforce security-hardening hygiene before
 - Invite code generation/hashing uses Supabase `pgcrypto` through `extensions.gen_random_bytes(...)` and `extensions.digest(...)`; migrations `027_invite_code_generation_pgcrypto_fix.sql` and `028_invite_code_hash_pgcrypto_fix.sql` must be applied before invite UI testing.
 
 - Active workspace switching remains permission-scoped: users can switch only to ledgers linked to their signed-in email by `list_my_ledgers()`, and all Supabase read/write helpers resolve through the active ledger id.
+
+- 2026-06-16: Signed-in invite redemption UI now calls `redeem_ledger_invite`, refreshes `list_my_ledgers()`, and switches only to a ledger returned for the signed-in user. Public signup stays disabled; continue to add server/Supabase-side rate limits before broad launch.

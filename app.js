@@ -1954,6 +1954,11 @@ els.createInviteForm?.addEventListener("submit", async (event) => {
   await createWorkspaceInvite();
 });
 
+els.redeemInviteForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await redeemWorkspaceInvite();
+});
+
 els.workspaceList?.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-workspace-action]");
   if (!button || !canManageSettings()) return;
@@ -4907,6 +4912,7 @@ function render() {
   renderDatabaseDiagnosticsPanel(ledger);
   renderMemberManagementPanel();
   renderWorkspaceInvitesPanel();
+  renderInviteRedemptionPanel();
   renderSupabaseLoadMonitor();
   renderAdminGuardrailOverview();
   renderSyncHealthBanner();
@@ -10468,6 +10474,93 @@ async function afterMemberManagementChange(message) {
   render();
 }
 
+
+function setRedeemInviteMessage(message, tone = "") {
+  if (!els.redeemInviteMessage) return;
+  els.redeemInviteMessage.textContent = message || "";
+  els.redeemInviteMessage.classList.toggle("error-text", tone === "error");
+  els.redeemInviteMessage.classList.toggle("success-text", tone === "success");
+}
+
+function renderInviteRedemptionPanel() {
+  if (!els.inviteRedemptionPanel) return;
+  const visible = Boolean(supabaseClient && currentSession);
+  els.inviteRedemptionPanel.classList.toggle("hidden", !visible);
+  if (els.redeemInviteButton) els.redeemInviteButton.disabled = !visible;
+  if (!visible) setRedeemInviteMessage(supabaseClient ? "Sign in before redeeming an invite code." : "Invite redemption requires Supabase sign-in.");
+}
+
+function normalizeInviteCodeInput(value) {
+  return String(value || "").trim().replace(/\s+/g, "");
+}
+
+function describeInviteRedeemError(error) {
+  const message = String(error?.message || error || "Invite redemption failed.");
+  if (/signed-in user email/i.test(message) || /JWT|auth/i.test(message)) return "Sign in with the email that should join this workspace, then try the invite code again.";
+  if (/different email address/i.test(message)) return "This invite is restricted to a different email address. Ask the workspace admin for a code for your signed-in email.";
+  if (/invalid|expired|revoked|already used/i.test(message)) return "Invite code is invalid, expired, revoked, or already used. Ask the workspace admin for a fresh invite.";
+  if (/gen_random_bytes/i.test(message) || /digest\(/i.test(message) || /pgcrypto/i.test(message)) return describeWorkspaceInviteError(error);
+  return message;
+}
+
+async function refreshLinkedWorkspacesAfterInvite() {
+  if (!supabaseClient || !currentSession) return [];
+  const { data, error } = await supabaseClient.rpc("list_my_ledgers");
+  if (error) throw error;
+  workspaceInviteStatus.ledgers = Array.isArray(data) ? data : [];
+  workspaceInviteStatus.loaded = canManageSettings() ? workspaceInviteStatus.loaded : true;
+  reconcileActiveLedgerSelection();
+  renderActiveWorkspaceSelector();
+  return workspaceInviteStatus.ledgers;
+}
+
+async function redeemWorkspaceInvite() {
+  if (!supabaseClient || !currentSession) {
+    showUserError("Sign in before redeeming an invite code.");
+    setRedeemInviteMessage("Sign in before redeeming an invite code.", "error");
+    return;
+  }
+  const inviteCode = normalizeInviteCodeInput(els.redeemInviteCode?.value || "");
+  if (!inviteCode) {
+    showUserError("Enter an invite code before joining a workspace.");
+    setRedeemInviteMessage("Enter an invite code before joining a workspace.", "error");
+    els.redeemInviteCode?.focus();
+    return;
+  }
+
+  if (els.redeemInviteButton) els.redeemInviteButton.disabled = true;
+  setRedeemInviteMessage("Redeeming invite...");
+  try {
+    const { data, error } = await supabaseClient.rpc("redeem_ledger_invite", { invite_code: inviteCode });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    const joinedLedgerId = String(result?.ledger_id || "").trim();
+    const ledgers = await refreshLinkedWorkspacesAfterInvite();
+    const targetLedger = joinedLedgerId || String(ledgers[0]?.ledger_id || getActiveLedgerId());
+    if (targetLedger && isLedgerLinkedToCurrentUser(targetLedger)) {
+      setRedeemInviteMessage("Invite accepted. Switching workspace...", "success");
+      if (els.redeemInviteCode) els.redeemInviteCode.value = "";
+      await switchActiveWorkspace(targetLedger, "invite-redemption");
+      setRedeemInviteMessage(`Joined ${getCurrentWorkspaceLabel()}.`, "success");
+    } else {
+      if (els.redeemInviteCode) els.redeemInviteCode.value = "";
+      setRedeemInviteMessage("Invite accepted. Refreshing workspace list...", "success");
+      await loadSupabaseStateWithTimeout(
+        { force: true, reason: "invite-redemption" },
+        supabaseStartupLoadTimeoutMs,
+        "Invite accepted, but workspace sync is delayed. Use Sync now to retry."
+      );
+    }
+    if (canManageSettings()) await refreshWorkspaceInvites();
+  } catch (error) {
+    const message = describeInviteRedeemError(error);
+    showUserError(`Could not redeem invite: ${message}`);
+    setRedeemInviteMessage(message, "error");
+  } finally {
+    if (els.redeemInviteButton) els.redeemInviteButton.disabled = false;
+    render();
+  }
+}
 
 function setWorkspaceInvitesMessage(message = "") {
   if (els.workspaceInvitesMessage) els.workspaceInvitesMessage.textContent = message;

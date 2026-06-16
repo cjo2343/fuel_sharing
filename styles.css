@@ -4900,3 +4900,19 @@ body.auth-locked #authPanel .text-button {
   margin-top: 0.35rem;
   color: var(--muted);
 }
+
+.invite-redemption-panel .invite-redemption-form {
+  align-items: end;
+}
+
+.invite-redemption-panel .invite-redemption-form label {
+  min-width: min(100%, 280px);
+}
+
+.error-text {
+  color: #9f1239;
+}
+
+.success-text {
+  color: #166534;
+}

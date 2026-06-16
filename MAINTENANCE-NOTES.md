@@ -569,7 +569,7 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 
 - 2026-06-16: Active workspace selector is private-beta enabled. It only lists ledgers returned by `list_my_ledgers()`, stores the selected ledger locally, and reloads Supabase reads/writes through `supabaseConfig.activeLedgerId`.
 
-- 2026-06-16: Runtime utility contract hardening
-  - Exposed `formatMoney` from `utils.js` alongside `formatMoneyFor` so critical runtime modules satisfy the Playwright smoke contract before `app.js` loads.
-  - Added `tools/test-runtime-module-contract.mjs` and wired it into `npm run validate`.
-  - Updated build metadata/service-worker cache for the runtime change.
+- 2026-06-16: Invite redemption UI
+  - Added a signed-in invite redemption panel so users can paste an invite code, call `redeem_ledger_invite`, refresh linked workspaces, and switch into the joined workspace.
+  - Added validation coverage for the user-facing redemption form and RPC wiring.
+  - Bumped runtime metadata/service-worker cache because app UI and stylesheet assets changed.
