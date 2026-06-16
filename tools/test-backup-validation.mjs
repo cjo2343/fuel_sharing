@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-function loadDataStoreContext() {
+function loadDataStoreContext({ realTimers = false } = {}) {
   const context = vm.createContext({
     console,
     window: {
-      clearTimeout: () => undefined,
-      setTimeout: () => 0,
+      clearTimeout: realTimers ? clearTimeout : () => undefined,
+      setTimeout: realTimers ? setTimeout : () => 0,
       crypto: { randomUUID: () => "test-id" }
     },
     localStorage: {
@@ -94,15 +94,49 @@ function testUnknownPeopleAreWarningsNotErrors() {
   assert.match(result.warnings.join(" "), /unknown payer/i);
 }
 
+async function testRemoteSaveQueueSerializesAsyncSaves() {
+  const dataStore = loadDataStoreContext({ realTimers: true });
+  let calls = 0;
+  let active = 0;
+  let maxActive = 0;
+  const resolvers = [];
+  const queue = dataStore.createRemoteSaveQueue(() => new Promise((resolve) => {
+    calls += 1;
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    resolvers.push(() => {
+      active -= 1;
+      resolve();
+    });
+  }), 0);
+
+  queue();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(calls, 1);
+
+  queue();
+  queue();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(calls, 1, "queued saves should not overlap an active remote save");
+
+  resolvers.shift()();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(calls, 2, "coalesced save should run after the active save finishes");
+  assert.equal(maxActive, 1);
+
+  resolvers.shift()();
+}
+
 const tests = [
   testValidBackupWrapperIsAccepted,
   testMissingMembersIsRejected,
   testMalformedCollectionsAreRejected,
   testInvalidTripAndFuelValuesAreRejected,
-  testUnknownPeopleAreWarningsNotErrors
+  testUnknownPeopleAreWarningsNotErrors,
+  testRemoteSaveQueueSerializesAsyncSaves
 ];
 
 for (const test of tests) {
-  test();
+  await test();
   console.log(`ok - ${test.name}`);
 }

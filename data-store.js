@@ -24,16 +24,42 @@
 
   function createRemoteSaveQueue(saveRemoteState, delayMs = 250) {
     let timer;
+    let inFlight = false;
+    let rerunRequested = false;
+
+    function runRemoteSave() {
+      timer = null;
+      if (inFlight) {
+        rerunRequested = true;
+        return;
+      }
+      inFlight = true;
+      Promise.resolve()
+        .then(() => saveRemoteState())
+        .catch((error) => {
+          console.error("Queued remote save failed", error);
+        })
+        .finally(() => {
+          inFlight = false;
+          if (rerunRequested) {
+            rerunRequested = false;
+            queueRemoteSave();
+          }
+        });
+    }
+
     function queueRemoteSave() {
+      if (inFlight) {
+        rerunRequested = true;
+        return;
+      }
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        timer = null;
-        saveRemoteState();
-      }, delayMs);
+      timer = window.setTimeout(runRemoteSave, delayMs);
     }
     queueRemoteSave.cancel = function cancelRemoteSave() {
       window.clearTimeout(timer);
       timer = null;
+      rerunRequested = false;
     };
     return queueRemoteSave;
   }
