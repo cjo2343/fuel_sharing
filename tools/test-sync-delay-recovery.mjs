@@ -297,7 +297,7 @@ assert.match(
 
 assert.match(
   appSource,
-  /const paymentStatusActionTimeoutMs = 15000;[\s\S]*const paymentStatusActionNormalizedTimeoutMs = 45000;/,
+  /const paymentStatusActionTimeoutMs = 15000;[\s\S]*const paymentStatusActionNormalizedTimeoutMs = 45000;[\s\S]*const paymentStatusActionBackendStartTimeoutMs = 10000;/,
   "payment actions should keep the short Render/API abort but give the outer normalized save enough time to fall back before reporting a timeout"
 );
 
@@ -317,6 +317,18 @@ assert.match(
   appSource,
   /recordSupabaseLoadEvent\("payment-action-backend-start"[\s\S]*recordSyncDiagnostic\("payment-action-backend-start"/,
   "payment actions should record whether the backend write path was actually reached"
+);
+
+assert.match(
+  appSource,
+  /async function withPaymentBackendStartTimeout[\s\S]*payment-action-backend-not-started[\s\S]*Payment action backend preflight/,
+  "payment actions should bound the pre-backend context/session path and explain when the backend write never starts"
+);
+
+assert.match(
+  appSource,
+  /const context = options\.auditEntry[\s\S]*withPaymentBackendStartTimeout\([\s\S]*getNormalizedWriteContext\(\{ syncDirectory: false, source: "settlement-request-save" \}\)[\s\S]*payment-action-backend-skipped/,
+  "payment settlement saves should not leave the foreground operation waiting if normalized context is unavailable before backend write"
 );
 
 

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v270";
-const BUILD_LABEL = "payment-foreground-finish-contract";
-const BUILD_UPDATED_AT = "2026-06-16T23:20:00.000Z";
+const CACHE_NAME = "fuel-ledger-v271";
+const BUILD_LABEL = "payment-backend-preflight-timeout";
+const BUILD_UPDATED_AT = "2026-06-16T23:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

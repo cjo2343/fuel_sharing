@@ -19,6 +19,7 @@ const paymentActionUrl = "/api/payment-action";
 const renderPaymentStatusActionUrl = "/api/payments/status-action";
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
+const paymentStatusActionBackendStartTimeoutMs = 10000;
 const mobilePayReturnKey = "fuel-ledger-mobilepay-return";
 const securityHealthCooldownMs = 2 * 60 * 1000;
 const generatedTestPrefix = "auto-test-";
@@ -9161,6 +9162,18 @@ async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = 
   }
 }
 
+async function withPaymentBackendStartTimeout(actionPromise, label, timeoutMs = paymentStatusActionBackendStartTimeoutMs) {
+  try {
+    return await withPaymentStatusActionTimeout(actionPromise, label, timeoutMs);
+  } catch (error) {
+    if (error?.isPaymentActionTimeout) {
+      recordSupabaseLoadEvent("payment-action-backend-not-started", `${label} timed out before backend write started`);
+      recordSyncDiagnostic("payment-action-backend-not-started", `${label} timed out before the Render/Supabase payment write started.`, { timeoutMs, error });
+    }
+    throw error;
+  }
+}
+
 function clearPaymentActionSavingUi(reason = "payment-action-finished") {
   recordSyncDiagnostic("payment-action-finished", reason, { reason });
   finishForegroundOperationsBySource("payment-status-action", reason);
@@ -14045,8 +14058,19 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
   if (!supabaseClient || !currentSession) return true;
   try {
     if (!options.skipVisibleSaving) setSyncStatus("Saving", { source: "settlement-request-save" });
-    const context = await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
-    if (!context) return true;
+    const context = options.auditEntry
+      ? await withPaymentBackendStartTimeout(
+          getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" }),
+          "Payment action backend preflight"
+        )
+      : await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
+    if (!context) {
+      if (options.auditEntry) {
+        recordSupabaseLoadEvent("payment-action-backend-skipped", "normalized write context unavailable before backend write");
+        recordSyncDiagnostic("payment-action-backend-skipped", "Payment action stopped before backend write because normalized write context was unavailable.");
+      }
+      return false;
+    }
     recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
 
     const fromMemberId = context.memberIdsByName[settlement.from] || null;

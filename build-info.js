@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.170",
-    buildLabel: "payment-foreground-finish-contract",
-    updatedAt: "2026-06-16T23:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v270",
+    version: "2026.06.17.171",
+    buildLabel: "payment-backend-preflight-timeout",
+    updatedAt: "2026-06-16T23:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v271",
     releaseNotes: Object.freeze([
+      "Payment actions now time-bound the pre-backend session/context step and explicitly report backend-not-started or backend-skipped instead of leaving the foreground Saving operation to be cleared by the 20-second failsafe.",
       "Payment actions now use one visible foreground operation, skip the duplicate settlement-save latch, record when the backend write path starts, and reset immediately on Render API timeout instead of falling through to a second fallback that can keep Saving active.",
       "Payment status saves now keep the short Render/API abort but give the outer normalized save enough time to fall back cleanly, preventing stale 15-second payment timeout warnings after the foreground operation already finished.",
       "The Supabase load monitor now counts only real app-side load/save activity for the headline activity number, while diagnostic breadcrumbs remain visible below without inflating the scary high-activity warning.",
