@@ -24,6 +24,7 @@ const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
+const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -16102,6 +16103,73 @@ async function maybeSaveJsonMirrorBackup(options = {}) {
   return saveJsonMirrorBackup({ force: false, reason });
 }
 
+
+async function saveJsonMirrorBackupViaRender({ force = false, reason = "", savedAt = "" } = {}) {
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const traceMeta = { source: "json-mirror-backup", route: "render-api", endpoint: renderJsonMirrorBackupUrl, operation: "upsert" };
+  if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: true };
+
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, ledgerId });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render JSON mirror backup API", 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(renderJsonMirrorBackupUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId, state, reason, force, updatedAt: savedAt })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-json-mirror-backup", reason || (force ? "forced JSON mirror backup" : "scheduled JSON mirror backup"));
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, ledgerId });
+      return { ok: true, backend: "render-api", result };
+    }
+
+    const message = result?.message || result?.error || text || `Render JSON mirror backup failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    const shouldFallback = [404, 405, 501].includes(response.status);
+    recordDataIoDiagnostic("error", {
+      ...traceMeta,
+      error,
+      ledgerId,
+      detail: shouldFallback ? `HTTP ${response.status}; falling back to direct Supabase JSON mirror backup.` : `HTTP ${response.status}; not falling back.`
+    });
+    return { ok: false, shouldFallback, error };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render JSON mirror backup API", 12000);
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", {
+      ...traceMeta,
+      error,
+      ledgerId,
+      detail: "Falling back to direct Supabase JSON mirror backup."
+    });
+    return { ok: false, shouldFallback: true, error };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
   recordSupabaseLoadEvent("json-mirror-save", reason || (force ? "forced JSON mirror backup" : "scheduled JSON mirror backup"));
   if (!supabaseClient || !currentSession) return false;
@@ -16109,6 +16177,18 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
   if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
 
   const savedAt = new Date().toISOString();
+  const renderResult = await saveJsonMirrorBackupViaRender({ force, reason, savedAt });
+  if (renderResult.ok) {
+    lastJsonMirrorSaveAt = savedAt;
+    localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
+    lastCloudSaveAt = savedAt;
+    lastCloudSyncAt = savedAt;
+    return true;
+  }
+  if (!renderResult.shouldFallback) {
+    throw renderResult.error || new Error("Render JSON mirror backup failed.");
+  }
+
   const { error } = await supabaseClient
     .from("car_share_ledgers")
     .upsert({
@@ -16124,6 +16204,15 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
     throw error;
   }
 
+  recordDataIoDiagnostic("success", {
+    source: "json-mirror-backup",
+    route: "direct-table",
+    table: "car_share_ledgers",
+    operation: "upsert",
+    ok: true,
+    ledgerId: supabaseHelpers.getLedgerId(supabaseConfig),
+    detail: "Saved through direct Supabase JSON mirror fallback."
+  });
   lastJsonMirrorSaveAt = savedAt;
   localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
   lastCloudSaveAt = savedAt;

@@ -17,9 +17,6 @@ Supabase remains the database, auth provider, realtime source, and RLS safety la
 | Payments | `POST /api/payments/status-action` | `apply_payment_status_action_backend` | `apply_payment_status_action` RPC as user | Primary path, browser RPC/table fallback still present |
 | Bookings | `POST /api/bookings/upsert` | `upsert_booking_backend` | `upsert_car_booking` RPC as user | Primary path, browser RPC/table fallback still present |
 | Booking delete | `POST /api/bookings/delete` | `delete_booking_backend` | `soft_delete_car_booking` RPC as user | Primary path, browser RPC/table fallback still present |
-| State load | `POST /api/state/load` | `load_state_backend` | Normalized table reads as user | Primary path, browser table fallback still present |
-| Write context | `POST /api/context/write` | `get_write_context_backend` | Active membership + open-period lookup as user | Primary path, browser table fallback still present |
-| Ledger directory | `POST /api/ledgers/sync` | `sync_ledger_directory_backend` | `ledgers` + `ledger_members` upsert as user | Primary path, browser table fallback still present |
 
 Legacy/local-support routes that are not yet part of the final production API shape:
 
@@ -35,7 +32,7 @@ Legacy/local-support routes that are not yet part of the final production API sh
 ### State and session
 
 - `GET /api/session/me`
-- `POST /api/state/load`
+- `GET /api/state/load`
 - `GET /api/state/health`
 - `GET /api/state/sync-summary`
 
@@ -63,7 +60,6 @@ Legacy/local-support routes that are not yet part of the final production API sh
 - `POST /api/invites/create`
 - `POST /api/invites/redeem`
 - `POST /api/invites/revoke`
-- `POST /api/ledgers/sync`
 - `POST /api/members/upsert`
 - `POST /api/members/archive`
 - `POST /api/members/change-role`
@@ -128,10 +124,10 @@ Booking saves still prefer `POST /api/context/write` followed by `POST /api/book
 
 Rollout rule: keep the browser RPC fallback available until booking save/delete Render reports are consistently healthy, but do not count or display RPC fallback activity after successful Render saves.
 
-## Pass: Render ledger directory sync
+## Pass: Render JSON mirror backup
 
-Target build: `render-ledger-directory-sync` / `fuel-ledger-v288`.
+Target build: `render-json-mirror-backup` / `fuel-ledger-v289`.
 
-Admin ledger/workspace directory reconciliation now tries `POST /api/ledgers/sync` before the browser falls back to direct `ledgers` and `ledger_members` table upserts. The endpoint verifies the Supabase user, confirms the user is an active admin for the workspace, validates that `ledger.slug` is present, and upserts the workspace/member directory through the signed-in Supabase session so RLS remains active.
+Manual, safety, and audit-cadence JSON mirror backups now prefer `POST /api/backups/json-mirror`. Render verifies the signed-in Supabase user, confirms the user is an active admin for the workspace, validates that a state object is present, and upserts `car_share_ledgers` with the user's Supabase token so RLS still applies.
 
-Rollout rule: keep direct browser fallback for now. Remove it only after load reports show `render-ledger-directory-sync` succeeds without repeated fallback or timeout patterns.
+Rollout rule: keep the browser direct `car_share_ledgers` fallback available only while this route proves stable in load reports. Successful Render mirror backups should show `render-json-mirror-backup` and `data-io:json-mirror-backup:ok` with route `render-api /api/backups/json-mirror`.

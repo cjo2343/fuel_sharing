@@ -1161,6 +1161,39 @@ def upsert_ledger_directory_as_user(ledger, members, user_token):
     ) or []
     return {"ledger": ledger_result[0] if isinstance(ledger_result, list) and ledger_result else None, "members": member_result, "memberCount": len(member_result) if isinstance(member_result, list) else 0, "ledgerId": ledger_id}
 
+
+
+def build_json_mirror_backup_payload(payload, user):
+    if not isinstance(payload, dict):
+        raise ValueError("JSON mirror backup payload must be an object")
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    if not ledger_id:
+        raise ValueError("JSON mirror backup requires ledgerId")
+    allowed_ledger = build_write_context_backend_payload({"ledgerId": ledger_id}, user)
+    if allowed_ledger != ledger_id:
+        raise PermissionError("Cannot save a JSON mirror for a different workspace")
+    state = payload.get("state")
+    if not isinstance(state, dict):
+        raise ValueError("JSON mirror backup requires a state object")
+    updated_at = str(payload.get("updatedAt") or payload.get("updated_at") or datetime.now(timezone.utc).isoformat()).strip()
+    if not updated_at:
+        updated_at = datetime.now(timezone.utc).isoformat()
+    reason = str(payload.get("reason") or "").strip()
+    return ledger_id, state, updated_at, reason
+
+
+def upsert_json_mirror_as_user(ledger_id, state, updated_at, user_token):
+    result = request_json(
+        f"{supabase_url()}/rest/v1/car_share_ledgers?on_conflict=id&select=id,updated_at",
+        method="POST",
+        body={"id": ledger_id, "state": state, "updated_at": updated_at},
+        token=user_token,
+        prefer="resolution=merge-duplicates,return=representation",
+        api_key=supabase_anon_key(),
+    ) or []
+    return result[0] if isinstance(result, list) and result else {"id": ledger_id, "updated_at": updated_at}
+
+
 def build_trip_upsert_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Trip upsert payload must be an object")
@@ -1489,6 +1522,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/ledgers/sync":
             self.sync_ledger_directory_backend()
             return
+        if self.path == "/api/backups/json-mirror":
+            self.save_json_mirror_backup_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1584,6 +1620,35 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+
+
+
+    def save_json_mirror_backup_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before saving a JSON mirror backup")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id, state, updated_at, reason = build_json_mirror_backup_payload(payload, user)
+            assert_user_can_admin_ledger(ledger_id, user, token)
+            result = upsert_json_mirror_as_user(ledger_id, state, updated_at, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "reason": reason, "userEmail": user.get("email")})
 
     def get_write_context_backend(self):
         user = current_supabase_user(self)
