@@ -107,3 +107,11 @@ Do not remove a browser fallback until all of these are true:
 - The route works on mobile PWA and desktop browser.
 - `npm run validate` passes.
 - At least one fresh load monitor report shows no repeated timeout/fallback pattern for that route.
+
+## Pass: Render write context route
+
+Target build: `render-write-context-route` / `fuel-ledger-v282`.
+
+Trip, fuel, booking, and payment write setup now tries `POST /api/context/write` before the browser falls back to direct Supabase context reads. The endpoint verifies the Supabase user token, confirms the signed-in user is an active member of the workspace, returns the open settlement period, and provides the member-name to member-id map needed by the existing save routes.
+
+Rollout rule: keep the browser direct-table fallback until load reports show the Render context route is stable. Do not reintroduce the v280 browser-side context shortcut; move more setup work into Render instead.

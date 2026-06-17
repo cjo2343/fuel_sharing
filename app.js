@@ -21,9 +21,11 @@ const renderTripUpsertUrl = "/api/trips/upsert";
 const renderFuelUpsertUrl = "/api/fuel/upsert";
 const renderBookingUpsertUrl = "/api/bookings/upsert";
 const renderBookingDeleteUrl = "/api/bookings/delete";
+const renderWriteContextUrl = "/api/context/write";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
+const writeContextActionTimeoutMs = 6000;
 const normalizedWriteContextTimeoutMs = 10000;
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
@@ -13427,6 +13429,10 @@ async function getNormalizedWriteContext(options = {}) {
   if (!(await hasFreshSupabaseSession())) return null;
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const source = options.source || "normalized-write-context";
+  const renderContext = await getRenderWriteContext({ ledgerId, source });
+  if (renderContext) return renderContext;
+
   const syncDirectory = options.syncDirectory !== false;
 
   // Important: regular members are allowed to write trips, fuel, and settlement
@@ -13440,7 +13446,7 @@ async function getNormalizedWriteContext(options = {}) {
     await syncLedgerDirectoryForAdmin(ledgerId);
   } else {
     recordDataIoDiagnostic("skip", {
-      source: options.source || "normalized-write-context",
+      source,
       route: "direct-table",
       table: "ledgers",
       operation: "upsert",
@@ -13449,7 +13455,7 @@ async function getNormalizedWriteContext(options = {}) {
     });
   }
 
-  const membersResult = await traceDataIo({ source: options.source || "normalized-write-context", route: "direct-table", table: "ledger_members", operation: "select" }, () => supabaseClient
+  const membersResult = await traceDataIo({ source, route: "direct-table", table: "ledger_members", operation: "select" }, () => supabaseClient
     .from("ledger_members")
     .select("id,name,email")
     .eq("ledger_id", ledgerId)
@@ -13466,6 +13472,60 @@ async function getNormalizedWriteContext(options = {}) {
   return { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
 }
 
+
+async function getRenderWriteContext({ ledgerId, source = "normalized-write-context" } = {}) {
+  const traceMeta = { source, route: "render-api", endpoint: renderWriteContextUrl, operation: "prepare" };
+  if (!currentSession?.access_token || !ledgerId) return null;
+
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render write context API", writeContextActionTimeoutMs));
+      }, writeContextActionTimeoutMs);
+    });
+    const fetchPromise = fetch(renderWriteContextUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok && result?.context?.ledgerId && result?.context?.openPeriodId) {
+      recordSupabaseLoadEvent("render-write-context", "write context via Render backend API");
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true });
+      return result.context;
+    }
+
+    const message = result?.message || result?.error || text || `Render write context failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; falling back to direct Supabase context.` });
+    return null;
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render write context API", writeContextActionTimeoutMs);
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Falling back to direct Supabase context." });
+    return null;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
 
 function cachePaymentWriteContext(context) {
   if (!context?.ledgerId || !context?.openPeriodId || !context?.memberIdsByName) return null;

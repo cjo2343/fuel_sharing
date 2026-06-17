@@ -924,6 +924,83 @@ def call_supabase_rpc_as_user(function_name, body=None, user_token=None):
     )
 
 
+
+def quote_postgrest_value(value):
+    return urllib.parse.quote(str(value or ""), safe="")
+
+
+def select_open_settlement_period_as_user(ledger_id, user_token):
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/settlement_periods?select=id&ledger_id=eq.{quote_postgrest_value(ledger_id)}&status=eq.open&limit=1",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    if rows and rows[0].get("id"):
+        return rows[0]["id"]
+    return ""
+
+
+def ensure_open_settlement_period_as_user(ledger_id, user_token):
+    existing = select_open_settlement_period_as_user(ledger_id, user_token)
+    if existing:
+        return existing
+    try:
+        created = request_json(
+            f"{supabase_url()}/rest/v1/settlement_periods?select=id",
+            method="POST",
+            body={"ledger_id": ledger_id, "status": "open", "label": "Current period"},
+            token=user_token,
+            api_key=supabase_anon_key(),
+            prefer="return=representation",
+        ) or []
+        if created and created[0].get("id"):
+            return created[0]["id"]
+    except urllib.error.HTTPError as error:
+        if error.code != 409:
+            raise
+    retry = select_open_settlement_period_as_user(ledger_id, user_token)
+    if retry:
+        return retry
+    raise RuntimeError("Could not create or find an open settlement period")
+
+
+def build_write_context_backend_payload(payload, user):
+    if not isinstance(payload, dict):
+        raise ValueError("Write context payload must be an object")
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    if not ledger_id:
+        raise ValueError("Missing ledgerId")
+    if not supabase_url() or not supabase_anon_key():
+        raise RuntimeError("Supabase server environment variables are missing")
+    return ledger_id
+
+
+def get_write_context_as_user(ledger_id, user, user_token):
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active&ledger_id=eq.{quote_postgrest_value(ledger_id)}&is_active=eq.true",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    if not rows:
+        raise PermissionError("No active ledger members found for this workspace")
+
+    user_email = str(user.get("email") or "").strip().lower()
+    current = next((row for row in rows if str(row.get("email") or "").strip().lower() == user_email), None)
+    if not current or not current.get("id"):
+        raise PermissionError("Signed-in user is not an active member of this workspace")
+
+    open_period_id = ensure_open_settlement_period_as_user(ledger_id, user_token)
+    member_ids_by_name = {str(row.get("name") or ""): row.get("id") for row in rows if row.get("name") and row.get("id")}
+    return {
+        "ledgerId": ledger_id,
+        "openPeriodId": open_period_id,
+        "memberIdsByName": member_ids_by_name,
+        "currentMemberId": current.get("id"),
+        "role": current.get("role") or "member",
+        "canWrite": True,
+        "canAdmin": current.get("role") == "admin",
+    }
+
 def build_trip_upsert_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Trip upsert payload must be an object")
@@ -1243,6 +1320,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/payments/status-action":
             self.apply_payment_status_action_backend()
             return
+        if self.path == "/api/context/write":
+            self.get_write_context_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1284,6 +1364,32 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "state": read_state()})
+
+
+    def get_write_context_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before preparing write context")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id = build_write_context_backend_payload(payload, user)
+            context = get_write_context_as_user(ledger_id, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "context": context, "backend": "render", "userEmail": user.get("email")})
 
     def apply_payment_status_action_backend(self):
         user = current_supabase_user(self)

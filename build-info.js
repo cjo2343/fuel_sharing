@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.181",
-    buildLabel: "restore-render-context-start",
-    updatedAt: "2026-06-17T18:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v281",
+    version: "2026.06.17.182",
+    buildLabel: "render-write-context-route",
+    updatedAt: "2026-06-17T18:40:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v282",
     releaseNotes: Object.freeze([
+      "Trip, fuel, booking, and payment write setup now prefers a Render write-context route before falling back to browser direct Supabase lookups, reducing ledger_members reads while keeping the proven v281 save path safe.",
       "Hotfix: trip, fuel, and booking saves now use the proven v279 normalized context setup again so Render-backed saves can start reliably; the v280 context-cache/fanout optimization is backed out for the save path.",
       "Booking saves and booking deletes now prefer Render backend routes that call Supabase booking RPCs with the signed-in user session, with a documented Render migration path and validation guardrail.",
       "Trip and fuel saves now time-bound the pre-backend normalized write context step, record a timeout diagnostic if setup hangs, and clear the visible Saving state instead of waiting for the stale-operation failsafe.",
