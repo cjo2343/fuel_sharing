@@ -14335,7 +14335,6 @@ async function softDeleteBookingViaRender(context, legacyBookingId) {
 
 async function saveBookingToNormalizedTablesFirst(booking) {
   recordSupabaseLoadEvent("booking-table-write", booking?.id ? `booking ${String(booking.id).slice(0, 8)}` : "booking");
-  recordDataIoDiagnostic("start", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving", { source: "booking-save" });
@@ -14363,7 +14362,9 @@ async function saveBookingToNormalizedTablesFirst(booking) {
           ? "Render backend API saved the booking to normalized tables. JSON will be updated as backup."
           : "Table-primary write saved the booking through the database transaction RPC. JSON will be updated as backup."
       };
-      recordDataIoDiagnostic("success", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
+      if (rpcResult.backend === "supabase-rpc") {
+        recordDataIoDiagnostic("success", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
+      }
       return true;
     }
 

@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.182",
-    buildLabel: "render-write-context-route",
-    updatedAt: "2026-06-17T18:40:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v282",
+    version: "2026.06.17.183",
+    buildLabel: "booking-render-no-rpc-fanout",
+    updatedAt: "2026-06-17T19:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v283",
     releaseNotes: Object.freeze([
+      "Booking saves no longer pre-record or report browser Supabase RPC activity after a successful Render booking save; the browser RPC path is now only diagnosed when the fallback actually runs.",
       "Trip, fuel, booking, and payment write setup now prefers a Render write-context route before falling back to browser direct Supabase lookups, reducing ledger_members reads while keeping the proven v281 save path safe.",
       "Hotfix: trip, fuel, and booking saves now use the proven v279 normalized context setup again so Render-backed saves can start reliably; the v280 context-cache/fanout optimization is backed out for the save path.",
       "Booking saves and booking deletes now prefer Render backend routes that call Supabase booking RPCs with the signed-in user session, with a documented Render migration path and validation guardrail.",

@@ -115,3 +115,11 @@ Target build: `render-write-context-route` / `fuel-ledger-v282`.
 Trip, fuel, booking, and payment write setup now tries `POST /api/context/write` before the browser falls back to direct Supabase context reads. The endpoint verifies the Supabase user token, confirms the signed-in user is an active member of the workspace, returns the open settlement period, and provides the member-name to member-id map needed by the existing save routes.
 
 Rollout rule: keep the browser direct-table fallback until load reports show the Render context route is stable. Do not reintroduce the v280 browser-side context shortcut; move more setup work into Render instead.
+
+## Pass: Booking Render no-RPC fanout
+
+Target build: `booking-render-no-rpc-fanout` / `fuel-ledger-v283`.
+
+Booking saves still prefer `POST /api/context/write` followed by `POST /api/bookings/upsert`. After a successful Render booking save, the browser no longer pre-records or reports `upsert_car_booking` browser RPC diagnostics; that RPC path is only diagnosed when the Render route fails and the fallback actually runs.
+
+Rollout rule: keep the browser RPC fallback available until booking save/delete Render reports are consistently healthy, but do not count or display RPC fallback activity after successful Render saves.
