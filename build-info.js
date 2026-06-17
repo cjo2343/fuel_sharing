@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.172",
-    buildLabel: "payment-backend-first-status-action",
-    updatedAt: "2026-06-17T00:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v272",
+    version: "2026.06.17.173",
+    buildLabel: "fuel-price-helper-refactor",
+    updatedAt: "2026-06-17T06:49:21.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v273",
     releaseNotes: Object.freeze([
+      "Fuel price warning, suggestion, and validation calculations now live in a dedicated helper module with focused unit coverage, reducing app.js while preserving fuel-log behavior.",
       "Payment actions now start from a cached/backend-first normalized context and do not record a local settlement-table write before the Render/Supabase backend write has actually succeeded, so pre-backend hangs cannot leave local-only payment state behind.",
       "Payment actions now time-bound the pre-backend session/context step and explicitly report backend-not-started or backend-skipped instead of leaving the foreground Saving operation to be cleared by the 20-second failsafe.",
       "Payment actions now use one visible foreground operation, skip the duplicate settlement-save latch, record when the backend write path starts, and reset immediately on Render API timeout instead of falling through to a second fallback that can keep Saving active.",

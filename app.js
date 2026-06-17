@@ -37,6 +37,7 @@ const notifications = window.FuelNotifications;
 const auditLog = window.FuelAuditLog;
 const testLab = window.FuelTestLab;
 const securityHealth = window.FuelSecurityHealth;
+const fuelPriceHelpers = window.FuelPriceHelpers;
 let lastTestLabReport = null;
 let advancedAdminToolsUnlocked = false;
 let advancedAdminToolsRelockTimer = null;
@@ -253,117 +254,47 @@ function openMobilePayApp(settlement) {
   window.location.href = "mobilepay://";
 }
 
+function fuelPriceHelperDeps(source = state) {
+  return {
+    state: source,
+    latestFuelPrice,
+    fallbackRange: defaultFuelPriceWarningRange,
+    formatNumber,
+    formatMoneyFor,
+    formatDate,
+    escapeHtml,
+    roundMoney
+  };
+}
 
 function getFuelPriceWarningRange(source = state) {
-  const min = Number(source?.fuelPriceWarningMinDkkPerLiter);
-  const max = Number(source?.fuelPriceWarningMaxDkkPerLiter);
-  const fallbackMin = defaultFuelPriceWarningRange.minDkkPerLiter;
-  const fallbackMax = defaultFuelPriceWarningRange.maxDkkPerLiter;
-  const normalizedMin = Number.isFinite(min) && min > 0 ? min : fallbackMin;
-  const normalizedMax = Number.isFinite(max) && max > normalizedMin ? max : Math.max(fallbackMax, normalizedMin + 1);
-  return { minDkkPerLiter: normalizedMin, maxDkkPerLiter: normalizedMax };
+  return fuelPriceHelpers.getFuelPriceWarningRange(source, fuelPriceHelperDeps(source));
 }
 
 function isFuelPriceOutsideWarningRange(pricePerLiter, source = state) {
-  const price = Number(pricePerLiter);
-  const range = getFuelPriceWarningRange(source);
-  return Number.isFinite(price)
-    && (price < range.minDkkPerLiter || price > range.maxDkkPerLiter);
+  return fuelPriceHelpers.isFuelPriceOutsideWarningRange(pricePerLiter, source, fuelPriceHelperDeps(source));
 }
 
 function formatFuelPriceWarningRange(source = state) {
-  const range = getFuelPriceWarningRange(source);
-  return `${formatNumber(range.minDkkPerLiter)}-${formatNumber(range.maxDkkPerLiter)} DKK/L`;
+  return fuelPriceHelpers.formatFuelPriceWarningRange(source, fuelPriceHelperDeps(source));
 }
 
 
 function formatFuelAmountLitersAndPrice(fuel, currency = state.currency) {
-  const amount = Number(fuel?.amount || 0);
-  const liters = Number(fuel?.liters || 0);
-  const parts = [formatMoneyFor(amount, currency)];
-  if (liters > 0) {
-    parts.push(`${formatNumber(liters)} L`);
-    if (amount > 0) parts.push(`${formatMoneyFor(amount / liters, currency)}/L`);
-  }
-  return parts.join(" · ");
+  return fuelPriceHelpers.formatFuelAmountLitersAndPrice(fuel, { ...fuelPriceHelperDeps(state), currency });
 }
 
 
 function getFuelReceiptTimestamp(fuel = {}) {
-  const dateValue = fuel.date || fuel.payment_date || fuel.createdAt || fuel.created_at || "";
-  const time = new Date(dateValue).getTime();
-  return Number.isFinite(time) ? time : 0;
+  return fuelPriceHelpers.getFuelReceiptTimestamp(fuel);
 }
 
 function getSuggestedFuelPricePerLiter({ amount = 0, liters = 0, excludeFuelId = "" } = {}) {
-  const range = getFuelPriceWarningRange(state);
-  const currentPrice = Number(amount) > 0 && Number(liters) > 0 ? Number(amount) / Number(liters) : 0;
-  if (currentPrice > 0 && !isFuelPriceOutsideWarningRange(currentPrice, state)) {
-    return {
-      price: roundMoney(currentPrice),
-      source: "current-form",
-      label: "current form price",
-      detail: "The current amount and liters already create a valid DKK/L value."
-    };
-  }
-
-  const historical = state.fuel
-    .filter((fuel) => !excludeFuelId || fuel.id !== excludeFuelId)
-    .map((fuel) => {
-      const fuelAmount = Number(fuel.amount || 0);
-      const fuelLiters = Number(fuel.liters || 0);
-      const price = fuelLiters > 0 ? fuelAmount / fuelLiters : Number(fuel.pricePerLiter || 0);
-      return { fuel, price, timestamp: getFuelReceiptTimestamp(fuel) };
-    })
-    .filter((item) => Number.isFinite(item.price) && item.price > 0 && !isFuelPriceOutsideWarningRange(item.price, state))
-    .sort((a, b) => b.timestamp - a.timestamp);
-
-  if (historical[0]) {
-    const item = historical[0];
-    return {
-      price: roundMoney(item.price),
-      source: "historical",
-      label: "latest valid historical receipt",
-      detail: `${formatDate(item.fuel.date || item.fuel.payment_date || "")} fuel log used ${formatMoneyFor(item.price, state.currency)}/L.`
-    };
-  }
-
-  const livePrice = Number(latestFuelPrice?.price || 0);
-  if (livePrice > 0 && !isFuelPriceOutsideWarningRange(livePrice, state)) {
-    return {
-      price: roundMoney(livePrice),
-      source: "live",
-      label: "live fuel price estimate",
-      detail: `Latest ${escapeHtml(latestFuelPrice?.source || "fuel price")} estimate is ${formatMoneyFor(livePrice, state.currency)}/L.`
-    };
-  }
-
-  const midpoint = (range.minDkkPerLiter + range.maxDkkPerLiter) / 2;
-  return {
-    price: roundMoney(midpoint),
-    source: "range-midpoint",
-    label: "configured warning-range midpoint",
-    detail: `Using midpoint of configured range ${formatFuelPriceWarningRange(state)}.`
-  };
+  return fuelPriceHelpers.getSuggestedFuelPricePerLiter({ amount, liters, excludeFuelId }, fuelPriceHelperDeps(state));
 }
 
 function buildFuelPriceCorrection({ amount = 0, liters = 0, excludeFuelId = "" } = {}) {
-  const numericAmount = Number(amount) || 0;
-  const numericLiters = Number(liters) || 0;
-  const pricePerLiter = numericAmount > 0 && numericLiters > 0 ? numericAmount / numericLiters : 0;
-  const suggestedPrice = getSuggestedFuelPricePerLiter({ amount: numericAmount, liters: numericLiters, excludeFuelId });
-  const suggestedAmount = numericLiters > 0 && suggestedPrice.price > 0 ? roundMoney(numericLiters * suggestedPrice.price) : 0;
-  return {
-    amount: numericAmount,
-    liters: numericLiters,
-    pricePerLiter,
-    suggestedPricePerLiter: suggestedPrice.price,
-    suggestedPriceSource: suggestedPrice.source,
-    suggestedPriceLabel: suggestedPrice.label,
-    suggestedPriceDetail: suggestedPrice.detail,
-    suggestedAmount,
-    range: getFuelPriceWarningRange(state)
-  };
+  return fuelPriceHelpers.buildFuelPriceCorrection({ amount, liters, excludeFuelId }, fuelPriceHelperDeps(state));
 }
 
 function renderFuelPriceCorrectionPanel(message, correction) {
@@ -404,24 +335,7 @@ function renderFuelPriceCorrectionPanel(message, correction) {
 }
 
 function validateFuelLogInput({ amount, liters }, options = {}) {
-  if (!(amount > 0)) {
-    return { ok: false, message: "Fuel amount must be higher than zero." };
-  }
-  if (!(liters > 0)) {
-    return {
-      ok: false,
-      message: "Add liters from the receipt before saving this fuel log. The app needs liters to verify DKK/L and prevent settlement mistakes."
-    };
-  }
-  const pricePerLiter = amount / liters;
-  if (isFuelPriceOutsideWarningRange(pricePerLiter)) {
-    return {
-      ok: false,
-      message: `${formatMoneyFor(pricePerLiter, state.currency)}/L is outside the configured fuel price range (${formatFuelPriceWarningRange()}). Check the amount/liters or ask an admin to adjust the warning range in Group settings.`,
-      correction: buildFuelPriceCorrection({ amount, liters, excludeFuelId: options.excludeFuelId })
-    };
-  }
-  return { ok: true, pricePerLiter };
+  return fuelPriceHelpers.validateFuelLogInput({ amount, liters, excludeFuelId: options.excludeFuelId }, fuelPriceHelperDeps(state));
 }
 
 const defaults = {

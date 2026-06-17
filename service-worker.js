@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v272";
-const BUILD_LABEL = "payment-backend-first-status-action";
-const BUILD_UPDATED_AT = "2026-06-17T00:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v273";
+const BUILD_LABEL = "fuel-price-helper-refactor";
+const BUILD_UPDATED_AT = "2026-06-17T06:49:21.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -18,6 +18,7 @@ const CORE_ASSETS = [
   "/security-health-helpers.js",
   "/ui-messages.js",
   "/sync-status-helpers.js",
+  "/fuel-price-helpers.js",
   "/location-privacy-helpers.js",
   "/audit-log.js",
   "/notifications.js",
