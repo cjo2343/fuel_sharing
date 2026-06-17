@@ -1033,8 +1033,8 @@ test("trip planner warns when planned trip crosses configured tank range thresho
 
   await expect(page.locator("#tripEstimateResult")).toContainText("Tank capacity");
   await expect(page.locator("#tripEstimateResult")).toContainText("55 L");
-  await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip/i);
-  await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop|leaves the tank below/i);
+  await expect(page.locator("#tripEstimateResult")).toContainText(/After the trip|Range after trip|Hypothetical refuel planning/i);
+  await expect(page.locator("#tripEstimateResult")).toContainText(/low-range warning threshold|plan a refuel stop|leaves the tank below|This trip is expected to use/i);
 });
 
 

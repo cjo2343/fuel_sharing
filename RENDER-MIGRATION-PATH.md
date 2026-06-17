@@ -144,11 +144,3 @@ Target build: `disable-browser-full-state-after-render-backup` / `fuel-ledger-v2
 Generated-test cleanup and similar Render-backed backup flows now avoid waking the old browser `saveSupabaseState` / `saveRemoteState` full-state queue after the Render JSON mirror backup has already saved the safety snapshot. The cleaned local state is saved locally, a fresh Render JSON mirror backup is written, and the browser records `browser-full-state-save-skip` instead of leaving a foreground `saveSupabaseState` operation to be cleared by the stale-saving failsafe.
 
 Rollout rule: this is the first fallback-removal step. It removes only the redundant generic full-state browser write after a successful Render backup; user write route fallbacks for trip, fuel, booking, payment, state-load, ledger-directory, and JSON mirror direct-table fallback remain available until their load reports are repeatedly clean.
-
-## Pass: Admin cleanup/stress status finish
-
-- Build label: `finish-admin-cleanup-and-stress-status`
-- Cache: `fuel-ledger-v292`
-- Cleanup Test Lab data now persists the cleaned state through the Render JSON mirror backup path and finishes the admin-tool Data I/O operation row.
-- Advanced stress saves now use the same Render mirror persistence helper instead of waiting on the legacy browser full-state save path, so successful backend backups do not leave stale `advanced-stress` Saving timeouts.
-- Guardrail: `tools/test-finish-admin-cleanup-and-stress-status.mjs` checks that cleanup/stress paths use the Render mirror helper and runtime metadata is bumped with the service worker.
