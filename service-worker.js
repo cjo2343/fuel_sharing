@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v280";
-const BUILD_LABEL = "render-save-fanout-reduction";
-const BUILD_UPDATED_AT = "2026-06-17T18:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v281";
+const BUILD_LABEL = "restore-render-context-start";
+const BUILD_UPDATED_AT = "2026-06-17T18:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

@@ -1,12 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.180",
-    buildLabel: "render-save-fanout-reduction",
-    updatedAt: "2026-06-17T18:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v280",
+    version: "2026.06.17.181",
+    buildLabel: "restore-render-context-start",
+    updatedAt: "2026-06-17T18:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v281",
     releaseNotes: Object.freeze([
-      "Trip, fuel, and booking saves now skip admin ledger-directory reconciliation before Render writes, reuse a short-lived normalized write context cache, and suppress the follow-up generic full-state remote save when the normalized backend write already succeeded.",
+      "Hotfix: trip, fuel, and booking saves now use the proven v279 normalized context setup again so Render-backed saves can start reliably; the v280 context-cache/fanout optimization is backed out for the save path.",
       "Booking saves and booking deletes now prefer Render backend routes that call Supabase booking RPCs with the signed-in user session, with a documented Render migration path and validation guardrail.",
       "Trip and fuel saves now time-bound the pre-backend normalized write context step, record a timeout diagnostic if setup hangs, and clear the visible Saving state instead of waiting for the stale-operation failsafe.",
       "Fuel saves now prefer a Render backend route, record matched start/finish data I/O diagnostics, time out with Promise.race, clear the foreground fuel-save operation in finally, and only log fuel-table-write after the backend/normalized save succeeds.",
