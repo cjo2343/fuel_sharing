@@ -234,6 +234,34 @@ if (tripRenderCallIndex < 0 || tripDirectRpcIndex < 0 || tripRenderCallIndex > t
   process.exit(1);
 }
 
+const tripRenderBody = extractFunctionBody(source, 'saveTripWithParticipantsViaRender') || '';
+if (!tripRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])')) {
+  console.error('Regression guard failed: trip Render saves must use Promise.race so the frontend cannot hang forever waiting for fetch/abort cleanup.');
+  process.exit(1);
+}
+if (!tripRenderBody.includes('finishTripRenderDiagnostic("success"') || !tripRenderBody.includes('finishTripRenderDiagnostic(timedOut ? "timeout" : "exception"')) {
+  console.error('Regression guard failed: trip Render saves must always record a matched finish diagnostic for success, timeout, and exception paths.');
+  process.exit(1);
+}
+
+const tripSaveFirstBody = extractFunctionBody(source, 'saveTripToNormalizedTablesFirst') || '';
+const tripTableWriteIndex = tripSaveFirstBody.indexOf('recordSupabaseLoadEvent("trip-table-write"');
+const tripRpcResultOkIndex = tripSaveFirstBody.indexOf('if (rpcResult.ok)');
+if (tripTableWriteIndex < 0 || tripRpcResultOkIndex < 0 || tripTableWriteIndex < tripRpcResultOkIndex) {
+  console.error('Regression guard failed: trip-table-write must only be recorded after the backend/normalized trip save succeeds.');
+  process.exit(1);
+}
+const tripSaveFinallyIndex = tripSaveFirstBody.lastIndexOf('} finally {');
+const tripSaveFinishIndex = tripSaveFirstBody.indexOf('finishForegroundOperationsBySource("trip-save"', Math.max(0, tripSaveFinallyIndex));
+if (tripSaveFinallyIndex < 0 || tripSaveFinishIndex < 0) {
+  console.error('Regression guard failed: saveTripToNormalizedTablesFirst() must clear the foreground trip-save operation from its finally block on success, failure, or early exit.');
+  process.exit(1);
+}
+if (tripSaveFirstBody.includes('if (!savedThroughNormalizedTables)') && tripSaveFirstBody.indexOf('finishForegroundOperationsBySource("trip-save"') > tripSaveFirstBody.indexOf('if (!savedThroughNormalizedTables)')) {
+  console.error('Regression guard failed: trip foreground cleanup must not be restricted to failure-only paths.');
+  process.exit(1);
+}
+
 
 function getFunctionParameters(signature) {
   const paramsMatch = signature.match(/\(([^)]*)\)/);

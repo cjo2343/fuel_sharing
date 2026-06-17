@@ -13583,9 +13583,8 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
 }
 
 async function saveTripToNormalizedTablesFirst(trip) {
-  recordSupabaseLoadEvent("trip-table-write", trip?.id ? `trip ${String(trip.id).slice(0, 8)}` : "trip");
-  recordDataIoDiagnostic("start", { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
+  let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "trip-save" });
     const context = await getNormalizedWriteContext({ source: "trip-save" });
@@ -13608,12 +13607,14 @@ async function saveTripToNormalizedTablesFirst(trip) {
     const rpcResult = await saveTripWithParticipantsRpc(context, payload, participantMemberIds);
 
     if (rpcResult.ok) {
+      savedThroughNormalizedTables = true;
+      recordSupabaseLoadEvent("trip-table-write", trip?.id ? `trip ${String(trip.id).slice(0, 8)}` : "trip");
       normalizedTableStatus = {
         checked: true,
         ok: true,
         message: "Table-primary write saved the trip and participants through the database transaction RPC. JSON will be updated as backup."
       };
-      recordDataIoDiagnostic("success", { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "save", ok: true });
+      setSyncStatus("Tables");
       return true;
     }
 
@@ -13621,6 +13622,8 @@ async function saveTripToNormalizedTablesFirst(trip) {
 
     console.warn("Trip transaction RPC is unavailable; falling back to guarded table writes. Apply the latest supabase-schema.sql to enable atomic trip writes.", rpcResult.error);
     await saveTripWithParticipantsGuardedTableUpdates(payload, participantMemberIds);
+    savedThroughNormalizedTables = true;
+    recordSupabaseLoadEvent("trip-table-write", trip?.id ? `trip ${String(trip.id).slice(0, 8)}` : "trip");
     recordDataIoDiagnostic("success", { source: "trip-save", route: "direct-table", table: "trips", operation: "upsert", ok: true, detail: "Saved through guarded table fallback." });
 
     normalizedTableStatus = {
@@ -13628,6 +13631,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
       ok: true,
       message: "Table-primary write saved the trip with guarded table updates. Apply the latest Supabase schema to use the transaction RPC."
     };
+    setSyncStatus("Tables");
     return true;
   } catch (error) {
     recordDataIoDiagnostic("error", { source: "trip-save", route: "normalized-write", operation: "save", error });
@@ -13640,6 +13644,9 @@ async function saveTripToNormalizedTablesFirst(trip) {
     showUserError("Could not save this trip to the normalized database. The local JSON backup was not changed. Check the console for details.");
     render();
     return false;
+  } finally {
+    finishForegroundOperationsBySource("trip-save", savedThroughNormalizedTables ? "trip-save-normalized-write-saved" : "trip-save-normalized-write-ended");
+    clearVisibleSavingFailsafe();
   }
 }
 
@@ -13674,14 +13681,30 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
   const operationId = createDataIoOperationId("trip-save");
   const traceMeta = { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "upsert", operationId };
   if (!currentSession?.access_token) {
-    return { ok: false, shouldFallback: true, backend: "render-api", error: new Error("No active Supabase session for Render trip save API.") };
+    const error = new Error("No active Supabase session for Render trip save API.");
+    recordDataIoDiagnostic("error", { ...traceMeta, error });
+    return { ok: false, shouldFallback: true, backend: "render-api", error };
   }
+
+  let controller = null;
+  let timeoutId = 0;
+  let finished = false;
+  const finishTripRenderDiagnostic = (phase, meta = {}) => {
+    if (finished) return;
+    finished = true;
+    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
+  };
 
   try {
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), tripSaveActionTimeoutMs);
-    const response = await fetch(renderTripUpsertUrl, {
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs));
+      }, tripSaveActionTimeoutMs);
+    });
+    const fetchPromise = fetch(renderTripUpsertUrl, {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -13693,7 +13716,11 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
         trip: payload,
         participantMemberIds
       })
-    }).finally(() => window.clearTimeout(timeoutId));
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
 
     const text = await response.text();
     let result = null;
@@ -13701,14 +13728,14 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-trip-save", "upsert via Render backend API");
-      recordDataIoDiagnostic("success", { ...traceMeta, ok: true });
+      finishTripRenderDiagnostic("success", { ok: true });
       return { ok: true, data: result.result, backend: "render-api" };
     }
 
     const message = result?.message || result?.error || text || `Render trip save failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}` });
+    finishTripRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
     return {
       ok: false,
       error,
@@ -13716,11 +13743,16 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
       backend: "render-api"
     };
   } catch (error) {
-    const timedOut = error?.name === "AbortError";
-    if (timedOut) error = paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs);
-    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error });
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs);
+    finishTripRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
     console.warn("Render trip save API failed", error);
     return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    if (!finished) {
+      finishTripRenderDiagnostic("exception", { error: new Error("Render trip save ended without a recorded finish diagnostic.") });
+    }
   }
 }
 

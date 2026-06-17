@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v274";
-const BUILD_LABEL = "trip-save-render-api-route-fuel-price-helper";
-const BUILD_UPDATED_AT = "2026-06-17T09:35:00.000Z";
+const CACHE_NAME = "fuel-ledger-v275";
+const BUILD_LABEL = "trip-save-render-finish-contract";
+const BUILD_UPDATED_AT = "2026-06-17T10:05:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
