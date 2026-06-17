@@ -123,3 +123,11 @@ Target build: `booking-render-no-rpc-fanout` / `fuel-ledger-v283`.
 Booking saves still prefer `POST /api/context/write` followed by `POST /api/bookings/upsert`. After a successful Render booking save, the browser no longer pre-records or reports `upsert_car_booking` browser RPC diagnostics; that RPC path is only diagnosed when the Render route fails and the fallback actually runs.
 
 Rollout rule: keep the browser RPC fallback available until booking save/delete Render reports are consistently healthy, but do not count or display RPC fallback activity after successful Render saves.
+
+## Pass: Disable browser full-state save after Render backup
+
+Target build: `disable-browser-full-state-after-render-backup` / `fuel-ledger-v290`.
+
+Generated-test cleanup and similar Render-backed backup flows now avoid waking the old browser `saveSupabaseState` / `saveRemoteState` full-state queue after the Render JSON mirror backup has already saved the safety snapshot. The cleaned local state is saved locally, a fresh Render JSON mirror backup is written, and the browser records `browser-full-state-save-skip` instead of leaving a foreground `saveSupabaseState` operation to be cleared by the stale-saving failsafe.
+
+Rollout rule: this is the first fallback-removal step. It removes only the redundant generic full-state browser write after a successful Render backup; user write route fallbacks for trip, fuel, booking, payment, state-load, ledger-directory, and JSON mirror direct-table fallback remain available until their load reports are repeatedly clean.

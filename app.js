@@ -58,6 +58,8 @@ const advancedAdminToolsUnlockTtlMs = 15 * 60 * 1000;
 let lastStandaloneSecurityHealthAt = 0;
 const queueRemoteSave = dataStore.createRemoteSaveQueue(() => saveRemoteState(), 250);
 let auditLogDirty = false;
+let suppressNextQueuedRemoteSaveReason = "";
+let lastRenderJsonMirrorBackupAt = 0;
 
 
 function optionalRecordValue(record, key) {
@@ -2815,9 +2817,19 @@ async function addGeneratedTestFuel() {
 async function removeGeneratedTestData() {
   await exportAdminSafetyBackup("remove generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
-  setDataToolsMessage(`${cleanup.message} Triggered save + normalized sync.`);
-  markNormalizedReconciliationDirty("remove generated test data");
-  saveState();
+  setDataToolsMessage(`${cleanup.message} Saved local cleanup and Render JSON mirror backup.`);
+  suppressNextQueuedRemoteSaveReason = "remove generated test data after Render JSON mirror backup";
+  saveState({ reason: "remove generated test data", queueRemote: false });
+  try {
+    const mirrored = await saveJsonMirrorBackup({ force: true, reason: "remove generated test data cleanup JSON mirror backup" });
+    if (mirrored) {
+      markRemoteSaveSucceeded("Tables");
+      recordSupabaseLoadEvent("browser-full-state-save-skip", "remove generated test data already saved through Render JSON mirror backup");
+    }
+  } catch (error) {
+    console.warn("Cleanup JSON mirror backup failed", error);
+    markRemoteSaveFailed(error, "Could not save cleanup JSON mirror backup.");
+  }
   setDefaultDates();
   render();
   if (testLab) {
@@ -13105,13 +13117,18 @@ function loadState() {
   return dataStore.loadLocalState({ storageKey, defaults, normalizeState });
 }
 
-function saveState() {
-  recordSupabaseLoadEvent("local-save", "saveState queued a local change");
+function saveState(options = {}) {
+  const { queueRemote = true, reason = "saveState" } = options || {};
+  recordSupabaseLoadEvent("local-save", queueRemote ? "saveState queued a local change" : `${reason}; local state saved without queued browser full-state write`);
   state.updatedAt = new Date().toISOString();
   dataStore.saveLocalState({
     storageKey,
     state,
     afterSave: () => {
+      if (!queueRemote) {
+        recordSupabaseLoadEvent("browser-full-state-save-skip", reason || "explicit local-only save after Render backend write");
+        return;
+      }
       markLocalChangeQueued();
       queueRemoteSave();
     }
@@ -15786,6 +15803,13 @@ async function loadRemoteState() {
 }
 
 async function saveRemoteState() {
+  if (supabaseClient && suppressNextQueuedRemoteSaveReason && Date.now() - Number(lastRenderJsonMirrorBackupAt || 0) < 30000) {
+    const reason = suppressNextQueuedRemoteSaveReason;
+    suppressNextQueuedRemoteSaveReason = "";
+    recordSupabaseLoadEvent("browser-full-state-save-skip", reason || "recent Render JSON mirror backup already saved current state");
+    markRemoteSaveSucceeded("Tables");
+    return;
+  }
   recordSupabaseLoadEvent(supabaseClient ? "supabase-save" : "server-save", "saveRemoteState");
   if (supabaseClient) {
     await saveSupabaseState();
@@ -16179,6 +16203,7 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
   const savedAt = new Date().toISOString();
   const renderResult = await saveJsonMirrorBackupViaRender({ force, reason, savedAt });
   if (renderResult.ok) {
+    lastRenderJsonMirrorBackupAt = Date.now();
     lastJsonMirrorSaveAt = savedAt;
     localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
     lastCloudSaveAt = savedAt;

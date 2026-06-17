@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.189",
-    buildLabel: "render-json-mirror-backup",
-    updatedAt: "2026-06-17T22:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v289",
+    version: "2026.06.17.190",
+    buildLabel: "disable-browser-full-state-after-render-backup",
+    updatedAt: "2026-06-17T23:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v290",
     releaseNotes: Object.freeze([
+      "After a successful Render JSON mirror backup, generated-test cleanup now saves the cleaned local state and Render mirror without waking the old browser full-state save queue, preventing stale saveSupabaseState timeouts after the backend backup already succeeded.",
       "JSON mirror safety backups now prefer a Render /api/backups/json-mirror route that verifies workspace admin permission and writes car_share_ledgers through the signed-in Supabase session, with the browser direct-table mirror kept only as fallback.",
       "Ledger/workspace directory sync now prefers a Render /api/ledgers/sync route that verifies workspace admin permission and upserts ledgers plus ledger_members through the signed-in Supabase session, with browser direct-table sync kept only as fallback.",
       "Admin diagnostics/manual-admin refreshes now use the Render state-load fast path before the legacy JSON mirror load, preventing admin-only timeouts after a healthy Render sync.",

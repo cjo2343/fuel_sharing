@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v289";
-const BUILD_LABEL = "render-json-mirror-backup";
-const BUILD_UPDATED_AT = "2026-06-17T22:45:00.000Z";
+const CACHE_NAME = "fuel-ledger-v290";
+const BUILD_LABEL = "disable-browser-full-state-after-render-backup";
+const BUILD_UPDATED_AT = "2026-06-17T23:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
