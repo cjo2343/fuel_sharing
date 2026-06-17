@@ -14867,6 +14867,7 @@ async function syncNormalizedTablesFromJson() {
   try {
     const ledgerPayload = {
       id: ledgerId,
+      slug: String(ledgerId || getConfiguredLedgerId()).trim() || getConfiguredLedgerId(),
       name: "Fuel Ledger",
       currency: state.currency || "DKK",
       fuel_type: state.fuelType || defaults.fuelType,
