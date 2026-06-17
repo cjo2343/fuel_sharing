@@ -433,11 +433,21 @@ test("booking-to-trip linkage shows booking and trip IDs in log context and pend
   await page.locator("#endKm").fill("3077");
   await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
 
-  const trip = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").trips?.[0]);
+  await expect.poll(async () => page.evaluate((bookingId) => {
+    const parsed = JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}");
+    const trip = (parsed.trips || []).find((entry) => entry.sourceBookingId === bookingId);
+    return trip?.id || "";
+  }, booking.id), { timeout: 10000 }).not.toBe("");
+
+  const trip = await page.evaluate((bookingId) => {
+    const parsed = JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}");
+    return (parsed.trips || []).find((entry) => entry.sourceBookingId === bookingId) || null;
+  }, booking.id);
   const tripRef = typedRefFromEntry(trip, "trip");
-  await expect(page.locator("#pendingLogList")).toContainText("Fuel log required");
-  await expect(page.locator("#pendingLogList")).toContainText(bookingRef);
-  await expect(page.locator("#pendingLogList")).toContainText(tripRef);
+  const linkedFuelTask = page.locator(`[data-pending-log-type="fuel"][data-booking-ref="${bookingRef}"]`).first();
+  await expect(linkedFuelTask).toContainText("Fuel log required", { timeout: 10000 });
+  await expect(linkedFuelTask).toContainText(bookingRef);
+  await expect(linkedFuelTask).toContainText(tripRef);
 });
 
 test("create, edit, persist, delete booking and reject overlapping booking", async ({ page }) => {

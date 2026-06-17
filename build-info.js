@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.183",
-    buildLabel: "booking-render-no-rpc-fanout",
-    updatedAt: "2026-06-17T19:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v283",
+    version: "2026.06.17.184",
+    buildLabel: "security-health-cloud-save-feedback",
+    updatedAt: "2026-06-17T20:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v284",
     releaseNotes: Object.freeze([
+      "Security Health now uses per-probe timeouts so a slow backend health RPC cannot make the button appear idle, and saving a Test Lab/Security Health report to cloud now awaits the normalized report row and shows explicit success or failure.",
       "Booking saves no longer pre-record or report browser Supabase RPC activity after a successful Render booking save; the browser RPC path is now only diagnosed when the fallback actually runs.",
       "Trip, fuel, booking, and payment write setup now prefers a Render write-context route before falling back to browser direct Supabase lookups, reducing ledger_members reads while keeping the proven v281 save path safe.",
       "Hotfix: trip, fuel, and booking saves now use the proven v279 normalized context setup again so Render-backed saves can start reliably; the v280 context-cache/fanout optimization is backed out for the save path.",

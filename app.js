@@ -3958,16 +3958,10 @@ async function refreshSupabaseSecurityHealthForTestLab({ timeoutMs = 8000, deep 
   supabaseLoadSafety.securityHealthInFlight = true;
   supabaseLoadSafety.lastSecurityHealthAt = now;
   recordSupabaseLoadEvent("security-health");
-  let timeoutId = null;
-  const timeout = new Promise((resolve) => {
-    timeoutId = setTimeout(() => resolve(createSecurityHealthTimeoutStatus(timeoutMs)), timeoutMs);
-  });
   try {
-    const status = await Promise.race([refreshSupabaseSecurityHealth({ silent: true, force }), timeout]);
-    if (timeoutId) clearTimeout(timeoutId);
+    const status = await refreshSupabaseSecurityHealth({ silent: true, force, probeTimeoutMs: timeoutMs });
     supabaseSecurityStatus = status && typeof status === "object" ? status : createSecurityHealthTimeoutStatus(timeoutMs);
   } catch (error) {
-    if (timeoutId) clearTimeout(timeoutId);
     supabaseSecurityStatus = {
       checked: true,
       ok: false,
@@ -4157,14 +4151,36 @@ async function saveCurrentTestLabReportToCloud() {
     title: "Save Test Lab report to cloud?",
     detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage."
   })) return;
-  testLabCloudReportOptIn = true;
-  localStorage.setItem(testLabReportCloudStorageKey, "true");
-  persistTestLabReport(redactTestLabReportForCloud(report), { sync: true });
-  setDataToolsMessage("Latest Test Lab report queued for cloud save. Routine future reports still stay local unless you use this button again.");
-  window.setTimeout(() => {
+
+  if (els.saveTestLabReportCloud) els.saveTestLabReportCloud.disabled = true;
+  setDataToolsMessage("Saving fresh Test Lab report to normalized cloud history...");
+  try {
+    const savedToReportStore = await saveTestLabReportToCloudStore(redactTestLabReportForCloud(report));
+    if (savedToReportStore) {
+      markRemoteSaveSucceeded("Reports");
+      renderTestLabReport(lastTestLabReport, { persist: false });
+      render();
+      setDataToolsMessage("Fresh Test Lab report saved to normalized cloud history.");
+      return;
+    }
+    setDataToolsMessage("Normalized Test Lab report store is unavailable; saving through JSON mirror fallback...");
+    const savedToJson = await saveJsonMirrorBackup({ force: true, reason: "Test Lab report JSON fallback" });
+    if (savedToJson) {
+      persistTestLabReport(redactTestLabReportForCloud(report), { sync: false });
+      markRemoteSaveSucceeded("Shared");
+      setDataToolsMessage("Latest Test Lab report saved through the JSON mirror fallback. Apply the Test Lab report store migration to avoid full-state JSON writes.");
+      return;
+    }
+    throw new Error("Could not save Test Lab report to normalized history or JSON fallback.");
+  } catch (error) {
+    markRemoteSaveFailed(error, "Could not save Test Lab report.");
+    showUserError(`Could not save Test Lab report: ${error.message || error}`);
+    setDataToolsMessage(`Could not save Test Lab report: ${error.message || error}`);
+  } finally {
+    if (els.saveTestLabReportCloud) els.saveTestLabReportCloud.disabled = false;
     testLabCloudReportOptIn = false;
     localStorage.removeItem(testLabReportCloudStorageKey);
-  }, 1000);
+  }
 }
 
 function startTestLabLoadGuard(label) {
@@ -4181,7 +4197,31 @@ function startTestLabLoadGuard(label) {
   };
 }
 
-async function refreshSupabaseSecurityHealth({ silent = false, force = false } = {}) {
+
+async function withSecurityHealthProbeTimeout(label, promise, timeoutMs = 10000) {
+  let timeoutId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      const error = new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds`);
+      error.name = "SecurityHealthProbeTimeout";
+      error.isSecurityHealthProbeTimeout = true;
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+function buildSecurityHealthProbeTimeoutCheck(helper, name, error) {
+  const detail = error?.message || String(error || "Security Health probe timed out.");
+  if (helper?.warn) return helper.warn(name, detail);
+  return { ok: true, level: "warning", warning: true, name, detail };
+}
+
+async function refreshSupabaseSecurityHealth({ silent = false, force = false, probeTimeoutMs = 10000 } = {}) {
   const checks = [];
   const checkedAt = new Date().toISOString();
 
@@ -4250,25 +4290,29 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
   }
 
   try {
-    if (!(await hasFreshSupabaseSession())) {
+    if (!(await withSecurityHealthProbeTimeout("Supabase session refresh", hasFreshSupabaseSession(), probeTimeoutMs))) {
       record(helper.fail("Supabase session is fresh", "The session could not be refreshed."));
     } else {
       record(helper.pass("Supabase session is fresh"));
     }
   } catch (error) {
-    record(helper.fail("Supabase session is fresh", error.message || String(error)));
+    if (error?.isSecurityHealthProbeTimeout) {
+      record(buildSecurityHealthProbeTimeoutCheck(helper, "Supabase session refresh timed out", error));
+    } else {
+      record(helper.fail("Supabase session is fresh", error.message || String(error)));
+    }
   }
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
   if (canManageSettings()) {
     try {
-      const members = await supabaseClient
+      const members = await withSecurityHealthProbeTimeout("Active ledger members probe", supabaseClient
         .from("ledger_members")
         .select("id,name,email,role,is_active")
         .eq("ledger_id", ledgerId)
         .eq("is_active", true)
-        .limit(100);
+        .limit(100), probeTimeoutMs);
       if (members.error) throw members.error;
       record(helper.pass("Active ledger members are readable", `${members.data?.length || 0} active member row(s).`));
       const currentEmail = String(currentSession?.user?.email || "").toLowerCase();
@@ -4276,13 +4320,17 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
       record(currentRow ? helper.pass("Current Supabase user is linked to an active ledger member", currentRow.name || currentEmail) : helper.fail("Current Supabase user is linked to an active ledger member", currentEmail || "No email found."));
       record(currentRow?.role === "admin" ? helper.pass("Current linked member is admin in normalized tables") : helper.fail("Current linked member is admin in normalized tables", "Admin role is required for backend security checks."));
     } catch (error) {
-      record(helper.fail("Active ledger members are readable", error.message || String(error)));
+      if (error?.isSecurityHealthProbeTimeout) {
+        record(buildSecurityHealthProbeTimeoutCheck(helper, "Active ledger members probe timed out", error));
+      } else {
+        record(helper.fail("Active ledger members are readable", error.message || String(error)));
+      }
     }
 
     try {
-      const probe = await supabaseClient.rpc("fuel_ledger_healthcheck", {
+      const probe = await withSecurityHealthProbeTimeout("Fuel Ledger healthcheck RPC", supabaseClient.rpc("fuel_ledger_healthcheck", {
         target_ledger_id: ledgerId
-      });
+      }), probeTimeoutMs);
       const normalizedProbe = helper.normalizeHealthcheckRpcResult({
         name: "Fuel Ledger healthcheck RPC is available",
         ok: !probe.error,
@@ -4292,10 +4340,14 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false } =
       normalizedProbe.rpcHealth = rememberHealthcheckRpcPayload(probe.data, checkedAt);
       record(normalizedProbe);
     } catch (error) {
-      record(helper.normalizeHealthcheckRpcResult({
-        name: "Fuel Ledger healthcheck RPC is available",
-        error
-      }));
+      if (error?.isSecurityHealthProbeTimeout) {
+        record(buildSecurityHealthProbeTimeoutCheck(helper, "Fuel Ledger healthcheck RPC timed out", error));
+      } else {
+        record(helper.normalizeHealthcheckRpcResult({
+          name: "Fuel Ledger healthcheck RPC is available",
+          error
+        }));
+      }
     }
   } else {
     record(helper.pass("Admin-only RPC probes were skipped", "The current user is not an admin."));
@@ -4502,7 +4554,7 @@ async function runStandaloneSecurityHealthScenario() {
 
   let securityStatus;
   try {
-    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 15000, deep: true, force: true });
+    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 12000, deep: true, force: true });
   } catch (error) {
     securityStatus = {
       checked: true,
