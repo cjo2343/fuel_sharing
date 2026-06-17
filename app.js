@@ -23,6 +23,7 @@ const renderBookingUpsertUrl = "/api/bookings/upsert";
 const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
+const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -13757,6 +13758,72 @@ async function savePaymentStatusBackendFirst(settlement, nextStatus, options = {
   }
 }
 
+
+async function syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads, source = "ledger-directory-sync") {
+  const traceMeta = { source, route: "render-api", endpoint: renderLedgerDirectorySyncUrl, operation: "upsert" };
+  if (!currentSession?.access_token || !ledgerPayload?.id) return { ok: false, shouldFallback: true };
+
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, ledgerId: ledgerPayload.id });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render ledger directory sync API", 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(renderLedgerDirectorySyncUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledger: ledgerPayload, members: memberPayloads })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-ledger-directory-sync", "ledger directory via Render backend API");
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, ledgerId: ledgerPayload.id });
+      return { ok: true, backend: "render-api", result };
+    }
+
+    const message = result?.message || result?.error || text || `Render ledger directory sync failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    const shouldFallback = [404, 405, 501].includes(response.status);
+    recordDataIoDiagnostic("error", {
+      ...traceMeta,
+      error,
+      ledgerId: ledgerPayload.id,
+      detail: shouldFallback ? `HTTP ${response.status}; falling back to direct Supabase ledger directory sync.` : `HTTP ${response.status}; not falling back.`
+    });
+    return { ok: false, shouldFallback, error };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render ledger directory sync API", 12000);
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", {
+      ...traceMeta,
+      error,
+      ledgerId: ledgerPayload.id,
+      detail: "Falling back to direct Supabase ledger directory sync."
+    });
+    return { ok: false, shouldFallback: true, error };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function upsertLedgerSettings(ledgerPayload, source = "ledger-directory-sync") {
   if (!ledgerPayload?.slug) {
     const error = new Error("Refusing to upsert ledgers without slug.");
@@ -13806,8 +13873,6 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
     updated_at: now
   };
 
-  await upsertLedgerSettings(ledgerPayload);
-
   const memberPayloads = getMemberNames().map((name) => {
     const profile = getMemberProfile(name);
     return {
@@ -13820,11 +13885,17 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
     };
   });
 
+  const renderResult = await syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads);
+  if (renderResult.ok) return;
+  if (!renderResult.shouldFallback) throw renderResult.error || new Error("Render ledger directory sync failed.");
+
+  await upsertLedgerSettings(ledgerPayload);
+
   if (memberPayloads.length) {
-    const memberResult = await supabaseClient
+    const memberResult = await traceDataIo({ source: "ledger-directory-sync", route: "direct-table", table: "ledger_members", operation: "upsert" }, () => supabaseClient
       .from("ledger_members")
       .upsert(memberPayloads, { onConflict: "ledger_id,name" })
-      .select("id,name");
+      .select("id,name"));
     if (memberResult.error) throw memberResult.error;
   }
 }

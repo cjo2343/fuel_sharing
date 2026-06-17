@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.187",
-    buildLabel: "render-admin-diagnostics-load",
-    updatedAt: "2026-06-17T22:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v287",
+    version: "2026.06.17.188",
+    buildLabel: "render-ledger-directory-sync",
+    updatedAt: "2026-06-17T22:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v288",
     releaseNotes: Object.freeze([
+      "Ledger/workspace directory sync now prefers a Render /api/ledgers/sync route that verifies workspace admin permission and upserts ledgers plus ledger_members through the signed-in Supabase session, with browser direct-table sync kept only as fallback.",
       "Admin diagnostics/manual-admin refreshes now use the Render state-load fast path before the legacy JSON mirror load, preventing admin-only timeouts after a healthy Render sync.",
       "Startup and manual normalized-table state loads now prefer a Render /api/state/load route that verifies the signed-in user and returns normalized rows, while keeping browser Supabase table reads as a safe fallback.",
       "Advanced stress/full JSON-to-table reconciliation now includes the required ledger slug before touching ledgers, preventing the guarded ledger-directory-sync failure during admin stress diagnostics.",

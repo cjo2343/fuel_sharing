@@ -1054,6 +1054,113 @@ def get_normalized_state_rows_as_user(ledger_id, user, user_token):
         "tripParticipants": trip_participants,
     }
 
+
+
+def build_ledger_directory_sync_payload(payload, user):
+    if not isinstance(payload, dict):
+        raise ValueError("Ledger directory sync payload must be an object")
+    ledger = payload.get("ledger") if isinstance(payload.get("ledger"), dict) else {}
+    members = payload.get("members") if isinstance(payload.get("members"), list) else []
+    ledger_id = str(ledger.get("id") or payload.get("ledgerId") or "").strip()
+    if not ledger_id:
+        raise ValueError("Ledger directory sync requires ledger.id")
+    slug = str(ledger.get("slug") or ledger_id).strip()
+    if not slug:
+        raise ValueError("Ledger directory sync requires ledger.slug")
+    allowed_ledger = build_write_context_backend_payload({"ledgerId": ledger_id}, user)
+    if allowed_ledger != ledger_id:
+        raise PermissionError("Cannot sync a different workspace")
+
+    cleaned_ledger = {
+        "id": ledger_id,
+        "slug": slug,
+        "name": str(ledger.get("name") or "Fuel Ledger").strip() or "Fuel Ledger",
+        "currency": str(ledger.get("currency") or "DKK").strip() or "DKK",
+        "fuel_type": str(ledger.get("fuel_type") or "diesel").strip() or "diesel",
+        "estimated_consumption_l_per_100km": ledger.get("estimated_consumption_l_per_100km"),
+        "fuel_tank_capacity_l": ledger.get("fuel_tank_capacity_l"),
+        "fallback_fuel_price": ledger.get("fallback_fuel_price"),
+        "low_fuel_threshold_percent": ledger.get("low_fuel_threshold_percent"),
+        "updated_at": ledger.get("updated_at") or datetime.now(timezone.utc).isoformat(),
+    }
+    for numeric_key, fallback in (
+        ("estimated_consumption_l_per_100km", 5.3),
+        ("fuel_tank_capacity_l", 55),
+        ("fallback_fuel_price", 14.5),
+        ("low_fuel_threshold_percent", 70),
+    ):
+        try:
+            cleaned_ledger[numeric_key] = float(cleaned_ledger.get(numeric_key) or fallback)
+        except (TypeError, ValueError):
+            cleaned_ledger[numeric_key] = fallback
+
+    cleaned_members = []
+    seen_names = set()
+    for raw in members:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name or name in seen_names:
+            continue
+        seen_names.add(name)
+        cleaned_members.append({
+            "ledger_id": ledger_id,
+            "name": name,
+            "email": str(raw.get("email") or "").strip().lower() or None,
+            "role": "admin" if str(raw.get("role") or "").strip().lower() == "admin" else "member",
+            "is_active": bool(raw.get("is_active", True)),
+            "updated_at": raw.get("updated_at") or cleaned_ledger["updated_at"],
+        })
+    if not cleaned_members:
+        raise ValueError("Ledger directory sync requires at least one member")
+    return cleaned_ledger, cleaned_members
+
+
+def assert_user_can_admin_ledger(ledger_id, user, user_token):
+    context = get_write_context_as_user(ledger_id, user, user_token)
+    if not context.get("canAdmin"):
+        raise PermissionError("Only workspace admins can sync the ledger directory")
+    return context
+
+
+def upsert_ledger_directory_as_user(ledger, members, user_token):
+    ledger_id = str(ledger.get("id") or "").strip()
+    try:
+        ledger_result = request_json(
+            f"{supabase_url()}/rest/v1/ledgers?on_conflict=id&select=id,slug",
+            method="POST",
+            body=ledger,
+            token=user_token,
+            prefer="resolution=merge-duplicates,return=representation",
+            api_key=supabase_anon_key(),
+        ) or []
+    except urllib.error.HTTPError as error:
+        # Older production databases may not have fuel_tank_capacity_l yet.
+        raw = error.read().decode("utf-8")
+        if error.code == 400 and "fuel_tank_capacity_l" in raw and "fuel_tank_capacity_l" in ledger:
+            fallback = dict(ledger)
+            fallback.pop("fuel_tank_capacity_l", None)
+            ledger_result = request_json(
+                f"{supabase_url()}/rest/v1/ledgers?on_conflict=id&select=id,slug",
+                method="POST",
+                body=fallback,
+                token=user_token,
+                prefer="resolution=merge-duplicates,return=representation",
+                api_key=supabase_anon_key(),
+            ) or []
+        else:
+            raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+
+    member_result = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role",
+        method="POST",
+        body=members,
+        token=user_token,
+        prefer="resolution=merge-duplicates,return=representation",
+        api_key=supabase_anon_key(),
+    ) or []
+    return {"ledger": ledger_result[0] if isinstance(ledger_result, list) and ledger_result else None, "members": member_result, "memberCount": len(member_result) if isinstance(member_result, list) else 0, "ledgerId": ledger_id}
+
 def build_trip_upsert_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Trip upsert payload must be an object")
@@ -1379,6 +1486,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/state/load":
             self.load_state_backend()
             return
+        if self.path == "/api/ledgers/sync":
+            self.sync_ledger_directory_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1446,6 +1556,34 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "stateRows": state_rows, "backend": "render", "userEmail": user.get("email")})
+
+
+    def sync_ledger_directory_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before syncing the ledger directory")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger, members = build_ledger_directory_sync_payload(payload, user)
+            assert_user_can_admin_ledger(ledger["id"], user, token)
+            result = upsert_ledger_directory_as_user(ledger, members, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def get_write_context_backend(self):
         user = current_supabase_user(self)
