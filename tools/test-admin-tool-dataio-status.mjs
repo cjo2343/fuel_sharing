@@ -40,8 +40,8 @@ for (const name of requiredTools) {
   assert.ok(app.includes(`traceAdminToolOperation("${name}"`), `missing Data I/O wrapper for admin tool: ${name}`);
 }
 
-assert.match(buildInfo, /buildLabel: "admin-tool-dataio-status"/, 'build-info label must describe admin tool Data I/O status pass');
-assert.match(serviceWorker, /fuel-ledger-v291/, 'service worker cache must be bumped for runtime app.js changes');
+assert.match(buildInfo, /Admin tools that trigger cloud work now wrap their action in a Data I\/O operation row/, 'build-info release notes must keep the admin tool Data I/O status pass');
+assert.match(serviceWorker, /fuel-ledger-v29[1-9]/, 'service worker cache must be at least v291 for admin tool Data I/O runtime changes');
 assert.match(pkg, /test-admin-tool-dataio-status\.mjs/, 'validate script must include the admin tool Data I/O status guard');
 
 console.log('Admin tool Data I/O status guard check passed.');

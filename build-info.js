@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.191",
-    buildLabel: "admin-tool-dataio-status",
-    updatedAt: "2026-06-18T00:15:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v291",
+    version: "2026.06.18.192",
+    buildLabel: "finish-admin-cleanup-and-stress-status",
+    updatedAt: "2026-06-18T00:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v292",
     releaseNotes: Object.freeze([
+      "Admin cleanup and advanced-stress paths now finish their admin-tool Data I/O rows and use the Render JSON mirror backup path without waking the old browser full-state save, preventing stale cleanup/stress timeout rows after backend backup succeeds.",
       "Admin tools that trigger cloud work now wrap their action in a Data I/O operation row, so the load monitor shows start/success/error/timeout status for buttons such as generated test data, Test Lab scenarios, Security Health, JSON backups, member/workspace invite tools, and admin diagnostics.",
       "After a successful Render JSON mirror backup, generated-test cleanup now saves the cleaned local state and Render mirror without waking the old browser full-state save queue, preventing stale saveSupabaseState timeouts after the backend backup already succeeded.",
       "JSON mirror safety backups now prefer a Render /api/backups/json-mirror route that verifies workspace admin permission and writes car_share_ledgers through the signed-in Supabase session, with the browser direct-table mirror kept only as fallback.",

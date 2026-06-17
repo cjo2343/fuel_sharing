@@ -22,7 +22,8 @@ function testFullReconciliationLedgerPayloadHasSlug() {
 
 function testAdvancedStressStillUsesFullReconciliationGuard() {
   assert.match(app, /markNormalizedReconciliationDirty\("advanced-stress"\)/);
-  assert.match(app, /await saveSupabaseState\(\{ reason: "advanced-stress" \}\)/);
+  assert.match(app, /persistGeneratedAdminStateWithRenderMirror\("advanced-stress", label\)/);
+  assert.match(app, /checkNormalizedTablesAgainstCurrentState\(\{ force: true, reason: normalizedReason \}\)/);
   assert.match(app, /Refusing to upsert ledgers without slug/);
 }
 

@@ -2930,17 +2930,45 @@ function makeGeneratedTestFuel(index = 0) {
   };
 }
 
-async function flushStressSave(label) {
+async function persistGeneratedAdminStateWithRenderMirror(reason, message, { checkTables = true } = {}) {
+  const normalizedReason = String(reason || "admin-generated-data").trim() || "admin-generated-data";
   writeLocalState();
+  markNormalizedReconciliationDirty(normalizedReason);
+
   if (supabaseClient && currentSession) {
-    markNormalizedReconciliationDirty("advanced-stress");
-    await saveSupabaseState({ reason: "advanced-stress" });
-    await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "advanced-stress" });
+    try {
+      const mirrored = await saveJsonMirrorBackup({ force: true, reason: `${normalizedReason} JSON mirror backup` });
+      if (mirrored) {
+        suppressNextQueuedRemoteSaveReason = `${normalizedReason} already saved through Render JSON mirror backup`;
+        markRemoteSaveSucceeded("Tables");
+        recordSupabaseLoadEvent("browser-full-state-save-skip", suppressNextQueuedRemoteSaveReason);
+      }
+    } catch (error) {
+      console.warn(`${normalizedReason} Render JSON mirror backup failed`, error);
+      markRemoteSaveFailed(error, `Could not save ${normalizedReason} JSON mirror backup.`);
+      throw error;
+    }
+
+    if (checkTables) {
+      try {
+        await checkNormalizedTablesAgainstCurrentState({ force: true, reason: normalizedReason });
+      } catch (error) {
+        console.warn(`${normalizedReason} normalized table check failed`, error);
+      }
+    }
   } else {
-    saveState();
+    saveState({ reason: normalizedReason, queueRemote: false });
   }
+
+  finishForegroundOperationsBySource(normalizedReason, "Render backup path completed");
+  finishForegroundOperationsBySource("advanced-stress", "Render backup path completed");
   render();
-  setDataToolsMessage(label);
+  setDataToolsMessage(message);
+}
+
+async function flushStressSave(label) {
+  markNormalizedReconciliationDirty("advanced-stress");
+  await persistGeneratedAdminStateWithRenderMirror("advanced-stress", label);
 }
 
 async function runGeneratedStressTest() {
@@ -4621,7 +4649,7 @@ async function runStandaloneSecurityHealthScenario() {
 async function cleanupGeneratedTestDataWithReport() {
   await exportAdminSafetyBackup("cleanup generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
-  await flushStressSave(`${cleanup.message} Triggered save + normalized sync.`);
+  await persistGeneratedAdminStateWithRenderMirror("cleanup-test-lab-data", `${cleanup.message} Saved cleanup through Render JSON mirror backup.`);
   const report = buildCurrentTestLabReport({
     id: testLab?.createTestRunId ? testLab.createTestRunId() : `testlab-${Date.now()}`,
     scenario: "cleanup-test-data",
