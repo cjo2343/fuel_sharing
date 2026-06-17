@@ -17,6 +17,8 @@ const pushSubscriptionsUrl = "/api/push-subscriptions";
 const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
 const renderPaymentStatusActionUrl = "/api/payments/status-action";
+const renderTripUpsertUrl = "/api/trips/upsert";
+const tripSaveActionTimeoutMs = 15000;
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
 const paymentStatusActionBackendStartTimeoutMs = 10000;
@@ -13582,7 +13584,7 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
 
 async function saveTripToNormalizedTablesFirst(trip) {
   recordSupabaseLoadEvent("trip-table-write", trip?.id ? `trip ${String(trip.id).slice(0, 8)}` : "trip");
-  recordDataIoDiagnostic("start", { source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "save", ok: true });
+  recordDataIoDiagnostic("start", { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving", { source: "trip-save" });
@@ -13611,7 +13613,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
         ok: true,
         message: "Table-primary write saved the trip and participants through the database transaction RPC. JSON will be updated as backup."
       };
-      recordDataIoDiagnostic("success", { source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "save", ok: true });
+      recordDataIoDiagnostic("success", { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "save", ok: true });
       return true;
     }
 
@@ -13643,6 +13645,9 @@ async function saveTripToNormalizedTablesFirst(trip) {
 
 
 async function saveTripWithParticipantsRpc(context, payload, participantMemberIds) {
+  const renderResult = await saveTripWithParticipantsViaRender(context, payload, participantMemberIds);
+  if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
+
   const { data, error } = await traceDataIo({ source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "rpc" }, () => supabaseClient.rpc("upsert_trip_with_participants", {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
@@ -13655,13 +13660,68 @@ async function saveTripWithParticipantsRpc(context, payload, participantMemberId
     participant_member_ids: participantMemberIds
   }));
 
-  if (!error) return { ok: true, data };
+  if (!error) return { ok: true, data, backend: "supabase-rpc" };
 
   return {
     ok: false,
     error,
-    shouldFallback: isMissingTripTransactionRpcError(error)
+    shouldFallback: isMissingTripTransactionRpcError(error),
+    backend: "supabase-rpc"
   };
+}
+
+async function saveTripWithParticipantsViaRender(context, payload, participantMemberIds) {
+  const operationId = createDataIoOperationId("trip-save");
+  const traceMeta = { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "upsert", operationId };
+  if (!currentSession?.access_token) {
+    return { ok: false, shouldFallback: true, backend: "render-api", error: new Error("No active Supabase session for Render trip save API.") };
+  }
+
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), tripSaveActionTimeoutMs);
+    const response = await fetch(renderTripUpsertUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({
+        context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
+        trip: payload,
+        participantMemberIds
+      })
+    }).finally(() => window.clearTimeout(timeoutId));
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-trip-save", "upsert via Render backend API");
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true });
+      return { ok: true, data: result.result, backend: "render-api" };
+    }
+
+    const message = result?.message || result?.error || text || `Render trip save failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}` });
+    return {
+      ok: false,
+      error,
+      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
+      backend: "render-api"
+    };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError";
+    if (timedOut) error = paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs);
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error });
+    console.warn("Render trip save API failed", error);
+    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  }
 }
 
 function isMissingTripTransactionRpcError(error) {

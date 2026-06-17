@@ -226,6 +226,14 @@ assertNoBareIdentifierReference(
   'Regression guard failed: saveFuelToNormalizedTablesFirst() contains a bare currentMemberId reference. Use context.currentMemberId from getNormalizedWriteContext().'
 );
 
+const tripRpcBody = extractFunctionBody(source, 'saveTripWithParticipantsRpc') || '';
+const tripRenderCallIndex = tripRpcBody.indexOf('saveTripWithParticipantsViaRender');
+const tripDirectRpcIndex = tripRpcBody.indexOf('supabaseClient.rpc("upsert_trip_with_participants"');
+if (tripRenderCallIndex < 0 || tripDirectRpcIndex < 0 || tripRenderCallIndex > tripDirectRpcIndex) {
+  console.error('Regression guard failed: trip saves must attempt the Render /api/trips/upsert path before direct Supabase RPC fallback.');
+  process.exit(1);
+}
+
 
 function getFunctionParameters(signature) {
   const paramsMatch = signature.match(/\(([^)]*)\)/);

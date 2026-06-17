@@ -82,5 +82,35 @@ class RenderPaymentActionPayloadTests(unittest.TestCase):
             })
 
 
+class RenderTripUpsertPayloadTests(unittest.TestCase):
+    def test_build_trip_upsert_rpc_payload_from_frontend_contract(self):
+        payload = server.build_trip_upsert_rpc_payload({
+            "context": {"ledgerId": "main-car", "openPeriodId": "11111111-1111-1111-1111-111111111111"},
+            "trip": {
+                "legacy_id": "trip-1",
+                "driver_member_id": "22222222-2222-2222-2222-222222222222",
+                "trip_date": "2026-06-17",
+                "start_km": "100",
+                "end_km": "150",
+                "note": "Test trip",
+            },
+            "participantMemberIds": ["22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333", ""],
+        })
+
+        self.assertEqual(payload["target_ledger_id"], "main-car")
+        self.assertEqual(payload["legacy_trip_id"], "trip-1")
+        self.assertEqual(payload["start_km_value"], 100.0)
+        self.assertEqual(payload["end_km_value"], 150.0)
+        self.assertEqual(payload["participant_member_ids"], ["22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333"])
+
+    def test_build_trip_upsert_rpc_payload_rejects_missing_participants(self):
+        with self.assertRaises(ValueError):
+            server.build_trip_upsert_rpc_payload({
+                "context": {"ledgerId": "main-car", "openPeriodId": "11111111-1111-1111-1111-111111111111"},
+                "trip": {"legacy_id": "trip-1", "driver_member_id": "22222222-2222-2222-2222-222222222222", "trip_date": "2026-06-17"},
+                "participantMemberIds": [],
+            })
+
+
 if __name__ == "__main__":
     unittest.main()

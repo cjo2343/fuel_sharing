@@ -924,6 +924,42 @@ def call_supabase_rpc_as_user(function_name, body=None, user_token=None):
     )
 
 
+def build_trip_upsert_rpc_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Trip upsert payload must be an object")
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    trip = payload.get("trip") if isinstance(payload.get("trip"), dict) else {}
+    participants = payload.get("participantMemberIds")
+    if not isinstance(participants, list):
+        participants = payload.get("participant_member_ids") if isinstance(payload.get("participant_member_ids"), list) else []
+
+    required = {
+        "target_ledger_id": context.get("ledgerId") or payload.get("ledgerId") or trip.get("ledger_id"),
+        "target_open_period_id": context.get("openPeriodId") or payload.get("openPeriodId") or trip.get("period_id"),
+        "legacy_trip_id": trip.get("legacy_id") or payload.get("legacyTripId") or payload.get("legacy_trip_id"),
+        "driver_member_id": trip.get("driver_member_id") or payload.get("driver_member_id"),
+        "trip_date_value": trip.get("trip_date") or payload.get("trip_date_value"),
+        "start_km_value": trip.get("start_km", payload.get("start_km_value")),
+        "end_km_value": trip.get("end_km", payload.get("end_km_value")),
+        "note_value": trip.get("note", payload.get("note_value")),
+        "participant_member_ids": [str(value) for value in participants if str(value or "").strip()],
+    }
+
+    missing = [name for name in ("target_ledger_id", "target_open_period_id", "legacy_trip_id", "driver_member_id", "trip_date_value") if not required.get(name)]
+    if missing:
+        raise ValueError(f"Missing trip upsert field(s): {', '.join(missing)}")
+    if not required["participant_member_ids"]:
+        raise ValueError("Trip must include at least one participant")
+
+    try:
+        required["start_km_value"] = float(required["start_km_value"] or 0)
+        required["end_km_value"] = float(required["end_km_value"] or 0)
+    except (TypeError, ValueError):
+        raise ValueError("Trip odometer values must be numeric")
+
+    return required
+
 def build_payment_status_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Payment action payload must be an object")
@@ -1113,6 +1149,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/payments/status-action":
             self.apply_payment_status_action_backend()
             return
+        if self.path == "/api/trips/upsert":
+            self.upsert_trip_backend()
+            return
         if self.path == "/api/run-reminders":
             self.run_reminders()
             return
@@ -1153,6 +1192,31 @@ class Handler(SimpleHTTPRequestHandler):
             payload = read_request_body(self)
             rpc_payload = build_payment_status_rpc_payload(payload)
             result = call_supabase_rpc_as_user("apply_payment_status_action", rpc_payload, user_token=token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(401, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+
+    def upsert_trip_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before saving a trip")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            rpc_payload = build_trip_upsert_rpc_payload(payload)
+            result = call_supabase_rpc_as_user("upsert_trip_with_participants", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
             return
