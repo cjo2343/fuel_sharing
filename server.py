@@ -960,6 +960,60 @@ def build_trip_upsert_rpc_payload(payload):
 
     return required
 
+def build_fuel_upsert_rpc_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Fuel upsert payload must be an object")
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    fuel = payload.get("fuel") if isinstance(payload.get("fuel"), dict) else {}
+
+    required = {
+        "target_ledger_id": context.get("ledgerId") or payload.get("ledgerId") or fuel.get("ledger_id"),
+        "target_open_period_id": context.get("openPeriodId") or payload.get("openPeriodId") or fuel.get("period_id"),
+        "legacy_fuel_id": fuel.get("legacy_id") or payload.get("legacyFuelId") or payload.get("legacy_fuel_id"),
+        "payer_member_id": fuel.get("payer_member_id") or payload.get("payer_member_id"),
+        "payment_date_value": fuel.get("payment_date") or payload.get("payment_date_value"),
+        "amount_value": fuel.get("amount", payload.get("amount_value")),
+        "currency_value": fuel.get("currency") or payload.get("currency_value") or "DKK",
+        "liters_value": fuel.get("liters", payload.get("liters_value")),
+        "price_per_liter_value": fuel.get("price_per_liter", payload.get("price_per_liter_value")),
+        "odometer_value": fuel.get("odometer", payload.get("odometer_value")),
+        "station_name_value": fuel.get("station_name") or payload.get("station_name_value"),
+        "station_brand_value": fuel.get("station_brand") or payload.get("station_brand_value"),
+        "station_lat_value": fuel.get("station_lat", payload.get("station_lat_value")),
+        "station_lng_value": fuel.get("station_lng", payload.get("station_lng_value")),
+        "user_lat_value": fuel.get("user_lat", payload.get("user_lat_value")),
+        "user_lng_value": fuel.get("user_lng", payload.get("user_lng_value")),
+        "full_tank_value": bool(fuel.get("full_tank", payload.get("full_tank_value", False))),
+    }
+
+    missing = [name for name in ("target_ledger_id", "target_open_period_id", "legacy_fuel_id", "payer_member_id", "payment_date_value") if not required.get(name)]
+    if missing:
+        raise ValueError(f"Missing fuel upsert field(s): {', '.join(missing)}")
+
+    numeric_defaults = {
+        "amount_value": 0,
+        "liters_value": 0,
+        "price_per_liter_value": None,
+        "odometer_value": None,
+        "station_lat_value": None,
+        "station_lng_value": None,
+        "user_lat_value": None,
+        "user_lng_value": None,
+    }
+    for key, default in numeric_defaults.items():
+        value = required.get(key)
+        if value is None or value == "":
+            required[key] = default
+            continue
+        try:
+            required[key] = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Fuel field {key} must be numeric")
+
+    return required
+
+
 def build_payment_status_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Payment action payload must be an object")
@@ -1152,6 +1206,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
+        if self.path == "/api/fuel/upsert":
+            self.upsert_fuel_backend()
+            return
         if self.path == "/api/run-reminders":
             self.run_reminders()
             return
@@ -1217,6 +1274,31 @@ class Handler(SimpleHTTPRequestHandler):
             payload = read_request_body(self)
             rpc_payload = build_trip_upsert_rpc_payload(payload)
             result = call_supabase_rpc_as_user("upsert_trip_with_participants", rpc_payload, user_token=token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(401, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+
+    def upsert_fuel_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before saving fuel")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            rpc_payload = build_fuel_upsert_rpc_payload(payload)
+            result = call_supabase_rpc_as_user("upsert_fuel_payment", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
             return

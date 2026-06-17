@@ -262,6 +262,43 @@ if (tripSaveFirstBody.includes('if (!savedThroughNormalizedTables)') && tripSave
   process.exit(1);
 }
 
+
+const fuelRpcBody = extractFunctionBody(source, 'saveFuelPaymentRpc') || '';
+const fuelRenderCallIndex = fuelRpcBody.indexOf('saveFuelPaymentViaRender');
+const fuelDirectRpcIndex = fuelRpcBody.indexOf('supabaseClient.rpc("upsert_fuel_payment"');
+if (fuelRenderCallIndex < 0 || fuelDirectRpcIndex < 0 || fuelRenderCallIndex > fuelDirectRpcIndex) {
+  console.error('Regression guard failed: fuel saves must attempt the Render /api/fuel/upsert path before direct Supabase RPC fallback.');
+  process.exit(1);
+}
+
+const fuelRenderBody = extractFunctionBody(source, 'saveFuelPaymentViaRender') || '';
+if (!fuelRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])')) {
+  console.error('Regression guard failed: fuel Render saves must use Promise.race so the frontend cannot hang forever waiting for fetch/abort cleanup.');
+  process.exit(1);
+}
+if (!fuelRenderBody.includes('finishFuelRenderDiagnostic("success"') || !fuelRenderBody.includes('finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception"')) {
+  console.error('Regression guard failed: fuel Render saves must always record a matched finish diagnostic for success, timeout, and exception paths.');
+  process.exit(1);
+}
+
+const fuelSaveFirstBody = extractFunctionBody(source, 'saveFuelToNormalizedTablesFirst') || '';
+const fuelTableWriteIndex = fuelSaveFirstBody.indexOf('recordSupabaseLoadEvent("fuel-table-write"');
+const fuelSavedIndex = fuelSaveFirstBody.indexOf('savedThroughNormalizedTables = true');
+if (fuelTableWriteIndex < 0 || fuelSavedIndex < 0 || fuelTableWriteIndex < fuelSavedIndex) {
+  console.error('Regression guard failed: fuel-table-write must only be recorded after the backend/normalized fuel save succeeds.');
+  process.exit(1);
+}
+const fuelSaveFinallyIndex = fuelSaveFirstBody.lastIndexOf('} finally {');
+const fuelSaveFinishIndex = fuelSaveFirstBody.indexOf('finishForegroundOperationsBySource("fuel-save"', Math.max(0, fuelSaveFinallyIndex));
+if (fuelSaveFinallyIndex < 0 || fuelSaveFinishIndex < 0) {
+  console.error('Regression guard failed: saveFuelToNormalizedTablesFirst() must clear the foreground fuel-save operation from its finally block on success, failure, or early exit.');
+  process.exit(1);
+}
+if (fuelSaveFirstBody.includes('recordDataIoDiagnostic("start", { source: "fuel-save", route: "supabase-rpc"')) {
+  console.error('Regression guard failed: fuel saves must not create an unpaired manual supabase-rpc start diagnostic before the backend save runs.');
+  process.exit(1);
+}
+
 const generatedTripBody = extractFunctionBody(source, 'addGeneratedTestTrip') || '';
 if (!generatedTripBody.includes('await saveTripToNormalizedTablesFirst(tripPayload)') || generatedTripBody.includes('markNormalizedReconciliationDirty(') || generatedTripBody.includes('saveState();')) {
   console.error('Regression guard failed: addGeneratedTestTrip() must use the table-primary trip save path and must not queue generated data through the generic local-only saveState/dirty reconciliation path.');

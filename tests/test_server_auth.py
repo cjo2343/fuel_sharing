@@ -112,5 +112,44 @@ class RenderTripUpsertPayloadTests(unittest.TestCase):
             })
 
 
+class RenderFuelUpsertPayloadTests(unittest.TestCase):
+    def test_build_fuel_upsert_rpc_payload_from_frontend_contract(self):
+        payload = server.build_fuel_upsert_rpc_payload({
+            "context": {"ledgerId": "main-car", "openPeriodId": "11111111-1111-1111-1111-111111111111"},
+            "fuel": {
+                "legacy_id": "fuel-1",
+                "payer_member_id": "22222222-2222-2222-2222-222222222222",
+                "payment_date": "2026-06-17",
+                "amount": "700.50",
+                "currency": "DKK",
+                "liters": "50",
+                "price_per_liter": "14.01",
+                "odometer": "12345",
+                "station_name": "Test Station",
+                "station_brand": "Test Brand",
+                "station_lat": "55.1",
+                "station_lng": "12.2",
+                "user_lat": "55.3",
+                "user_lng": "12.4",
+                "full_tank": True,
+            },
+        })
+
+        self.assertEqual(payload["target_ledger_id"], "main-car")
+        self.assertEqual(payload["legacy_fuel_id"], "fuel-1")
+        self.assertEqual(payload["payer_member_id"], "22222222-2222-2222-2222-222222222222")
+        self.assertEqual(payload["amount_value"], 700.5)
+        self.assertEqual(payload["liters_value"], 50.0)
+        self.assertEqual(payload["price_per_liter_value"], 14.01)
+        self.assertTrue(payload["full_tank_value"])
+
+    def test_build_fuel_upsert_rpc_payload_rejects_missing_payer(self):
+        with self.assertRaises(ValueError):
+            server.build_fuel_upsert_rpc_payload({
+                "context": {"ledgerId": "main-car", "openPeriodId": "11111111-1111-1111-1111-111111111111"},
+                "fuel": {"legacy_id": "fuel-1", "payment_date": "2026-06-17", "amount": 100},
+            })
+
+
 if __name__ == "__main__":
     unittest.main()

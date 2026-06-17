@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v276";
-const BUILD_LABEL = "admin-test-data-table-primary-save";
-const BUILD_UPDATED_AT = "2026-06-17T10:35:00.000Z";
+const CACHE_NAME = "fuel-ledger-v277";
+const BUILD_LABEL = "fuel-save-render-api-finish-contract";
+const BUILD_UPDATED_AT = "2026-06-17T11:05:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

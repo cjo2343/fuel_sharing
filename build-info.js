@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.176",
-    buildLabel: "admin-test-data-table-primary-save",
-    updatedAt: "2026-06-17T10:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v276",
+    version: "2026.06.17.177",
+    buildLabel: "fuel-save-render-api-finish-contract",
+    updatedAt: "2026-06-17T11:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v277",
     releaseNotes: Object.freeze([
+      "Fuel saves now prefer a Render backend route, record matched start/finish data I/O diagnostics, time out with Promise.race, clear the foreground fuel-save operation in finally, and only log fuel-table-write after the backend/normalized save succeeds.",
       "Trip Render saves now record a matched finish diagnostic, time out with Promise.race even if fetch abort does not resolve, clear the foreground trip-save operation in finally, and only log trip-table-write after the backend save succeeds.",
       "Trip saves now prefer a Render backend route that calls upsert_trip_with_participants with the signed-in Supabase session, so trip logging no longer hangs on the browser-owned direct Supabase RPC path and direct RPC is only a fallback when the Render route is unavailable.",
       "Fuel price warning, suggestion, and validation calculations now live in a dedicated helper module with focused unit coverage, reducing app.js while preserving fuel-log behavior.",

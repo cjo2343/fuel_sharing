@@ -18,7 +18,9 @@ const sendPushUrl = "/api/send-push";
 const paymentActionUrl = "/api/payment-action";
 const renderPaymentStatusActionUrl = "/api/payments/status-action";
 const renderTripUpsertUrl = "/api/trips/upsert";
+const renderFuelUpsertUrl = "/api/fuel/upsert";
 const tripSaveActionTimeoutMs = 15000;
+const fuelSaveActionTimeoutMs = 15000;
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
 const paymentStatusActionBackendStartTimeoutMs = 10000;
@@ -13828,6 +13830,9 @@ async function saveTripWithParticipantsGuardedTableUpdates(payload, participantM
 
 
 async function saveFuelPaymentRpc(context, payload) {
+  const renderResult = await saveFuelPaymentViaRender(context, payload);
+  if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
+
   const { data, error } = await traceDataIo({ source: "fuel-save", route: "supabase-rpc", rpc: "upsert_fuel_payment", operation: "rpc" }, () => supabaseClient.rpc("upsert_fuel_payment", {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
@@ -13848,13 +13853,92 @@ async function saveFuelPaymentRpc(context, payload) {
     full_tank_value: payload.full_tank
   }));
 
-  if (!error) return { ok: true, data };
+  if (!error) return { ok: true, data, backend: "supabase-rpc" };
 
   return {
     ok: false,
     error,
-    shouldFallback: isMissingFuelPaymentRpcError(error)
+    shouldFallback: isMissingFuelPaymentRpcError(error),
+    backend: "supabase-rpc"
   };
+}
+
+async function saveFuelPaymentViaRender(context, payload) {
+  const operationId = createDataIoOperationId("fuel-save");
+  const traceMeta = { source: "fuel-save", route: "render-api", endpoint: renderFuelUpsertUrl, operation: "upsert", operationId };
+  if (!currentSession?.access_token) {
+    const error = new Error("No active Supabase session for Render fuel save API.");
+    recordDataIoDiagnostic("error", { ...traceMeta, error });
+    return { ok: false, shouldFallback: true, backend: "render-api", error };
+  }
+
+  let controller = null;
+  let timeoutId = 0;
+  let finished = false;
+  const finishFuelRenderDiagnostic = (phase, meta = {}) => {
+    if (finished) return;
+    finished = true;
+    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
+  };
+
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render fuel save API", fuelSaveActionTimeoutMs));
+      }, fuelSaveActionTimeoutMs);
+    });
+    const fetchPromise = fetch(renderFuelUpsertUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({
+        context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
+        fuel: payload
+      })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-fuel-save", "upsert via Render backend API");
+      finishFuelRenderDiagnostic("success", { ok: true });
+      return { ok: true, data: result.result, backend: "render-api" };
+    }
+
+    const message = result?.message || result?.error || text || `Render fuel save failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    finishFuelRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
+    return {
+      ok: false,
+      error,
+      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
+      backend: "render-api"
+    };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render fuel save API", fuelSaveActionTimeoutMs);
+    finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
+    console.warn("Render fuel save API failed", error);
+    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    if (!finished) {
+      finishFuelRenderDiagnostic("exception", { error: new Error("Render fuel save ended without a recorded finish diagnostic.") });
+    }
+  }
 }
 
 function isMissingFuelPaymentRpcError(error) {
@@ -13872,9 +13956,8 @@ async function saveFuelWithGuardedTableUpdate(payload) {
 }
 
 async function saveFuelToNormalizedTablesFirst(fuel) {
-  recordSupabaseLoadEvent("fuel-table-write", fuel?.id ? `fuel ${String(fuel.id).slice(0, 8)}` : "fuel");
-  recordDataIoDiagnostic("start", { source: "fuel-save", route: "supabase-rpc", rpc: "upsert_fuel_payment", operation: "save", ok: true });
   if (!supabaseClient || !currentSession) return true;
+  let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "fuel-save" });
     const context = await getNormalizedWriteContext({ source: "fuel-save" });
@@ -13911,12 +13994,19 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       await saveFuelWithGuardedTableUpdate(payload);
     }
 
+    savedThroughNormalizedTables = true;
+    recordSupabaseLoadEvent("fuel-table-write", fuel?.id ? `fuel ${String(fuel.id).slice(0, 8)}` : "fuel");
     normalizedTableStatus = {
       checked: true,
       ok: true,
-      message: "Table-primary write saved the fuel log to normalized tables. JSON will be updated as backup."
+      message: rpcResult.backend === "render-api"
+        ? "Render backend API saved the fuel log to normalized tables. JSON will be updated as backup."
+        : "Table-primary write saved the fuel log to normalized tables. JSON will be updated as backup."
     };
-    recordDataIoDiagnostic("success", { source: "fuel-save", route: rpcResult.ok ? "supabase-rpc" : "direct-table", rpc: rpcResult.ok ? "upsert_fuel_payment" : "", table: rpcResult.ok ? "" : "fuel_payments", operation: "save", ok: true });
+    if (!rpcResult.ok) {
+      recordDataIoDiagnostic("success", { source: "fuel-save", route: "direct-table", table: "fuel_payments", operation: "save", ok: true, detail: "Saved through guarded table fallback." });
+    }
+    setSyncStatus("Tables");
     return true;
   } catch (error) {
     recordDataIoDiagnostic("error", { source: "fuel-save", route: "normalized-write", operation: "save", error });
@@ -13929,6 +14019,9 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
     showUserError("Could not save this fuel log to the normalized database. The local JSON backup was not changed. Check the console for details.");
     render();
     return false;
+  } finally {
+    finishForegroundOperationsBySource("fuel-save", savedThroughNormalizedTables ? "fuel-save-normalized-write-saved" : "fuel-save-normalized-write-ended");
+    clearVisibleSavingFailsafe();
   }
 }
 
