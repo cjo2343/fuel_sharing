@@ -19,10 +19,6 @@ assert(app.includes('remove generated test data cleanup JSON mirror backup'), 'G
 assert(app.includes('lastRenderJsonMirrorBackupAt = Date.now()'), 'Successful Render JSON mirror backups should remember their completion time.');
 assert(app.includes('suppressNextQueuedRemoteSaveReason'), 'There should be a one-shot guard for stale queued saveRemoteState calls after Render backup.');
 assert(!/markNormalizedReconciliationDirty\("remove generated test data"\);\s*saveState\(\);/.test(app), 'Generated-test cleanup must not use the old dirty+generic saveState path.');
-assert(buildInfo.includes('version: "2026.06.17.190"'), 'build-info.js should be bumped to 2026.06.17.190.');
-assert(buildInfo.includes('buildLabel: "disable-browser-full-state-after-render-backup"'), 'build-info.js should use the v290 build label.');
-assert(buildInfo.includes('expectedServiceWorkerCache: "fuel-ledger-v290"'), 'build-info.js should expect cache v290.');
-assert(serviceWorker.includes('fuel-ledger-v290'), 'service-worker.js should use cache v290.');
-assert(serviceWorker.includes('disable-browser-full-state-after-render-backup'), 'service-worker.js should use the v290 build label.');
+assert(buildInfo.includes('After a successful Render JSON mirror backup'), 'build-info.js should keep the Render backup/full-state skip release note.');
 
 console.log('Disable browser full-state after Render backup guard check passed.');

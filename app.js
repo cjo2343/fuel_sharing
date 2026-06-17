@@ -752,6 +752,24 @@ async function traceDataIo(meta, operation) {
   }
 }
 
+function makeAdminToolDiagnosticMeta(source, detail = "", operation = "run") {
+  return {
+    source: `admin-tool:${source}`,
+    route: "admin-tool",
+    operation,
+    detail,
+    ok: true
+  };
+}
+
+async function traceAdminToolOperation(source, detail, action, { operation = "run" } = {}) {
+  return traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation), action);
+}
+
+function recordAdminToolSkip(source, detail, { operation = "run" } = {}) {
+  recordDataIoDiagnostic("skip", makeAdminToolDiagnosticMeta(source, detail, operation));
+}
+
 function latestDataIoDiagnostics(limit = 6) {
   return dataIoDiagnostics.slice(-limit).reverse();
 }
@@ -2180,7 +2198,7 @@ els.downloadPeriodReport?.addEventListener("click", () => {
 
 els.removeTestUsers?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await removeUnusedTestUsers();
+  await traceAdminToolOperation("remove-test-users", "Remove unused generated/test members", removeUnusedTestUsers);
 });
 
 els.addTestTrip?.addEventListener("click", async () => {
@@ -2191,7 +2209,7 @@ els.addTestTrip?.addEventListener("click", async () => {
   })) return;
   els.addTestTrip.disabled = true;
   try {
-    await addGeneratedTestTrip();
+    await traceAdminToolOperation("add-test-trip", "Add generated test trip", addGeneratedTestTrip);
   } finally {
     els.addTestTrip.disabled = false;
   }
@@ -2205,7 +2223,7 @@ els.addTestFuel?.addEventListener("click", async () => {
   })) return;
   els.addTestFuel.disabled = true;
   try {
-    await addGeneratedTestFuel();
+    await traceAdminToolOperation("add-test-fuel", "Add generated test fuel", addGeneratedTestFuel);
   } finally {
     els.addTestFuel.disabled = false;
   }
@@ -2217,7 +2235,7 @@ els.removeTestData?.addEventListener("click", async () => {
     title: "Remove generated test data?",
     detail: "This removes only strict generated test entries with the auto-test id prefix after taking a safety backup."
   })) return;
-  await removeGeneratedTestData();
+  await traceAdminToolOperation("remove-test-data", "Remove generated test data", removeGeneratedTestData);
 });
 
 els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
@@ -2248,7 +2266,7 @@ els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
   els.purgeSoftDeletedTestRows.disabled = true;
   try {
     await exportAdminSafetyBackup("purge soft-deleted generated test rows");
-    const result = await window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: false });
+    const result = await traceAdminToolOperation("purge-soft-deleted-test-rows", "Purge soft-deleted generated test rows", () => window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: false }));
     setDataToolsMessage(`Purged ${result.trips} soft-deleted generated test trip row${result.trips === 1 ? "" : "s"} and ${result.fuel} soft-deleted generated test fuel row${result.fuel === 1 ? "" : "s"}.`);
     await refreshDatabaseDiagnostics().catch(() => {});
     await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
@@ -2396,7 +2414,7 @@ els.runStressTest?.addEventListener("click", async () => {
     title: "Run advanced stress test?",
     detail: "This can create generated data and Supabase activity. Use only while diagnosing sync behavior."
   })) return;
-  await runGeneratedStressTest();
+  await traceAdminToolOperation("advanced-stress-test", "Run generated stress test", runGeneratedStressTest);
 });
 
 els.runRapidSaveTest?.addEventListener("click", async () => {
@@ -2406,53 +2424,53 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
     title: "Run rapid save test?",
     detail: "This intentionally creates repeated save activity. Use only while Supabase CPU is calm."
   })) return;
-  await runGeneratedRapidSaveTest();
+  await traceAdminToolOperation("rapid-save-test", "Run generated rapid save test", runGeneratedRapidSaveTest);
 });
 
 els.runFullTestLab?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runFullTestLabScenario();
+  await traceAdminToolOperation("full-test-lab", "Run full safe Test Lab", runFullTestLabScenario);
 });
 
 els.runScenarioMatrix?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runTestLabScenarioMatrix();
+  await traceAdminToolOperation("scenario-matrix", "Run Test Lab scenario matrix", runTestLabScenarioMatrix);
 });
 
 els.runPaymentScenario?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runTestLabScenarioMatrix({
+  await traceAdminToolOperation("payment-permission-checks", "Run payment and permission checks", () => runTestLabScenarioMatrix({
     scenarioName: "payment-permission-checks",
     scenarioFilter: ["payments", "permissions"],
     confirmMessage: "Run payment and permission checks? This does not create production data."
-  });
+  }));
 });
 
 els.runBackupScenario?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runTestLabScenarioMatrix({
+  await traceAdminToolOperation("backup-import-checks", "Run backup/import checks", () => runTestLabScenarioMatrix({
     scenarioName: "backup-import-checks",
     scenarioFilter: ["backup"],
     confirmMessage: "Run backup/import validation checks? This does not restore or overwrite data."
-  });
+  }));
 });
 
 els.runPrivacyScenario?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runTestLabScenarioMatrix({
+  await traceAdminToolOperation("location-privacy-checks", "Run location privacy checks", () => runTestLabScenarioMatrix({
     scenarioName: "location-privacy-checks",
     scenarioFilter: ["privacy"],
     confirmMessage: "Run location privacy checks? This does not request or save your current GPS location."
-  });
+  }));
 });
 
 els.runRuntimeScenario?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runTestLabScenarioMatrix({
+  await traceAdminToolOperation("runtime-pwa-checks", "Run runtime/PWA checks", () => runTestLabScenarioMatrix({
     scenarioName: "runtime-pwa-checks",
     scenarioFilter: ["runtime", "sync"],
     confirmMessage: "Run runtime/PWA and synced-report checks?"
-  });
+  }));
 });
 
 els.runSecurityScenario?.addEventListener("click", async () => {
@@ -2469,7 +2487,7 @@ els.runSecurityScenario?.addEventListener("click", async () => {
     detail: "This is cloud-touching. It uses live Supabase checks and should only be run when CPU is calm. Routine Test Lab skips the deep backend probe."
   })) return;
   lastStandaloneSecurityHealthAt = Date.now();
-  await runStandaloneSecurityHealthScenario();
+  await traceAdminToolOperation("security-health", "Run live Security Health", runStandaloneSecurityHealthScenario);
 });
 
 els.exportTestLabReport?.addEventListener("click", () => {
@@ -2479,7 +2497,7 @@ els.exportTestLabReport?.addEventListener("click", () => {
 
 els.saveTestLabReportCloud?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await saveCurrentTestLabReportToCloud();
+  await traceAdminToolOperation("save-test-lab-report-cloud", "Save Test Lab report to cloud", saveCurrentTestLabReportToCloud);
 });
 
 els.cleanupTestLabData?.addEventListener("click", async () => {
@@ -2489,7 +2507,7 @@ els.cleanupTestLabData?.addEventListener("click", async () => {
     title: "Clean generated Test Lab data?",
     detail: "This removes entries carrying the generated test marker. Production data should be left untouched."
   })) return;
-  await cleanupGeneratedTestDataWithReport();
+  await traceAdminToolOperation("cleanup-test-lab-data", "Clean generated Test Lab data", cleanupGeneratedTestDataWithReport);
 });
 
 els.refreshAboutBuildInfo?.addEventListener("click", () => {
@@ -2600,40 +2618,40 @@ els.runRetentionCleanup?.addEventListener("click", () => {
 els.memberManagementForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
-  await addManagedMember();
+  await traceAdminToolOperation("add-member", "Add managed member", addManagedMember);
 });
 
 els.refreshMembers?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await refreshMemberManagement();
+  await traceAdminToolOperation("refresh-members", "Refresh member management", refreshMemberManagement);
 });
 
 els.refreshWorkspaceInvites?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await (scheduleWorkspaceInviteRefresh("manual-refresh") || Promise.resolve());
+  await traceAdminToolOperation("refresh-workspace-invites", "Refresh workspace invites", () => scheduleWorkspaceInviteRefresh("manual-refresh") || Promise.resolve());
 });
 
 els.createWorkspaceForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await createPrivateWorkspaceFromUi();
+  await traceAdminToolOperation("create-workspace", "Create private workspace", createPrivateWorkspaceFromUi);
 });
 
 els.createInviteForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canManageSettings()) return;
-  await createWorkspaceInvite();
+  await traceAdminToolOperation("create-invite", "Create workspace invite", createWorkspaceInvite);
 });
 
 els.redeemInviteForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await redeemWorkspaceInvite();
+  await traceAdminToolOperation("redeem-invite", "Redeem workspace invite", redeemWorkspaceInvite);
 });
 
 els.workspaceList?.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-workspace-action]");
   if (!button || !canManageSettings()) return;
   if (button.dataset.workspaceAction === "switch") {
-    await switchActiveWorkspace(button.dataset.ledgerId, "workspace-admin-list");
+    await traceAdminToolOperation("switch-workspace", "Switch active workspace from Admin", () => switchActiveWorkspace(button.dataset.ledgerId, "workspace-admin-list"));
   }
 });
 
@@ -2642,7 +2660,7 @@ els.inviteList?.addEventListener("click", async (event) => {
   if (!button || !canManageSettings()) return;
   const row = button.closest("[data-invite-id]");
   if (!row) return;
-  if (button.dataset.inviteAction === "revoke") await revokeWorkspaceInvite(row.dataset.inviteId);
+  if (button.dataset.inviteAction === "revoke") await traceAdminToolOperation("revoke-invite", "Revoke workspace invite", () => revokeWorkspaceInvite(row.dataset.inviteId));
 });
 
 els.memberManagementList?.addEventListener("click", async (event) => {
@@ -2651,21 +2669,23 @@ els.memberManagementList?.addEventListener("click", async (event) => {
   const row = button.closest("[data-member-id]");
   if (!row) return;
   const action = button.dataset.memberAction;
-  if (action === "save") await saveManagedMember(row);
-  if (action === "deactivate") await setManagedMemberActive(row, false);
-  if (action === "reactivate") await setManagedMemberActive(row, true);
+  if (action === "save") await traceAdminToolOperation("save-member", "Save managed member", () => saveManagedMember(row));
+  if (action === "deactivate") await traceAdminToolOperation("deactivate-member", "Deactivate managed member", () => setManagedMemberActive(row, false));
+  if (action === "reactivate") await traceAdminToolOperation("reactivate-member", "Reactivate managed member", () => setManagedMemberActive(row, true));
 });
 
 els.refreshDatabaseDiagnostics?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await refreshDatabaseDiagnostics();
-  await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "manual-refresh" }).catch((error) => {
+  await traceAdminToolOperation("refresh-database-diagnostics", "Refresh database diagnostics", async () => {
+    await refreshDatabaseDiagnostics();
+    await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "manual-refresh" }).catch((error) => {
     normalizedTableStatus = {
       checked: true,
       ok: false,
       message: `Could not refresh normalized table health: ${error.message || error}`
     };
     render();
+    });
   });
 });
 
@@ -2673,8 +2693,10 @@ els.saveJsonBackupNow?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   els.saveJsonBackupNow.disabled = true;
   try {
-    await saveJsonMirrorBackup({ force: true });
-    await refreshDatabaseDiagnostics();
+    await traceAdminToolOperation("save-json-backup", "Save JSON mirror backup", async () => {
+      await saveJsonMirrorBackup({ force: true });
+      await refreshDatabaseDiagnostics();
+    });
   } finally {
     els.saveJsonBackupNow.disabled = false;
   }
@@ -2684,7 +2706,7 @@ els.cleanStaleRequests?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   els.cleanStaleRequests.disabled = true;
   try {
-    const cleaned = await cleanStaleSettlementRequests();
+    const cleaned = await traceAdminToolOperation("clean-stale-requests", "Clean stale settlement request rows", cleanStaleSettlementRequests);
     els.authMessage.textContent = cleaned
       ? `Cleaned ${cleaned} stale settlement request row${cleaned === 1 ? "" : "s"}.`
       : "No stale settlement request rows found.";
@@ -2706,7 +2728,7 @@ els.cleanStaleRequests?.addEventListener("click", async () => {
 
 els.productionActivityReset?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await runProductionActivityReset();
+  await traceAdminToolOperation("production-activity-reset", "Reset production activity diagnostics", runProductionActivityReset);
 });
 
 
@@ -11591,7 +11613,7 @@ async function addManagedMember() {
 
 async function afterMemberManagementChange(message) {
   if (els.memberManagementMessage) els.memberManagementMessage.textContent = message;
-  await refreshMemberManagement();
+  await traceAdminToolOperation("refresh-members", "Refresh member management", refreshMemberManagement);
   memberManagementStatus.error = "";
   await loadSupabaseStateWithTimeout(
     { force: true, reason: "member-management" },

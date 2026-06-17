@@ -124,6 +124,19 @@ Booking saves still prefer `POST /api/context/write` followed by `POST /api/book
 
 Rollout rule: keep the browser RPC fallback available until booking save/delete Render reports are consistently healthy, but do not count or display RPC fallback activity after successful Render saves.
 
+
+## Pass: Admin tool Data I/O status
+
+Build target: `admin-tool-dataio-status` / cache `fuel-ledger-v291`.
+
+Every admin tool that starts meaningful cloud work now records a paired Data I/O operation using the `admin-tool:*` source namespace. This makes the Supabase load monitor show user-facing status rows for generated test tools, Test Lab scenarios, Security Health, cloud report saves, JSON backups, member/workspace invite tools, and admin diagnostics instead of only exposing lower-level backend routes.
+
+Expected diagnostics:
+
+- `admin-tool:<tool-name> -> admin-tool -> ok` for successful tools.
+- `admin-tool:<tool-name> -> admin-tool -> failed` when a tool throws.
+- Lower-level Render rows such as `/api/state/load` or `/api/backups/json-mirror` remain visible underneath.
+
 ## Pass: Disable browser full-state save after Render backup
 
 Target build: `disable-browser-full-state-after-render-backup` / `fuel-ledger-v290`.
