@@ -428,6 +428,7 @@ test("booking-to-trip linkage shows booking and trip IDs in log context and pend
   await page.locator(`[data-convert-booking-to-trip="${booking.id}"]`).click();
   await expect(page.locator('[data-view="log"]#tripLogPanel')).toBeVisible();
   await expect(page.locator("#tripBookingContext")).toContainText(bookingRef);
+  await ensureTripParticipantsSelected(page);
 
   await page.locator("#startKm").fill("3000");
   await page.locator("#endKm").fill("3077");

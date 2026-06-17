@@ -123,11 +123,3 @@ Target build: `booking-render-no-rpc-fanout` / `fuel-ledger-v283`.
 Booking saves still prefer `POST /api/context/write` followed by `POST /api/bookings/upsert`. After a successful Render booking save, the browser no longer pre-records or reports `upsert_car_booking` browser RPC diagnostics; that RPC path is only diagnosed when the Render route fails and the fallback actually runs.
 
 Rollout rule: keep the browser RPC fallback available until booking save/delete Render reports are consistently healthy, but do not count or display RPC fallback activity after successful Render saves.
-
-## Pass: Render JSON mirror backup
-
-Target build: `render-json-mirror-backup` / `fuel-ledger-v289`.
-
-Manual, safety, and audit-cadence JSON mirror backups now prefer `POST /api/backups/json-mirror`. Render verifies the signed-in Supabase user, confirms the user is an active admin for the workspace, validates that a state object is present, and upserts `car_share_ledgers` with the user's Supabase token so RLS still applies.
-
-Rollout rule: keep the browser direct `car_share_ledgers` fallback available only while this route proves stable in load reports. Successful Render mirror backups should show `render-json-mirror-backup` and `data-io:json-mirror-backup:ok` with route `render-api /api/backups/json-mirror`.
