@@ -22,6 +22,7 @@ const renderFuelUpsertUrl = "/api/fuel/upsert";
 const renderBookingUpsertUrl = "/api/bookings/upsert";
 const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
+const renderStateLoadUrl = "/api/state/load";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -13525,6 +13526,61 @@ async function getNormalizedWriteContext(options = {}) {
 }
 
 
+async function getRenderNormalizedStateRows(ledgerId) {
+  const operationId = createDataIoOperationId("state-load");
+  const traceMeta = { source: "state-load", route: "render-api", endpoint: renderStateLoadUrl, operation: "load", operationId };
+  if (!currentSession?.access_token || !ledgerId) return null;
+
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render state load API", 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(renderStateLoadUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok && result?.stateRows) {
+      recordSupabaseLoadEvent("render-state-load", "normalized state via Render backend API");
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true });
+      return result.stateRows;
+    }
+
+    const message = result?.message || result?.error || text || `Render state load failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; falling back to browser normalized table load.` });
+    return null;
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render state load API", 12000);
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Falling back to browser normalized table load." });
+    return null;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function getRenderWriteContext({ ledgerId, source = "normalized-write-context" } = {}) {
   const traceMeta = { source, route: "render-api", endpoint: renderWriteContextUrl, operation: "prepare" };
   if (!currentSession?.access_token || !ledgerId) return null;
@@ -15224,17 +15280,35 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   if (!(await hasFreshSupabaseSession())) return null;
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
+  let participantResult = { data: [], error: null };
+  let membersResult;
+  let periodsResult;
+  let tripsResult;
+  let fuelResult;
+  let bookingsResult;
+  let requestsResult;
 
-  const [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
-    supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
-    supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
-    supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
-    supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true }),
-    supabaseClient.from("car_bookings").select("id,legacy_id,member_id,start_at,end_at,purpose,deleted_at,created_by_member_id,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("start_at", { ascending: true }),
-    supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status").eq("ledger_id", ledgerId)
-  ]);
+  if (renderStateRows) {
+    membersResult = { data: renderStateRows.members || [], error: null };
+    periodsResult = { data: renderStateRows.periods || [], error: null };
+    tripsResult = { data: renderStateRows.trips || [], error: null };
+    fuelResult = { data: renderStateRows.fuel || [], error: null };
+    bookingsResult = { data: renderStateRows.bookings || [], error: null };
+    requestsResult = { data: renderStateRows.requests || [], error: null };
+    participantResult = { data: renderStateRows.tripParticipants || [], error: null };
+  } else {
+    [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
+      supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
+      supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
+      supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
+      supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true }),
+      supabaseClient.from("car_bookings").select("id,legacy_id,member_id,start_at,end_at,purpose,deleted_at,created_by_member_id,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("start_at", { ascending: true }),
+      supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status").eq("ledger_id", ledgerId)
+    ]);
+  }
 
-  const firstError = [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult].find((result) => result.error)?.error;
+  const firstError = [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult, participantResult].find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
   const linkedWorkspace = getLinkedWorkspaceForActiveLedger();
@@ -15276,12 +15350,14 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     ])
   );
 
-  const participantResult = tableTrips.length
-    ? await supabaseClient
-        .from("trip_participants")
-        .select("trip_id,member_id")
-        .in("trip_id", tableTrips.map((trip) => trip.id))
-    : { data: [], error: null };
+  if (!renderStateRows) {
+    participantResult = tableTrips.length
+      ? await supabaseClient
+          .from("trip_participants")
+          .select("trip_id,member_id")
+          .in("trip_id", tableTrips.map((trip) => trip.id))
+      : { data: [], error: null };
+  }
   if (participantResult.error) throw participantResult.error;
 
   const participantNamesByTripId = {};

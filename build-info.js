@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.185",
-    buildLabel: "advanced-stress-ledger-slug-guard",
-    updatedAt: "2026-06-17T21:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v285",
+    version: "2026.06.17.186",
+    buildLabel: "render-state-load-route",
+    updatedAt: "2026-06-17T21:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v286",
     releaseNotes: Object.freeze([
+      "Startup and manual normalized-table state loads now prefer a Render /api/state/load route that verifies the signed-in user and returns normalized rows, while keeping browser Supabase table reads as a safe fallback.",
       "Advanced stress/full JSON-to-table reconciliation now includes the required ledger slug before touching ledgers, preventing the guarded ledger-directory-sync failure during admin stress diagnostics.",
       "Security Health now uses per-probe timeouts so a slow backend health RPC cannot make the button appear idle, and saving a Test Lab/Security Health report to cloud now awaits the normalized report row and shows explicit success or failure.",
       "Booking saves no longer pre-record or report browser Supabase RPC activity after a successful Render booking save; the browser RPC path is now only diagnosed when the fallback actually runs.",

@@ -1001,6 +1001,59 @@ def get_write_context_as_user(ledger_id, user, user_token):
         "canAdmin": current.get("role") == "admin",
     }
 
+def get_normalized_state_rows_as_user(ledger_id, user, user_token):
+    context = get_write_context_as_user(ledger_id, user, user_token)
+    ledger_q = quote_postgrest_value(ledger_id)
+    members = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active,mobilepay_phone,created_at&ledger_id=eq.{ledger_q}&is_active=eq.true&order=created_at.asc",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    periods = request_json(
+        f"{supabase_url()}/rest/v1/settlement_periods?select=id,status,label,closed_at,snapshot_json,created_at&ledger_id=eq.{ledger_q}&order=created_at.asc",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    trips = request_json(
+        f"{supabase_url()}/rest/v1/trips?select=id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at&ledger_id=eq.{ledger_q}&deleted_at=is.null&order=trip_date.asc",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    fuel = request_json(
+        f"{supabase_url()}/rest/v1/fuel_payments?select=id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at&ledger_id=eq.{ledger_q}&deleted_at=is.null&order=payment_date.asc",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    bookings = request_json(
+        f"{supabase_url()}/rest/v1/car_bookings?select=id,legacy_id,member_id,start_at,end_at,purpose,deleted_at,created_by_member_id,created_at&ledger_id=eq.{ledger_q}&deleted_at=is.null&order=start_at.asc",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    requests = request_json(
+        f"{supabase_url()}/rest/v1/settlement_requests?select=id,period_id,from_member_id,to_member_id,amount,currency,status&ledger_id=eq.{ledger_q}",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    trip_participants = []
+    trip_ids = [str(row.get("id") or "").strip() for row in trips if str(row.get("id") or "").strip()]
+    if trip_ids:
+        in_values = ",".join(quote_postgrest_value(value) for value in trip_ids)
+        trip_participants = request_json(
+            f"{supabase_url()}/rest/v1/trip_participants?select=trip_id,member_id&trip_id=in.({in_values})",
+            token=user_token,
+            api_key=supabase_anon_key(),
+        ) or []
+    return {
+        "context": context,
+        "members": members,
+        "periods": periods,
+        "trips": trips,
+        "fuel": fuel,
+        "bookings": bookings,
+        "requests": requests,
+        "tripParticipants": trip_participants,
+    }
+
 def build_trip_upsert_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Trip upsert payload must be an object")
@@ -1323,6 +1376,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/context/write":
             self.get_write_context_backend()
             return
+        if self.path == "/api/state/load":
+            self.load_state_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1365,6 +1421,31 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_json({"ok": True, "state": read_state()})
 
+
+    def load_state_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before loading state")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id = build_write_context_backend_payload(payload, user)
+            state_rows = get_normalized_state_rows_as_user(ledger_id, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "stateRows": state_rows, "backend": "render", "userEmail": user.get("email")})
 
     def get_write_context_backend(self):
         user = current_supabase_user(self)
