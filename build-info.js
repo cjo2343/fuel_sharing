@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.177",
-    buildLabel: "fuel-save-render-api-finish-contract",
-    updatedAt: "2026-06-17T11:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v277",
+    version: "2026.06.17.178",
+    buildLabel: "normalized-context-timeout-save-guard",
+    updatedAt: "2026-06-17T17:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v278",
     releaseNotes: Object.freeze([
+      "Trip and fuel saves now time-bound the pre-backend normalized write context step, record a timeout diagnostic if setup hangs, and clear the visible Saving state instead of waiting for the stale-operation failsafe.",
       "Fuel saves now prefer a Render backend route, record matched start/finish data I/O diagnostics, time out with Promise.race, clear the foreground fuel-save operation in finally, and only log fuel-table-write after the backend/normalized save succeeds.",
       "Trip Render saves now record a matched finish diagnostic, time out with Promise.race even if fetch abort does not resolve, clear the foreground trip-save operation in finally, and only log trip-table-write after the backend save succeeds.",
       "Trip saves now prefer a Render backend route that calls upsert_trip_with_participants with the signed-in Supabase session, so trip logging no longer hangs on the browser-owned direct Supabase RPC path and direct RPC is only a fallback when the Render route is unavailable.",

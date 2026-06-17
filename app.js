@@ -21,6 +21,7 @@ const renderTripUpsertUrl = "/api/trips/upsert";
 const renderFuelUpsertUrl = "/api/fuel/upsert";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
+const normalizedWriteContextTimeoutMs = 10000;
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
 const paymentStatusActionBackendStartTimeoutMs = 10000;
@@ -9109,6 +9110,38 @@ function paymentActionTimeoutError(label, timeoutMs) {
   return error;
 }
 
+
+async function withNormalizedWriteContextTimeout(actionPromise, source, timeoutMs = normalizedWriteContextTimeoutMs) {
+  let timeoutId = null;
+  const label = `${source || "Normalized write"} setup`;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      const error = paymentActionTimeoutError(label, timeoutMs);
+      error.isNormalizedWriteContextTimeout = true;
+      reject(error);
+    }, timeoutMs);
+  });
+  if (actionPromise && typeof actionPromise.catch === "function") {
+    actionPromise.catch(() => {});
+  }
+  try {
+    return await Promise.race([actionPromise, timeout]);
+  } catch (error) {
+    if (error?.isNormalizedWriteContextTimeout || error?.isPaymentActionTimeout) {
+      recordDataIoDiagnostic("timeout", {
+        source: source || "normalized-write-context",
+        route: "normalized-write-context",
+        operation: "prepare",
+        error,
+        detail: `${label} timed out before the backend write started.`
+      });
+    }
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function withPaymentStatusActionTimeout(actionPromise, label, timeoutMs = paymentStatusActionTimeoutMs) {
   let timeoutId = null;
   const timeout = new Promise((_, reject) => {
@@ -13630,7 +13663,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "trip-save" });
-    const context = await getNormalizedWriteContext({ source: "trip-save" });
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "trip-save" }), "trip-save");
     if (!context) return true;
     const payload = {
       legacy_id: trip.id,
@@ -13960,7 +13993,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "fuel-save" });
-    const context = await getNormalizedWriteContext({ source: "fuel-save" });
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "fuel-save" }), "fuel-save");
     if (!context) return true;
     const liters = nullableNumber(fuel.liters);
     const amount = Number(fuel.amount || 0);
