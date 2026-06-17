@@ -2170,22 +2170,32 @@ els.removeTestUsers?.addEventListener("click", async () => {
   await removeUnusedTestUsers();
 });
 
-els.addTestTrip?.addEventListener("click", () => {
+els.addTestTrip?.addEventListener("click", async () => {
   if (!requireAdvancedAdminAction({
     phrase: "ADD TEST TRIP",
     title: "Add generated test trip?",
     detail: "This writes one clearly marked generated test trip to the live ledger. Use Safe Test Lab for local-only checks."
   })) return;
-  addGeneratedTestTrip();
+  els.addTestTrip.disabled = true;
+  try {
+    await addGeneratedTestTrip();
+  } finally {
+    els.addTestTrip.disabled = false;
+  }
 });
 
-els.addTestFuel?.addEventListener("click", () => {
+els.addTestFuel?.addEventListener("click", async () => {
   if (!requireAdvancedAdminAction({
     phrase: "ADD TEST FUEL",
     title: "Add generated test fuel log?",
     detail: "This writes one clearly marked generated test fuel log to the live ledger. Use Safe Test Lab for local-only checks."
   })) return;
-  addGeneratedTestFuel();
+  els.addTestFuel.disabled = true;
+  try {
+    await addGeneratedTestFuel();
+  } finally {
+    els.addTestFuel.disabled = false;
+  }
 });
 
 els.removeTestData?.addEventListener("click", async () => {
@@ -2697,7 +2707,24 @@ function getTestParticipantNames(actor) {
   return Array.from(new Set(ordered)).slice(0, Math.min(2, Math.max(1, ordered.length)));
 }
 
-function addGeneratedTestTrip() {
+async function persistGeneratedTestDataLocallyAndToCloud(message) {
+  state.updatedAt = new Date().toISOString();
+  writeLocalState();
+  if (supabaseClient && currentSession) {
+    await saveSupabaseState({ reason: "admin-test-data-table-primary" });
+    if (pendingLocalChanges > 0) {
+      recordSupabaseLoadEvent("admin-test-pending-clear", `${pendingLocalChanges} queued change(s) cleared after table-primary generated-data save`);
+      markRemoteSaveSucceeded("Tables");
+    }
+  } else {
+    saveState();
+  }
+  setDefaultDates();
+  render();
+  setDataToolsMessage(message);
+}
+
+async function addGeneratedTestTrip() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
   const actor = getTestActorName();
   if (!actor) {
@@ -2708,26 +2735,33 @@ function addGeneratedTestTrip() {
   const start = Number(getLatestOdometer() || 100000) + 1;
   const end = start + 12;
   const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-
-  state.trips.push({
+  const tripPayload = {
     id: `${generatedTestPrefix}trip-${crypto.randomUUID()}`,
+    logRef: createLogRef(`${generatedTestPrefix}trip`),
     driver: actor,
     participants: getTestParticipantNames(actor),
     date: localDateString(),
     startKm: round(start),
     endKm: round(end),
     note: `${generatedTestMarker} generated trip ${stamp}`
-  });
+  };
 
+  const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
+  if (!normalizedTripSaved) return;
+
+  state.trips.push(tripPayload);
   state.lastOdometer = getLatestOdometer();
-  setDataToolsMessage("Added one generated test trip. Triggered save + normalized sync.");
-  markNormalizedReconciliationDirty("generated test trip");
-  saveState();
-  setDefaultDates();
-  render();
+  addAuditEntry({
+    type: "trip_created",
+    entityType: "trip",
+    entityId: tripPayload.id,
+    summary: `${formatLogRef(tripPayload)} · ${tripPayload.driver} · ${formatNumber(tripPayload.endKm - tripPayload.startKm)} km`,
+    detail: `Generated admin test trip · ${getTripPeriodLabel(tripPayload)}`
+  });
+  await persistGeneratedTestDataLocallyAndToCloud("Added one generated test trip through the table-primary trip save path. No local-only generated trip change is queued.");
 }
 
-function addGeneratedTestFuel() {
+async function addGeneratedTestFuel() {
   if (!assertCurrentPeriodAllowsNewEntries()) return;
   const actor = getTestActorName();
   if (!actor) {
@@ -2738,9 +2772,9 @@ function addGeneratedTestFuel() {
   const amount = 123.45;
   const liters = 8.5;
   const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-
-  state.fuel.push({
+  const fuelPayload = {
     id: `${generatedTestPrefix}fuel-${crypto.randomUUID()}`,
+    logRef: createLogRef(`${generatedTestPrefix}fuel`),
     payer: actor,
     date: localDateString(),
     amount: roundMoney(amount),
@@ -2751,13 +2785,20 @@ function addGeneratedTestFuel() {
     location: null,
     stationInfo: null,
     fullTank: false
-  });
+  };
 
-  setDataToolsMessage("Added one generated test fuel log. Triggered save + normalized sync.");
-  markNormalizedReconciliationDirty("generated test fuel");
-  saveState();
-  setDefaultDates();
-  render();
+  const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
+  if (!normalizedFuelSaved) return;
+
+  state.fuel.push(fuelPayload);
+  addAuditEntry({
+    type: "fuel_created",
+    entityType: "fuel",
+    entityId: fuelPayload.id,
+    summary: `${formatLogRef(fuelPayload)} · ${fuelPayload.payer} · ${formatFuelAmountLitersAndPrice(fuelPayload)}`,
+    detail: `Generated admin test fuel log · ${fuelPayload.date || ""}${fuelPayload.odometer ? ` · ${formatNumber(fuelPayload.odometer)} km` : ""}`
+  });
+  await persistGeneratedTestDataLocallyAndToCloud("Added one generated test fuel log through the table-primary fuel save path. No local-only generated fuel change is queued.");
 }
 
 async function removeGeneratedTestData() {

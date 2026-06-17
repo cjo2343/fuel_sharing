@@ -262,6 +262,24 @@ if (tripSaveFirstBody.includes('if (!savedThroughNormalizedTables)') && tripSave
   process.exit(1);
 }
 
+const generatedTripBody = extractFunctionBody(source, 'addGeneratedTestTrip') || '';
+if (!generatedTripBody.includes('await saveTripToNormalizedTablesFirst(tripPayload)') || generatedTripBody.includes('markNormalizedReconciliationDirty(') || generatedTripBody.includes('saveState();')) {
+  console.error('Regression guard failed: addGeneratedTestTrip() must use the table-primary trip save path and must not queue generated data through the generic local-only saveState/dirty reconciliation path.');
+  process.exit(1);
+}
+
+const generatedFuelBody = extractFunctionBody(source, 'addGeneratedTestFuel') || '';
+if (!generatedFuelBody.includes('await saveFuelToNormalizedTablesFirst(fuelPayload)') || generatedFuelBody.includes('markNormalizedReconciliationDirty(') || generatedFuelBody.includes('saveState();')) {
+  console.error('Regression guard failed: addGeneratedTestFuel() must use the table-primary fuel save path and must not queue generated data through the generic local-only saveState/dirty reconciliation path.');
+  process.exit(1);
+}
+
+const generatedPersistBody = extractFunctionBody(source, 'persistGeneratedTestDataLocallyAndToCloud') || '';
+if (!generatedPersistBody.includes('writeLocalState()') || !generatedPersistBody.includes('saveSupabaseState({ reason: "admin-test-data-table-primary" })')) {
+  console.error('Regression guard failed: generated test-data persistence must write local state and then complete the table-primary cloud save without leaving pending local changes.');
+  process.exit(1);
+}
+
 
 function getFunctionParameters(signature) {
   const paramsMatch = signature.match(/\(([^)]*)\)/);
