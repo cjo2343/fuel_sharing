@@ -15749,6 +15749,45 @@ function isCurrentSupabaseLoad(loadToken) {
   return supabaseLoadInFlight && loadToken === supabaseLoadToken;
 }
 
+function isAdminDiagnosticsLoadReason(reason = "") {
+  return reason === "manual-admin" || reason === "admin-diagnostics" || /^admin-/.test(String(reason || ""));
+}
+
+async function tryRenderAdminDiagnosticsStateLoad(reason, loadToken, jsonFallbackState) {
+  if (!isAdminDiagnosticsLoadReason(reason)) return false;
+
+  try {
+    const normalizedState = await loadStateFromNormalizedTables(jsonFallbackState || state);
+    if (!normalizedState) return false;
+    if (!isCurrentSupabaseLoad(loadToken)) {
+      recordSupabaseLoadEvent("supabase-load-stale-result", `admin render state (${reason})`);
+      return false;
+    }
+
+    normalizedReadModeActive = true;
+    applyIncomingState(normalizedState, "Tables");
+    lastCloudSyncAt = new Date().toISOString();
+    lastSyncError = "";
+    lastCloudRetryAt = "";
+    lastSyncDiagnostic = null;
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: `Reading from Render normalized state first; trips/bookings/fuel write to tables first (${normalizedState.members.length} members, ${normalizedState.trips.length} trips, ${normalizedState.bookings.length} bookings, ${normalizedState.fuel.length} fuel logs). JSON remains available as fallback.`
+    };
+    await loadCloudTestLabReports({ reason: "load normalized Test Lab report history after admin Render state load" });
+    scheduleNormalizedTableCheck({ delayMs: 120000, reason: "admin-render-load" });
+    clearSyncDelay(`admin-render-load-success:${reason}`);
+    recordSupabaseLoadEvent("render-admin-diagnostics-load", reason);
+    recordSyncDiagnostic("admin-render-load-success", "Admin diagnostics refreshed from Render state load.", { reason, route: "render-api", endpoint: renderStateLoadUrl });
+    setSyncStatus("Tables");
+    return true;
+  } catch (error) {
+    recordSyncDiagnostic("admin-render-load-fallback", error?.message || "Admin Render state load failed; falling back to legacy load.", { reason, error });
+    return false;
+  }
+}
+
 async function loadSupabaseState(options = {}) {
   const { force = false, reason = "loadSupabaseState" } = options || {};
   recordSupabaseLoadEvent("supabase-load", reason);
@@ -15790,6 +15829,11 @@ async function loadSupabaseState(options = {}) {
     clearRecoverableSyncDelayAfterHealthySync(`load-start:${reason}`);
     setSyncStatus("Syncing", { source: reason });
     recordSyncDiagnostic("load-start", reason, { force });
+
+    if (await tryRenderAdminDiagnosticsStateLoad(reason, loadToken, state)) {
+      return true;
+    }
+
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
       .select("state,updated_at")

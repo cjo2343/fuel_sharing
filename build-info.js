@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.17.186",
-    buildLabel: "render-state-load-route",
-    updatedAt: "2026-06-17T21:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v286",
+    version: "2026.06.17.187",
+    buildLabel: "render-admin-diagnostics-load",
+    updatedAt: "2026-06-17T22:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v287",
     releaseNotes: Object.freeze([
+      "Admin diagnostics/manual-admin refreshes now use the Render state-load fast path before the legacy JSON mirror load, preventing admin-only timeouts after a healthy Render sync.",
       "Startup and manual normalized-table state loads now prefer a Render /api/state/load route that verifies the signed-in user and returns normalized rows, while keeping browser Supabase table reads as a safe fallback.",
       "Advanced stress/full JSON-to-table reconciliation now includes the required ledger slug before touching ledgers, preventing the guarded ledger-directory-sync failure during admin stress diagnostics.",
       "Security Health now uses per-probe timeouts so a slow backend health RPC cannot make the button appear idle, and saving a Test Lab/Security Health report to cloud now awaits the normalized report row and shows explicit success or failure.",
