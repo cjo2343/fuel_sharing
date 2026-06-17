@@ -627,8 +627,11 @@ let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
 let lastJsonMirrorSaveAt = "";
 let lastNormalizedTableLoadAt = 0;
+let cachedNormalizedWriteContext = null;
+const normalizedWriteContextCacheMaxAgeMs = 2 * 60 * 1000;
 let cachedPaymentWriteContext = null;
 const paymentWriteContextCacheMaxAgeMs = 10 * 60 * 1000;
+let nextLocalSaveCoveredByNormalizedWrite = "";
 const reconciliationFreshLoadMaxAgeMs = 5 * 60 * 1000;
 let lastSyncError = "";
 let lastCloudRetryAt = "";
@@ -13055,6 +13058,25 @@ function saveState() {
     storageKey,
     state,
     afterSave: () => {
+      const coveredBy = nextLocalSaveCoveredByNormalizedWrite;
+      nextLocalSaveCoveredByNormalizedWrite = "";
+      if (coveredBy && supabaseClient && currentSession) {
+        lastCloudSaveAt = state.updatedAt || new Date().toISOString();
+        lastCloudSyncAt = lastCloudSaveAt;
+        lastSyncError = "";
+        lastCloudRetryAt = "";
+        recordSupabaseLoadEvent("remote-save-skip", `${coveredBy} already saved through normalized backend`);
+        markRemoteSaveSucceeded("Tables");
+        if (auditLogDirty) scheduleJsonMirrorBackup();
+        scheduleNormalizedTableCheck({ delayMs: 180000, reason: coveredBy });
+        publishLedgerEvent({
+          type: "ledger_updated",
+          title: "Shared ledger updated",
+          body: `${ledgerEventActorName()} saved new shared ledger changes.`,
+          metadata: { reason: coveredBy }
+        }).catch((error) => console.warn("Ledger event publish failed", error));
+        return;
+      }
       markLocalChangeQueued();
       queueRemoteSave();
     }
@@ -13422,12 +13444,56 @@ async function ensureOpenSettlementPeriod(ledgerId) {
   return supabaseHelpers.ensureOpenSettlementPeriod(supabaseClient, ledgerId);
 }
 
+function cloneNormalizedWriteContext(context) {
+  if (!context?.ledgerId || !context?.openPeriodId || !context?.memberIdsByName) return null;
+  return {
+    ledgerId: context.ledgerId,
+    openPeriodId: context.openPeriodId,
+    memberIdsByName: { ...context.memberIdsByName },
+    currentMemberId: context.currentMemberId || null,
+    cachedAt: context.cachedAt || Date.now()
+  };
+}
+
+function getCachedNormalizedWriteContext() {
+  if (!cachedNormalizedWriteContext) return null;
+  if (Date.now() - Number(cachedNormalizedWriteContext.cachedAt || 0) > normalizedWriteContextCacheMaxAgeMs) return null;
+  if (cachedNormalizedWriteContext.ledgerId !== supabaseHelpers.getLedgerId(supabaseConfig)) return null;
+  return cloneNormalizedWriteContext(cachedNormalizedWriteContext);
+}
+
+function cacheNormalizedWriteContext(context) {
+  const cached = cloneNormalizedWriteContext(context);
+  if (!cached) return null;
+  cached.cachedAt = Date.now();
+  cachedNormalizedWriteContext = cached;
+  return cloneNormalizedWriteContext(cached);
+}
+
+function clearNormalizedWriteContextCache(reason = "context changed") {
+  cachedNormalizedWriteContext = null;
+  cachedPaymentWriteContext = null;
+  recordSupabaseLoadEvent("normalized-context-cache-clear", reason);
+}
+
+function markNextLocalSaveCoveredByNormalizedWrite(source) {
+  nextLocalSaveCoveredByNormalizedWrite = String(source || "normalized-write");
+}
+
 async function getNormalizedWriteContext(options = {}) {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const syncDirectory = options.syncDirectory !== false;
+  const allowCache = options.useCache !== false && syncDirectory === false;
+  if (allowCache) {
+    const cached = getCachedNormalizedWriteContext();
+    if (cached) {
+      recordSupabaseLoadEvent("normalized-context-cache", options.source || "normalized-write-context");
+      return cached;
+    }
+  }
 
   // Important: regular members are allowed to write trips, fuel, and settlement
   // request rows, but they are not allowed to update ledger settings or the
@@ -13463,7 +13529,8 @@ async function getNormalizedWriteContext(options = {}) {
 
   const openPeriodId = await ensureOpenSettlementPeriod(ledgerId);
 
-  return { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
+  const context = { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
+  return allowCache ? cacheNormalizedWriteContext(context) : context;
 }
 
 
@@ -13659,6 +13726,7 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
       .select("id,name");
     if (memberResult.error) throw memberResult.error;
   }
+  clearNormalizedWriteContextCache("ledger directory synced");
 }
 
 async function saveTripToNormalizedTablesFirst(trip) {
@@ -13666,7 +13734,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "trip-save" });
-    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "trip-save" }), "trip-save");
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ syncDirectory: false, source: "trip-save" }), "trip-save");
     if (!context) return true;
     const payload = {
       legacy_id: trip.id,
@@ -13694,6 +13762,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
         message: "Table-primary write saved the trip and participants through the database transaction RPC. JSON will be updated as backup."
       };
       setSyncStatus("Tables");
+      markNextLocalSaveCoveredByNormalizedWrite("trip-save");
       return true;
     }
 
@@ -13711,6 +13780,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
       message: "Table-primary write saved the trip with guarded table updates. Apply the latest Supabase schema to use the transaction RPC."
     };
     setSyncStatus("Tables");
+    markNextLocalSaveCoveredByNormalizedWrite("trip-save");
     return true;
   } catch (error) {
     recordDataIoDiagnostic("error", { source: "trip-save", route: "normalized-write", operation: "save", error });
@@ -13996,7 +14066,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "fuel-save" });
-    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "fuel-save" }), "fuel-save");
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ syncDirectory: false, source: "fuel-save" }), "fuel-save");
     if (!context) return true;
     const liters = nullableNumber(fuel.liters);
     const amount = Number(fuel.amount || 0);
@@ -14043,6 +14113,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
       recordDataIoDiagnostic("success", { source: "fuel-save", route: "direct-table", table: "fuel_payments", operation: "save", ok: true, detail: "Saved through guarded table fallback." });
     }
     setSyncStatus("Tables");
+    markNextLocalSaveCoveredByNormalizedWrite("fuel-save");
     return true;
   } catch (error) {
     recordDataIoDiagnostic("error", { source: "fuel-save", route: "normalized-write", operation: "save", error });
@@ -14279,7 +14350,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving", { source: "booking-save" });
-    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save" }), "booking-save");
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ syncDirectory: false, source: "booking-save" }), "booking-save");
     if (!context) return true;
     const payload = {
       legacy_id: booking.id,
@@ -14304,6 +14375,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
           : "Table-primary write saved the booking through the database transaction RPC. JSON will be updated as backup."
       };
       recordDataIoDiagnostic("success", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
+      markNextLocalSaveCoveredByNormalizedWrite("booking-save");
       return true;
     }
 
@@ -14318,6 +14390,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       ok: true,
       message: "Table-primary write saved the booking with direct table update. Apply the latest Supabase schema to use the transaction RPC."
     };
+    markNextLocalSaveCoveredByNormalizedWrite("booking-save");
     return true;
   } catch (error) {
     recordDataIoDiagnostic("error", { source: "booking-save", route: "normalized-write", operation: "save", error });
@@ -14628,7 +14701,7 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
 async function softDeleteNormalizedEntryFirst(type, id) {
   if (!supabaseClient || !currentSession) return true;
   try {
-    const context = await getNormalizedWriteContext({ source: `${type || "entry"}-delete` });
+    const context = await getNormalizedWriteContext({ syncDirectory: false, source: `${type || "entry"}-delete` });
     if (!context) return true;
     const table = type === "trips" ? "trips" : type === "fuel" ? "fuel_payments" : type === "bookings" ? "car_bookings" : null;
     if (!table) return true;
