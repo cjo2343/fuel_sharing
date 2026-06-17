@@ -1014,6 +1014,46 @@ def build_fuel_upsert_rpc_payload(payload):
     return required
 
 
+def build_booking_upsert_rpc_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Booking upsert payload must be an object")
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    booking = payload.get("booking") if isinstance(payload.get("booking"), dict) else {}
+
+    required = {
+        "target_ledger_id": context.get("ledgerId") or payload.get("ledgerId") or booking.get("ledger_id"),
+        "legacy_booking_id": booking.get("legacy_id") or payload.get("legacyBookingId") or payload.get("legacy_booking_id"),
+        "booking_member_id": booking.get("member_id") or payload.get("booking_member_id"),
+        "start_at_value": booking.get("start_at") or payload.get("start_at_value"),
+        "end_at_value": booking.get("end_at") or payload.get("end_at_value"),
+        "purpose_value": booking.get("purpose", payload.get("purpose_value")),
+    }
+
+    missing = [name for name in ("target_ledger_id", "legacy_booking_id", "booking_member_id", "start_at_value", "end_at_value") if not required.get(name)]
+    if missing:
+        raise ValueError(f"Missing booking upsert field(s): {', '.join(missing)}")
+
+    return required
+
+
+def build_booking_delete_rpc_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Booking delete payload must be an object")
+
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    required = {
+        "target_ledger_id": context.get("ledgerId") or payload.get("ledgerId"),
+        "legacy_booking_id": payload.get("legacyBookingId") or payload.get("legacy_booking_id"),
+    }
+
+    missing = [name for name in ("target_ledger_id", "legacy_booking_id") if not required.get(name)]
+    if missing:
+        raise ValueError(f"Missing booking delete field(s): {', '.join(missing)}")
+
+    return required
+
+
 def build_payment_status_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Payment action payload must be an object")
@@ -1209,6 +1249,12 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/fuel/upsert":
             self.upsert_fuel_backend()
             return
+        if self.path == "/api/bookings/upsert":
+            self.upsert_booking_backend()
+            return
+        if self.path == "/api/bookings/delete":
+            self.delete_booking_backend()
+            return
         if self.path == "/api/run-reminders":
             self.run_reminders()
             return
@@ -1299,6 +1345,56 @@ class Handler(SimpleHTTPRequestHandler):
             payload = read_request_body(self)
             rpc_payload = build_fuel_upsert_rpc_payload(payload)
             result = call_supabase_rpc_as_user("upsert_fuel_payment", rpc_payload, user_token=token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(401, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+
+    def upsert_booking_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before saving a booking")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            rpc_payload = build_booking_upsert_rpc_payload(payload)
+            result = call_supabase_rpc_as_user("upsert_car_booking", rpc_payload, user_token=token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            self.send_error(error.code, error.read().decode("utf-8"))
+            return
+        except PermissionError as error:
+            self.send_error(401, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+
+    def delete_booking_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before deleting a booking")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            rpc_payload = build_booking_delete_rpc_payload(payload)
+            result = call_supabase_rpc_as_user("soft_delete_car_booking", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
             return

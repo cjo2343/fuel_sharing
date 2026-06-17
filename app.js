@@ -19,8 +19,11 @@ const paymentActionUrl = "/api/payment-action";
 const renderPaymentStatusActionUrl = "/api/payments/status-action";
 const renderTripUpsertUrl = "/api/trips/upsert";
 const renderFuelUpsertUrl = "/api/fuel/upsert";
+const renderBookingUpsertUrl = "/api/bookings/upsert";
+const renderBookingDeleteUrl = "/api/bookings/delete";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
+const bookingSaveActionTimeoutMs = 15000;
 const normalizedWriteContextTimeoutMs = 10000;
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
@@ -14060,6 +14063,9 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
 
 
 async function saveBookingRpc(context, payload) {
+  const renderResult = await saveBookingViaRender(context, payload);
+  if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
+
   const { data, error } = await traceDataIo({ source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "rpc" }, () => supabaseClient.rpc("upsert_car_booking", {
     target_ledger_id: context.ledgerId,
     legacy_booking_id: payload.legacy_id,
@@ -14069,13 +14075,92 @@ async function saveBookingRpc(context, payload) {
     purpose_value: payload.purpose
   }));
 
-  if (!error) return { ok: true, data };
+  if (!error) return { ok: true, data, backend: "supabase-rpc" };
 
   return {
     ok: false,
     error,
-    shouldFallback: isMissingBookingTransactionRpcError(error)
+    shouldFallback: isMissingBookingTransactionRpcError(error),
+    backend: "supabase-rpc"
   };
+}
+
+async function saveBookingViaRender(context, payload) {
+  const operationId = createDataIoOperationId("booking-save");
+  const traceMeta = { source: "booking-save", route: "render-api", endpoint: renderBookingUpsertUrl, operation: "upsert", operationId };
+  if (!currentSession?.access_token) {
+    const error = new Error("No active Supabase session for Render booking save API.");
+    recordDataIoDiagnostic("error", { ...traceMeta, error });
+    return { ok: false, shouldFallback: true, backend: "render-api", error };
+  }
+
+  let controller = null;
+  let timeoutId = 0;
+  let finished = false;
+  const finishBookingRenderDiagnostic = (phase, meta = {}) => {
+    if (finished) return;
+    finished = true;
+    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
+  };
+
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render booking save API", bookingSaveActionTimeoutMs));
+      }, bookingSaveActionTimeoutMs);
+    });
+    const fetchPromise = fetch(renderBookingUpsertUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({
+        context: { ledgerId: context.ledgerId },
+        booking: payload
+      })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-booking-save", "upsert via Render backend API");
+      finishBookingRenderDiagnostic("success", { ok: true });
+      return { ok: true, data: result.result, backend: "render-api" };
+    }
+
+    const message = result?.message || result?.error || text || `Render booking save failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    finishBookingRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
+    return {
+      ok: false,
+      error,
+      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
+      backend: "render-api"
+    };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render booking save API", bookingSaveActionTimeoutMs);
+    finishBookingRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
+    console.warn("Render booking save API failed", error);
+    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    if (!finished) {
+      finishBookingRenderDiagnostic("exception", { error: new Error("Render booking save ended without a recorded finish diagnostic.") });
+    }
+  }
 }
 
 function isMissingBookingTransactionRpcError(error) {
@@ -14092,18 +14177,100 @@ async function saveBookingWithGuardedTableUpdate(payload) {
 }
 
 async function softDeleteBookingRpc(context, legacyBookingId) {
-  const { data, error } = await supabaseClient.rpc("soft_delete_car_booking", {
+  const renderResult = await softDeleteBookingViaRender(context, legacyBookingId);
+  if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
+
+  const { data, error } = await traceDataIo({ source: "booking-delete", route: "supabase-rpc", rpc: "soft_delete_car_booking", operation: "rpc" }, () => supabaseClient.rpc("soft_delete_car_booking", {
     target_ledger_id: context.ledgerId,
     legacy_booking_id: legacyBookingId
-  });
+  }));
 
-  if (!error) return { ok: true, data };
+  if (!error) return { ok: true, data, backend: "supabase-rpc" };
 
   return {
     ok: false,
     error,
-    shouldFallback: isMissingBookingTransactionRpcError(error)
+    shouldFallback: isMissingBookingTransactionRpcError(error),
+    backend: "supabase-rpc"
   };
+}
+
+async function softDeleteBookingViaRender(context, legacyBookingId) {
+  const operationId = createDataIoOperationId("booking-delete");
+  const traceMeta = { source: "booking-delete", route: "render-api", endpoint: renderBookingDeleteUrl, operation: "delete", operationId };
+  if (!currentSession?.access_token) {
+    const error = new Error("No active Supabase session for Render booking delete API.");
+    recordDataIoDiagnostic("error", { ...traceMeta, error });
+    return { ok: false, shouldFallback: true, backend: "render-api", error };
+  }
+
+  let controller = null;
+  let timeoutId = 0;
+  let finished = false;
+  const finishBookingDeleteRenderDiagnostic = (phase, meta = {}) => {
+    if (finished) return;
+    finished = true;
+    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
+  };
+
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render booking delete API", bookingSaveActionTimeoutMs));
+      }, bookingSaveActionTimeoutMs);
+    });
+    const fetchPromise = fetch(renderBookingDeleteUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({
+        context: { ledgerId: context.ledgerId },
+        legacyBookingId
+      })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-booking-delete", "soft delete via Render backend API");
+      finishBookingDeleteRenderDiagnostic("success", { ok: true });
+      return { ok: true, data: result.result, backend: "render-api" };
+    }
+
+    const message = result?.message || result?.error || text || `Render booking delete failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    finishBookingDeleteRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
+    return {
+      ok: false,
+      error,
+      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
+      backend: "render-api"
+    };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render booking delete API", bookingSaveActionTimeoutMs);
+    finishBookingDeleteRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
+    console.warn("Render booking delete API failed", error);
+    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    if (!finished) {
+      finishBookingDeleteRenderDiagnostic("exception", { error: new Error("Render booking delete ended without a recorded finish diagnostic.") });
+    }
+  }
 }
 
 async function saveBookingToNormalizedTablesFirst(booking) {
@@ -14112,7 +14279,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
   if (!supabaseClient || !currentSession) return true;
   try {
     setSyncStatus("Saving", { source: "booking-save" });
-    const context = await getNormalizedWriteContext({ source: "booking-save" });
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save" }), "booking-save");
     if (!context) return true;
     const payload = {
       legacy_id: booking.id,
@@ -14132,7 +14299,9 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       normalizedTableStatus = {
         checked: true,
         ok: true,
-        message: "Table-primary write saved the booking through the database transaction RPC. JSON will be updated as backup."
+        message: rpcResult.backend === "render-api"
+          ? "Render backend API saved the booking to normalized tables. JSON will be updated as backup."
+          : "Table-primary write saved the booking through the database transaction RPC. JSON will be updated as backup."
       };
       recordDataIoDiagnostic("success", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
       return true;
