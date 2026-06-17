@@ -321,14 +321,20 @@ assert.match(
 
 assert.match(
   appSource,
-  /async function withPaymentBackendStartTimeout[\s\S]*payment-action-backend-not-started[\s\S]*Payment action backend preflight/,
+  /async function withPaymentBackendStartTimeout[\s\S]*payment-action-backend-not-started[\s\S]*timed out before backend write started/,
   "payment actions should bound the pre-backend context/session path and explain when the backend write never starts"
 );
 
 assert.match(
   appSource,
-  /const context = options\.auditEntry[\s\S]*withPaymentBackendStartTimeout\([\s\S]*getNormalizedWriteContext\(\{ syncDirectory: false, source: "settlement-request-save" \}\)[\s\S]*payment-action-backend-skipped/,
-  "payment settlement saves should not leave the foreground operation waiting if normalized context is unavailable before backend write"
+  /async function savePaymentStatusBackendFirst\(settlement, nextStatus, options = \{\}\)[\s\S]*const context = await getPaymentActionBackendContext\(\)[\s\S]*applyPaymentStatusActionRpc\(context, payload, actionRpcOptions\)[\s\S]*recordSupabaseLoadEvent\("settlement-table-write"/,
+  "payment actions should use the backend-first path and only record the settlement table write after the backend/RPC write succeeds"
+);
+
+assert.match(
+  appSource,
+  /function getCachedPaymentWriteContext\(\)[\s\S]*paymentWriteContextCacheMaxAgeMs[\s\S]*async function getPaymentActionBackendContext\(\)[\s\S]*withPaymentBackendStartTimeout\([\s\S]*getNormalizedWriteContext\(\{ syncDirectory: false, source: "payment-action-context" \}\)/,
+  "payment actions should use a cached context first and bound any fallback context lookup before backend writes"
 );
 
 

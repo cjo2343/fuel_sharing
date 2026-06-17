@@ -705,6 +705,8 @@ let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
 let lastJsonMirrorSaveAt = "";
 let lastNormalizedTableLoadAt = 0;
+let cachedPaymentWriteContext = null;
+const paymentWriteContextCacheMaxAgeMs = 10 * 60 * 1000;
 const reconciliationFreshLoadMaxAgeMs = 5 * 60 * 1000;
 let lastSyncError = "";
 let lastCloudRetryAt = "";
@@ -13469,6 +13471,129 @@ async function getNormalizedWriteContext(options = {}) {
   return { ledgerId, openPeriodId, memberIdsByName, currentMemberId };
 }
 
+
+function cachePaymentWriteContext(context) {
+  if (!context?.ledgerId || !context?.openPeriodId || !context?.memberIdsByName) return null;
+  cachedPaymentWriteContext = {
+    ledgerId: context.ledgerId,
+    openPeriodId: context.openPeriodId,
+    memberIdsByName: { ...context.memberIdsByName },
+    currentMemberId: context.currentMemberId || null,
+    cachedAt: Date.now()
+  };
+  return cachedPaymentWriteContext;
+}
+
+function getCachedPaymentWriteContext() {
+  if (!cachedPaymentWriteContext) return null;
+  if (Date.now() - Number(cachedPaymentWriteContext.cachedAt || 0) > paymentWriteContextCacheMaxAgeMs) return null;
+  if (cachedPaymentWriteContext.ledgerId !== supabaseHelpers.getLedgerId(supabaseConfig)) return null;
+  return cachedPaymentWriteContext;
+}
+
+async function getPaymentActionBackendContext() {
+  const cached = getCachedPaymentWriteContext();
+  if (cached) {
+    recordSupabaseLoadEvent("payment-action-context-cache", "using cached normalized write context");
+    return cached;
+  }
+  const context = await withPaymentBackendStartTimeout(
+    getNormalizedWriteContext({ syncDirectory: false, source: "payment-action-context" }),
+    "Payment action backend context"
+  );
+  return cachePaymentWriteContext(context);
+}
+
+function buildSettlementRequestPayload(context, settlement, nextStatus) {
+  const fromMemberId = context.memberIdsByName[settlement?.from] || null;
+  const toMemberId = context.memberIdsByName[settlement?.to] || null;
+  if (!fromMemberId || !toMemberId) {
+    throw new Error("Could not match settlement members in normalized ledger_members.");
+  }
+
+  const now = new Date().toISOString();
+  const payload = {
+    ledger_id: context.ledgerId,
+    period_id: context.openPeriodId,
+    from_member_id: fromMemberId,
+    to_member_id: toMemberId,
+    amount: roundMoney(settlement.amount),
+    currency: state.currency || "DKK",
+    status: nextStatus,
+    updated_at: now
+  };
+
+  if (nextStatus === "requested") {
+    payload.requested_at = now;
+    payload.requested_by_member_id = toMemberId;
+    payload.paid_at = null;
+  } else if (nextStatus === "paid") {
+    payload.paid_at = now;
+  } else {
+    payload.requested_at = null;
+    payload.requested_by_member_id = null;
+    payload.paid_at = null;
+  }
+
+  return payload;
+}
+
+async function savePaymentStatusBackendFirst(settlement, nextStatus, options = {}) {
+  if (!supabaseClient || !currentSession) return true;
+  try {
+    if (!options.skipVisibleSaving) setSyncStatus("Saving", { source: "payment-status-action" });
+    const context = await getPaymentActionBackendContext();
+    if (!context) {
+      recordSupabaseLoadEvent("payment-action-backend-skipped", "normalized write context unavailable before backend write");
+      recordSyncDiagnostic("payment-action-backend-skipped", "Payment action stopped before backend write because normalized write context was unavailable.");
+      return false;
+    }
+
+    recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
+    const payload = buildSettlementRequestPayload(context, settlement, nextStatus);
+    const actionRpcOptions = { ...options, operationId: createDataIoOperationId("settlement-request-save") };
+    const actionRpcResult = await applyPaymentStatusActionRpc(context, payload, actionRpcOptions);
+
+    if (actionRpcResult.ok) {
+      recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: `${actionRpcResult.backend === "render-api" ? "Render backend API" : "Backend payment action RPC"} saved the settlement status, stale-row cleanup, and ledger event in one database transaction. JSON audit remains a backup.`
+      };
+      return true;
+    }
+
+    if (!actionRpcResult.shouldFallback) throw actionRpcResult.error || new Error("Could not save payment action.");
+
+    console.warn("Payment action RPC is unavailable; falling back to settlement request transaction RPC. Apply the latest supabase-schema.sql to enable backend-owned payment actions.", actionRpcResult.error);
+    const rpcResult = await saveSettlementRequestStatusRpc(context, payload);
+    if (rpcResult.ok) {
+      recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
+      normalizedTableStatus = {
+        checked: true,
+        ok: true,
+        message: "Table-primary write saved the settlement request status and stale-row cleanup through the database transaction RPC. Apply the latest Supabase schema to add backend-owned payment ledger events."
+      };
+      return true;
+    }
+
+    if (!rpcResult.shouldFallback) throw rpcResult.error || new Error("Could not save settlement request status.");
+    throw rpcResult.error || new Error("Payment backend RPCs are unavailable; refusing local-only payment status write.");
+  } catch (error) {
+    recordDataIoDiagnostic("error", { source: "settlement-request-save", route: "backend-first", operation: nextStatus, error });
+    console.warn("Backend-first payment action failed", error);
+    normalizedTableStatus = {
+      checked: true,
+      ok: false,
+      message: `Could not save payment action through backend first: ${error.message || error}`
+    };
+    showUserError("Could not save this payment action through the backend. No local-only payment change was kept. Check the diagnostics for details.");
+    render();
+    return false;
+  }
+}
+
 async function upsertLedgerSettings(ledgerPayload, source = "ledger-directory-sync") {
   if (!ledgerPayload?.slug) {
     const error = new Error("Refusing to upsert ledgers without slug.");
@@ -14054,23 +14179,15 @@ function isMissingPaymentStatusActionRpcError(error) {
 }
 
 async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatus, options = {}) {
+  if (options.auditEntry) {
+    return savePaymentStatusBackendFirst(settlement, nextStatus, options);
+  }
   recordSupabaseLoadEvent("settlement-table-write", `${settlement?.from || "?"} -> ${settlement?.to || "?"}: ${nextStatus}`);
   if (!supabaseClient || !currentSession) return true;
   try {
     if (!options.skipVisibleSaving) setSyncStatus("Saving", { source: "settlement-request-save" });
-    const context = options.auditEntry
-      ? await withPaymentBackendStartTimeout(
-          getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" }),
-          "Payment action backend preflight"
-        )
-      : await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
-    if (!context) {
-      if (options.auditEntry) {
-        recordSupabaseLoadEvent("payment-action-backend-skipped", "normalized write context unavailable before backend write");
-        recordSyncDiagnostic("payment-action-backend-skipped", "Payment action stopped before backend write because normalized write context was unavailable.");
-      }
-      return false;
-    }
+    const context = await getNormalizedWriteContext({ syncDirectory: false, source: "settlement-request-save" });
+    if (!context) return false;
     recordSupabaseLoadEvent("settlement-directory-sync-skip", "payment status save skipped ledger directory reconciliation");
 
     const fromMemberId = context.memberIdsByName[settlement.from] || null;
@@ -14820,6 +14937,12 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   }
 
   lastNormalizedTableLoadAt = Date.now();
+  cachePaymentWriteContext({
+    ledgerId,
+    openPeriodId: openPeriod.id,
+    memberIdsByName: Object.fromEntries(members.map((member) => [member.name, member.id])),
+    currentMemberId: members.find((member) => String(member.email || "").toLowerCase() === String(currentSession?.user?.email || "").toLowerCase())?.id || null
+  });
 
   return normalizeState({
     ...jsonFallbackState,
