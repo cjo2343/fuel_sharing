@@ -59,20 +59,27 @@ const packageJson = JSON.parse(read("package.json"));
 assert.ok(packageJson.scripts?.validate, "package.json must define npm run validate");
 assert.ok(packageJson.scripts?.["test:e2e"], "package.json must define npm run test:e2e");
 assert.ok(packageJson.scripts?.prepush, "package.json must define npm run prepush");
+assert.ok(packageJson.scripts?.["prepush:e2e"], "package.json must define npm run prepush:e2e");
 assert.ok(packageJson.scripts?.["release:check"], "package.json must define npm run release:check");
-assert.match(packageJson.scripts.prepush, /npm run validate/, "prepush must run npm run validate");
-assert.match(packageJson.scripts.prepush, /tools\/check-release-readiness\.mjs/, "prepush must run release readiness checks");
-assert.match(packageJson.scripts.prepush, /npm run test:e2e/, "prepush must run npm run test:e2e");
+assert.match(packageJson.scripts.prepush, /npm run release:check/, "prepush must run npm run release:check");
+assert.doesNotMatch(packageJson.scripts.prepush, /npm run test:e2e/, "prepush should not run Playwright on every push");
+assert.match(packageJson.scripts["prepush:e2e"], /npm run release:check/, "prepush:e2e must run release readiness checks");
+assert.match(packageJson.scripts["prepush:e2e"], /npm run test:e2e/, "prepush:e2e must run npm run test:e2e");
 assert.match(packageJson.scripts["release:check"], /tools\/check-release-readiness\.mjs/, "release:check must run this readiness checker");
 
 const workflow = read(".github/workflows/validate.yml");
 assertIncludes(".github/workflows/validate.yml", workflow, [
+  "workflow_dispatch:",
   "npm ci",
   "npm run validate",
   "node tools/check-release-readiness.mjs",
+  "if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'",
   "npx playwright install --with-deps chromium",
   "npm run test:e2e",
 ]);
+const fastValidateJob = workflow.split(/\n  playwright-smoke:/)[0] || workflow;
+assert.doesNotMatch(fastValidateJob, /npx playwright install --with-deps chromium/, "fast validation job must not install Playwright Chromium");
+assert.doesNotMatch(fastValidateJob, /npm run test:e2e/, "fast validation job must not run Playwright smoke tests");
 
 const checklist = read("DEPLOYMENT-CHECKLIST.md");
 assertIncludes("DEPLOYMENT-CHECKLIST.md", checklist, [

@@ -431,11 +431,12 @@ The smoke tests cover local persistence, runtime module loading, build info visi
 
 ### GitHub Actions CI
 
-The repository includes `.github/workflows/ci.yml`, which runs the same validation and Playwright smoke tests on pushes and pull requests to `main`:
+The repository includes `.github/workflows/validate.yml`. Pushes to `main` run the fast validation/release-readiness gate, while Playwright browser smoke tests run on pull requests and manual `workflow_dispatch` runs so every small push does not reinstall Chromium:
 
 ```bash
 npm run validate
-npm run test:e2e
+node tools/check-release-readiness.mjs
+# Browser smoke tests: pull request/manual GitHub run, or locally with npm run test:e2e
 ```
 
 If CI fails, open the failed GitHub Actions run and inspect the Playwright trace/report artifact details before deploying the change.

@@ -176,11 +176,12 @@ Keep the existing validation command as the fast pre-deploy check, and use `npm 
 
 ### GitHub Actions CI
 
-CI is configured in `.github/workflows/ci.yml` to run on pushes and pull requests to `main`. It installs Node/Python, installs Chromium for Playwright, then runs:
+CI is configured in `.github/workflows/validate.yml`. Pushes to `main` run the fast validation/release-readiness gate. Playwright/Chromium browser smoke tests run on pull requests and manual `workflow_dispatch` runs instead of every push.
 
 ```bash
 npm run validate
-npm run test:e2e
+node tools/check-release-readiness.mjs
+# Browser smoke tests: PR/manual CI, or locally with npm run test:e2e
 ```
 
 Keep local validation passing before pushing so GitHub and Render do not receive broken refactors.
@@ -516,8 +517,9 @@ Debug and Test Lab reports are operational records. Keep redaction broad for sec
 The local and GitHub checks now include a checker that checks the checkers. Keep these rules in sync when changing validation, workflow, release, or hook files:
 
 - `npm run validate` must include the CI guardrail checker and the release-readiness guardrail regression test.
-- `npm run prepush` must run validation, `node tools/check-release-readiness.mjs`, and Playwright.
-- GitHub Actions must run validation, `node tools/check-release-readiness.mjs`, install Chromium, and run Playwright.
+- `npm run prepush` must run the fast release gate (`npm run release:check`) without Playwright so small pushes do not run browser smoke tests by default.
+- `npm run prepush:e2e` remains the full local gate when a change needs browser smoke coverage.
+- GitHub Actions must run validation and `node tools/check-release-readiness.mjs` on pushes, while Playwright/Chromium runs only on pull requests or manual `workflow_dispatch` runs.
 - Release-readiness companion checks should stay actionable: runtime file changes require build/cache metadata, migrations require schema/docs/tests, CSP changes require header tests/docs, and CI guardrail changes require maintenance notes/tests.
 
 

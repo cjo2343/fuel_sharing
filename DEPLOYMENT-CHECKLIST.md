@@ -1,16 +1,21 @@
 
 ## Continuous integration
 
-Before pushing, run locally:
+Before pushing, run the fast local release gate:
 
 ```bash
-npm run validate
-npm run test:e2e
+npm run release:check
+```
+
+For UI, persistence, payment, booking, service-worker, or other browser-sensitive changes, also run:
+
+```bash
+npm run prepush:e2e
 ```
 
 The Playwright suite includes persistence, payment-request locking, period-aware audit, build-info, and permission UX smoke tests. Treat any failure as a blocker before deployment.
 
-After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-deploy only after the CI run is green.
+After pushing, check the GitHub Actions fast validation result. Playwright/Chromium smoke tests run on pull requests and manual GitHub Actions dispatches instead of every push to `main`. Deploy or trust Render auto-deploy only after the required CI gate is green.
 
 # Deployment checklist
 
