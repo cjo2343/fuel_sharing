@@ -656,6 +656,6 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
 
-## v303 operational note
+## v304 - Save report timeout feedback
 
-Rate-limit responses return HTTP 429 with a JSON body and `Retry-After`. This is expected when one signed-in user or browser repeats the same route too quickly. Prefer waiting/retrying after the reported delay; only set `FUEL_LEDGER_DISABLE_RATE_LIMITS=1` for local testing.
+When a fresh Test Lab/Security Health report save hangs on Supabase's `upsert_test_lab_report` RPC, the browser now times out the RPC after 15 seconds and records a matched admin-tool error instead of leaving `admin-tool:save-test-lab-report-cloud` active until the stale-operation timeout. If Security Health probes time out while Render admin health is OK, the warning now says it is a slow Supabase probe rather than a failed Render/backend safety check.

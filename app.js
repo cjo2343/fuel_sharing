@@ -30,6 +30,7 @@ const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
 const renderRetentionPreviewUrl = "/api/admin/retention/preview";
 const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const renderAdminHealthUrl = "/api/admin/health";
+const testLabReportCloudSaveTimeoutMs = 15000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -4732,11 +4733,11 @@ async function saveTestLabReportToCloudStore(report) {
     syncedAt: new Date().toISOString()
   };
   recordSupabaseLoadEvent("test-lab-report-rpc-save", "save Test Lab report outside JSON mirror");
-  const { error } = await supabaseClient.rpc("upsert_test_lab_report", {
+  const { error } = await withTestLabReportCloudSaveTimeout(supabaseClient.rpc("upsert_test_lab_report", {
     target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
     report_id_value: reportId,
     report_payload_value: storedReport
-  });
+  }), "Save Test Lab report to cloud");
   if (!error) {
     mergeTestLabReportsIntoState([markCurrentTestLabReport(storedReport, "cloud-save")]);
     writeLocalState();
@@ -4849,6 +4850,24 @@ function startTestLabLoadGuard(label) {
 }
 
 
+
+async function withTestLabReportCloudSaveTimeout(actionPromise, label = "Test Lab report cloud save", timeoutMs = testLabReportCloudSaveTimeoutMs) {
+  let timeoutId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      const error = new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds`);
+      error.name = "TestLabReportCloudSaveTimeout";
+      error.isTestLabReportCloudSaveTimeout = true;
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([actionPromise, timeoutPromise]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function withSecurityHealthProbeTimeout(label, promise, timeoutMs = 10000) {
   let timeoutId = null;
   const timeoutPromise = new Promise((_, reject) => {
@@ -4867,7 +4886,11 @@ async function withSecurityHealthProbeTimeout(label, promise, timeoutMs = 10000)
 }
 
 function buildSecurityHealthProbeTimeoutCheck(helper, name, error) {
-  const detail = error?.message || String(error || "Security Health probe timed out.");
+  const baseDetail = error?.message || String(error || "Security Health probe timed out.");
+  const renderHealthOk = Boolean(renderAdminHealthStatus?.checked && renderAdminHealthStatus.ok);
+  const detail = renderHealthOk
+    ? `${baseDetail}. Render admin health is currently OK, so this is treated as a slow Supabase probe warning rather than a failed backend safety check.`
+    : `${baseDetail}. Run Check Render health to separate Render/backend health from a slow Supabase probe.`;
   if (helper?.warn) return helper.warn(name, detail);
   return { ok: true, level: "warning", warning: true, name, detail };
 }

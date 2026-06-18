@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v303";
-const BUILD_LABEL = "server-route-rate-limits";
-const BUILD_UPDATED_AT = "2026-06-18T12:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v304";
+const BUILD_LABEL = "save-report-timeout-feedback";
+const BUILD_UPDATED_AT = "2026-06-18T12:35:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

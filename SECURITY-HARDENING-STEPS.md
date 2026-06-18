@@ -259,7 +259,3 @@ Signed-in invite redemption now treats the Supabase session as the source of tru
 ### v302 Render admin health endpoint
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
-
-## v303 server-side rate limits
-
-The Render backend now rate-limits admin, generated Test Lab, retention, JSON mirror backup, write-context, and normalized write routes by signed-in user plus ledger where possible. This limits accidental double-clicks, retry loops, and broken clients before they can repeatedly call expensive Supabase RPCs or destructive admin paths.

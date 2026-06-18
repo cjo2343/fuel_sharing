@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:198|199|200|201|202|203|203|203)"/, "build-info.js must be bumped to v298.");
-assert.match(buildInfo, /buildLabel:\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits)"/, "build-info.js must use the v298 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[8-9]|30[0-3])"/, "build-info.js must expect the v298 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[8-9]|30[0-3])"/, "service-worker.js must use the v298 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits)"/, "service-worker.js must use the v298 build label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:198|199|200|201|202|203|204|203|204)"/, "build-info.js must be bumped to v298.");
+assert.match(buildInfo, /buildLabel:\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|save-report-timeout-feedback)"/, "build-info.js must use the v298 build label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[8-9]|30[0-4])"/, "build-info.js must expect the v298 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[8-9]|30[0-4])"/, "service-worker.js must use the v298 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|save-report-timeout-feedback)"/, "service-worker.js must use the v298 build label.");
 
 assert.match(app, /let adminUiBatchDepth = 0;/, "app.js must track admin UI batch depth.");
 assert.match(app, /async function withAdminUiBatch\(action\)/, "app.js must expose a batch wrapper for admin UI work.");
