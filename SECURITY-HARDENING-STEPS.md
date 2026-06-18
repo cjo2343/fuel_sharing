@@ -137,7 +137,7 @@ The result should have `ok: true`, all values under `critical_rpcs` set to `true
 
 ## Release-readiness companion checks
 
-The release-readiness companion checks enforce security-hardening hygiene before deploys. runtime file changes must update both `build-info.js` and `service-worker.js`; migration changes must update schema, migration docs, tests, and the deployment checklist; security header/CSP changes must update header tests and this hardening guide; CI/pre-push changes must update the CI guardrail checker, release-readiness guardrail tests, and maintenance notes.
+The release-readiness companion checks enforce security-hardening hygiene before deploys. runtime file changes must update both `build-info.js` and `service-worker.js`, and `DEPLOYMENT-CHECKLIST.md` must list the exact current runtime version/cache/timestamp/top release note; migration changes must update schema, migration docs, tests, and the deployment checklist; security header/CSP changes must update header tests and this hardening guide; CI/pre-push changes must update the CI guardrail checker, release-readiness guardrail tests, and maintenance notes.
 
 
 - Settlement request status updates now prefer `upsert_settlement_request_status`, keeping the payment status row and stale-payment-line cleanup in one database transaction; keep the regression tests wired into validation.

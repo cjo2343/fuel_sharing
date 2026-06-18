@@ -12,10 +12,27 @@ for (const marker of [
   "supabase/MIGRATIONS.md",
   "Security header/CSP files",
   "CI/pre-push/release guardrail files",
+  "readReleaseMetadata",
+  "assertChecklistMatchesRelease",
+  "Current release target",
 ]) {
   assert.ok(readiness.includes(marker), `release readiness checker must include ${marker}`);
 }
 
+
+
+assert.ok(
+  readiness.includes('["build-info.js", "service-worker.js", "DEPLOYMENT-CHECKLIST.md"]'),
+  "runtime app/metadata changes must require DEPLOYMENT-CHECKLIST.md as a companion"
+);
+assert.ok(
+  readiness.includes('Top release note: ${release.topReleaseNote}'),
+  "release readiness checker must require the deployment checklist to include the top release note"
+);
+assert.ok(
+  readiness.includes('BUILD_INFO.version') && readiness.includes('expectedServiceWorkerCache') && readiness.includes('CACHE_NAME'),
+  "release readiness checker must parse and compare runtime metadata"
+);
 
 assert.ok(
   /const ciGuardrailChanged = hasAnyChanged\(changed, \[[\s\S]*tools\/check-release-readiness\.mjs[\s\S]*\]\);/.test(readiness),
@@ -46,7 +63,11 @@ const ciGuardrails = readFileSync("tools/check-ci-guardrails.mjs", "utf8");
 for (const marker of [
   "tools/test-release-readiness-guardrails.mjs",
   "Runtime app files",
+  "DEPLOYMENT-CHECKLIST.md",
   "CI/pre-push/release guardrail files",
+  "readReleaseMetadata",
+  "assertChecklistMatchesRelease",
+  "Current release target",
 ]) {
   assert.ok(ciGuardrails.includes(marker), `CI guardrail checker must track release readiness marker ${marker}`);
 }

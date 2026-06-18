@@ -1,23 +1,28 @@
 
 ## Continuous integration
 
-Before pushing, run the fast local release gate:
+Before pushing, run locally:
 
 ```bash
-npm run release:check
-```
-
-For UI, persistence, payment, booking, service-worker, or other browser-sensitive changes, also run:
-
-```bash
-npm run prepush:e2e
+npm run validate
+npm run test:e2e
 ```
 
 The Playwright suite includes persistence, payment-request locking, period-aware audit, build-info, and permission UX smoke tests. Treat any failure as a blocker before deployment.
 
-After pushing, check the GitHub Actions fast validation result. Playwright/Chromium smoke tests run on pull requests and manual GitHub Actions dispatches instead of every push to `main`. Deploy or trust Render auto-deploy only after the required CI gate is green.
+After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-deploy only after the CI run is green.
 
 # Deployment checklist
+
+## Current release target
+
+These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
+
+- Version: `2026.06.18.211`
+- Service-worker cache: `fuel-ledger-v311`
+- Updated at: `2026-06-18T20:45:00.000Z`
+- Top release note: Security Health deep Supabase probes now prefer a Render-owned admin route that verifies the signed-in workspace admin and runs member/RPC checks server-side before falling back to browser probes if the route is unavailable.
+
 
 ## Required release gate
 

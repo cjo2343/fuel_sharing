@@ -87,6 +87,10 @@ for (const marker of [
   "tools/test-migrations.mjs",
   "Runtime app files",
   "Runtime metadata files",
+  "readReleaseMetadata",
+  "assertChecklistMatchesRelease",
+  "Current release target",
+  "DEPLOYMENT-CHECKLIST.md",
   "Security header/CSP files",
   "CI/pre-push/release guardrail files"
 ]) {

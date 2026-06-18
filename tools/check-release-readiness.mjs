@@ -8,6 +8,45 @@ function read(path) {
   return readFileSync(path, "utf8");
 }
 
+function matchRequired(file, content, regex, description) {
+  const match = content.match(regex);
+  assert.ok(match, `${file} must include ${description}`);
+  return match;
+}
+
+function readReleaseMetadata() {
+  const buildInfo = read("build-info.js");
+  const serviceWorker = read("service-worker.js");
+  const version = matchRequired("build-info.js", buildInfo, /version:\s*"([^"]+)"/, "BUILD_INFO.version")[1];
+  const buildLabel = matchRequired("build-info.js", buildInfo, /buildLabel:\s*"([^"]+)"/, "BUILD_INFO.buildLabel")[1];
+  const updatedAt = matchRequired("build-info.js", buildInfo, /updatedAt:\s*"([^"]+)"/, "BUILD_INFO.updatedAt")[1];
+  const expectedCache = matchRequired("build-info.js", buildInfo, /expectedServiceWorkerCache:\s*"([^"]+)"/, "BUILD_INFO.expectedServiceWorkerCache")[1];
+  const topReleaseNote = matchRequired("build-info.js", buildInfo, /releaseNotes:\s*Object\.freeze\(\[\s*"([^"]+)"/, "a top release note")[1];
+  const swCache = matchRequired("service-worker.js", serviceWorker, /const CACHE_NAME = "([^"]+)"/, "CACHE_NAME")[1];
+  const swLabel = matchRequired("service-worker.js", serviceWorker, /const BUILD_LABEL = "([^"]+)"/, "BUILD_LABEL")[1];
+  const swUpdatedAt = matchRequired("service-worker.js", serviceWorker, /const BUILD_UPDATED_AT = "([^"]+)"/, "BUILD_UPDATED_AT")[1];
+
+  assert.match(version, /^\d{4}\.\d{2}\.\d{2}\.\d+$/, "BUILD_INFO.version must use YYYY.MM.DD.patch format");
+  assert.match(expectedCache, /^fuel-ledger-v\d+$/, "expectedServiceWorkerCache must use fuel-ledger-vNNN format");
+  assert.match(updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "updatedAt must be an ISO UTC timestamp");
+  assert.ok(topReleaseNote.length >= 40, "top release note must explain the current release");
+  assert.equal(expectedCache, swCache, "build-info expected cache must match service-worker CACHE_NAME");
+  assert.equal(buildLabel, swLabel, "build-info build label must match service-worker BUILD_LABEL");
+  assert.equal(updatedAt, swUpdatedAt, "build-info updatedAt must match service-worker BUILD_UPDATED_AT");
+
+  return { version, expectedCache, updatedAt, topReleaseNote };
+}
+
+function assertChecklistMatchesRelease(checklist, release) {
+  assertIncludes("DEPLOYMENT-CHECKLIST.md", checklist, [
+    "Current release target",
+    `Version: \`${release.version}\``,
+    `Service-worker cache: \`${release.expectedCache}\``,
+    `Updated at: \`${release.updatedAt}\``,
+    `Top release note: ${release.topReleaseNote}`,
+  ]);
+}
+
 function gitChangedFiles() {
   try {
     return execFileSync("git", ["diff", "--name-only", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
@@ -37,6 +76,8 @@ function requireChangedCompanions(changed, changedLabel, requiredCompanions) {
     `${changedLabel} changed without companion updates: ${missing.join(", ")}`
   );
 }
+
+const releaseMetadata = readReleaseMetadata();
 
 const envExample = read(".env.example");
 assertIncludes(".env.example", envExample, [
@@ -91,6 +132,7 @@ assertIncludes("DEPLOYMENT-CHECKLIST.md", checklist, [
   "service-worker.js",
   "release-readiness companion checks",
 ]);
+assertChecklistMatchesRelease(checklist, releaseMetadata);
 
 const maintenanceNotes = read("MAINTENANCE-NOTES.md");
 assertIncludes("MAINTENANCE-NOTES.md", maintenanceNotes, [
@@ -133,10 +175,10 @@ if (changed) {
   ]);
   const runtimeMetadataChanged = changed.includes("build-info.js") || changed.includes("service-worker.js");
   if (runtimeFilesChanged) {
-    requireChangedCompanions(changed, "Runtime app files", ["build-info.js", "service-worker.js"]);
+    requireChangedCompanions(changed, "Runtime app files", ["build-info.js", "service-worker.js", "DEPLOYMENT-CHECKLIST.md"]);
   }
   if (runtimeMetadataChanged) {
-    requireChangedCompanions(changed, "Runtime metadata files", ["build-info.js", "service-worker.js"]);
+    requireChangedCompanions(changed, "Runtime metadata files", ["build-info.js", "service-worker.js", "DEPLOYMENT-CHECKLIST.md"]);
   }
 
   const securityHeaderChanged = hasAnyChanged(changed, [
