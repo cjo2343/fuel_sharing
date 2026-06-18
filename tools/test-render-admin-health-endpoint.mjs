@@ -7,11 +7,11 @@ const html = fs.readFileSync('index.html', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.202"/, 'build-info should publish v302');
-assert.match(buildInfo, /buildLabel:\s*"render-admin-health-endpoint"/, 'build-info should use v302 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v302"/, 'build-info should expect v302 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v302"/, 'service worker cache should be v302');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"render-admin-health-endpoint"/, 'service worker label should match v302');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.203"/, 'build-info should publish v303');
+assert.match(buildInfo, /buildLabel:\s*"server-route-rate-limits"/, 'build-info should use v303 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v303"/, 'build-info should expect v303 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v303"/, 'service worker cache should be v303');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"server-route-rate-limits"/, 'service worker label should match v303');
 
 assert.match(server, /"\/api\/admin\/health"/, 'server should mount /api/admin/health');
 assert.match(server, /def admin_health_backend\(self\):/, 'server should implement admin health handler');

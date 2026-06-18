@@ -309,6 +309,88 @@ def security_headers():
         "X-Permitted-Cross-Domain-Policies": "none",
     }
 
+
+RATE_LIMIT_POLICIES = {
+    # Per signed-in user + ledger where possible. Limits are intentionally
+    # conservative for heavy admin tools and generous for normal writes so
+    # double-clicks and broken loops are stopped without blocking normal use.
+    "state-load": {"limit": 90, "window": 60},
+    "write-context": {"limit": 90, "window": 60},
+    "write": {"limit": 60, "window": 60},
+    "admin": {"limit": 20, "window": 300},
+    "admin-heavy": {"limit": 8, "window": 300},
+    "admin-health": {"limit": 30, "window": 60},
+    "json-backup": {"limit": 12, "window": 300},
+}
+RATE_LIMIT_BUCKETS = {}
+
+
+def rate_limit_disabled():
+    return env_flag("FUEL_LEDGER_DISABLE_RATE_LIMITS")
+
+
+def rate_limit_env_int(scope, field, fallback):
+    env_name = f"FUEL_LEDGER_RATE_LIMIT_{scope.replace('-', '_').upper()}_{field.upper()}"
+    try:
+        value = int(env_value(env_name, ""))
+        return value if value > 0 else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def rate_limit_policy(scope):
+    policy = RATE_LIMIT_POLICIES.get(scope) or RATE_LIMIT_POLICIES["write"]
+    return {
+        "limit": rate_limit_env_int(scope, "limit", int(policy["limit"])),
+        "window": rate_limit_env_int(scope, "window", int(policy["window"])),
+    }
+
+
+def rate_limit_identity(handler, user=None, ledger_id=""):
+    email = str((user or {}).get("email") or "").strip().lower()
+    client_ip = str(getattr(handler, "client_address", [""])[0] or "unknown")
+    ledger = str(ledger_id or "global").strip() or "global"
+    return f"{email or client_ip}:{ledger}"
+
+
+def check_backend_rate_limit(handler, scope, user=None, ledger_id=""):
+    if rate_limit_disabled():
+        return True
+    policy = rate_limit_policy(scope)
+    limit = int(policy["limit"])
+    window = int(policy["window"])
+    now = time.time()
+    key = (scope, rate_limit_identity(handler, user=user, ledger_id=ledger_id))
+    cutoff = now - window
+    bucket = [stamp for stamp in RATE_LIMIT_BUCKETS.get(key, []) if stamp >= cutoff]
+    if len(bucket) >= limit:
+        retry_after = max(1, int(window - (now - bucket[0])))
+        handler.send_response(429, "Too Many Requests")
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Retry-After", str(retry_after))
+        handler.end_headers()
+        handler.wfile.write(json.dumps({
+            "ok": False,
+            "error": "rate_limited",
+            "scope": scope,
+            "limit": limit,
+            "windowSeconds": window,
+            "retryAfterSeconds": retry_after,
+        }).encode("utf-8"))
+        return False
+    bucket.append(now)
+    RATE_LIMIT_BUCKETS[key] = bucket
+    # Opportunistically prune old empty buckets so long-lived Render workers do
+    # not keep stale identities forever.
+    if len(RATE_LIMIT_BUCKETS) > 1000:
+        for old_key, values in list(RATE_LIMIT_BUCKETS.items()):
+            fresh = [stamp for stamp in values if stamp >= cutoff]
+            if fresh:
+                RATE_LIMIT_BUCKETS[old_key] = fresh
+            else:
+                RATE_LIMIT_BUCKETS.pop(old_key, None)
+    return True
+
 def read_request_body(handler):
     length = int(handler.headers.get("Content-Length", "0"))
     if length <= 0:
@@ -1003,6 +1085,7 @@ def build_render_admin_health(ledger_id, user, user_token):
         {"id": "workspace-member", "ok": True, "label": "Signed-in user maps to this workspace", "detail": str(context.get("currentMemberId") or "")},
         {"id": "workspace-admin", "ok": bool(context.get("canAdmin")), "label": "Signed-in user is workspace admin", "detail": str(context.get("role") or "")},
         {"id": "open-period", "ok": bool(context.get("openPeriodId")), "label": "Open settlement period is available", "detail": str(context.get("openPeriodId") or "")},
+        {"id": "server-rate-limits", "ok": not rate_limit_disabled(), "label": "Server-side route rate limits are enabled", "detail": "Admin, generated test data, retention, backup, and write routes are guarded by per-user/per-ledger in-memory limits."},
     ]
     checks.extend(build_render_admin_route_health(ledger_id, context))
     return {
@@ -1830,6 +1913,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger_id = build_write_context_backend_payload(payload, user)
+            if not check_backend_rate_limit(self, "state-load", user=user, ledger_id=ledger_id):
+                return
             state_rows = get_normalized_state_rows_as_user(ledger_id, user, token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -1856,6 +1941,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger, members = build_ledger_directory_sync_payload(payload, user)
+            if not check_backend_rate_limit(self, "admin", user=user, ledger_id=ledger["id"]):
+                return
             assert_user_can_admin_ledger(ledger["id"], user, token)
             result = upsert_ledger_directory_as_user(ledger, members, token)
         except (ValueError, json.JSONDecodeError) as error:
@@ -1885,6 +1972,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger_id, state, updated_at, reason = build_json_mirror_backup_payload(payload, user)
+            if not check_backend_rate_limit(self, "json-backup", user=user, ledger_id=ledger_id):
+                return
             assert_user_can_admin_ledger(ledger_id, user, token)
             result = upsert_json_mirror_as_user(ledger_id, state, updated_at, token)
         except (ValueError, json.JSONDecodeError) as error:
@@ -1913,6 +2002,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger_id = build_write_context_backend_payload(payload, user)
+            if not check_backend_rate_limit(self, "admin-heavy", user=user, ledger_id=ledger_id):
+                return
             context = get_write_context_as_user(ledger_id, user, token)
             entry_type, rpc_payload = build_admin_test_data_rpc_payload(payload, context)
             rpc_name = "upsert_trip_with_participants" if entry_type == "trip" else "upsert_fuel_payment"
@@ -1942,6 +2033,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger_id = build_write_context_backend_payload(payload, user)
+            if not check_backend_rate_limit(self, "admin-heavy", user=user, ledger_id=ledger_id):
+                return
             context = get_write_context_as_user(ledger_id, user, token)
             counts = cleanup_generated_test_data_as_user(ledger_id, context, token)
         except (ValueError, json.JSONDecodeError) as error:
@@ -1969,6 +2062,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger_id = build_admin_health_payload(payload)
+            if not check_backend_rate_limit(self, "admin-health", user=user, ledger_id=ledger_id):
+                return
             health = build_render_admin_health(ledger_id, user, token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -1994,6 +2089,9 @@ class Handler(SimpleHTTPRequestHandler):
         token = get_bearer_token(self)
         try:
             payload = read_request_body(self)
+            ledger_id = build_retention_admin_payload(payload)[0]
+            if not check_backend_rate_limit(self, "admin", user=user, ledger_id=ledger_id):
+                return
             ledger_id, preview = run_retention_admin_rpc_as_user("preview", payload, user, token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2019,6 +2117,9 @@ class Handler(SimpleHTTPRequestHandler):
         token = get_bearer_token(self)
         try:
             payload = read_request_body(self)
+            ledger_id = build_retention_admin_payload(payload)[0]
+            if not check_backend_rate_limit(self, "admin-heavy", user=user, ledger_id=ledger_id):
+                return
             ledger_id, cleanup = run_retention_admin_rpc_as_user("cleanup", payload, user, token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2045,6 +2146,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             ledger_id = build_write_context_backend_payload(payload, user)
+            if not check_backend_rate_limit(self, "write-context", user=user, ledger_id=ledger_id):
+                return
             context = get_write_context_as_user(ledger_id, user, token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2070,6 +2173,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             rpc_payload = build_payment_status_rpc_payload(payload)
+            if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
+                return
             result = call_supabase_rpc_as_user("apply_payment_status_action", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2095,6 +2200,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             rpc_payload = build_trip_upsert_rpc_payload(payload)
+            if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
+                return
             result = call_supabase_rpc_as_user("upsert_trip_with_participants", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2120,6 +2227,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             rpc_payload = build_fuel_upsert_rpc_payload(payload)
+            if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
+                return
             result = call_supabase_rpc_as_user("upsert_fuel_payment", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2145,6 +2254,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             rpc_payload = build_booking_upsert_rpc_payload(payload)
+            if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
+                return
             result = call_supabase_rpc_as_user("upsert_car_booking", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2170,6 +2281,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = read_request_body(self)
             rpc_payload = build_booking_delete_rpc_payload(payload)
+            if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
+                return
             result = call_supabase_rpc_as_user("soft_delete_car_booking", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))

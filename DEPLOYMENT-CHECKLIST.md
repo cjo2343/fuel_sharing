@@ -536,3 +536,7 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 ### v302 Render admin health endpoint
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
+
+## v303 verification
+
+After deploying v303, run Admin → Check Render health and confirm the health card includes the server-side route rate-limit check. Then run Security Health, retention preview, and one normal write smoke test. If legitimate admin stress testing needs higher limits, tune the `FUEL_LEDGER_RATE_LIMIT_*` environment variables on Render rather than disabling limits globally.

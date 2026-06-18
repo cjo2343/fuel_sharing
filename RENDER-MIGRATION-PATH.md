@@ -162,3 +162,9 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 ### v302 Render admin health endpoint
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
+
+### v303 — Server route rate limits
+
+Render now applies per-user/per-ledger in-memory rate limits before expensive or dangerous backend work starts. The guarded scopes are normal writes, write-context setup, JSON mirror backups, admin health, retention preview/cleanup, generated Test Lab data create/cleanup, ledger directory sync, and trip/fuel/booking/payment write routes.
+
+The limits are intentionally generous for normal writes and stricter for heavy admin actions. Production can tune each scope with `FUEL_LEDGER_RATE_LIMIT_<SCOPE>_LIMIT` and `FUEL_LEDGER_RATE_LIMIT_<SCOPE>_WINDOW`; local/test runs can explicitly disable them with `FUEL_LEDGER_DISABLE_RATE_LIMITS=1`.

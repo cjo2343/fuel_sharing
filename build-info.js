@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.202",
-    buildLabel: "render-admin-health-endpoint",
-    updatedAt: "2026-06-18T11:50:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v302",
+    version: "2026.06.18.203",
+    buildLabel: "server-route-rate-limits",
+    updatedAt: "2026-06-18T12:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v303",
     releaseNotes: Object.freeze([
+      "Render now applies per-user/per-ledger server-side rate limits to admin, generated Test Lab data, retention, JSON mirror backup, write-context, and trip/fuel/booking/payment write routes so double-clicks or broken clients cannot hammer dangerous backend paths.",
       "Admin diagnostics now has a Render admin health check that verifies signed-in workspace admin permission, Supabase connectivity, an open period, and the mounted backend safety routes before dangerous admin work.",
       "Retention preview and cleanup now prefer Render admin routes that verify the signed-in workspace admin and call the Supabase retention RPCs server-side, with browser RPCs kept only as fallback.",
       "Signed-in startup now shows a calm Loading workspace state while Render hydrates workspace/member data, and suppresses invite/phone/setup panels plus premature Cloud delayed banners until startup load settles.",
