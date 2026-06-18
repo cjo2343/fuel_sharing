@@ -13,11 +13,11 @@ function assert(condition, message) {
   }
 }
 
-assert(buildInfo.includes('version: "2026.06.18.194"'), 'build-info.js must be bumped to v294.');
-assert(buildInfo.includes('buildLabel: "render-admin-test-data-routes"'), 'build-info.js must use the v294 build label.');
-assert(buildInfo.includes('expectedServiceWorkerCache: "fuel-ledger-v294"'), 'build-info.js must expect the v294 service-worker cache.');
-assert(serviceWorker.includes('CACHE_NAME = "fuel-ledger-v294"'), 'service-worker.js must use the v294 cache.');
-assert(serviceWorker.includes('BUILD_LABEL = "render-admin-test-data-routes"'), 'service-worker.js must use the v294 build label.');
+assert(/version:\s*"2026\.06\.18\.19[45]"/.test(buildInfo), 'build-info.js must be v294 or later while preserving the admin test-data routes.');
+assert(/buildLabel:\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route)"/.test(buildInfo), 'build-info.js must use the v294 build label or a later label preserving it.');
+assert(/expectedServiceWorkerCache:\s*"fuel-ledger-v29[45]"/.test(buildInfo), 'build-info.js must expect the v294/v295 service-worker cache.');
+assert(/CACHE_NAME\s*=\s*"fuel-ledger-v29[45]"/.test(serviceWorker), 'service-worker.js must use the v294/v295 cache.');
+assert(/BUILD_LABEL\s*=\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route)"/.test(serviceWorker), 'service-worker.js must use the v294 build label or a later label preserving it.');
 
 assert(app.includes('const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";'), 'app.js must define the Render admin test-data create URL.');
 assert(app.includes('async function createGeneratedTestDataViaRender(type, entry)'), 'app.js must include a Render admin test-data helper.');

@@ -26,6 +26,7 @@ const renderStateLoadUrl = "/api/state/load";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
 const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
 const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
+const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -3195,7 +3196,78 @@ async function softDeleteGeneratedNormalizedRows(table, rows, source) {
   return ids.length;
 }
 
+async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "cleanup-test-lab-data") {
+  if (!supabaseClient || !currentSession || !renderBackendAvailable) return null;
+  const ledgerId = currentLedger?.id || defaultLedgerId;
+  if (!ledgerId) return null;
+  const operationId = createDataIoOperationId("normalized-test-data-cleanup");
+  const traceMeta = { source: "normalized-test-data-cleanup", route: "render-api", endpoint: renderAdminTestDataCleanupUrl, operation: "soft-delete", operationId };
+  recordDataIoDiagnostic("start", { ...traceMeta, ledgerId, detail: reason });
+  let response;
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render admin cleanup API", 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(renderAdminTestDataCleanupUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId, reason })
+    });
+    response = await Promise.race([fetchPromise, timeoutPromise]);
+  } catch (error) {
+    recordDataIoDiagnostic(error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" ? "timeout" : "error", { ...traceMeta, ledgerId, error, detail: "Render cleanup route unavailable; falling back to browser cleanup." });
+    return null;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+  let payload = null;
+  try { payload = await response.json(); } catch (_) { payload = null; }
+  if (!response.ok || !payload?.ok) {
+    const detail = response.status === 404 || response.status === 405 || response.status === 501
+      ? `HTTP ${response.status}; falling back to browser cleanup.`
+      : `HTTP ${response.status}; Render cleanup failed.`;
+    const error = new Error(payload?.error || payload?.message || detail);
+    recordDataIoDiagnostic(response.status === 404 || response.status === 405 || response.status === 501 ? "skip" : "error", { ...traceMeta, ledgerId, error, detail });
+    if (response.status === 404 || response.status === 405 || response.status === 501) return null;
+    throw error;
+  }
+  const counts = payload.counts || {};
+  const result = {
+    skipped: false,
+    trips: Number(counts.trips || 0),
+    fuel: Number(counts.fuel || 0),
+    bookings: Number(counts.bookings || 0),
+    total: Number(counts.total || 0),
+    backend: "render"
+  };
+  recordDataIoDiagnostic("success", { ...traceMeta, ledgerId, detail: `soft-deleted ${result.total} generated normalized row(s)` });
+  recordSupabaseLoadEvent("render-normalized-test-data-cleanup", `${reason}: soft-deleted ${result.trips} trip(s), ${result.fuel} fuel log(s), ${result.bookings} booking(s) via Render admin route`);
+  return result;
+}
+
 async function cleanupGeneratedRowsFromNormalizedTables(reason = "cleanup-test-lab-data") {
+  const renderResult = await cleanupGeneratedRowsFromNormalizedTablesViaRender(reason);
+  if (renderResult) {
+    normalizedTableStatus = {
+      checked: true,
+      ok: true,
+      message: renderResult.total
+        ? `Generated Test Lab cleanup soft-deleted ${renderResult.total} generated normalized row${renderResult.total === 1 ? "" : "s"} through Render (${renderResult.trips} trips, ${renderResult.fuel} fuel logs, ${renderResult.bookings} bookings).`
+        : "Generated Test Lab cleanup found no generated normalized rows to soft-delete through Render.",
+      details: [`Generated normalized cleanup through Render: ${renderResult.trips} trips, ${renderResult.fuel} fuel logs, ${renderResult.bookings} bookings.`]
+    };
+    return renderResult;
+  }
   if (!supabaseClient || !currentSession) return { skipped: true, trips: 0, fuel: 0, bookings: 0, total: 0 };
   const source = "normalized-test-data-cleanup";
   const context = await getNormalizedWriteContext({ source });

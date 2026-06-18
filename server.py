@@ -1383,6 +1383,76 @@ def build_booking_upsert_rpc_payload(payload):
     return required
 
 
+
+
+GENERATED_TEST_PREFIX = "auto-test-"
+GENERATED_TEST_MARKER = "[AUTO TEST]"
+
+def is_generated_normalized_trip_row(row):
+    return str(row.get("legacy_id") or "").startswith(GENERATED_TEST_PREFIX) or GENERATED_TEST_MARKER in str(row.get("note") or "")
+
+def is_generated_normalized_fuel_row(row):
+    return str(row.get("legacy_id") or "").startswith(GENERATED_TEST_PREFIX) or GENERATED_TEST_MARKER in str(row.get("station_name") or "")
+
+def is_generated_normalized_booking_row(row):
+    return str(row.get("legacy_id") or "").startswith(GENERATED_TEST_PREFIX) or GENERATED_TEST_MARKER in str(row.get("purpose") or "")
+
+def select_generated_rows_for_cleanup(ledger_id, open_period_id, user_token):
+    ledger_q = quote_postgrest_value(ledger_id)
+    trips = request_json(
+        f"{supabase_url()}/rest/v1/trips?select=id,legacy_id,period_id,note,deleted_at&ledger_id=eq.{ledger_q}&deleted_at=is.null",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    fuel = request_json(
+        f"{supabase_url()}/rest/v1/fuel_payments?select=id,legacy_id,period_id,station_name,deleted_at&ledger_id=eq.{ledger_q}&deleted_at=is.null",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    bookings = request_json(
+        f"{supabase_url()}/rest/v1/car_bookings?select=id,legacy_id,purpose,deleted_at&ledger_id=eq.{ledger_q}&deleted_at=is.null",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+
+    def in_open_period(row):
+        return (not open_period_id) or (not row.get("period_id")) or str(row.get("period_id")) == str(open_period_id)
+
+    return {
+        "trips": [row for row in trips if in_open_period(row) and is_generated_normalized_trip_row(row)],
+        "fuel": [row for row in fuel if in_open_period(row) and is_generated_normalized_fuel_row(row)],
+        "bookings": [row for row in bookings if is_generated_normalized_booking_row(row)],
+    }
+
+def soft_delete_generated_rows_as_user(table, rows, user_token):
+    ids = [str(row.get("id") or "").strip() for row in rows if str(row.get("id") or "").strip()]
+    if not ids:
+        return 0
+    id_values = ",".join(quote_postgrest_value(value) for value in ids)
+    request_json(
+        f"{supabase_url()}/rest/v1/{table}?id=in.({id_values})",
+        method="PATCH",
+        body={"deleted_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()},
+        token=user_token,
+        api_key=supabase_anon_key(),
+        prefer="return=minimal",
+    )
+    return len(ids)
+
+def cleanup_generated_test_data_as_user(ledger_id, context, user_token):
+    if not context.get("canAdmin"):
+        raise PermissionError("Only workspace admins can clean generated test data")
+    rows = select_generated_rows_for_cleanup(ledger_id, context.get("openPeriodId"), user_token)
+    trip_count = soft_delete_generated_rows_as_user("trips", rows["trips"], user_token)
+    fuel_count = soft_delete_generated_rows_as_user("fuel_payments", rows["fuel"], user_token)
+    booking_count = soft_delete_generated_rows_as_user("car_bookings", rows["bookings"], user_token)
+    return {
+        "trips": trip_count,
+        "fuel": fuel_count,
+        "bookings": booking_count,
+        "total": trip_count + fuel_count + booking_count,
+    }
+
 def build_booking_delete_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Booking delete payload must be an object")
@@ -1604,6 +1674,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/admin/test-data/create":
             self.create_admin_test_data_backend()
             return
+        if self.path == "/api/admin/test-data/cleanup":
+            self.cleanup_admin_test_data_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1758,6 +1831,33 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "type": entry_type, "result": result, "backend": "render", "userEmail": user.get("email")})
+
+    def cleanup_admin_test_data_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before cleaning generated test data")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id = build_write_context_backend_payload(payload, user)
+            context = get_write_context_as_user(ledger_id, user, token)
+            counts = cleanup_generated_test_data_as_user(ledger_id, context, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "counts": counts, "backend": "render", "userEmail": user.get("email")})
 
     def get_write_context_backend(self):
         user = current_supabase_user(self)
