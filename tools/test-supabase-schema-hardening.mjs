@@ -407,8 +407,8 @@ function testRetentionPrivacyCleanupCoversCloudReports() {
   assert.match(schema, /to_regprocedure\('public\.run_retention_cleanup\(text, integer, integer, integer, integer\)'\)/);
   assert.match(app, /cloudTestLabReportDays: 30/);
   assert.match(app, /keepLatestCloudTestLabReports: 10/);
-  assert.match(app, /test_lab_report_days: retentionPolicy\.cloudTestLabReportDays/);
-  assert.match(app, /keep_latest_test_lab_reports: retentionPolicy\.keepLatestCloudTestLabReports/);
+  assert.match(app, /testLabReportDays: retentionPolicy\.cloudTestLabReportDays/);
+  assert.match(app, /keepLatestTestLabReports: retentionPolicy\.keepLatestCloudTestLabReports/);
   assert.match(app, /Old cloud Test Lab reports/);
   assert.match(app, /cloud Test Lab report\(s\)/);
   console.log("ok - testRetentionPrivacyCleanupCoversCloudReports");

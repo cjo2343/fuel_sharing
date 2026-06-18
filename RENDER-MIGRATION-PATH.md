@@ -163,8 +163,10 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
 
-## v305 backend path simplification audit
 
-v305 adds `BACKEND-PATH-AUDIT.md` as the ownership map for each app data path. The goal is to stop growing one-off hotfix/fallback branches and make every path declare whether it is Render primary, browser read-only, or emergency fallback only.
+## v306 remove proven browser fallbacks pass 1
 
-Report-save tracking now follows the same admin-tool result contract: success returns a structured success result, real failures return `{ ok: false, error }`, and skipped/user-cancelled cases return `{ ok: false, skipped: true }`. This keeps the shared Data I/O tracker from showing misleading OK rows for failed cloud work.
+- Retention preview and cleanup now fail closed through Render instead of falling back to browser direct Supabase retention RPCs.
+- Generated Test Lab create and cleanup now fail closed through Render instead of falling back to browser direct normalized writes/table cleanup.
+- Saving Test Lab/Security Health reports to cloud now uses the normalized report store only; the JSON mirror report-save fallback is disabled so report history does not wake full-state JSON writes.
+- Trip, fuel, booking, payment, state-load, ledger sync, and emergency JSON backup fallbacks are not removed in this pass.

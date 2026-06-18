@@ -656,8 +656,10 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
 
-## v305 backend path simplification audit
 
-Do not add new browser direct-write fallback paths without updating `BACKEND-PATH-AUDIT.md`. Normal app writes should move toward Render primary routes. Emergency fallback paths must remain clearly documented and should not be used for normal UI flows.
+## v306 remove proven browser fallbacks pass 1
 
-When adding an Admin button that touches cloud state, wrap it with `traceAdminToolOperation(...)` and return a structured result: `{ ok: true }`, `{ ok: false, skipped: true }`, or `{ ok: false, error }`.
+- Retention preview and cleanup now fail closed through Render instead of falling back to browser direct Supabase retention RPCs.
+- Generated Test Lab create and cleanup now fail closed through Render instead of falling back to browser direct normalized writes/table cleanup.
+- Saving Test Lab/Security Health reports to cloud now uses the normalized report store only; the JSON mirror report-save fallback is disabled so report history does not wake full-state JSON writes.
+- Trip, fuel, booking, payment, state-load, ledger sync, and emergency JSON backup fallbacks are not removed in this pass.

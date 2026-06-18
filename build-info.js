@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.205",
-    buildLabel: "backend-path-simplification-audit",
-    updatedAt: "2026-06-18T12:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v305",
+    version: "2026.06.18.206",
+    buildLabel: "remove-proven-browser-fallbacks-pass-1",
+    updatedAt: "2026-06-18T13:15:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v306",
     releaseNotes: Object.freeze([
+      "Proven admin paths now fail closed through Render instead of falling back to browser direct writes/RPCs: retention preview/cleanup, generated Test Lab create/cleanup, and report-save JSON mirror fallback are simplified toward one backend-owned path.",
       "Backend path ownership is now documented in a dedicated audit, report-save success clears stale save errors, and report-save failures bubble to the shared admin-tool tracker instead of being silently converted to OK.",
       "Saving Test Lab/Security Health reports to cloud now has a short explicit timeout so a slow Supabase report RPC records a matched finish/error row instead of leaving an admin-tool timeout, and Security Health timeout warnings now explain when Render health is still OK.",
       "Render now applies per-user/per-ledger server-side rate limits to admin, generated Test Lab data, retention, JSON mirror backup, write-context, and trip/fuel/booking/payment write routes so double-clicks or broken clients cannot hammer dangerous backend paths.",

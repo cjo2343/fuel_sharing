@@ -44,3 +44,11 @@ The tracker converts `{ ok: false, error }` into a matched Data I/O error row. T
 - Report-save timeout was lengthened to reduce false timeout/error memory at the exact 15-second boundary.
 - Report-save failures now return `{ ok: false, error }` so the shared admin-tool tracker records an error instead of a misleading success.
 - This audit file now blocks undocumented growth of browser direct-write fallback paths.
+
+
+## v306 remove proven browser fallbacks pass 1
+
+- Retention preview and cleanup now fail closed through Render instead of falling back to browser direct Supabase retention RPCs.
+- Generated Test Lab create and cleanup now fail closed through Render instead of falling back to browser direct normalized writes/table cleanup.
+- Saving Test Lab/Security Health reports to cloud now uses the normalized report store only; the JSON mirror report-save fallback is disabled so report history does not wake full-state JSON writes.
+- Trip, fuel, booking, payment, state-load, ledger sync, and emergency JSON backup fallbacks are not removed in this pass.

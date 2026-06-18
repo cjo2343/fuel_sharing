@@ -13,11 +13,11 @@ function assert(condition, message) {
   }
 }
 
-assert(/version:\s*"2026\.06\.18\.(?:19[4-9]|20[0-5])"/.test(buildInfo), 'build-info.js must be v294 or later while preserving the admin test-data routes.');
-assert(/buildLabel:\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit)"/.test(buildInfo), 'build-info.js must use the v294 build label or a later label preserving it.');
-assert(/expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[4-9]|30[0-5])"/.test(buildInfo), 'build-info.js must expect the v294/v295/v296/v297 service-worker cache.');
-assert(/CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[4-9]|30[0-5])"/.test(serviceWorker), 'service-worker.js must use the v294/v295/v296/v297 cache.');
-assert(/BUILD_LABEL\s*=\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit)"/.test(serviceWorker), 'service-worker.js must use the v294 build label or a later label preserving it.');
+assert(/version:\s*"2026\.06\.18\.(?:19[4-9]|20[0-6])"/.test(buildInfo), 'build-info.js must be v294 or later while preserving the admin test-data routes.');
+assert(/buildLabel:\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1)"/.test(buildInfo), 'build-info.js must use the v294 build label or a later label preserving it.');
+assert(/expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[4-9]|30[0-6])"/.test(buildInfo), 'build-info.js must expect the v294/v295/v296/v297 service-worker cache.');
+assert(/CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[4-9]|30[0-6])"/.test(serviceWorker), 'service-worker.js must use the v294/v295/v296/v297 cache.');
+assert(/BUILD_LABEL\s*=\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1)"/.test(serviceWorker), 'service-worker.js must use the v294 build label or a later label preserving it.');
 
 assert(app.includes('const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";'), 'app.js must define the Render admin test-data create URL.');
 assert(app.includes('async function createGeneratedTestDataViaRender(type, entry)'), 'app.js must include a Render admin test-data helper.');
@@ -28,8 +28,10 @@ assert(app.includes('admin generated test data already saved through Render rout
 
 const tripFunction = app.slice(app.indexOf('async function addGeneratedTestTrip()'), app.indexOf('async function addGeneratedTestFuel()'));
 const fuelFunction = app.slice(app.indexOf('async function addGeneratedTestFuel()'), app.indexOf('async function removeGeneratedTestData()'));
-assert(tripFunction.indexOf('createGeneratedTestDataViaRender("trip", tripPayload)') < tripFunction.indexOf('saveTripToNormalizedTablesFirst(tripPayload)'), 'Generated test trip must try Render before browser normalized write fallback.');
-assert(fuelFunction.indexOf('createGeneratedTestDataViaRender("fuel", fuelPayload)') < fuelFunction.indexOf('saveFuelToNormalizedTablesFirst(fuelPayload)'), 'Generated test fuel must try Render before browser normalized write fallback.');
+assert(tripFunction.includes('createGeneratedTestDataViaRender("trip", tripPayload)'), 'Generated test trip must use the Render admin route.');
+assert(fuelFunction.includes('createGeneratedTestDataViaRender("fuel", fuelPayload)'), 'Generated test fuel must use the Render admin route.');
+assert(!tripFunction.includes('saveTripToNormalizedTablesFirst(tripPayload)'), 'Generated test trip browser normalized-write fallback should be disabled.');
+assert(!fuelFunction.includes('saveFuelToNormalizedTablesFirst(fuelPayload)'), 'Generated test fuel browser normalized-write fallback should be disabled.');
 
 assert(server.includes('if self.path == "/api/admin/test-data/create"'), 'server.py must expose the Render admin test-data create route.');
 assert(server.includes('def build_admin_test_data_rpc_payload'), 'server.py must build admin test-data RPC payloads server-side.');

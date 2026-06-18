@@ -2915,7 +2915,7 @@ async function createGeneratedTestDataViaRender(type, entry) {
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
   const operationId = createDataIoOperationId(`admin-test-data-${type}`);
   const traceMeta = { source: `admin-test-data:${type}`, route: "render-api", endpoint: renderAdminTestDataCreateUrl, operation: "create", operationId };
-  if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: true, backend: "render-api" };
+  if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: false, backend: "render-api", error: new Error("Sign in and select an active ledger before creating generated Test Lab data.") };
 
   let controller = null;
   let timeoutId = 0;
@@ -2955,14 +2955,13 @@ async function createGeneratedTestDataViaRender(type, entry) {
     const message = result?.message || result?.error || text || `Render admin test data create failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    const shouldFallback = [404, 405, 501].includes(response.status);
-    recordDataIoDiagnostic("error", { ...traceMeta, error, ledgerId, detail: shouldFallback ? `HTTP ${response.status}; falling back to browser test-data save.` : `HTTP ${response.status}; not falling back.` });
-    return { ok: false, error, shouldFallback, backend: "render-api" };
+    recordDataIoDiagnostic("error", { ...traceMeta, error, ledgerId, detail: `HTTP ${response.status}; Render generated test-data create failed. Browser test-data fallback is disabled.` });
+    return { ok: false, error, shouldFallback: false, backend: "render-api" };
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render admin test data API", 12000);
-    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, ledgerId });
-    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, ledgerId, detail: "Render generated test-data create failed. Browser test-data fallback is disabled." });
+    return { ok: false, error, shouldFallback: false, backend: "render-api" };
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
   }
@@ -2992,12 +2991,8 @@ async function addGeneratedTestTrip() {
 
   const renderSaved = await createGeneratedTestDataViaRender("trip", tripPayload);
   if (!renderSaved.ok) {
-    if (!renderSaved.shouldFallback) {
-      showUserError(`Could not create generated test trip through Render: ${renderSaved.error?.message || renderSaved.error || "unknown error"}`);
-      return;
-    }
-    const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
-    if (!normalizedTripSaved) return;
+    showUserError(`Could not create generated test trip through Render: ${renderSaved.error?.message || renderSaved.error || "unknown error"}`);
+    return;
   }
 
   state.trips.push(tripPayload);
@@ -3040,12 +3035,8 @@ async function addGeneratedTestFuel() {
 
   const renderSaved = await createGeneratedTestDataViaRender("fuel", fuelPayload);
   if (!renderSaved.ok) {
-    if (!renderSaved.shouldFallback) {
-      showUserError(`Could not create generated test fuel through Render: ${renderSaved.error?.message || renderSaved.error || "unknown error"}`);
-      return;
-    }
-    const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
-    if (!normalizedFuelSaved) return;
+    showUserError(`Could not create generated test fuel through Render: ${renderSaved.error?.message || renderSaved.error || "unknown error"}`);
+    return;
   }
 
   state.fuel.push(fuelPayload);
@@ -3336,8 +3327,9 @@ async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "clean
   if (!supabaseClient || !currentSession || typeof fetch !== "function") return null;
   const ledgerId = getActiveLedgerId();
   if (!ledgerId) return null;
-  const operationId = createDataIoOperationId("normalized-test-data-cleanup");
-  const traceMeta = { source: "normalized-test-data-cleanup", route: "render-api", endpoint: renderAdminTestDataCleanupUrl, operation: "soft-delete", operationId };
+  const source = "normalized-test-data-cleanup";
+  const operationId = createDataIoOperationId(source);
+  const traceMeta = { source, route: "render-api", endpoint: renderAdminTestDataCleanupUrl, operation: "soft-delete", operationId };
   recordDataIoDiagnostic("start", { ...traceMeta, ledgerId, detail: reason });
   let response;
   let controller = null;
@@ -3361,7 +3353,7 @@ async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "clean
     });
     response = await Promise.race([fetchPromise, timeoutPromise]);
   } catch (error) {
-    recordDataIoDiagnostic(error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" ? "timeout" : "error", { ...traceMeta, ledgerId, error, detail: "Render cleanup route unavailable; falling back to browser cleanup." });
+    recordDataIoDiagnostic(error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" ? "timeout" : "error", { ...traceMeta, ledgerId, error, detail: "Render cleanup route unavailable. Browser direct-table cleanup fallback is disabled." });
     return null;
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
@@ -3369,12 +3361,9 @@ async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "clean
   let payload = null;
   try { payload = await response.json(); } catch (_) { payload = null; }
   if (!response.ok || !payload?.ok) {
-    const detail = response.status === 404 || response.status === 405 || response.status === 501
-      ? `HTTP ${response.status}; falling back to browser cleanup.`
-      : `HTTP ${response.status}; Render cleanup failed.`;
+    const detail = `HTTP ${response.status}; Render cleanup failed. Browser direct-table cleanup fallback is disabled.`;
     const error = new Error(payload?.error || payload?.message || detail);
-    recordDataIoDiagnostic(response.status === 404 || response.status === 405 || response.status === 501 ? "skip" : "error", { ...traceMeta, ledgerId, error, detail });
-    if (response.status === 404 || response.status === 405 || response.status === 501) return null;
+    recordDataIoDiagnostic("error", { ...traceMeta, ledgerId, error, detail });
     throw error;
   }
   const counts = payload.counts || {};
@@ -3393,77 +3382,18 @@ async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "clean
 
 async function cleanupGeneratedRowsFromNormalizedTables(reason = "cleanup-test-lab-data") {
   const renderResult = await cleanupGeneratedRowsFromNormalizedTablesViaRender(reason);
-  if (renderResult) {
-    normalizedTableStatus = {
-      checked: true,
-      ok: true,
-      message: renderResult.total
-        ? `Generated Test Lab cleanup soft-deleted ${renderResult.total} generated normalized row${renderResult.total === 1 ? "" : "s"} through Render (${renderResult.trips} trips, ${renderResult.fuel} fuel logs, ${renderResult.bookings} bookings).`
-        : "Generated Test Lab cleanup found no generated normalized rows to soft-delete through Render.",
-      details: [`Generated normalized cleanup through Render: ${renderResult.trips} trips, ${renderResult.fuel} fuel logs, ${renderResult.bookings} bookings.`]
-    };
-    return renderResult;
+  if (!renderResult) {
+    throw new Error("Render generated Test Lab cleanup route is unavailable. Browser direct-table cleanup fallback is disabled.");
   }
-  if (!supabaseClient || !currentSession) return { skipped: true, trips: 0, fuel: 0, bookings: 0, total: 0 };
-  const source = "normalized-test-data-cleanup";
-  const context = await getNormalizedWriteContext({ source });
-  if (!context?.ledgerId) return { skipped: true, trips: 0, fuel: 0, bookings: 0, total: 0 };
-  const ledgerId = context.ledgerId;
-  const openPeriodId = context.openPeriodId || null;
-  const activePeriodFilter = (rows = []) => rows.filter((row) => !openPeriodId || !row.period_id || row.period_id === openPeriodId);
-
-  const [tripResult, fuelResult, bookingResult] = await Promise.all([
-    traceDataIo(
-      { source, route: "direct-table", table: "trips", operation: "select" },
-      () => supabaseClient
-        .from("trips")
-        .select("id,legacy_id,period_id,note,deleted_at")
-        .eq("ledger_id", ledgerId)
-        .is("deleted_at", null)
-    ),
-    traceDataIo(
-      { source, route: "direct-table", table: "fuel_payments", operation: "select" },
-      () => supabaseClient
-        .from("fuel_payments")
-        .select("id,legacy_id,period_id,station_name,deleted_at")
-        .eq("ledger_id", ledgerId)
-        .is("deleted_at", null)
-    ),
-    traceDataIo(
-      { source, route: "direct-table", table: "car_bookings", operation: "select" },
-      () => supabaseClient
-        .from("car_bookings")
-        .select("id,legacy_id,purpose,deleted_at")
-        .eq("ledger_id", ledgerId)
-        .is("deleted_at", null)
-    )
-  ]);
-
-  if (tripResult.error) throw tripResult.error;
-  if (fuelResult.error) throw fuelResult.error;
-  if (bookingResult.error) throw bookingResult.error;
-
-  const trips = activePeriodFilter(tripResult.data || []).filter(isGeneratedNormalizedTripRow);
-  const fuel = activePeriodFilter(fuelResult.data || []).filter(isGeneratedNormalizedFuelRow);
-  const bookings = (bookingResult.data || []).filter(isGeneratedNormalizedBookingRow);
-
-  const [tripCount, fuelCount, bookingCount] = await Promise.all([
-    softDeleteGeneratedNormalizedRows("trips", trips, source),
-    softDeleteGeneratedNormalizedRows("fuel_payments", fuel, source),
-    softDeleteGeneratedNormalizedRows("car_bookings", bookings, source)
-  ]);
-
-  const total = tripCount + fuelCount + bookingCount;
-  recordSupabaseLoadEvent("normalized-test-data-cleanup", `${reason}: soft-deleted ${tripCount} trip(s), ${fuelCount} fuel log(s), ${bookingCount} booking(s)`);
   normalizedTableStatus = {
     checked: true,
     ok: true,
-    message: total
-      ? `Generated Test Lab cleanup soft-deleted ${total} generated normalized row${total === 1 ? "" : "s"} (${tripCount} trips, ${fuelCount} fuel logs, ${bookingCount} bookings).`
-      : "Generated Test Lab cleanup found no generated normalized rows to soft-delete.",
-    details: [`Generated normalized cleanup: ${tripCount} trips, ${fuelCount} fuel logs, ${bookingCount} bookings.`]
+    message: renderResult.total
+      ? `Generated Test Lab cleanup soft-deleted ${renderResult.total} generated normalized row${renderResult.total === 1 ? "" : "s"} through Render (${renderResult.trips} trips, ${renderResult.fuel} fuel logs, ${renderResult.bookings} bookings).`
+      : "Generated Test Lab cleanup found no generated normalized rows to soft-delete through Render.",
+    details: [`Generated normalized cleanup through Render: ${renderResult.trips} trips, ${renderResult.fuel} fuel logs, ${renderResult.bookings} bookings.`]
   };
-  return { skipped: false, trips: tripCount, fuel: fuelCount, bookings: bookingCount, total };
+  return renderResult;
 }
 
 function normalizeTestLabReports(value) {
@@ -4329,9 +4259,10 @@ function normalizeCloudRetentionPreview(data, backend = "supabase-rpc") {
 }
 
 async function callRetentionAdminRoute({ action, endpoint, operation }) {
-  if (!currentSession?.access_token || typeof fetch !== "function") return { ok: false, shouldFallback: true };
+  if (!currentSession?.access_token) return { ok: false, shouldFallback: false, error: new Error("Sign in before running Render retention tools.") };
+  if (typeof fetch !== "function") return { ok: false, shouldFallback: false, error: new Error("Render retention tools require fetch support.") };
   const payload = buildRetentionBackendPayload();
-  if (!payload.ledgerId) return { ok: false, shouldFallback: true };
+  if (!payload.ledgerId) return { ok: false, shouldFallback: false, error: new Error("Missing active ledger id for Render retention tools.") };
   const operationId = createDataIoOperationId(`retention-${action}`);
   const traceMeta = { source: `retention-${action}`, route: "render-api", endpoint, operation, operationId, ledgerId: payload.ledgerId };
   let controller = null;
@@ -4365,17 +4296,16 @@ async function callRetentionAdminRoute({ action, endpoint, operation }) {
     }
     const error = new Error(result?.error || result?.message || text || `Render retention ${action} failed (${response.status})`);
     error.status = response.status;
-    const shouldFallback = [404, 405, 501].includes(response.status);
-    recordDataIoDiagnostic(shouldFallback ? "skip" : "error", {
+    recordDataIoDiagnostic("error", {
       ...traceMeta,
       error,
-      detail: shouldFallback ? `HTTP ${response.status}; falling back to browser retention RPC.` : `HTTP ${response.status}; Render retention ${action} failed.`
+      detail: `HTTP ${response.status}; Render retention ${action} failed. Browser retention RPC fallback is disabled.`
     });
-    return { ok: false, shouldFallback, error };
+    return { ok: false, shouldFallback: false, error };
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
-    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, error, detail: `Render retention ${action} route unavailable; falling back to browser RPC.` });
-    return { ok: false, shouldFallback: true, error };
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, error, detail: `Render retention ${action} failed. Browser retention RPC fallback is disabled.` });
+    return { ok: false, shouldFallback: false, error };
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
   }
@@ -4412,18 +4342,7 @@ async function fetchRetentionCleanupPreview() {
       result.cloud = renderPreview.cloud;
       return result;
     }
-    if (renderPreview.error && renderPreview.shouldFallback === false) throw renderPreview.error;
-
-    recordSupabaseLoadEvent("retention-preview", "preview retention cleanup");
-    const { data, error } = await supabaseClient.rpc("preview_retention_cleanup", {
-      target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
-      event_retention_days: retentionPolicy.ledgerEventDays,
-      stale_push_days: retentionPolicy.stalePushSubscriptionDays,
-      test_lab_report_days: retentionPolicy.cloudTestLabReportDays,
-      keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
-    });
-    if (error) throw error;
-    result.cloud = normalizeCloudRetentionPreview(data, "browser-rpc");
+    throw renderPreview.error || new Error("Render retention preview failed.");
   } catch (error) {
     result.cloud = {
       available: false,
@@ -4498,17 +4417,7 @@ async function runRetentionCleanup() {
       if (renderCleanup.ok) {
         cloud = renderCleanup.cloud || cloud;
       } else {
-        if (renderCleanup.error && renderCleanup.shouldFallback === false) throw renderCleanup.error;
-        recordSupabaseLoadEvent("retention-cleanup", "run retention cleanup");
-        const { data, error } = await supabaseClient.rpc("run_retention_cleanup", {
-          target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
-          event_retention_days: retentionPolicy.ledgerEventDays,
-          stale_push_days: retentionPolicy.stalePushSubscriptionDays,
-          test_lab_report_days: retentionPolicy.cloudTestLabReportDays,
-          keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
-        });
-        if (error) throw error;
-        cloud = data || cloud;
+        throw renderCleanup.error || new Error("Render retention cleanup failed.");
       }
     }
     writeLocalState();
@@ -4786,14 +4695,7 @@ function saveTestLabReportState(report = lastTestLabReport) {
           setDataToolsMessage("Fresh Test Lab report saved as a new normalized cloud history row. Ledger JSON was not rewritten.");
           return;
         }
-        return saveJsonMirrorBackup({ force: true, reason: "Test Lab report JSON fallback" }).then((savedToJson) => {
-          if (savedToJson) {
-            markRemoteSaveSucceeded("Shared");
-            setDataToolsMessage("Latest Test Lab report saved through the JSON mirror fallback. Apply the Test Lab report store migration to avoid full-state JSON writes.");
-          } else {
-            markRemoteSaveFailed(new Error("Could not save Test Lab report."), "Could not save Test Lab report.");
-          }
-        });
+        throw new Error("Could not save Test Lab report to normalized cloud history. JSON mirror report-save fallback is disabled.");
       })
       .catch((error) => markRemoteSaveFailed(error, "Could not save Test Lab report."));
   } else {
@@ -4829,15 +4731,7 @@ async function saveCurrentTestLabReportToCloud({ skipConfirmation = false } = {}
       setDataToolsMessage("Fresh Test Lab report saved to normalized cloud history.");
       return { ok: true, destination: "normalized-report-store" };
     }
-    setDataToolsMessage("Normalized Test Lab report store is unavailable; saving through JSON mirror fallback...");
-    const savedToJson = await saveJsonMirrorBackup({ force: true, reason: "Test Lab report JSON fallback" });
-    if (savedToJson) {
-      persistTestLabReport(redactTestLabReportForCloud(report), { sync: false });
-      markRemoteSaveSucceeded("Shared");
-      setDataToolsMessage("Latest Test Lab report saved through the JSON mirror fallback. Apply the Test Lab report store migration to avoid full-state JSON writes.");
-      return { ok: true, destination: "json-mirror-fallback" };
-    }
-    throw new Error("Could not save Test Lab report to normalized history or JSON fallback.");
+    throw new Error("Could not save Test Lab report to normalized cloud history. JSON mirror report-save fallback is disabled.");
   } catch (error) {
     markRemoteSaveFailed(error, "Could not save Test Lab report.");
     showUserError(`Could not save Test Lab report: ${error.message || error}`);

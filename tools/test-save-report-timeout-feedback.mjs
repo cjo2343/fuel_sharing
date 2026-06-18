@@ -7,11 +7,11 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:204|205)"/, 'build-info should publish v304 or later');
-assert.match(buildInfo, /buildLabel:\s*"(?:save-report-timeout-feedback|backend-path-simplification-audit)"/, 'build-info should use v304 or later label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[45]"/, 'build-info should expect v304 or later cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[45]"/, 'service worker cache should be v304 or later');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:save-report-timeout-feedback|backend-path-simplification-audit)"/, 'service worker label should match v304 or later');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:204|205|206)"/, 'build-info should publish v304 or later');
+assert.match(buildInfo, /buildLabel:\s*"(?:save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1)"/, 'build-info should use v304 or later label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[4-6]"/, 'build-info should expect v304 or later cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[4-6]"/, 'service worker cache should be v304 or later');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1)"/, 'service worker label should match v304 or later');
 
 assert.match(app, /const testLabReportCloudSaveTimeoutMs\s*=\s*(?:15000|25000);/, 'report cloud save should have an explicit timeout');
 assert.match(app, /async function withTestLabReportCloudSaveTimeout/, 'report cloud save timeout helper should exist');
