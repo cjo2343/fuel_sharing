@@ -157,3 +157,9 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 - Added `POST /api/admin/test-data/cleanup` so generated Test Lab cleanup can soft-delete normalized `trips`, `fuel_payments`, and `car_bookings` rows on Render after verifying the signed-in user is a workspace admin.
 - Browser cleanup now tries the Render route first and keeps the v293 direct-table cleanup only as a route-unavailable fallback.
 - Expected load-monitor markers: `render-normalized-test-data-cleanup` and `data-io:normalized-test-data-cleanup:ok -> render-api /api/admin/test-data/cleanup`.
+
+## v297: Cleanup scope and admin finish hotfix
+
+- Fixed the Render cleanup browser helper to use `getActiveLedgerId()` instead of an out-of-scope `currentLedger` variable, preventing `ReferenceError: currentLedger is not defined` during Clean generated Test Lab data.
+- Moved the Security Health and Save Test Lab report confirmations before their admin Data I/O operation rows, so cancelled or slow confirmation prompts do not leave `admin-tool:security-health` or `admin-tool:save-test-lab-report-cloud` rows timing out.
+- Expected load-monitor markers: `admin-tool:cleanup-test-lab-data -> ok`, `normalized-test-data-cleanup -> render-api /api/admin/test-data/cleanup -> ok`, and no `currentLedger is not defined` cleanup exception.

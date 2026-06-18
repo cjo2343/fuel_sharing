@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v296";
-const BUILD_LABEL = "render-cleanup-availability-hotfix";
-const BUILD_UPDATED_AT = "2026-06-18T09:00:00.000Z";
+const CACHE_NAME = "fuel-ledger-v297";
+const BUILD_LABEL = "cleanup-scope-admin-finish-hotfix";
+const BUILD_UPDATED_AT = "2026-06-18T09:30:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

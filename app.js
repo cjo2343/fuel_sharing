@@ -2489,7 +2489,7 @@ els.runSecurityScenario?.addEventListener("click", async () => {
     detail: "This is cloud-touching. It uses live Supabase checks and should only be run when CPU is calm. Routine Test Lab skips the deep backend probe."
   })) return;
   lastStandaloneSecurityHealthAt = Date.now();
-  await traceAdminToolOperation("security-health", "Run live Security Health", runStandaloneSecurityHealthScenario);
+  await traceAdminToolOperation("security-health", "Run live Security Health", () => runStandaloneSecurityHealthScenario({ skipConfirmation: true }));
 });
 
 els.exportTestLabReport?.addEventListener("click", () => {
@@ -2499,7 +2499,22 @@ els.exportTestLabReport?.addEventListener("click", () => {
 
 els.saveTestLabReportCloud?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  await traceAdminToolOperation("save-test-lab-report-cloud", "Save Test Lab report to cloud", saveCurrentTestLabReportToCloud);
+  const report = getCurrentTestLabReport();
+  if (!report) {
+    showUserWarning("Run or export a Test Lab report before saving it to cloud.");
+    return;
+  }
+  if (isHistoricalTestLabReport(report)) {
+    showUserWarning("This is a historical saved report. Run Security health or Test Lab again before saving a fresh cloud report.");
+    setDataToolsMessage("Historical saved report was not re-saved. Run a fresh check, then save the new report to cloud.");
+    return;
+  }
+  if (!requireTypedAdminConfirmation({
+    phrase: "SAVE REPORT TO CLOUD",
+    title: "Save Test Lab report to cloud?",
+    detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage."
+  })) return;
+  await traceAdminToolOperation("save-test-lab-report-cloud", "Save Test Lab report to cloud", () => saveCurrentTestLabReportToCloud({ skipConfirmation: true }));
 });
 
 els.cleanupTestLabData?.addEventListener("click", async () => {
@@ -3198,7 +3213,7 @@ async function softDeleteGeneratedNormalizedRows(table, rows, source) {
 
 async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "cleanup-test-lab-data") {
   if (!supabaseClient || !currentSession || typeof fetch !== "function") return null;
-  const ledgerId = currentLedger?.id || defaultLedgerId;
+  const ledgerId = getActiveLedgerId();
   if (!ledgerId) return null;
   const operationId = createDataIoOperationId("normalized-test-data-cleanup");
   const traceMeta = { source: "normalized-test-data-cleanup", route: "render-api", endpoint: renderAdminTestDataCleanupUrl, operation: "soft-delete", operationId };
@@ -4459,7 +4474,7 @@ function saveTestLabReportState(report = lastTestLabReport) {
   }
 }
 
-async function saveCurrentTestLabReportToCloud() {
+async function saveCurrentTestLabReportToCloud({ skipConfirmation = false } = {}) {
   const report = getCurrentTestLabReport();
   if (!report) {
     showUserWarning("Run or export a Test Lab report before saving it to cloud.");
@@ -4470,7 +4485,7 @@ async function saveCurrentTestLabReportToCloud() {
     setDataToolsMessage("Historical saved report was not re-saved. Run a fresh check, then save the new report to cloud.");
     return;
   }
-  if (!requireTypedAdminConfirmation({
+  if (!skipConfirmation && !requireTypedAdminConfirmation({
     phrase: "SAVE REPORT TO CLOUD",
     title: "Save Test Lab report to cloud?",
     detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage."
@@ -4866,12 +4881,12 @@ async function runTestLabScenarioMatrix({ scenarioName = "scenario-matrix", scen
 }
 
 
-async function runStandaloneSecurityHealthScenario() {
+async function runStandaloneSecurityHealthScenario({ skipConfirmation = false } = {}) {
   if (!testLab) {
     showUserError("Test Lab helpers are not loaded. Refresh the app and try again.");
     return;
   }
-  if (!confirmUserAction("Run live Supabase security health checks? This uses harmless read/probe calls and does not change production data.")) return;
+  if (!skipConfirmation && !confirmUserAction("Run live Supabase security health checks? This uses harmless read/probe calls and does not change production data.")) return;
   const startedAt = new Date().toISOString();
   const id = testLab.createTestRunId();
   setDataToolsMessage(`Test Lab ${id}: running Security health checks...`);
