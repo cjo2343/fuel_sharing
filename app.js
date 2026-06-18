@@ -3357,7 +3357,7 @@ async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "clean
     total: Number(counts.total || 0),
     backend: "render"
   };
-  recordDataIoDiagnostic("success", { ...traceMeta, ledgerId, detail: `soft-deleted ${result.total} generated normalized row(s)` });
+  recordDataIoDiagnostic("success", { ...traceMeta, ok: true, ledgerId, detail: `soft-deleted ${result.total} generated normalized row(s)` });
   recordSupabaseLoadEvent("render-normalized-test-data-cleanup", `${reason}: soft-deleted ${result.trips} trip(s), ${result.fuel} fuel log(s), ${result.bookings} booking(s) via Render admin route`);
   return result;
 }
@@ -4219,7 +4219,7 @@ async function callRetentionAdminRoute({ action, endpoint, operation }) {
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
     if (response.ok && result?.ok) {
-      recordDataIoDiagnostic("success", { ...traceMeta, detail: `Render retention ${action} completed` });
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, detail: `Render retention ${action} completed` });
       recordSupabaseLoadEvent(`render-retention-${action}`, `retention ${action} via Render admin route`);
       return { ok: true, result, backend: "render-api" };
     }
@@ -5112,7 +5112,7 @@ async function cleanupGeneratedTestDataWithReport() {
   const cleanup = cleanupGeneratedTestEntriesFromState();
   const normalizedCleanup = await cleanupGeneratedRowsFromNormalizedTables("cleanup-test-lab-data");
   const normalizedCleanupMessage = normalizedCleanup?.total ? ` Soft-deleted ${normalizedCleanup.total} generated normalized row${normalizedCleanup.total === 1 ? "" : "s"}.` : "";
-  await persistGeneratedAdminStateWithRenderMirror("cleanup-test-lab-data", `${cleanup.message}${normalizedCleanupMessage} Saved cleanup through Render JSON mirror backup.`);
+  await persistGeneratedAdminStateWithRenderMirror("cleanup-test-lab-data", `${cleanup.message}${normalizedCleanupMessage} Saved cleanup through Render JSON mirror backup.`, { checkTables: false });
   const report = buildCurrentTestLabReport({
     id: testLab?.createTestRunId ? testLab.createTestRunId() : `testlab-${Date.now()}`,
     scenario: "cleanup-test-data",

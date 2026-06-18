@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v300";
-const BUILD_LABEL = "render-retention-admin-routes";
-const BUILD_UPDATED_AT = "2026-06-18T10:55:00.000Z";
+const CACHE_NAME = "fuel-ledger-v301";
+const BUILD_LABEL = "admin-cleanup-diagnostics-finish";
+const BUILD_UPDATED_AT = "2026-06-18T11:25:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

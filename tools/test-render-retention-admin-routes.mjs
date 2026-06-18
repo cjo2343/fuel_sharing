@@ -6,11 +6,11 @@ const server = readFileSync("server.py", "utf8");
 const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 
-assert.match(buildInfo, /version: "2026\.06\.18\.200"/);
-assert.match(buildInfo, /buildLabel: "render-retention-admin-routes"/);
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v300"/);
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v300"/);
-assert.match(serviceWorker, /BUILD_LABEL = "render-retention-admin-routes"/);
+assert.match(buildInfo, /version: "2026\.06\.18\.(?:200|201)"/);
+assert.match(buildInfo, /buildLabel: "(?:render-retention-admin-routes|admin-cleanup-diagnostics-finish)"/);
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:300|301)"/);
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:300|301)"/);
+assert.match(serviceWorker, /BUILD_LABEL = "(?:render-retention-admin-routes|admin-cleanup-diagnostics-finish)"/);
 
 assert.match(app, /const renderRetentionPreviewUrl = "\/api\/admin\/retention\/preview"/);
 assert.match(app, /const renderRetentionCleanupUrl = "\/api\/admin\/retention\/cleanup"/);

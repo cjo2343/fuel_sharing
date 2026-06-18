@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:198|199|200)"/, "build-info.js must be bumped to v298.");
-assert.match(buildInfo, /buildLabel:\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes)"/, "build-info.js must use the v298 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[8-9]|300)"/, "build-info.js must expect the v298 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[8-9]|300)"/, "service-worker.js must use the v298 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes)"/, "service-worker.js must use the v298 build label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:198|199|200|201)"/, "build-info.js must be bumped to v298.");
+assert.match(buildInfo, /buildLabel:\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish)"/, "build-info.js must use the v298 build label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[8-9]|30[0-1])"/, "build-info.js must expect the v298 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[8-9]|30[0-1])"/, "service-worker.js must use the v298 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish)"/, "service-worker.js must use the v298 build label.");
 
 assert.match(app, /let adminUiBatchDepth = 0;/, "app.js must track admin UI batch depth.");
 assert.match(app, /async function withAdminUiBatch\(action\)/, "app.js must expose a batch wrapper for admin UI work.");

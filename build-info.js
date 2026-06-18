@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.200",
-    buildLabel: "render-retention-admin-routes",
-    updatedAt: "2026-06-18T10:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v300",
+    version: "2026.06.18.201",
+    buildLabel: "admin-cleanup-diagnostics-finish",
+    updatedAt: "2026-06-18T11:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v301",
     releaseNotes: Object.freeze([
       "Retention preview and cleanup now prefer Render admin routes that verify the signed-in workspace admin and call the Supabase retention RPCs server-side, with browser RPCs kept only as fallback.",
       "Signed-in startup now shows a calm Loading workspace state while Render hydrates workspace/member data, and suppresses invite/phone/setup panels plus premature Cloud delayed banners until startup load settles.",
