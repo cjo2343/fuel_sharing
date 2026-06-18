@@ -7,11 +7,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:199|200|201)"/, "build-info.js must be bumped to v299.");
-assert.match(buildInfo, /buildLabel:\s*"(?:startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish)"/, "build-info.js must use the v299 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:299|30[0-1])"/, "build-info.js must expect the v299 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:299|30[0-1])"/, "service-worker.js must use the v299 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish)"/, "service-worker.js must use the v299 build label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:199|200|201|202)"/, "build-info.js must be bumped to v299.");
+assert.match(buildInfo, /buildLabel:\s*"(?:startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint)"/, "build-info.js must use the v299 build label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:299|30[0-2])"/, "build-info.js must expect the v299 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:299|30[0-2])"/, "service-worker.js must use the v299 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint)"/, "service-worker.js must use the v299 build label.");
 
 assert.match(app, /const startupHydrationGraceMs = 12000;/, "Startup hydration should have a short grace window.");
 assert.match(app, /let startupHydrationActive = false;/, "Startup hydration state must be tracked.");

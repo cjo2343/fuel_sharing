@@ -29,6 +29,7 @@ const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
 const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
 const renderRetentionPreviewUrl = "/api/admin/retention/preview";
 const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
+const renderAdminHealthUrl = "/api/admin/health";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -1207,6 +1208,13 @@ const retentionPolicy = Object.freeze({
   stalePushSubscriptionDays: 180
 });
 let lastRetentionCleanupPreview = null;
+let renderAdminHealthStatus = {
+  checked: false,
+  ok: false,
+  loading: false,
+  message: "Render admin health has not been checked yet.",
+  checks: []
+};
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -1467,6 +1475,7 @@ const els = {
   previewRetentionCleanup: document.querySelector("#previewRetentionCleanup"),
   runRetentionCleanup: document.querySelector("#runRetentionCleanup"),
   retentionCleanupSummary: document.querySelector("#retentionCleanupSummary"),
+  checkRenderAdminHealth: document.querySelector("#checkRenderAdminHealth"),
   refreshAboutBuildInfo: document.querySelector("#refreshAboutBuildInfo"),
   refreshBuildInfo: document.querySelector("#refreshBuildInfo"),
   pwaPanel: document.querySelector("#pwaPanel"),
@@ -2636,6 +2645,11 @@ els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
 
+els.checkRenderAdminHealth?.addEventListener("click", async () => {
+  if (!canManageSettings()) return;
+  await traceAdminToolOperation("render-admin-health", "Check Render admin health", () => checkRenderAdminHealth());
+});
+
 async function handleManualSyncNow(source = "manual") {
   const reason = `manual-${source}`;
   clearRecoverableSyncDelayAfterHealthySync(`${reason}-preflight`);
@@ -3612,8 +3626,118 @@ function buildSupabaseLoadReport() {
     latestDataIoDiagnostic: lastDataIoDiagnostic,
     latestDataIoOperation: latestDataIoOperation(),
     normalizedTableStatus,
-    supabaseSecurityStatus
+    supabaseSecurityStatus,
+    renderAdminHealthStatus
   };
+}
+
+async function checkRenderAdminHealth({ silent = false } = {}) {
+  if (!canManageSettings()) return renderAdminHealthStatus;
+  if (!currentSession?.access_token || typeof fetch !== "function") {
+    renderAdminHealthStatus = {
+      checked: true,
+      ok: false,
+      loading: false,
+      message: "Sign in before checking Render admin health.",
+      checks: []
+    };
+    if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
+    renderSupabaseLoadMonitor();
+    return renderAdminHealthStatus;
+  }
+  const ledgerId = getActiveLedgerId();
+  const operationId = createDataIoOperationId("admin-render-health");
+  const traceMeta = { source: "admin-render-health", route: "render-api", endpoint: renderAdminHealthUrl, operation: "health", operationId, ledgerId };
+  renderAdminHealthStatus = { ...renderAdminHealthStatus, loading: true, message: "Checking Render admin backend..." };
+  renderSupabaseLoadMonitor();
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Render admin health" });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render admin health API", 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(renderAdminHealthUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId })
+    });
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (!response.ok || !result) {
+      const error = new Error(result?.error || result?.message || text || `Render admin health failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    const checks = Array.isArray(result.checks) ? result.checks : [];
+    renderAdminHealthStatus = {
+      checked: true,
+      ok: result.ok === true,
+      loading: false,
+      mode: "render",
+      checkedAt: result.checkedAt || new Date().toISOString(),
+      ledgerId: result.ledgerId || ledgerId,
+      userEmail: result.userEmail || "",
+      message: result.summary || (result.ok ? "Render admin backend is healthy." : "Render admin backend needs review."),
+      checks
+    };
+    recordDataIoDiagnostic(result.ok ? "success" : "error", { ...traceMeta, ok: result.ok === true, detail: result.summary || "Render admin health completed" });
+    recordSupabaseLoadEvent("render-admin-health", result.ok ? "Render admin health ok" : "Render admin health needs review");
+    if (!silent) setDataToolsMessage(result.ok ? "Render admin health is green." : "Render admin health needs review.");
+  } catch (error) {
+    renderAdminHealthStatus = {
+      checked: true,
+      ok: false,
+      loading: false,
+      mode: "render",
+      checkedAt: new Date().toISOString(),
+      ledgerId,
+      message: `Render admin health failed: ${error.message || error}`,
+      checks: []
+    };
+    recordDataIoDiagnostic(error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" ? "timeout" : "error", { ...traceMeta, error, detail: "Render admin health failed" });
+    if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    renderSupabaseLoadMonitor();
+  }
+  return renderAdminHealthStatus;
+}
+
+function renderRenderAdminHealthCard() {
+  const status = renderAdminHealthStatus || {};
+  const checks = Array.isArray(status.checks) ? status.checks : [];
+  const okCount = checks.filter((check) => check.ok === true).length;
+  const issueCount = checks.filter((check) => check.ok === false).length;
+  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Checking" : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
+  const detail = status.message || "Run the Render admin health check before dangerous admin work.";
+  return `
+    <article class="admin-metric-card ${cardClass}">
+      <span>Render admin health</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${checks.length ? `${okCount} ok${issueCount ? ` · ${issueCount} issue${issueCount === 1 ? "" : "s"}` : ""}` : "Backend safety preflight"}</small>
+      <p>${escapeHtml(detail)}</p>
+    </article>
+    ${checks.length ? `
+      <details class="admin-diagnostics-section">
+        <summary>Render admin health checks</summary>
+        <ul class="test-lab-check-list readable-activity-list">
+          ${checks.map((check) => `<li><span class="status-chip ${check.ok ? "paid" : "requested"}">${check.ok ? "OK" : "Issue"}</span> <strong>${escapeHtml(check.label || check.id || "Check")}</strong>${check.route ? ` · <code>${escapeHtml(check.route)}</code>` : ""}${check.detail ? ` — ${escapeHtml(check.detail)}` : ""}</li>`).join("")}
+        </ul>
+      </details>
+    ` : ""}
+  `;
 }
 
 function renderSupabaseLoadMonitor() {
@@ -3659,6 +3783,7 @@ function renderSupabaseLoadMonitor() {
         <small>${latestDataIoOp ? escapeHtml(formatDataIoOperationLine(latestDataIoOp)) : "No operation yet"}</small>
         <p>Grouped by operation so start/finish pairs are readable.</p>
       </article>
+      ${renderRenderAdminHealthCard()}
       <article class="admin-metric-card ${activeForeground.length ? "warning" : "ok"}">
         <span>Foreground save</span>
         <strong>${activeForeground.length ? "Active" : "Idle"}</strong>

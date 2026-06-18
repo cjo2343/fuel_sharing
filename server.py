@@ -955,6 +955,67 @@ def run_retention_admin_rpc_as_user(action, payload, user, user_token):
     return ledger_id, call_supabase_rpc_as_user(rpc_name, rpc_payload, user_token=user_token) or {}
 
 
+def build_admin_health_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Admin health payload must be an object")
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    if not ledger_id:
+        raise ValueError("Missing ledgerId")
+    return ledger_id
+
+
+def build_render_admin_route_health(ledger_id, context):
+    route_checks = [
+        ("stateLoad", "/api/state/load", "Render normalized state load route"),
+        ("writeContext", "/api/context/write", "Render write-context route"),
+        ("jsonMirrorBackup", "/api/backups/json-mirror", "Render JSON mirror backup route"),
+        ("ledgerDirectorySync", "/api/ledgers/sync", "Render ledger directory sync route"),
+        ("adminTestDataCreate", "/api/admin/test-data/create", "Render generated test-data create route"),
+        ("adminTestDataCleanup", "/api/admin/test-data/cleanup", "Render generated test-data cleanup route"),
+        ("retentionPreview", "/api/admin/retention/preview", "Render retention preview route"),
+        ("retentionCleanup", "/api/admin/retention/cleanup", "Render retention cleanup route"),
+        ("tripUpsert", "/api/trips/upsert", "Render trip save route"),
+        ("fuelUpsert", "/api/fuel/upsert", "Render fuel save route"),
+        ("bookingUpsert", "/api/bookings/upsert", "Render booking save route"),
+        ("bookingDelete", "/api/bookings/delete", "Render booking delete route"),
+        ("paymentStatusAction", "/api/payments/status-action", "Render payment-status action route"),
+    ]
+    return [
+        {
+            "id": key,
+            "ok": True,
+            "route": route,
+            "label": label,
+            "detail": "Route is mounted in this Render service."
+        }
+        for key, route, label in route_checks
+    ]
+
+
+def build_render_admin_health(ledger_id, user, user_token):
+    if not supabase_url() or not supabase_anon_key():
+        raise RuntimeError("Supabase server environment variables are missing")
+    context = assert_user_can_admin_ledger(ledger_id, user, user_token)
+    checks = [
+        {"id": "render", "ok": True, "label": "Render backend is reachable", "detail": "Admin health route responded."},
+        {"id": "supabase-config", "ok": True, "label": "Supabase configuration is present", "detail": "SUPABASE_URL and Supabase API key are configured."},
+        {"id": "supabase-session", "ok": True, "label": "Supabase session is active", "detail": str(user.get("email") or "")},
+        {"id": "workspace-member", "ok": True, "label": "Signed-in user maps to this workspace", "detail": str(context.get("currentMemberId") or "")},
+        {"id": "workspace-admin", "ok": bool(context.get("canAdmin")), "label": "Signed-in user is workspace admin", "detail": str(context.get("role") or "")},
+        {"id": "open-period", "ok": bool(context.get("openPeriodId")), "label": "Open settlement period is available", "detail": str(context.get("openPeriodId") or "")},
+    ]
+    checks.extend(build_render_admin_route_health(ledger_id, context))
+    return {
+        "ok": all(bool(check.get("ok")) for check in checks),
+        "backend": "render",
+        "ledgerId": ledger_id,
+        "userEmail": user.get("email"),
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+        "routes": {check.get("id"): check for check in checks if check.get("route")},
+        "summary": "Render admin backend, Supabase session, workspace admin permission, and mounted safety routes are ready."
+    }
+
 
 def quote_postgrest_value(value):
     return urllib.parse.quote(str(value or ""), safe="")
@@ -1708,6 +1769,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/admin/test-data/cleanup":
             self.cleanup_admin_test_data_backend()
             return
+        if self.path == "/api/admin/health":
+            self.admin_health_backend()
+            return
         if self.path == "/api/admin/retention/preview":
             self.preview_retention_cleanup_backend()
             return
@@ -1895,6 +1959,32 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "counts": counts, "backend": "render", "userEmail": user.get("email")})
+
+    def admin_health_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before checking Render admin health")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id = build_admin_health_payload(payload)
+            health = build_render_admin_health(ledger_id, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json(health)
 
     def preview_retention_cleanup_backend(self):
         user = current_supabase_user(self)

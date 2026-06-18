@@ -254,3 +254,8 @@ Signed-in invite redemption now treats the Supabase session as the source of tru
 - This is a server-side foundation, not a public launch switch: keep public signup disabled until real-user invite testing, monitoring review, and abuse/rate-limit operations are complete.
 - Backend-route foundation now uses Render `/api/payments/status-action` to verify the user session server-side before calling the payment action RPC, reducing browser-owned payment coordination while preserving RLS/auth checks.
 - Ledger table upserts must always include slug and failed normalized writes should record their route/table/RPC in Data I/O diagnostics before falling back.
+
+
+### v302 Render admin health endpoint
+
+Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.

@@ -737,3 +737,8 @@ GitHub may show a separate **Supabase Preview** status created by the Supabase G
 - Admin diagnostics include a Data I/O flight recorder for recent normalized reads/writes, showing whether an action used Render API, Supabase RPC, direct table fallback, or JSON fallback.
 - Version checks distinguish the loaded page build, latest deployed build, and active service-worker cache so update handoffs ask users to close/reopen instead of showing random cache mismatches.
 - Sync status is source-gated so background diagnostics, focus refreshes, realtime hints, and service-worker checks stay in Admin diagnostics instead of taking over the main top-bar status.
+
+
+### v302 Render admin health endpoint
+
+Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.

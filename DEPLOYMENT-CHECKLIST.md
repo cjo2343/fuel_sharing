@@ -531,3 +531,8 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 - After sync/save debugging patches, verify Admin diagnostics shows the latest Data I/O source/route/table or RPC for any failed write instead of only a generic Saving/Syncing status.
 - After service-worker updates, verify the App version panel shows either Current or Update ready; build-info.js must be network-first and mixed page/cache states should resolve after one close/reopen.
 - After sync-status source-gate changes, verify background focus/realtime/admin diagnostics do not make the top bar show Saving/Syncing during normal idle use.
+
+
+### v302 Render admin health endpoint
+
+Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.

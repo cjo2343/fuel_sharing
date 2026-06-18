@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.201",
-    buildLabel: "admin-cleanup-diagnostics-finish",
-    updatedAt: "2026-06-18T11:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v301",
+    version: "2026.06.18.202",
+    buildLabel: "render-admin-health-endpoint",
+    updatedAt: "2026-06-18T11:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v302",
     releaseNotes: Object.freeze([
+      "Admin diagnostics now has a Render admin health check that verifies signed-in workspace admin permission, Supabase connectivity, an open period, and the mounted backend safety routes before dangerous admin work.",
       "Retention preview and cleanup now prefer Render admin routes that verify the signed-in workspace admin and call the Supabase retention RPCs server-side, with browser RPCs kept only as fallback.",
       "Signed-in startup now shows a calm Loading workspace state while Render hydrates workspace/member data, and suppresses invite/phone/setup panels plus premature Cloud delayed banners until startup load settles.",
       "Admin/Test Lab tools now batch their Data I/O and full UI refreshes while a button action is running, so rapid generated-data and report-save flows repaint once at the end instead of flickering through start/ok status churn.",

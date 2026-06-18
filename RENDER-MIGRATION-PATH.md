@@ -158,17 +158,7 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 - Browser cleanup now tries the Render route first and keeps the v293 direct-table cleanup only as a route-unavailable fallback.
 - Expected load-monitor markers: `render-normalized-test-data-cleanup` and `data-io:normalized-test-data-cleanup:ok -> render-api /api/admin/test-data/cleanup`.
 
-## v301 admin cleanup diagnostics finish
 
-v301 keeps the v300 Render retention route behavior and tightens diagnostics around admin cleanup flows:
+### v302 Render admin health endpoint
 
-- Clean generated Test Lab data now skips the redundant normalized-table health recheck after the Render cleanup route already reports normalized cleanup counts. This lets the outer `admin-tool:cleanup-test-lab-data` Data I/O row finish instead of timing out after the real work has completed.
-- Successful Render retention preview/cleanup diagnostics are now recorded with `ok: true` so the load monitor no longer shows a confusing success row with `ok: false`.
-- Successful Render normalized generated-data cleanup diagnostics are also recorded with `ok: true`.
-
-Expected markers after deploy:
-
-- `retention-preview -> render-api /api/admin/retention/preview -> ok`
-- `normalized-test-data-cleanup -> render-api /api/admin/test-data/cleanup -> ok`
-- `admin-tool:cleanup-test-lab-data -> ok`
-- No stale cleanup admin-tool timeout row after generated data cleanup succeeds.
+Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.

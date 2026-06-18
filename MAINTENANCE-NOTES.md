@@ -650,3 +650,8 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 - Data I/O flight-recorder diagnostics should stay enabled around normalized writes so future stuck Saving/Syncing reports identify the exact source, route, table/RPC/API, and Supabase error.
 - Service-worker version consistency: keep build-info.js out of the cache-first app shell and avoid skipWaiting/clients.claim so old pages are not silently controlled by a new runtime cache.
 - Visible sync-status changes must pass an explicit source; background focus/realtime/admin/service-worker paths should record diagnostics instead of setting the top-bar Saving/Syncing badge.
+
+
+### v302 Render admin health endpoint
+
+Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
