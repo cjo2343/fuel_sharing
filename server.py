@@ -149,7 +149,7 @@ def supabase_anon_key():
     return env_value("SUPABASE_ANON_KEY") or env_value("SUPABASE_SERVICE_ROLE_KEY")
 
 
-def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=None):
+def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=None, timeout=20):
     key = api_key or supabase_key()
     headers = {
         "apikey": key,
@@ -160,7 +160,7 @@ def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=
         headers["Prefer"] = prefer
     data = None if body is None else json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url, data=data, method=method, headers=headers)
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read().decode("utf-8")
         return json.loads(raw) if raw else None
 
@@ -1093,6 +1093,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("adminTestDataCreate", "/api/admin/test-data/create", "Render generated test-data create route"),
         ("adminTestDataCleanup", "/api/admin/test-data/cleanup", "Render generated test-data cleanup route"),
         ("adminReportSave", "/api/admin/reports/save", "Render admin report save route"),
+        ("adminSecurityHealth", "/api/admin/security-health", "Render admin security-health route"),
         ("retentionPreview", "/api/admin/retention/preview", "Render retention preview route"),
         ("retentionCleanup", "/api/admin/retention/cleanup", "Render retention cleanup route"),
         ("tripUpsert", "/api/trips/upsert", "Render trip save route"),
@@ -1136,6 +1137,97 @@ def build_render_admin_health(ledger_id, user, user_token):
         "checks": checks,
         "routes": {check.get("id"): check for check in checks if check.get("route")},
         "summary": "Render admin backend, Supabase session, workspace admin permission, and mounted safety routes are ready."
+    }
+
+
+def security_health_pass(name, detail=""):
+    return {"ok": True, "name": name, "detail": detail}
+
+
+def security_health_fail(name, detail=""):
+    return {"ok": False, "name": name, "detail": detail, "level": "error"}
+
+
+def normalize_healthcheck_rpc_result(data=None, error=None):
+    name = "Fuel Ledger healthcheck RPC is available"
+    if error:
+        return security_health_fail(name, str(error))
+    data = data if isinstance(data, dict) else {}
+    if data.get("ok") is False:
+        return security_health_fail(name, data.get("message") or "Healthcheck RPC returned an unhealthy result.")
+
+    close_rpc = data.get("close_settlement_period_exists")
+    critical_rpcs = data.get("critical_rpcs") if isinstance(data.get("critical_rpcs"), dict) else {}
+    missing_rpcs = [key for key, exists in critical_rpcs.items() if exists is not True]
+    if close_rpc is False:
+        return security_health_fail("close_settlement_period RPC is installed", "The lightweight healthcheck ran, but close_settlement_period is missing from the schema.")
+    if missing_rpcs:
+        return security_health_fail("Critical write RPCs are installed", "Missing RPC(s): " + ", ".join(missing_rpcs) + ". Run the latest Supabase migrations before disabling table fallbacks.")
+
+    schema_migrations = data.get("schema_migrations") if isinstance(data.get("schema_migrations"), dict) else {}
+    missing_migrations = [item for item in schema_migrations.get("missing_migrations", []) if item]
+    if missing_migrations:
+        return security_health_fail("Fuel Ledger schema migrations are applied", "Missing migration(s): " + ", ".join(missing_migrations) + ". Run the latest Supabase migrations in order.")
+
+    schema_drift = data.get("schema_drift") if isinstance(data.get("schema_drift"), dict) else {}
+    drift_issues = []
+    for key in ("missing_tables", "missing_columns", "missing_policies"):
+        drift_issues.extend([item for item in schema_drift.get(key, []) if item])
+    if drift_issues:
+        shown = ", ".join(drift_issues[:12])
+        if len(drift_issues) > 12:
+            shown += f", and {len(drift_issues) - 12} more"
+        return security_health_fail("Fuel Ledger schema shape matches the app", f"Missing schema object(s): {shown}. Run the latest Supabase migrations or re-apply supabase-schema.sql.")
+
+    details = []
+    if critical_rpcs:
+        details.append(f"{len(critical_rpcs)} critical RPC(s) available")
+    elif close_rpc is True:
+        details.append("close_settlement_period exists")
+    if schema_migrations.get("latest_expected"):
+        details.append(f"schema migrations {schema_migrations.get('latest_applied') or 'unknown'}/{schema_migrations.get('latest_expected')}")
+    if schema_drift.get("ok") is True:
+        details.append("schema drift OK")
+    if data.get("ledger_id"):
+        details.append(f"ledger {data.get('ledger_id')}")
+    result = security_health_pass(name, "; ".join(details) if details else "Healthcheck RPC returned successfully.")
+    result["rpcHealth"] = data
+    realtime_publication = data.get("realtime_publication") if isinstance(data.get("realtime_publication"), dict) else {}
+    if realtime_publication.get("ledger_events_enabled") is False or realtime_publication.get("extra_tables"):
+        result["warning"] = True
+        result["level"] = "warning"
+    return result
+
+
+def build_render_security_health(ledger_id, user, user_token):
+    if not supabase_url() or not supabase_anon_key():
+        raise RuntimeError("Supabase server environment variables are missing")
+    context = assert_user_can_admin_ledger(ledger_id, user, user_token)
+    checks = [security_health_pass("Supabase session is fresh", "Verified by Render through Supabase Auth." )]
+
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active&ledger_id=eq.{quote_postgrest_value(ledger_id)}&is_active=eq.true&limit=100",
+        token=user_token,
+        api_key=supabase_anon_key(),
+        timeout=8,
+    ) or []
+    checks.append(security_health_pass("Active ledger members are readable", f"{len(rows)} active member row(s)."))
+    current_email = str(user.get("email") or "").strip().lower()
+    current_row = next((row for row in rows if str(row.get("email") or "").strip().lower() == current_email), None)
+    checks.append(security_health_pass("Current Supabase user is linked to an active ledger member", current_row.get("name") or current_email) if current_row else security_health_fail("Current Supabase user is linked to an active ledger member", current_email or "No email found."))
+    checks.append(security_health_pass("Current linked member is admin in normalized tables") if str((current_row or {}).get("role") or context.get("role") or "").lower() == "admin" else security_health_fail("Current linked member is admin in normalized tables", "Admin role is required for backend security checks."))
+
+    rpc_payload = call_supabase_rpc_as_user("fuel_ledger_healthcheck", {"target_ledger_id": ledger_id}, user_token=user_token)
+    checks.append(normalize_healthcheck_rpc_result(rpc_payload))
+    failed = [check for check in checks if not check.get("ok")]
+    return {
+        "ok": not failed,
+        "backend": "render",
+        "ledgerId": ledger_id,
+        "userEmail": user.get("email"),
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+        "summary": f"Render security health completed with {len(failed)} issue(s)." if failed else "Render security health checks passed.",
     }
 
 
@@ -1897,6 +1989,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/admin/reports/save":
             self.save_admin_report_backend()
             return
+        if self.path == "/api/admin/security-health":
+            self.security_health_backend()
+            return
         if self.path == "/api/admin/retention/preview":
             self.preview_retention_cleanup_backend()
             return
@@ -2107,6 +2202,34 @@ class Handler(SimpleHTTPRequestHandler):
             if not check_backend_rate_limit(self, "admin-health", user=user, ledger_id=ledger_id):
                 return
             health = build_render_admin_health(ledger_id, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json(health)
+
+    def security_health_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before checking Security Health")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id = build_admin_health_payload(payload)
+            if not check_backend_rate_limit(self, "admin-health", user=user, ledger_id=ledger_id):
+                return
+            health = build_render_security_health(ledger_id, user, token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
             return

@@ -31,6 +31,7 @@ const renderRetentionPreviewUrl = "/api/admin/retention/preview";
 const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const renderAdminHealthUrl = "/api/admin/health";
 const renderAdminReportSaveUrl = "/api/admin/reports/save";
+const renderAdminSecurityHealthUrl = "/api/admin/security-health";
 const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
@@ -4861,6 +4862,69 @@ function buildSecurityHealthProbeTimeoutCheck(helper, name, error) {
   return { ok: true, level: "warning", warning: true, name, detail };
 }
 
+async function fetchRenderSecurityHealthChecks({ ledgerId, probeTimeoutMs = 10000 } = {}) {
+  if (!currentSession?.access_token || typeof fetch !== "function" || !ledgerId) return null;
+  const operationId = createDataIoOperationId("admin-security-health");
+  const traceMeta = { source: "admin-security-health", route: "render-api", endpoint: renderAdminSecurityHealthUrl, operation: "health", operationId, ledgerId };
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Render security health" });
+    controller = new AbortController();
+    const timeoutMs = Math.max(12000, Number(probeTimeoutMs || 0) + 10000);
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render security health API", timeoutMs));
+      }, timeoutMs);
+    });
+    const fetchPromise = fetch(renderAdminSecurityHealthUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId })
+    });
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (!response.ok || !result) {
+      const error = new Error(result?.error || result?.message || text || `Render security health failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    const checks = Array.isArray(result.checks) ? result.checks : [];
+    recordDataIoDiagnostic(result.ok === true ? "success" : "error", { ...traceMeta, ok: result.ok === true, detail: result.summary || "Render security health completed" });
+    recordSupabaseLoadEvent("render-security-health", result.ok ? "Render security health ok" : "Render security health needs review");
+    return {
+      checked: true,
+      ok: result.ok === true,
+      mode: "render",
+      checkedAt: result.checkedAt || new Date().toISOString(),
+      message: result.summary || (result.ok ? "Render security health checks passed." : "Render security health needs review."),
+      checks
+    };
+  } catch (error) {
+    recordDataIoDiagnostic("error", { ...traceMeta, ok: false, error, detail: "Render security health failed" });
+    return {
+      checked: true,
+      ok: true,
+      mode: "render-fallback",
+      checkedAt: new Date().toISOString(),
+      message: "Render security health route was unavailable; browser Supabase probes will run as fallback.",
+      checks: [buildSecurityHealthProbeTimeoutCheck(securityHealth || window.FuelSecurityHealth, "Render security health route unavailable", { label: "Render security health route", timeoutMs: probeTimeoutMs, message: error.message || String(error) })],
+      error
+    };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function refreshSupabaseSecurityHealth({ silent = false, force = false, probeTimeoutMs = 10000 } = {}) {
   const checks = [];
   const checkedAt = new Date().toISOString();
@@ -4929,23 +4993,43 @@ async function refreshSupabaseSecurityHealth({ silent = false, force = false, pr
     return supabaseSecurityStatus;
   }
 
-  try {
-    if (!(await withSecurityHealthProbeTimeout("Supabase session refresh", hasFreshSupabaseSession(), probeTimeoutMs))) {
-      record(helper.fail("Supabase session is fresh", "The session could not be refreshed."));
-    } else {
-      record(helper.pass("Supabase session is fresh"));
-    }
-  } catch (error) {
-    if (error?.isSecurityHealthProbeTimeout) {
-      record(buildSecurityHealthProbeTimeoutCheck(helper, "Supabase session refresh timed out", error));
-    } else {
-      record(helper.fail("Supabase session is fresh", error.message || String(error)));
-    }
-  }
-
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 
   if (canManageSettings()) {
+    const renderSecurityStatus = await fetchRenderSecurityHealthChecks({ ledgerId, probeTimeoutMs });
+    if (renderSecurityStatus?.mode === "render") {
+      renderSecurityStatus.checks.forEach(record);
+      const failed = checks.filter((check) => !check.ok);
+      supabaseSecurityStatus = {
+        checked: true,
+        ok: failed.length === 0,
+        mode: "render",
+        checkedAt: renderSecurityStatus.checkedAt || checkedAt,
+        message: failed.length ? `${failed.length} Supabase security health check(s) need attention.` : "Supabase security health checks passed through Render.",
+        checks
+      };
+      renderAdminGuardrailOverview();
+      if (!silent) setDataToolsMessage(helper.renderSecurityStatusText(supabaseSecurityStatus));
+      return supabaseSecurityStatus;
+    }
+    if (renderSecurityStatus?.checks?.length) {
+      renderSecurityStatus.checks.forEach(record);
+    }
+
+    try {
+      if (!(await withSecurityHealthProbeTimeout("Supabase session refresh", hasFreshSupabaseSession(), probeTimeoutMs))) {
+        record(helper.fail("Supabase session is fresh", "The session could not be refreshed."));
+      } else {
+        record(helper.pass("Supabase session is fresh"));
+      }
+    } catch (error) {
+      if (error?.isSecurityHealthProbeTimeout) {
+        record(buildSecurityHealthProbeTimeoutCheck(helper, "Supabase session refresh timed out", error));
+      } else {
+        record(helper.fail("Supabase session is fresh", error.message || String(error)));
+      }
+    }
+
     try {
       const members = await withSecurityHealthProbeTimeout("Active ledger members probe", supabaseClient
         .from("ledger_members")
