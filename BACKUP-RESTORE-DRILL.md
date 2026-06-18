@@ -89,7 +89,7 @@ A drill passes when:
 - Core ledger data, closed periods, bookings, and audit logs are visible after restore.
 - Admin diagnostics remain healthy after the restore.
 
-## Common failures and fixes
+## Common failures and fixes:
 
 - **Import rejected:** use the app validation message to identify malformed or unsupported backup shape.
 - **Data appears stale after restore:** refresh once, then check Admin diagnostics and pending sync state.
