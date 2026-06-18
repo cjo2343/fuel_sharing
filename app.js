@@ -3462,9 +3462,14 @@ function getSupabaseLoadEvents(windowMs = 10 * 60 * 1000) {
 
 function isSupabaseLoadNoiseEvent(entry = {}) {
   const label = String(entry.label || "");
-  return Boolean(entry.diagnostic)
-    || label.startsWith("sync-diagnostic:")
-    || label === "foreground-operation-start"
+  if (Boolean(entry.diagnostic) || label.startsWith("sync-diagnostic:")) return true;
+  if (entry.dataIo && (/^data-io:admin/i.test(label) || /^data-io:admin-tool:/i.test(label))) return true;
+  if (/^admin-tool:/i.test(label) || /^render-admin-health$/i.test(label) || /^render-admin-report-save$/i.test(label)) return true;
+  if (/^security-health/i.test(label) || /^normalized-health/i.test(label) || /^test-lab-report/i.test(label)) return true;
+  if (/skip$/i.test(label) || /-skip$/i.test(label) || /-disabled$/i.test(label)) return true;
+  if (/^realtime-(resumed-visible|paused-hidden|disabled)$/i.test(label)) return true;
+  if (/^ledger-events-subscription/i.test(label)) return true;
+  return label === "foreground-operation-start"
     || label === "foreground-operation-finished"
     || label === "foreground-operation-timeout"
     || label === "saving-stale-cleared"

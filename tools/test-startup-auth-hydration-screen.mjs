@@ -7,10 +7,10 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:199|200|201|202|203|204|205|206|207|208)"/, "build-info.js must be bumped to v299.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:199|200|201|202|203|204|205|206|207|208|209)"/, "build-info.js must be bumped to v299.");
 assert.match(buildInfo, /buildLabel:\s*"(?:startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, "build-info.js must use the v299 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:299|30[0-8])"/, "build-info.js must expect the v299 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:299|30[0-8])"/, "service-worker.js must use the v299 cache.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:299|30[0-9])"/, "build-info.js must expect the v299 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:299|30[0-9])"/, "service-worker.js must use the v299 cache.");
 assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, "service-worker.js must use the v299 build label.");
 
 assert.match(app, /const startupHydrationGraceMs = 12000;/, "Startup hydration should have a short grace window.");
