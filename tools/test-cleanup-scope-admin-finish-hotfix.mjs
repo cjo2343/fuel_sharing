@@ -6,10 +6,10 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:197|198|199|200|201|202|203|204|205|206|207)"/, "build-info.js must be bumped to v297.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:197|198|199|200|201|202|203|204|205|206|207|208)"/, "build-info.js must be bumped to v297.");
 assert.match(buildInfo, /buildLabel:\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, "build-info.js must use the v297 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[7-9]|30[0-7])"/, "build-info.js must expect the v297 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[7-9]|30[0-7])"/, "service-worker.js must use the v297 cache.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[7-9]|30[0-8])"/, "build-info.js must expect the v297 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[7-9]|30[0-8])"/, "service-worker.js must use the v297 cache.");
 assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, "service-worker.js must use the v297 build label.");
 
 const cleanupViaRenderStart = app.indexOf("async function cleanupGeneratedRowsFromNormalizedTablesViaRender");
@@ -25,7 +25,7 @@ const securityListenerEnd = app.indexOf('els.exportTestLabReport?.addEventListen
 assert.ok(securityListenerStart >= 0 && securityListenerEnd > securityListenerStart, "Security Health listener must be present.");
 const securityListener = app.slice(securityListenerStart, securityListenerEnd);
 assert.match(securityListener, /requireTypedAdminConfirmation/, "Security Health confirmation must happen before opening the admin Data I/O row.");
-assert.match(securityListener, /traceAdminToolOperation\("security-health", "Run live Security Health", \(\) => runStandaloneSecurityHealthScenario\(\{ skipConfirmation: true \}\)\)/, "Security Health admin Data I/O row must run after confirmation without a second blocking prompt.");
+assert.match(securityListener, /traceAdminToolOperation\("security-health", "Run live Security Health", \(\) => runStandaloneSecurityHealthScenario\(\{ skipConfirmation: true \}\)(?:, \{ staleAfterMs: longAdminToolDataIoOperationStaleMs \})?\)/, "Security Health admin Data I/O row must run after confirmation without a second blocking prompt.");
 
 const saveListenerStart = app.indexOf('els.saveTestLabReportCloud?.addEventListener("click", async () => {');
 const saveListenerEnd = app.indexOf('els.cleanupTestLabData?.addEventListener', saveListenerStart);

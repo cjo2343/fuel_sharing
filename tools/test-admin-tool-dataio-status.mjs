@@ -6,8 +6,8 @@ const pkg = fs.readFileSync('package.json', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(app, /function makeAdminToolDiagnosticMeta\(source, detail = "", operation = "run"\)/, 'admin tool diagnostic metadata helper is missing');
-assert.match(app, /async function traceAdminToolOperation\(source, detail, action, \{ operation = "run" \} = \{\}\)/, 'admin tool trace wrapper is missing');
+assert.match(app, /function makeAdminToolDiagnosticMeta\(source, detail = "", operation = "run", options = \{\}\)/, 'admin tool diagnostic metadata helper is missing');
+assert.match(app, /async function traceAdminToolOperation\(source, detail, action, \{ operation = "run", staleAfterMs = dataIoOperationStaleMs \} = \{\}\)/, 'admin tool trace wrapper is missing');
 assert.match(app, /route: "admin-tool"/, 'admin tool operations must use the admin-tool route so they group in Data I/O');
 
 const requiredTools = [
@@ -41,7 +41,7 @@ for (const name of requiredTools) {
 }
 
 assert.match(buildInfo, /Admin tools that trigger cloud work now wrap their action in a Data I\/O operation row/, 'build-info release notes must keep the admin tool Data I/O status pass');
-assert.match(serviceWorker, /fuel-ledger-v(?:29[1-9]|30[0-7])/, 'service worker cache must be at least v291 for admin tool Data I/O runtime changes');
+assert.match(serviceWorker, /fuel-ledger-v(?:29[1-9]|30[0-8])/, 'service worker cache must be at least v291 for admin tool Data I/O runtime changes');
 assert.match(pkg, /test-admin-tool-dataio-status\.mjs/, 'validate script must include the admin tool Data I/O status guard');
 
 console.log('Admin tool Data I/O status guard check passed.');

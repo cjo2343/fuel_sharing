@@ -6,10 +6,10 @@ const server = readFileSync("server.py", "utf8");
 const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 
-assert.match(buildInfo, /version: "2026\.06\.18\.(?:200|201|202|203|204|205|206|207|207)"/);
+assert.match(buildInfo, /version: "2026\.06\.18\.(?:200|201|202|203|204|205|206|207|208)"/);
 assert.match(buildInfo, /buildLabel: "(?:render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/);
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:300|301|302|303|304|305|306|307)"/);
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:300|301|302|303|304|305|306|307)"/);
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:300|301|302|303|304|305|306|307|308|308)"/);
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:300|301|302|303|304|305|306|307|308|308)"/);
 assert.match(serviceWorker, /BUILD_LABEL = "(?:render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/);
 
 assert.match(app, /const renderRetentionPreviewUrl = "\/api\/admin\/retention\/preview"/);

@@ -688,6 +688,8 @@ let lastDataIoDiagnostic = null;
 const dataIoDiagnostics = [];
 let dataIoOperationCounter = 0;
 const dataIoOperationStaleMs = 15000;
+const longAdminToolDataIoOperationStaleMs = 45000;
+const standaloneSecurityHealthProbeTimeoutMs = 6000;
 
 function createDataIoOperationId(source = "data-io") {
   dataIoOperationCounter += 1;
@@ -697,6 +699,12 @@ function createDataIoOperationId(source = "data-io") {
 
 function summarizeDataIoTarget(meta = {}) {
   return meta.endpoint || meta.rpc || meta.table || meta.route || meta.source || "unknown";
+}
+
+function normalizeDataIoOperationStaleMs(value, fallback = dataIoOperationStaleMs) {
+  const staleMs = Number(value);
+  if (!Number.isFinite(staleMs) || staleMs <= 0) return fallback;
+  return Math.max(1000, Math.round(staleMs));
 }
 
 function dataIoSignature(entry = {}) {
@@ -806,7 +814,8 @@ function recordDataIoDiagnostic(phase, meta = {}) {
     activeLedgerId,
     hasSession: Boolean(currentSession),
     pendingLocalChanges,
-    error: summarizeSupabaseError(meta.error)
+    error: summarizeSupabaseError(meta.error),
+    staleAfterMs: normalizeDataIoOperationStaleMs(meta.staleAfterMs)
   };
   lastDataIoDiagnostic = diagnostic;
   dataIoDiagnostics.push(diagnostic);
@@ -849,13 +858,14 @@ async function traceDataIo(meta, operation) {
   }
 }
 
-function makeAdminToolDiagnosticMeta(source, detail = "", operation = "run") {
+function makeAdminToolDiagnosticMeta(source, detail = "", operation = "run", options = {}) {
   return {
     source: `admin-tool:${source}`,
     route: "admin-tool",
     operation,
     detail,
-    ok: true
+    ok: true,
+    staleAfterMs: normalizeDataIoOperationStaleMs(options.staleAfterMs)
   };
 }
 
@@ -873,8 +883,8 @@ async function runTracedAdminToolAction(action) {
   return normalizeAdminToolResult(result);
 }
 
-async function traceAdminToolOperation(source, detail, action, { operation = "run" } = {}) {
-  return withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation), () => runTracedAdminToolAction(action)));
+async function traceAdminToolOperation(source, detail, action, { operation = "run", staleAfterMs = dataIoOperationStaleMs } = {}) {
+  return withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation, { staleAfterMs }), () => runTracedAdminToolAction(action)));
 }
 
 function recordAdminToolSkip(source, detail, { operation = "run" } = {}) {
@@ -900,7 +910,8 @@ function latestDataIoOperations(limit = 6) {
         status: "active",
         durationMs: null,
         startedAtMs: Number.isFinite(atMs) ? atMs : 0,
-        finishedAtMs: null
+        finishedAtMs: null,
+        staleAfterMs: normalizeDataIoOperationStaleMs(entry.staleAfterMs)
       };
       operations.push(operation);
       openBySignature.set(signature, operation);
@@ -911,6 +922,7 @@ function latestDataIoOperations(limit = 6) {
       open.finish = entry;
       open.latest = entry;
       open.status = dataIoStatusForPhase(entry.phase, entry.ok);
+      open.staleAfterMs = normalizeDataIoOperationStaleMs(entry.staleAfterMs, open.staleAfterMs);
       const startMs = Date.parse(open.start?.at || "");
       if (Number.isFinite(startMs) && Number.isFinite(atMs)) {
         open.durationMs = Math.max(0, Math.round(atMs - startMs));
@@ -927,7 +939,8 @@ function latestDataIoOperations(limit = 6) {
       status: dataIoStatusForPhase(entry.phase, entry.ok),
       durationMs: null,
       startedAtMs: Number.isFinite(atMs) ? atMs : 0,
-      finishedAtMs: Number.isFinite(atMs) ? atMs : null
+      finishedAtMs: Number.isFinite(atMs) ? atMs : null,
+      staleAfterMs: normalizeDataIoOperationStaleMs(entry.staleAfterMs)
     });
   });
   const now = Date.now();
@@ -936,7 +949,8 @@ function latestDataIoOperations(limit = 6) {
     const startedAtMs = Number(operation.startedAtMs || Date.parse(operation.start?.at || ""));
     if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) return;
     const ageMs = now - startedAtMs;
-    if (ageMs >= dataIoOperationStaleMs) {
+    const staleAfterMs = normalizeDataIoOperationStaleMs(operation.staleAfterMs || operation.start?.staleAfterMs);
+    if (ageMs >= staleAfterMs) {
       operation.status = "timeout";
       operation.durationMs = Math.max(0, Math.round(ageMs));
       operation.finishedAtMs = now;
@@ -2606,7 +2620,7 @@ els.runSecurityScenario?.addEventListener("click", async () => {
     detail: "This is cloud-touching. It uses live Supabase checks and should only be run when CPU is calm. Routine Test Lab skips the deep backend probe."
   })) return;
   lastStandaloneSecurityHealthAt = Date.now();
-  await traceAdminToolOperation("security-health", "Run live Security Health", () => runStandaloneSecurityHealthScenario({ skipConfirmation: true }));
+  await traceAdminToolOperation("security-health", "Run live Security Health", () => runStandaloneSecurityHealthScenario({ skipConfirmation: true }), { staleAfterMs: longAdminToolDataIoOperationStaleMs });
 });
 
 els.exportTestLabReport?.addEventListener("click", () => {
@@ -5171,7 +5185,7 @@ async function runStandaloneSecurityHealthScenario({ skipConfirmation = false } 
 
   let securityStatus;
   try {
-    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: 12000, deep: true, force: true });
+    securityStatus = await refreshSupabaseSecurityHealthForTestLab({ timeoutMs: standaloneSecurityHealthProbeTimeoutMs, deep: true, force: true });
   } catch (error) {
     securityStatus = {
       checked: true,

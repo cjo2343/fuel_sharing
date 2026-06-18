@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.207",
+    version: "2026.06.18.208",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-18T14:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v307",
+    updatedAt: "2026-06-18T19:40:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v308",
     releaseNotes: Object.freeze([
+      "Security Health admin diagnostics now use a longer per-operation stale window and shorter bounded Supabase probes so a healthy Render backend is not shown as a stuck admin-tool timeout while live security checks finish.",
       "Test Lab/Security Health report saves now use a Render /api/admin/reports/save route that verifies workspace admin permission and calls upsert_test_lab_report server-side, removing the browser-owned report RPC save path.",
       "Proven admin paths now fail closed through Render instead of falling back to browser direct writes/RPCs: retention preview/cleanup, generated Test Lab create/cleanup, and report-save JSON mirror fallback are simplified toward one backend-owned path.",
       "Backend path ownership is now documented in a dedicated audit, report-save success clears stale save errors, and report-save failures bubble to the shared admin-tool tracker instead of being silently converted to OK.",
