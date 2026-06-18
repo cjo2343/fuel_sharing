@@ -8,13 +8,13 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:205|206)"/, 'build-info should publish v305');
-assert.match(buildInfo, /buildLabel:\s*"backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1"/, 'build-info should use v305 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:305|306)"/, 'build-info should expect v305 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:305|306)"/, 'service worker cache should be v305');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1"/, 'service worker label should match v305');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:205|206|207)"/, 'build-info should publish v305');
+assert.match(buildInfo, /buildLabel:\s*"(?:backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v305 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:305|306|307)"/, 'build-info should expect v305 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:305|306|307)"/, 'service worker cache should be v305');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v305');
 
-assert.match(app, /const testLabReportCloudSaveTimeoutMs\s*=\s*25000;/, 'report cloud save timeout should avoid false 15s boundary failures');
+assert.match(app, /const testLabReportCloudSaveTimeoutMs\s*=\s*(?:25000|35000);/, 'report cloud save timeout should avoid false 15s boundary failures');
 assert.match(app, /function normalizeAdminToolResult/, 'admin tool result normalization should be centralized');
 assert.match(app, /function runTracedAdminToolAction/, 'admin tool actions should share one normalization wrapper');
 assert.match(app, /return normalizeAdminToolResult\(result\);/, 'admin tool wrapper should normalize action results before traceDataIo finishes');
@@ -24,8 +24,8 @@ assert.match(app, /return \{ ok: true, destination: "normalized-report-store" \}
 
 assert.match(audit, /Backend Path Simplification Audit/, 'backend path audit should exist');
 assert.match(audit, /Trip save\s*\| Render primary \| `POST \/api\/trips\/upsert`/, 'audit should map trip save ownership');
-assert.match(audit, /Test Lab report save\s*\| Supabase RPC with shared admin-tool tracker/, 'audit should map report-save ownership honestly');
+assert.match(audit, /Test Lab report save\s*\| Render primary/, 'audit should map report-save ownership honestly');
 assert.match(audit, /Emergency fallback only/, 'audit should define emergency fallback policy');
-assert.match(packageJson, /test-backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1\.mjs/, 'validate should run v305 guard test');
+assert.match(packageJson, /test-backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route\.mjs/, 'validate should run v305 guard test');
 
 console.log('Backend path simplification audit guard check passed.');

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v306";
-const BUILD_LABEL = "remove-proven-browser-fallbacks-pass-1";
-const BUILD_UPDATED_AT = "2026-06-18T13:15:00.000Z";
+const CACHE_NAME = "fuel-ledger-v307";
+const BUILD_LABEL = "render-admin-report-save-route";
+const BUILD_UPDATED_AT = "2026-06-18T14:05:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

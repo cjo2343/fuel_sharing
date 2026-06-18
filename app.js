@@ -30,7 +30,8 @@ const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
 const renderRetentionPreviewUrl = "/api/admin/retention/preview";
 const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const renderAdminHealthUrl = "/api/admin/health";
-const testLabReportCloudSaveTimeoutMs = 25000;
+const renderAdminReportSaveUrl = "/api/admin/reports/save";
+const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -4644,31 +4645,64 @@ function createImmutableTestLabReportId(report = {}) {
   return `${baseId}-save-${timestamp}-${randomPart}`;
 }
 
-async function saveTestLabReportToCloudStore(report) {
-  if (!supabaseClient || !currentSession) return false;
-  const reportToStore = redactSensitiveDiagnostics(report);
-  const sourceReportId = String(reportToStore.id || "").trim() || `testlab-${Date.now()}`;
-  const reportId = createImmutableTestLabReportId({ id: sourceReportId });
-  const storedReport = {
-    ...reportToStore,
-    id: reportId,
-    sourceReportId,
-    syncedAt: new Date().toISOString()
-  };
-  recordSupabaseLoadEvent("test-lab-report-rpc-save", "save Test Lab report outside JSON mirror");
-  const { error } = await withTestLabReportCloudSaveTimeout(supabaseClient.rpc("upsert_test_lab_report", {
-    target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
-    report_id_value: reportId,
-    report_payload_value: storedReport
-  }), "Save Test Lab report to cloud");
-  if (!error) {
-    mergeTestLabReportsIntoState([markCurrentTestLabReport(storedReport, "cloud-save")]);
-    writeLocalState();
-    recordSupabaseLoadEvent("test-lab-report-local-merge", "merged saved Test Lab report locally without reloading report history");
-    return true;
+async function saveTestLabReportViaRender(report) {
+  if (!currentSession?.access_token || typeof fetch !== "function") return null;
+  const ledgerId = getActiveLedgerId();
+  const operationId = createDataIoOperationId("admin-report-save");
+  const traceMeta = { source: "admin-report-save", route: "render-api", endpoint: renderAdminReportSaveUrl, operation: "upsert", operationId, ledgerId };
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Render report save" });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        const error = new Error(`Render report save timed out after ${Math.round(testLabReportCloudSaveTimeoutMs / 1000)} seconds`);
+        error.name = "RenderReportSaveTimeout";
+        reject(error);
+      }, testLabReportCloudSaveTimeoutMs);
+    });
+    const fetchPromise = fetch(renderAdminReportSaveUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId, report })
+    });
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (!response.ok || !result?.ok || !result?.storedReport) {
+      const error = new Error(result?.error || result?.message || text || `Render report save failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    recordSupabaseLoadEvent("render-admin-report-save", "saved Test Lab/Security Health report via Render admin route");
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, detail: "Render report save completed" });
+    return result.storedReport;
+  } catch (error) {
+    recordDataIoDiagnostic("error", { ...traceMeta, ok: false, error, detail: "Render report save failed" });
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
   }
-  if (isMissingTestLabReportStoreError(error)) return false;
-  throw error;
+}
+
+async function saveTestLabReportToCloudStore(report) {
+  if (!currentSession?.access_token) return false;
+  const reportToStore = redactSensitiveDiagnostics(report);
+  const storedReport = await saveTestLabReportViaRender(reportToStore);
+  if (!storedReport) return false;
+  mergeTestLabReportsIntoState([markCurrentTestLabReport(storedReport, "cloud-save")]);
+  writeLocalState();
+  recordSupabaseLoadEvent("test-lab-report-local-merge", "merged saved Test Lab report locally after Render report save");
+  return true;
 }
 
 function persistTestLabReport(report, { sync = false } = {}) {

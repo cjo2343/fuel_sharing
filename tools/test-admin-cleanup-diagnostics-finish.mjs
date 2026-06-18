@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:201|202|203|204|205|206)"/, "build-info.js must be bumped to v301.");
-assert.match(buildInfo, /buildLabel:\s*"admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1"/, "build-info.js must use the v301 label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[1-6]"/, "build-info.js must expect the v301 cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[1-6]"/, "service-worker.js must use the v301 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1"/, "service-worker.js must use the v301 label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:201|202|203|204|205|206|207)"/, "build-info.js must be bumped to v301.");
+assert.match(buildInfo, /buildLabel:\s*"admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route"/, "build-info.js must use the v301 label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[1-7]"/, "build-info.js must expect the v301 cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[1-7]"/, "service-worker.js must use the v301 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route"/, "service-worker.js must use the v301 label.");
 
 const cleanupFunctionStart = app.indexOf("async function cleanupGeneratedTestDataWithReport()");
 const cleanupFunctionEnd = app.indexOf("function cloneForTestLab", cleanupFunctionStart);

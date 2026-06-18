@@ -26,7 +26,7 @@ Normal user/admin actions should use exactly one primary owner:
 | Generated Test Lab cleanup | Render primary | `POST /api/admin/test-data/cleanup` | Legacy fallback should not be used for normal admin flow | Keep only emergency cleanup fallback. |
 | Retention preview/cleanup | Render primary | `POST /api/admin/retention/preview`, `POST /api/admin/retention/cleanup` | RPC fallback kept only if Render route is unavailable | Remove direct RPC fallback once Render deploy history is stable. |
 | Admin health | Render primary | `POST /api/admin/health` | No fallback | Keep as preflight for dangerous admin work. |
-| Test Lab report save | Supabase RPC with shared admin-tool tracker | `upsert_test_lab_report` | JSON mirror fallback if report store missing | Move to Render report route in a future pass. |
+| Test Lab report save | Render primary | `POST /api/admin/reports/save` | Browser report RPC removed | Render verifies workspace admin permission and calls `upsert_test_lab_report` server-side. |
 
 ## Centralized tracking rule
 
@@ -38,17 +38,19 @@ Admin buttons that touch cloud state should use `traceAdminToolOperation(...)`. 
 
 The tracker converts `{ ok: false, error }` into a matched Data I/O error row. This prevents UI code from swallowing backend failures and turning them into misleading `ok` rows.
 
+## v307 Render admin report save route
+
+- Test Lab/Security Health report save now uses `POST /api/admin/reports/save`.
+- Browser-owned `upsert_test_lab_report` calls were removed from the normal report-save path.
+- Report save is now part of the Render-owned admin route set and appears in Render admin health.
+
+## v306 remove proven browser fallbacks pass 1
+
+- Retention preview/cleanup, generated test-data create/cleanup, and report-save fallback now fail closed through Render instead of using browser direct writes/RPCs.
+
 ## v305 cleanup applied
 
 - Report-save success clears stale `lastSyncError` through `markRemoteSaveSucceeded(...)`.
 - Report-save timeout was lengthened to reduce false timeout/error memory at the exact 15-second boundary.
 - Report-save failures now return `{ ok: false, error }` so the shared admin-tool tracker records an error instead of a misleading success.
 - This audit file now blocks undocumented growth of browser direct-write fallback paths.
-
-
-## v306 remove proven browser fallbacks pass 1
-
-- Retention preview and cleanup now fail closed through Render instead of falling back to browser direct Supabase retention RPCs.
-- Generated Test Lab create and cleanup now fail closed through Render instead of falling back to browser direct normalized writes/table cleanup.
-- Saving Test Lab/Security Health reports to cloud now uses the normalized report store only; the JSON mirror report-save fallback is disabled so report history does not wake full-state JSON writes.
-- Trip, fuel, booking, payment, state-load, ledger sync, and emergency JSON backup fallbacks are not removed in this pass.

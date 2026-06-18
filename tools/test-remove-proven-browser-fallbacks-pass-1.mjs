@@ -8,11 +8,11 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.206"/, 'build-info should publish v306');
-assert.match(buildInfo, /buildLabel:\s*"remove-proven-browser-fallbacks-pass-1"/, 'build-info should use v306 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v306"/, 'build-info should expect v306 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v306"/, 'service worker should use v306 cache');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"remove-proven-browser-fallbacks-pass-1"/, 'service worker label should match v306');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:206|207)"/, 'build-info should publish v306');
+assert.match(buildInfo, /buildLabel:\s*"(?:remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v306 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[6-7]"/, 'build-info should expect v306 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[6-7]"/, 'service worker should use v306 cache');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v306');
 
 assert.match(app, /Browser retention RPC fallback is disabled/, 'retention failures should explicitly fail closed through Render');
 assert.doesNotMatch(app, /supabaseClient\.rpc\("preview_retention_cleanup"/, 'browser preview retention RPC fallback should be removed');
@@ -35,6 +35,6 @@ assert.doesNotMatch(app, /destination:\s*"json-mirror-fallback"/, 'report-save J
 assert.doesNotMatch(app, /reason:\s*"Test Lab report JSON fallback"/, 'report save should not wake JSON mirror fallback');
 
 assert.match(audit, /v306 remove proven browser fallbacks pass 1/, 'audit should document v306 fallback removal');
-assert.match(packageJson, /test-remove-proven-browser-fallbacks-pass-1\.mjs/, 'validate should run v306 guard test');
+assert.match(packageJson, /test-remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route\.mjs/, 'validate should run v306 guard test');
 
 console.log('Remove proven browser fallbacks pass 1 guard check passed.');

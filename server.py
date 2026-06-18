@@ -2,9 +2,11 @@
 import base64
 import json
 import argparse
+import re
 import gzip
 import hmac
 import os
+import secrets
 import sys
 import time
 from datetime import datetime, timezone
@@ -1037,6 +1039,42 @@ def run_retention_admin_rpc_as_user(action, payload, user, user_token):
     return ledger_id, call_supabase_rpc_as_user(rpc_name, rpc_payload, user_token=user_token) or {}
 
 
+def build_admin_report_save_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Report save payload must be an object")
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    report = payload.get("report") or payload.get("reportPayload") or payload.get("report_payload")
+    if not ledger_id:
+        raise ValueError("Missing ledgerId")
+    if not isinstance(report, dict):
+        raise ValueError("Missing report payload")
+    return ledger_id, report
+
+
+def create_report_save_id(report):
+    source_id = str(report.get("id") or "testlab").strip() or "testlab"
+    cleaned = re.sub(r"[^0-9A-Za-z_-]+", "-", source_id).strip("-") or "testlab"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ").lower()
+    return f"{cleaned}-save-{timestamp}-{secrets.token_hex(3)}"
+
+
+def save_admin_report_as_user(payload, user, user_token):
+    ledger_id, report = build_admin_report_save_payload(payload)
+    assert_user_can_admin_ledger(ledger_id, user, user_token)
+    source_report_id = str(report.get("id") or "").strip() or f"testlab-{int(time.time())}"
+    report_id = create_report_save_id({"id": source_report_id})
+    stored_report = dict(report)
+    stored_report["id"] = report_id
+    stored_report["sourceReportId"] = source_report_id
+    stored_report["syncedAt"] = datetime.now(timezone.utc).isoformat()
+    result = call_supabase_rpc_as_user("upsert_test_lab_report", {
+        "target_ledger_id": ledger_id,
+        "report_id_value": report_id,
+        "report_payload_value": stored_report,
+    }, user_token=user_token)
+    return ledger_id, stored_report, result
+
+
 def build_admin_health_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Admin health payload must be an object")
@@ -1054,6 +1092,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("ledgerDirectorySync", "/api/ledgers/sync", "Render ledger directory sync route"),
         ("adminTestDataCreate", "/api/admin/test-data/create", "Render generated test-data create route"),
         ("adminTestDataCleanup", "/api/admin/test-data/cleanup", "Render generated test-data cleanup route"),
+        ("adminReportSave", "/api/admin/reports/save", "Render admin report save route"),
         ("retentionPreview", "/api/admin/retention/preview", "Render retention preview route"),
         ("retentionCleanup", "/api/admin/retention/cleanup", "Render retention cleanup route"),
         ("tripUpsert", "/api/trips/upsert", "Render trip save route"),
@@ -1855,6 +1894,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/admin/health":
             self.admin_health_backend()
             return
+        if self.path == "/api/admin/reports/save":
+            self.save_admin_report_backend()
+            return
         if self.path == "/api/admin/retention/preview":
             self.preview_retention_cleanup_backend()
             return
@@ -2080,6 +2122,34 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json(health)
+
+    def save_admin_report_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before saving admin reports")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id, _ = build_admin_report_save_payload(payload)
+            if not check_backend_rate_limit(self, "admin", user=user, ledger_id=ledger_id):
+                return
+            ledger_id, stored_report, result = save_admin_report_as_user(payload, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "ledgerId": ledger_id, "storedReport": stored_report, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def preview_retention_cleanup_backend(self):
         user = current_supabase_user(self)
