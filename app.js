@@ -694,6 +694,60 @@ function formatDataIoOperationLine(operation = {}) {
   return `${entry.source || "unknown"} via ${entry.route || "unknown"}${target} — ${status}${duration}${detail ? ` · ${detail}` : ""}`;
 }
 
+let adminUiBatchDepth = 0;
+let adminUiRenderPending = false;
+let adminUiLoadMonitorPending = false;
+let adminUiRenderFrame = null;
+
+function canUseAnimationFrame() {
+  return typeof window !== "undefined" && typeof window.requestAnimationFrame === "function";
+}
+
+function flushAdminUiBatch() {
+  if (adminUiBatchDepth > 0) return;
+  if (adminUiLoadMonitorPending) {
+    adminUiLoadMonitorPending = false;
+    renderSupabaseLoadMonitor();
+  }
+  if (adminUiRenderPending) {
+    adminUiRenderPending = false;
+    render();
+  }
+}
+
+function scheduleAdminUiBatchFlush() {
+  if (adminUiBatchDepth > 0) return;
+  if (!adminUiRenderPending && !adminUiLoadMonitorPending) return;
+  if (adminUiRenderFrame) return;
+  const run = () => {
+    adminUiRenderFrame = null;
+    flushAdminUiBatch();
+  };
+  if (canUseAnimationFrame()) {
+    adminUiRenderFrame = window.requestAnimationFrame(run);
+  } else {
+    setTimeout(run, 0);
+  }
+}
+
+function scheduleSupabaseLoadMonitorRender() {
+  if (adminUiBatchDepth > 0) {
+    adminUiLoadMonitorPending = true;
+    return;
+  }
+  renderSupabaseLoadMonitor();
+}
+
+async function withAdminUiBatch(action) {
+  adminUiBatchDepth += 1;
+  try {
+    return await action();
+  } finally {
+    adminUiBatchDepth = Math.max(0, adminUiBatchDepth - 1);
+    scheduleAdminUiBatchFlush();
+  }
+}
+
 function recordDataIoDiagnostic(phase, meta = {}) {
   const diagnostic = {
     at: new Date().toISOString(),
@@ -731,7 +785,7 @@ function recordDataIoDiagnostic(phase, meta = {}) {
       error: meta.error
     });
   }
-  renderSupabaseLoadMonitor();
+  scheduleSupabaseLoadMonitorRender();
   return diagnostic;
 }
 
@@ -765,7 +819,7 @@ function makeAdminToolDiagnosticMeta(source, detail = "", operation = "run") {
 }
 
 async function traceAdminToolOperation(source, detail, action, { operation = "run" } = {}) {
-  return traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation), action);
+  return withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation), action));
 }
 
 function recordAdminToolSkip(source, detail, { operation = "run" } = {}) {
@@ -6060,6 +6114,10 @@ function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
 }
 
 function render() {
+  if (adminUiBatchDepth > 0) {
+    adminUiRenderPending = true;
+    return;
+  }
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
   renderSettings();
   renderPeopleSelectors();

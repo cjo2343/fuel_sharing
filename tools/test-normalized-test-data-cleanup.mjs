@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.19[3-7]"/, "Build info must be bumped for v293.");
-assert.match(buildInfo, /buildLabel:\s*"(?:normalized-test-data-cleanup|render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|cleanup-scope-admin-finish-hotfix)"/, "Build label must describe normalized Test Lab cleanup or a later build preserving it.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[3-7]"/, "Expected service-worker cache must be v293.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[3-7]"/, "Service-worker cache must be v293.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:normalized-test-data-cleanup|render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|cleanup-scope-admin-finish-hotfix)"/, "Service-worker build label must be v293 or a later preserving label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.19[3-8]"/, "Build info must be bumped for v293.");
+assert.match(buildInfo, /buildLabel:\s*"(?:normalized-test-data-cleanup|render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/, "Build label must describe normalized Test Lab cleanup or a later build preserving it.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[3-8]"/, "Expected service-worker cache must be v293.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[3-8]"/, "Service-worker cache must be v293.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:normalized-test-data-cleanup|render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/, "Service-worker build label must be v293 or a later preserving label.");
 
 assert.match(app, /async function cleanupGeneratedRowsFromNormalizedTables\(/, "Cleanup must include a normalized-table cleanup helper.");
 assert.match(app, /source = "normalized-test-data-cleanup"/, "Normalized cleanup must have its own Data I\/O source.");

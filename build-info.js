@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.197",
-    buildLabel: "cleanup-scope-admin-finish-hotfix",
-    updatedAt: "2026-06-18T09:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v297",
+    version: "2026.06.18.198",
+    buildLabel: "admin-startup-flicker-reduction",
+    updatedAt: "2026-06-18T10:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v298",
     releaseNotes: Object.freeze([
+      "Admin/Test Lab tools now batch their Data I/O and full UI refreshes while a button action is running, so rapid generated-data and report-save flows repaint once at the end instead of flickering through start/ok status churn.",
       "Cleanup now uses the active ledger helper instead of an out-of-scope currentLedger variable, and Security Health plus cloud report saves confirm before opening admin Data I/O rows so cancelled prompts cannot leave timeout rows.",
       "Generated Test Lab cleanup now prefers a Render /api/admin/test-data/cleanup route that verifies workspace admin permission and soft-deletes generated trip, fuel, and booking rows server-side before the JSON mirror backup runs.",
       "Generated test trip/fuel admin buttons now create normalized rows through a Render /api/admin/test-data/create route, so Add generated test fuel no longer depends on browser-side normalized write-context setup before the backend save can start.",

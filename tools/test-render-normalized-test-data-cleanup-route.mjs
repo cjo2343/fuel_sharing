@@ -7,11 +7,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:195|196|197)"/, "build-info.js must be v295 or a later preserving hotfix.");
-assert.match(buildInfo, /buildLabel:\s*"(?:render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix)"/, "build-info.js must use the v295 build label or the v296 hotfix label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[567]"/, "build-info.js must expect the v295/v296/v297 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[567]"/, "service-worker.js must use the v295/v296/v297 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix)"/, "service-worker.js must use the v295 build label or the v296 hotfix label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:195|196|197|198)"/, "build-info.js must be v295 or a later preserving hotfix.");
+assert.match(buildInfo, /buildLabel:\s*"(?:render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/, "build-info.js must use the v295 build label or the v296 hotfix label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[5678]"/, "build-info.js must expect the v295/v296/v297 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[5678]"/, "service-worker.js must use the v295/v296/v297 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/, "service-worker.js must use the v295 build label or the v296 hotfix label.");
 
 assert.match(app, /const renderAdminTestDataCleanupUrl = "\/api\/admin\/test-data\/cleanup";/, "app.js must define the Render admin cleanup URL.");
 assert.match(app, /async function cleanupGeneratedRowsFromNormalizedTablesViaRender\(/, "app.js must include a Render normalized cleanup helper.");

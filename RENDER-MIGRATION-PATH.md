@@ -158,8 +158,8 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 - Browser cleanup now tries the Render route first and keeps the v293 direct-table cleanup only as a route-unavailable fallback.
 - Expected load-monitor markers: `render-normalized-test-data-cleanup` and `data-io:normalized-test-data-cleanup:ok -> render-api /api/admin/test-data/cleanup`.
 
-## v297: Cleanup scope and admin finish hotfix
+## v298: Admin/startup flicker reduction
 
-- Fixed the Render cleanup browser helper to use `getActiveLedgerId()` instead of an out-of-scope `currentLedger` variable, preventing `ReferenceError: currentLedger is not defined` during Clean generated Test Lab data.
-- Moved the Security Health and Save Test Lab report confirmations before their admin Data I/O operation rows, so cancelled or slow confirmation prompts do not leave `admin-tool:security-health` or `admin-tool:save-test-lab-report-cloud` rows timing out.
-- Expected load-monitor markers: `admin-tool:cleanup-test-lab-data -> ok`, `normalized-test-data-cleanup -> render-api /api/admin/test-data/cleanup -> ok`, and no `currentLedger is not defined` cleanup exception.
+- Admin and Test Lab button actions now batch Data I/O monitor refreshes and full app renders while the operation is running.
+- This reduces the visible start/ok/status repaint churn during generated test trip/fuel, Test Lab scenario, Security Health, report-save, and cleanup flows.
+- Lower-level diagnostics are still recorded immediately; the UI waits until the action settles before repainting the admin/load monitor panels.
