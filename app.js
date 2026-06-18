@@ -30,7 +30,7 @@ const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
 const renderRetentionPreviewUrl = "/api/admin/retention/preview";
 const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const renderAdminHealthUrl = "/api/admin/health";
-const testLabReportCloudSaveTimeoutMs = 15000;
+const testLabReportCloudSaveTimeoutMs = 25000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -858,8 +858,22 @@ function makeAdminToolDiagnosticMeta(source, detail = "", operation = "run") {
   };
 }
 
+function normalizeAdminToolResult(result) {
+  if (result && typeof result === "object" && result.error) return result;
+  if (result && typeof result === "object" && result.ok === false && !result.skipped) {
+    const error = result.error || new Error(result.message || "Admin tool did not complete successfully.");
+    return { ...result, error };
+  }
+  return result;
+}
+
+async function runTracedAdminToolAction(action) {
+  const result = await action();
+  return normalizeAdminToolResult(result);
+}
+
 async function traceAdminToolOperation(source, detail, action, { operation = "run" } = {}) {
-  return withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation), action));
+  return withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation), () => runTracedAdminToolAction(action)));
 }
 
 function recordAdminToolSkip(source, detail, { operation = "run" } = {}) {
@@ -2604,12 +2618,12 @@ els.saveTestLabReportCloud?.addEventListener("click", async () => {
   const report = getCurrentTestLabReport();
   if (!report) {
     showUserWarning("Run or export a Test Lab report before saving it to cloud.");
-    return;
+    return { ok: false, skipped: true, reason: "missing-report" };
   }
   if (isHistoricalTestLabReport(report)) {
     showUserWarning("This is a historical saved report. Run Security health or Test Lab again before saving a fresh cloud report.");
     setDataToolsMessage("Historical saved report was not re-saved. Run a fresh check, then save the new report to cloud.");
-    return;
+    return { ok: false, skipped: true, reason: "historical-report" };
   }
   if (!requireTypedAdminConfirmation({
     phrase: "SAVE REPORT TO CLOUD",
@@ -4802,7 +4816,7 @@ async function saveCurrentTestLabReportToCloud({ skipConfirmation = false } = {}
     phrase: "SAVE REPORT TO CLOUD",
     title: "Save Test Lab report to cloud?",
     detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage."
-  })) return;
+  })) return { ok: false, skipped: true, reason: "confirmation-cancelled" };
 
   if (els.saveTestLabReportCloud) els.saveTestLabReportCloud.disabled = true;
   setDataToolsMessage("Saving fresh Test Lab report to normalized cloud history...");
@@ -4813,7 +4827,7 @@ async function saveCurrentTestLabReportToCloud({ skipConfirmation = false } = {}
       renderTestLabReport(lastTestLabReport, { persist: false });
       render();
       setDataToolsMessage("Fresh Test Lab report saved to normalized cloud history.");
-      return;
+      return { ok: true, destination: "normalized-report-store" };
     }
     setDataToolsMessage("Normalized Test Lab report store is unavailable; saving through JSON mirror fallback...");
     const savedToJson = await saveJsonMirrorBackup({ force: true, reason: "Test Lab report JSON fallback" });
@@ -4821,13 +4835,14 @@ async function saveCurrentTestLabReportToCloud({ skipConfirmation = false } = {}
       persistTestLabReport(redactTestLabReportForCloud(report), { sync: false });
       markRemoteSaveSucceeded("Shared");
       setDataToolsMessage("Latest Test Lab report saved through the JSON mirror fallback. Apply the Test Lab report store migration to avoid full-state JSON writes.");
-      return;
+      return { ok: true, destination: "json-mirror-fallback" };
     }
     throw new Error("Could not save Test Lab report to normalized history or JSON fallback.");
   } catch (error) {
     markRemoteSaveFailed(error, "Could not save Test Lab report.");
     showUserError(`Could not save Test Lab report: ${error.message || error}`);
     setDataToolsMessage(`Could not save Test Lab report: ${error.message || error}`);
+    return { ok: false, error };
   } finally {
     if (els.saveTestLabReportCloud) els.saveTestLabReportCloud.disabled = false;
     testLabCloudReportOptIn = false;
@@ -17208,6 +17223,7 @@ function markLocalChangeQueued() {
 
 function markRemoteSaveSucceeded(label) {
   pendingLocalChanges = 0;
+  lastSyncError = "";
   clearSyncDelay(`save-success:${label || "cloud"}`);
   setSyncStatus(label);
 }

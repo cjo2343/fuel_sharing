@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+
+const app = fs.readFileSync('app.js', 'utf8');
+const audit = fs.readFileSync('BACKEND-PATH-AUDIT.md', 'utf8');
+const buildInfo = fs.readFileSync('build-info.js', 'utf8');
+const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
+const packageJson = fs.readFileSync('package.json', 'utf8');
+
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.205"/, 'build-info should publish v305');
+assert.match(buildInfo, /buildLabel:\s*"backend-path-simplification-audit"/, 'build-info should use v305 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v305"/, 'build-info should expect v305 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v305"/, 'service worker cache should be v305');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"backend-path-simplification-audit"/, 'service worker label should match v305');
+
+assert.match(app, /const testLabReportCloudSaveTimeoutMs\s*=\s*25000;/, 'report cloud save timeout should avoid false 15s boundary failures');
+assert.match(app, /function normalizeAdminToolResult/, 'admin tool result normalization should be centralized');
+assert.match(app, /function runTracedAdminToolAction/, 'admin tool actions should share one normalization wrapper');
+assert.match(app, /return normalizeAdminToolResult\(result\);/, 'admin tool wrapper should normalize action results before traceDataIo finishes');
+assert.match(app, /lastSyncError\s*=\s*"";\s*\n\s*clearSyncDelay/, 'successful remote saves should clear stale sync errors');
+assert.match(app, /return \{ ok: false, error \};/, 'report-save failure should return an error result for the shared admin-tool tracker');
+assert.match(app, /return \{ ok: true, destination: "normalized-report-store" \};/, 'normalized report save success should return a structured success result');
+
+assert.match(audit, /Backend Path Simplification Audit/, 'backend path audit should exist');
+assert.match(audit, /Trip save\s*\| Render primary \| `POST \/api\/trips\/upsert`/, 'audit should map trip save ownership');
+assert.match(audit, /Test Lab report save\s*\| Supabase RPC with shared admin-tool tracker/, 'audit should map report-save ownership honestly');
+assert.match(audit, /Emergency fallback only/, 'audit should define emergency fallback policy');
+assert.match(packageJson, /test-backend-path-simplification-audit\.mjs/, 'validate should run v305 guard test');
+
+console.log('Backend path simplification audit guard check passed.');

@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:197|198|199|200|201|202|203|204|203|204)"/, "build-info.js must be bumped to v297.");
-assert.match(buildInfo, /buildLabel:\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|save-report-timeout-feedback)"/, "build-info.js must use the v297 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[7-9]|30[0-4])"/, "build-info.js must expect the v297 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[7-9]|30[0-4])"/, "service-worker.js must use the v297 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|save-report-timeout-feedback)"/, "service-worker.js must use the v297 build label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:197|198|199|200|201|202|203|204|205|205|205|203|204|205)"/, "build-info.js must be bumped to v297.");
+assert.match(buildInfo, /buildLabel:\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit)"/, "build-info.js must use the v297 build label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[7-9]|30[0-5])"/, "build-info.js must expect the v297 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[7-9]|30[0-5])"/, "service-worker.js must use the v297 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit|backend-path-simplification-audit)"/, "service-worker.js must use the v297 build label.");
 
 const cleanupViaRenderStart = app.indexOf("async function cleanupGeneratedRowsFromNormalizedTablesViaRender");
 const cleanupViaRenderEnd = app.indexOf("async function cleanupGeneratedRowsFromNormalizedTables(reason", cleanupViaRenderStart);

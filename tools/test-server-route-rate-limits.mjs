@@ -6,11 +6,11 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:203|204)"/, 'build-info should publish v303');
-assert.match(buildInfo, /buildLabel:\s*"(?:server-route-rate-limits|save-report-timeout-feedback)"/, 'build-info should use v303 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[34]"/, 'build-info should expect v303 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[34]"/, 'service worker cache should be v303');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:server-route-rate-limits|save-report-timeout-feedback)"/, 'service worker label should match v303');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:203|204|205)"/, 'build-info should publish v303');
+assert.match(buildInfo, /buildLabel:\s*"(?:server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit)"/, 'build-info should use v303 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[3-5]"/, 'build-info should expect v303 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[3-5]"/, 'service worker cache should be v303');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit)"/, 'service worker label should match v303');
 
 assert.match(server, /RATE_LIMIT_POLICIES\s*=\s*\{/, 'server should define rate limit policies');
 assert.match(server, /def check_backend_rate_limit\(/, 'server should centralize backend rate-limit checks');

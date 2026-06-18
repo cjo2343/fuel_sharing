@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v304";
-const BUILD_LABEL = "save-report-timeout-feedback";
-const BUILD_UPDATED_AT = "2026-06-18T12:35:00.000Z";
+const CACHE_NAME = "fuel-ledger-v305";
+const BUILD_LABEL = "backend-path-simplification-audit";
+const BUILD_UPDATED_AT = "2026-06-18T12:55:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

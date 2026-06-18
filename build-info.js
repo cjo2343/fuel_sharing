@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.204",
-    buildLabel: "save-report-timeout-feedback",
-    updatedAt: "2026-06-18T12:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v304",
+    version: "2026.06.18.205",
+    buildLabel: "backend-path-simplification-audit",
+    updatedAt: "2026-06-18T12:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v305",
     releaseNotes: Object.freeze([
+      "Backend path ownership is now documented in a dedicated audit, report-save success clears stale save errors, and report-save failures bubble to the shared admin-tool tracker instead of being silently converted to OK.",
       "Saving Test Lab/Security Health reports to cloud now has a short explicit timeout so a slow Supabase report RPC records a matched finish/error row instead of leaving an admin-tool timeout, and Security Health timeout warnings now explain when Render health is still OK.",
       "Render now applies per-user/per-ledger server-side rate limits to admin, generated Test Lab data, retention, JSON mirror backup, write-context, and trip/fuel/booking/payment write routes so double-clicks or broken clients cannot hammer dangerous backend paths.",
       "Admin diagnostics now has a Render admin health check that verifies signed-in workspace admin permission, Supabase connectivity, an open period, and the mounted backend safety routes before dangerous admin work.",

@@ -163,8 +163,8 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
 
-## v304 - Save report timeout feedback
+## v305 backend path simplification audit
 
-- Test Lab/Security Health cloud report saves now wrap the normalized `upsert_test_lab_report` RPC with a short explicit timeout before the admin-tool operation can age into a stale timeout row.
-- Security Health probe timeout warnings now explain whether Render admin health is already OK, making slow Supabase probes easier to separate from backend route/permission failures.
-- Validation includes `tools/test-save-report-timeout-feedback.mjs` so the report-save timeout guard, v304 runtime metadata, and clarified warning text stay in place.
+v305 adds `BACKEND-PATH-AUDIT.md` as the ownership map for each app data path. The goal is to stop growing one-off hotfix/fallback branches and make every path declare whether it is Render primary, browser read-only, or emergency fallback only.
+
+Report-save tracking now follows the same admin-tool result contract: success returns a structured success result, real failures return `{ ok: false, error }`, and skipped/user-cancelled cases return `{ ok: false, skipped: true }`. This keeps the shared Data I/O tracker from showing misleading OK rows for failed cloud work.
