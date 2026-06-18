@@ -511,6 +511,11 @@ Operational watch item: after normal use, inspect Supabase Query Performance. `r
 
 Debug and Test Lab reports are operational records. Keep redaction broad for secrets and precise personal data, but avoid over-redacting build versions and timestamps because they are needed to debug deployments.
 
+
+### Destructive admin backup freshness gate
+
+Destructive admin actions now use a recorded fresh-backup gate. Keep the protected reason in `requiredAdminSafetyBackupReasons`, call `await exportAdminSafetyBackup("...")`, and immediately call `assertFreshAdminSafetyBackup("...")` before the destructive write/delete/import/reset. The freshness window is intentionally short so an old manual backup cannot accidentally authorize a later destructive action.
+
 ## CI/pre-push guardrails and release-readiness companion checks
 
 The local and GitHub checks now include a checker that checks the checkers. Keep these rules in sync when changing validation, workflow, release, or hook files:

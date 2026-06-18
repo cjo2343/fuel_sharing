@@ -1229,6 +1229,8 @@ const requiredAdminSafetyBackupReasons = Object.freeze([
   "cleanup generated test data",
   "remove unused test users"
 ]);
+const adminSafetyBackupFreshMs = 60 * 1000;
+let lastAdminSafetyBackup = null;
 
 const retentionPolicy = Object.freeze({
   ledgerEventDays: 30,
@@ -2261,6 +2263,7 @@ els.resetPeriod.addEventListener("click", async () => {
   })) return;
   try {
     await exportAdminSafetyBackup("reset current period");
+    assertFreshAdminSafetyBackup("reset current period");
   } catch (error) {
     showUserError(error.message || String(error));
     return;
@@ -2291,6 +2294,7 @@ els.resetData.addEventListener("click", async () => {
   })) return;
   try {
     await exportAdminSafetyBackup("reset all local data");
+    assertFreshAdminSafetyBackup("reset all local data");
   } catch (error) {
     showUserError(error.message || String(error));
     return;
@@ -2400,6 +2404,7 @@ els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
   els.purgeSoftDeletedTestRows.disabled = true;
   try {
     await exportAdminSafetyBackup("purge soft-deleted generated test rows");
+    assertFreshAdminSafetyBackup("purge soft-deleted generated test rows");
     const result = await traceAdminToolOperation("purge-soft-deleted-test-rows", "Purge soft-deleted generated test rows", () => window.FuelAdminTools.purgeSoftDeletedGeneratedTestRows({ dryRun: false }));
     setDataToolsMessage(`Purged ${result.trips} soft-deleted generated test trip row${result.trips === 1 ? "" : "s"} and ${result.fuel} soft-deleted generated test fuel row${result.fuel === 1 ? "" : "s"}.`);
     await refreshDatabaseDiagnostics().catch(() => {});
@@ -2424,17 +2429,57 @@ function requireTypedAdminConfirmation({ phrase, title, detail }) {
   return typed === phrase;
 }
 
+function normalizeAdminSafetyBackupReason(reason = "admin action") {
+  return String(reason || "admin action").trim().toLowerCase();
+}
+
+function assertKnownAdminSafetyBackupReason(reason = "admin action") {
+  const normalizedReason = normalizeAdminSafetyBackupReason(reason);
+  if (!requiredAdminSafetyBackupReasons.includes(normalizedReason)) {
+    throw new Error(`Unknown destructive action backup reason: ${reason || "admin action"}`);
+  }
+  return normalizedReason;
+}
+
+function markAdminSafetyBackupSuccess(reason, details = {}) {
+  const normalizedReason = assertKnownAdminSafetyBackupReason(reason);
+  const now = Date.now();
+  lastAdminSafetyBackup = {
+    reason: normalizedReason,
+    at: now,
+    iso: new Date(now).toISOString(),
+    local: true,
+    cloud: Boolean(details.cloud)
+  };
+  recordSupabaseLoadEvent("admin-safety-backup-success", normalizedReason, { diagnostic: true });
+  return lastAdminSafetyBackup;
+}
+
+function assertFreshAdminSafetyBackup(reason = "admin action") {
+  const normalizedReason = assertKnownAdminSafetyBackupReason(reason);
+  const backup = lastAdminSafetyBackup;
+  const ageMs = backup ? Date.now() - Number(backup.at || 0) : Infinity;
+  if (!backup || backup.reason !== normalizedReason || ageMs > adminSafetyBackupFreshMs) {
+    throw new Error(`Fresh safety backup is required before ${normalizedReason}. Run the action again so the app can take a new backup immediately before continuing.`);
+  }
+  return true;
+}
+
 async function exportAdminSafetyBackup(reason = "admin action") {
+  const normalizedReason = assertKnownAdminSafetyBackupReason(reason);
+  let cloudBackupSaved = false;
   exportLedgerBackup();
   if (supabaseClient && currentSession && canManageSettings()) {
     try {
-      await saveJsonMirrorBackup({ force: true });
+      await saveJsonMirrorBackup({ force: true, reason: `${normalizedReason} safety backup` });
+      cloudBackupSaved = true;
     } catch (error) {
-      console.warn(`Cloud JSON safety backup failed before ${reason}`, error);
-      throw new Error(`Cloud backup failed before ${reason}: ${error.message || error}`);
+      console.warn(`Cloud JSON safety backup failed before ${normalizedReason}`, error);
+      throw new Error(`Cloud backup failed before ${normalizedReason}: ${error.message || error}`);
     }
   }
-  return true;
+  markAdminSafetyBackupSuccess(normalizedReason, { cloud: cloudBackupSaved });
+  return assertFreshAdminSafetyBackup(normalizedReason);
 }
 
 function redactDiagnosticUrlSecrets(value) {
@@ -3068,6 +3113,7 @@ async function addGeneratedTestFuel() {
 
 async function removeGeneratedTestData() {
   await exportAdminSafetyBackup("remove generated test data");
+  assertFreshAdminSafetyBackup("remove generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
   const normalizedCleanup = await cleanupGeneratedRowsFromNormalizedTables("remove-generated-test-data");
   const normalizedCleanupMessage = normalizedCleanup?.total ? ` Soft-deleted ${normalizedCleanup.total} generated normalized row${normalizedCleanup.total === 1 ? "" : "s"}.` : "";
@@ -4107,9 +4153,12 @@ function renderAdminGuardrailOverview() {
   const normalizedStatus = normalizedTableStatus?.checked
     ? (normalizedTableStatus.ok ? "Healthy" : "Needs review")
     : "Not checked yet";
+  const latestBackupDetail = lastAdminSafetyBackup
+    ? `Fresh destructive-action backup: ${formatAdminTimestamp(lastAdminSafetyBackup.iso)} for ${lastAdminSafetyBackup.reason}${lastAdminSafetyBackup.cloud ? " · cloud mirrored" : " · local export"}`
+    : "No destructive-action backup has run in this session.";
   const backupDetail = lastJsonMirrorSaveAt
-    ? `Last JSON safety backup: ${formatAdminTimestamp(lastJsonMirrorSaveAt)}`
-    : "Safety backups run before destructive admin actions and manual backup saves.";
+    ? `${latestBackupDetail}. Last JSON safety backup: ${formatAdminTimestamp(lastJsonMirrorSaveAt)}. Fresh backup required immediately before destructive actions.`
+    : `${latestBackupDetail}. Safety backups run before destructive admin actions and manual backup saves.`;
   const pendingDetail = pendingLocalChanges > 0
     ? `${pendingLocalChanges} pending local change${pendingLocalChanges === 1 ? "" : "s"}; sync before destructive tools.`
     : `Last confirmed sync: ${formatAdminTimestamp(lastCloudSyncAt || lastCloudSaveAt)}`;
@@ -5307,6 +5356,7 @@ async function runStandaloneSecurityHealthScenario({ skipConfirmation = false } 
 
 async function cleanupGeneratedTestDataWithReport() {
   await exportAdminSafetyBackup("cleanup generated test data");
+  assertFreshAdminSafetyBackup("cleanup generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
   const normalizedCleanup = await cleanupGeneratedRowsFromNormalizedTables("cleanup-test-lab-data");
   const normalizedCleanupMessage = normalizedCleanup?.total ? ` Soft-deleted ${normalizedCleanup.total} generated normalized row${normalizedCleanup.total === 1 ? "" : "s"}.` : "";
@@ -9172,6 +9222,7 @@ async function closeCurrentPeriod(options = {}) {
   try {
     try {
       await exportAdminSafetyBackup("close current period");
+      assertFreshAdminSafetyBackup("close current period");
     } catch (error) {
       showUserError(error.message || String(error));
       return;
@@ -10522,6 +10573,7 @@ A backup of the current state is exported first.`
     }
 
     await exportAdminSafetyBackup("import backup");
+    assertFreshAdminSafetyBackup("import backup");
 
     state = importedState;
     state.lastOdometer = getLatestOdometer();
@@ -10969,6 +11021,7 @@ async function removeUnusedTestUsers() {
 
   try {
     await exportAdminSafetyBackup("remove unused test users");
+    assertFreshAdminSafetyBackup("remove unused test users");
   } catch (error) {
     showUserError(error.message || String(error));
     return;
@@ -12833,6 +12886,7 @@ async function runProductionActivityReset() {
 
   try {
     await exportAdminSafetyBackup("production activity reset");
+    assertFreshAdminSafetyBackup("production activity reset");
   } catch (error) {
     showUserError(error.message || String(error));
     return;

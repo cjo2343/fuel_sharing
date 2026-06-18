@@ -287,13 +287,21 @@ function testDestructiveActionBackupsExist() {
     "remove unused test users"
   ];
   assert.match(app, /const requiredAdminSafetyBackupReasons = Object\.freeze\(\[/);
+  assert.match(app, /const adminSafetyBackupFreshMs = 60 \* 1000/);
+  assert.match(app, /let lastAdminSafetyBackup = null/);
+  assert.match(app, /function assertKnownAdminSafetyBackupReason\(reason = "admin action"\)/);
+  assert.match(app, /function markAdminSafetyBackupSuccess\(reason, details = \{\}\)/);
+  assert.match(app, /function assertFreshAdminSafetyBackup\(reason = "admin action"\)/);
+  assert.match(app, /Fresh safety backup is required before \${normalizedReason}/);
+  assert.match(app, /recordSupabaseLoadEvent\("admin-safety-backup-success", normalizedReason, \{ diagnostic: true \}\)/);
   for (const reason of requiredBackupReasons) {
     assert.match(app, new RegExp(`"${reason}"`));
     assert.match(app, new RegExp(`await exportAdminSafetyBackup\\("${reason}"\\)`));
+    assert.match(app, new RegExp(`assertFreshAdminSafetyBackup\\("${reason}"\\)`));
   }
   assert.match(app, /async function removeGeneratedTestData\(\)/);
   assert.match(app, /async function removeUnusedTestUsers\(\)/);
-  assert.match(app, /Cloud backup failed before \${reason}/);
+  assert.match(app, /Cloud backup failed before \${normalizedReason}/);
   assert.match(app, /showUserError\(error\.message \|\| String\(error\)\);\n      return;\n    }\n\n  const period =/);
   console.log("ok - testDestructiveActionBackupsExist");
 }
@@ -308,6 +316,7 @@ function testAdminDiagnosticsUxExists() {
   assert.match(app, /data-admin-diagnostics-overview="true"/);
   assert.match(app, /adminGuardrailStatusCard/);
   assert.match(app, /Safety backups run before destructive admin actions/);
+  assert.match(app, /Fresh backup required immediately before destructive actions/);
   assert.match(app, /Broad Live Sync is off by default/);
   assert.match(app, /function getRpcAvailabilityDiagnostics\(\)/);
   assert.match(app, /function getRealtimePublicationDiagnostics\(\)/);
