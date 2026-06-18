@@ -18,10 +18,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.212`
-- Service-worker cache: `fuel-ledger-v312`
-- Updated at: `2026-06-18T21:20:00.000Z`
-- Top release note: Destructive admin actions now require a recorded fresh safety backup immediately before continuing, with known backup reasons, a one-minute freshness window, and diagnostics so cleanup/reset/import paths fail closed if the backup step is skipped or stale.
+- Version: `2026.06.18.213`
+- Service-worker cache: `fuel-ledger-v313`
+- Updated at: `2026-06-18T21:45:00.000Z`
+- Top release note: Data retention/privacy cleanup now prunes stored Test Lab/Security Health report payloads before local/cloud storage, trims long release-note and diagnostic histories, removes raw browser/Data I/O traces from saved reports, and requires a fresh safety backup before retention cleanup runs.
 
 
 ## Required release gate
@@ -107,6 +107,13 @@ After the SQL update succeeds, deploy the matching app files:
 - `manifest.json`
 - icons
 - `requirements.txt`
+
+
+### Data retention/privacy cleanup verification
+
+- Confirm saved Test Lab/Security Health reports are privacy-pruned before local/cloud storage.
+- Confirm retention cleanup takes a fresh safety backup and still excludes trips, fuel logs, bookings, settlements, closed periods, and audit-critical ledger history.
+- Confirm Supabase load report exports still redact browser, session, token, email, phone, location, and authorization fields before download.
 
 ## Validation
 
@@ -457,7 +464,7 @@ After deployment, make one small trip/fuel/booking edit and verify the Supabase 
 
 ## Destructive admin backup check
 
-Before deploying a patch that adds or changes destructive admin actions, verify `npm run validate` includes `testDestructiveActionBackupsExist`. The action should call `await exportAdminSafetyBackup("...")` and then `assertFreshAdminSafetyBackup("...")` immediately before it resets, imports over, closes/archives, purges, or removes important ledger data. Cloud backup failure or a stale/missing fresh-backup record should block the destructive action instead of continuing.
+Before deploying a patch that adds or changes destructive admin actions, verify `npm run validate` includes `testDestructiveActionBackupsExist`. The action should call `await exportAdminSafetyBackup("...")` before it resets, imports over, closes/archives, purges, or removes important ledger data. Cloud backup failure should block the destructive action instead of continuing.
 
 ## Admin/Test Lab protection verification
 

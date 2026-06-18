@@ -172,7 +172,7 @@ function testDiagnosticPrivacyRedactionExists() {
   assert.match(app, /api\[_-\]\?key\|apikey\|secret\|password\|cookie\|jwt/);
   assert.match(app, /redactSensitiveDiagnostics\(buildSupabaseLoadReport\(\)\)/);
   assert.match(app, /const exportedReport = redactSensitiveDiagnostics\(report\)/);
-  assert.match(app, /const reportToStore = sync \? redactSensitiveDiagnostics\(report\) : report/);
+  assert.match(app, /const reportToStore = sanitizeStoredDiagnosticReport\(report\)/);
   assert.match(app, /privacy redaction applied/);
   assert.doesNotMatch(app, /\+\?\d\[0-9 \(\)\.\-\]\{7,\}\d/, "phone redaction must not treat build versions or ISO dates as phone numbers");
   console.log("ok - testDiagnosticPrivacyRedactionExists");
@@ -284,6 +284,7 @@ function testDestructiveActionBackupsExist() {
     "purge soft-deleted generated test rows",
     "remove generated test data",
     "cleanup generated test data",
+    "retention cleanup",
     "remove unused test users"
   ];
   assert.match(app, /const requiredAdminSafetyBackupReasons = Object\.freeze\(\[/);
@@ -302,6 +303,8 @@ function testDestructiveActionBackupsExist() {
   assert.match(app, /async function removeGeneratedTestData\(\)/);
   assert.match(app, /async function removeUnusedTestUsers\(\)/);
   assert.match(app, /Cloud backup failed before \${normalizedReason}/);
+  assert.match(app, /await exportAdminSafetyBackup\("retention cleanup"\)/);
+  assert.match(app, /assertFreshAdminSafetyBackup\("retention cleanup"\)/);
   assert.match(app, /showUserError\(error\.message \|\| String\(error\)\);\n      return;\n    }\n\n  const period =/);
   console.log("ok - testDestructiveActionBackupsExist");
 }

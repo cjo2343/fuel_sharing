@@ -25,10 +25,10 @@ assert.match(server, /assert_user_can_admin_ledger\(ledger_id, user, user_token\
 assert.match(server, /call_supabase_rpc_as_user\("fuel_ledger_healthcheck"/, "Render security health must call the healthcheck RPC as the signed-in user");
 assert.match(server, /request_json\(url, method="GET", body=None, token=None, prefer=None, api_key=None, timeout=20\)/, "request_json must support shorter route-specific probe timeouts");
 
-assert.match(buildInfo, /version: "2026\.06\.18\.212"/, "build-info version must be bumped");
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v312"/, "build-info cache must be bumped");
+assert.match(buildInfo, /version: "2026\.06\.18\.213"/, "build-info version must be bumped");
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v313"/, "build-info cache must be bumped");
 assert.match(buildInfo, /Security Health deep Supabase probes now prefer a Render-owned admin route/, "release note must mention Render-owned security health probes");
-assert.match(serviceWorker, /fuel-ledger-v312/, "service worker cache must be bumped");
+assert.match(serviceWorker, /fuel-ledger-v313/, "service worker cache must be bumped");
 assert.match(pkg, /test-render-security-health-route\.mjs/, "validate script must run the Render security health route regression test");
 
 console.log("Render security health route test passed.");

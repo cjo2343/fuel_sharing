@@ -511,11 +511,6 @@ Operational watch item: after normal use, inspect Supabase Query Performance. `r
 
 Debug and Test Lab reports are operational records. Keep redaction broad for secrets and precise personal data, but avoid over-redacting build versions and timestamps because they are needed to debug deployments.
 
-
-### Destructive admin backup freshness gate
-
-Destructive admin actions now use a recorded fresh-backup gate. Keep the protected reason in `requiredAdminSafetyBackupReasons`, call `await exportAdminSafetyBackup("...")`, and immediately call `assertFreshAdminSafetyBackup("...")` before the destructive write/delete/import/reset. The freshness window is intentionally short so an old manual backup cannot accidentally authorize a later destructive action.
-
 ## CI/pre-push guardrails and release-readiness companion checks
 
 The local and GitHub checks now include a checker that checks the checkers. Keep these rules in sync when changing validation, workflow, release, or hook files:
@@ -662,3 +657,10 @@ Admin diagnostics now surfaces a public-launch readiness warning so operators se
 ### v302 Render admin health endpoint
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
+
+## Data retention/privacy cleanup guardrails
+
+- Stored Test Lab/Security Health reports are pruned before local/cloud storage: browser metadata, raw event history, Data I/O diagnostics, and paired operation history are removed.
+- Long release-note history and latest diagnostic samples are capped in saved reports so report history stays useful without becoming a full debug dump.
+- Retention cleanup is treated as destructive and must take a fresh admin safety backup before it deletes temporary/privacy-sensitive records.
+- Retention cleanup must never delete ledger accounting history such as trips, fuel logs, bookings, settlements, closed periods, or audit-critical history.

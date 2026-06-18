@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.212",
+    version: "2026.06.18.213",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-18T21:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v312",
+    updatedAt: "2026-06-18T21:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v313",
     releaseNotes: Object.freeze([
+      "Data retention/privacy cleanup now prunes stored Test Lab/Security Health report payloads before local/cloud storage, trims long release-note and diagnostic histories, removes raw browser/Data I/O traces from saved reports, and requires a fresh safety backup before retention cleanup runs.",
       "Destructive admin actions now require a recorded fresh safety backup immediately before continuing, with known backup reasons, a one-minute freshness window, and diagnostics so cleanup/reset/import paths fail closed if the backup step is skipped or stale.",
       "Security Health deep Supabase probes now prefer a Render-owned admin route that verifies the signed-in workspace admin and runs member/RPC checks server-side before falling back to browser probes if the route is unavailable.",
       "Supabase load monitor headline activity now also filters deliberate admin maintenance such as JSON mirror backups, generated Test Lab cleanup, retention preview/cleanup, and local Test Lab bookkeeping so those fast successful safety chores do not raise high-activity warnings.",

@@ -1227,6 +1227,7 @@ const requiredAdminSafetyBackupReasons = Object.freeze([
   "purge soft-deleted generated test rows",
   "remove generated test data",
   "cleanup generated test data",
+  "retention cleanup",
   "remove unused test users"
 ]);
 const adminSafetyBackupFreshMs = 60 * 1000;
@@ -1238,7 +1239,10 @@ const retentionPolicy = Object.freeze({
   keepLatestTestLabReports: 3,
   cloudTestLabReportDays: 30,
   keepLatestCloudTestLabReports: 10,
-  stalePushSubscriptionDays: 180
+  stalePushSubscriptionDays: 180,
+  localLoadMonitorEventMinutes: 60,
+  maxStoredReportReleaseNotes: 5,
+  maxStoredReportDiagnosticRows: 20
 });
 let lastRetentionCleanupPreview = null;
 let renderAdminHealthStatus = {
@@ -2520,8 +2524,43 @@ function redactSensitiveDiagnostics(value) {
   return redacted;
 }
 
+function trimArrayForPrivacy(value, maxItems) {
+  if (!Array.isArray(value)) return value;
+  const limit = Math.max(0, Number(maxItems) || 0);
+  return value.slice(0, limit);
+}
+
+function sanitizeStoredDiagnosticReport(value) {
+  const report = redactSensitiveDiagnostics(value);
+  if (!report || typeof report !== "object" || Array.isArray(report)) return report;
+  const sanitized = { ...report };
+  delete sanitized.browser;
+  delete sanitized.events;
+  delete sanitized.dataIoDiagnostics;
+  delete sanitized.dataIoOperations;
+  delete sanitized.latestDataIoDiagnostic;
+  delete sanitized.latestDataIoOperation;
+  if (sanitized.buildInfo && typeof sanitized.buildInfo === "object") {
+    sanitized.buildInfo = {
+      ...sanitized.buildInfo,
+      releaseNotes: trimArrayForPrivacy(sanitized.buildInfo.releaseNotes || [], retentionPolicy.maxStoredReportReleaseNotes)
+    };
+  }
+  if (sanitized.summary && typeof sanitized.summary === "object") {
+    const summary = { ...sanitized.summary };
+    summary.latest = trimArrayForPrivacy(summary.latest || [], retentionPolicy.maxStoredReportDiagnosticRows);
+    sanitized.summary = summary;
+  }
+  if (Array.isArray(sanitized.checks)) {
+    sanitized.checks = sanitized.checks.map((check) => redactSensitiveDiagnostics(check));
+  }
+  sanitized.privacyPruned = true;
+  sanitized.privacyPrunedAt = sanitized.privacyPrunedAt || new Date().toISOString();
+  return sanitized;
+}
+
 function redactTestLabReportForCloud(value) {
-  return redactSensitiveDiagnostics(value);
+  return sanitizeStoredDiagnosticReport(value);
 }
 
 function scheduleAdvancedAdminToolsRelock() {
@@ -3466,13 +3505,13 @@ function normalizeTestLabReports(value) {
       : [];
   return reports
     .filter((report) => report && typeof report === "object" && !Array.isArray(report))
-    .map((report) => ({
+    .map((report) => sanitizeStoredDiagnosticReport({
       ...report,
       id: String(report.id || "").trim() || `testlab-${Date.now()}`,
       syncedAt: report.syncedAt || report.finishedAt || report.startedAt || new Date().toISOString()
     }))
     .sort((a, b) => Date.parse(b.syncedAt || b.finishedAt || b.startedAt || "") - Date.parse(a.syncedAt || a.finishedAt || a.startedAt || ""))
-    .slice(0, 5);
+    .slice(0, retentionPolicy.keepLatestTestLabReports);
 }
 
 function getLatestSyncedTestLabReport() {
@@ -4273,9 +4312,10 @@ function buildLocalRetentionPreview() {
     const timestamp = reportRetentionTimestamp(report);
     return index >= retentionPolicy.keepLatestTestLabReports || (timestamp > 0 && timestamp < cutoff);
   });
+  const localLoadMonitorCutoff = Date.now() - retentionPolicy.localLoadMonitorEventMinutes * 60 * 1000;
   const oldLoadEvents = getSupabaseLoadEvents(24 * 60 * 60 * 1000).filter((entry) => {
-    const timestamp = Date.parse(entry.at || "");
-    return Number.isFinite(timestamp) && timestamp < Date.now() - 60 * 60 * 1000;
+    const timestamp = Date.parse(entry.at || entry.iso || "");
+    return Number.isFinite(timestamp) && timestamp < localLoadMonitorCutoff;
   });
   return {
     testLabReports: removableReports.length,
@@ -4297,9 +4337,10 @@ function applyLocalRetentionCleanup() {
     lastTestLabReport = keptReports[0] || null;
   }
   const beforeEvents = (supabaseLoadSafety.requests || []).length;
+  const localLoadMonitorCutoff = Date.now() - retentionPolicy.localLoadMonitorEventMinutes * 60 * 1000;
   supabaseLoadSafety.requests = (supabaseLoadSafety.requests || []).filter((entry) => {
-    const timestamp = Date.parse(entry.at || "");
-    return !Number.isFinite(timestamp) || timestamp >= Date.now() - 60 * 60 * 1000;
+    const timestamp = Date.parse(entry.at || entry.iso || "");
+    return !Number.isFinite(timestamp) || timestamp >= localLoadMonitorCutoff;
   });
   return {
     testLabReports: removedReports,
@@ -4442,8 +4483,8 @@ function renderRetentionCleanupSummary(preview = lastRetentionCleanupPreview) {
         <li><span>Old in-app notification events (${retentionPolicy.ledgerEventDays}+ days or expired)</span><b>${Number(preview.cloud?.ledgerEvents || 0)}</b></li>
         <li><span>Global stale push subscriptions (${retentionPolicy.stalePushSubscriptionDays}+ days, user/device scoped)</span><b>${Number(preview.cloud?.stalePushSubscriptions || 0)}</b></li>
         <li><span>Old cloud Test Lab reports (${retentionPolicy.cloudTestLabReportDays}+ days; keeps latest ${retentionPolicy.keepLatestCloudTestLabReports})</span><b>${Number(preview.cloud?.testLabReports || 0)}</b></li>
-        <li><span>Old/local Test Lab reports</span><b>${Number(preview.local?.testLabReports || 0)}</b></li>
-        <li><span>Old load-monitor events in this browser</span><b>${Number(preview.local?.loadMonitorEvents || 0)}</b></li>
+        <li><span>Old/local Test Lab reports (privacy-pruned; keeps latest ${retentionPolicy.keepLatestTestLabReports})</span><b>${Number(preview.local?.testLabReports || 0)}</b></li>
+        <li><span>Old load-monitor events in this browser (${retentionPolicy.localLoadMonitorEventMinutes}+ minutes)</span><b>${Number(preview.local?.loadMonitorEvents || 0)}</b></li>
       </ul>
       <small>${escapeHtml(preview.cloud?.message || "")}</small>
     </div>
@@ -4484,6 +4525,8 @@ async function runRetentionCleanup() {
 
   if (els.runRetentionCleanup) els.runRetentionCleanup.disabled = true;
   try {
+    await exportAdminSafetyBackup("retention cleanup");
+    assertFreshAdminSafetyBackup("retention cleanup");
     const local = applyLocalRetentionCleanup();
     let cloud = { ledger_events: 0, stale_push_subscriptions: 0, test_lab_reports: 0 };
     if (supabaseClient && currentSession && canManageSettings()) {
@@ -4769,7 +4812,7 @@ async function saveTestLabReportViaRender(report) {
 
 async function saveTestLabReportToCloudStore(report) {
   if (!currentSession?.access_token) return false;
-  const reportToStore = redactSensitiveDiagnostics(report);
+  const reportToStore = sanitizeStoredDiagnosticReport(report);
   const storedReport = await saveTestLabReportViaRender(reportToStore);
   if (!storedReport) return false;
   mergeTestLabReportsIntoState([markCurrentTestLabReport(storedReport, "cloud-save")]);
@@ -4780,7 +4823,7 @@ async function saveTestLabReportToCloudStore(report) {
 
 function persistTestLabReport(report, { sync = false } = {}) {
   if (!report || typeof report !== "object") return null;
-  const reportToStore = sync ? redactSensitiveDiagnostics(report) : report;
+  const reportToStore = sanitizeStoredDiagnosticReport(report);
   const enriched = markCurrentTestLabReport({
     ...reportToStore,
     createdBy: reportToStore.createdBy || describeCurrentActor(),
