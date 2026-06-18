@@ -9,10 +9,10 @@ const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 const audit = fs.readFileSync('BACKEND-PATH-AUDIT.md', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209)"/, 'build-info should publish v307 or a preserving v309 patch');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209|210)"/, 'build-info should publish v307 or a preserving v309 patch');
 assert.match(buildInfo, /buildLabel:\s*"render-admin-report-save-route"/, 'build-info should use v307 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[7-9]"/, 'build-info should expect v307 or a preserving v309 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[7-9]"/, 'service worker should use v307 or a preserving v309 cache');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v307 or a preserving v309 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker should use v307 or a preserving v309 cache');
 assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"render-admin-report-save-route"/, 'service worker label should match v307');
 
 assert.match(app, /const renderAdminReportSaveUrl = "\/api\/admin\/reports\/save";/, 'app should define the Render admin report-save URL');

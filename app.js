@@ -3464,8 +3464,12 @@ function isSupabaseLoadNoiseEvent(entry = {}) {
   const label = String(entry.label || "");
   if (Boolean(entry.diagnostic) || label.startsWith("sync-diagnostic:")) return true;
   if (entry.dataIo && (/^data-io:admin/i.test(label) || /^data-io:admin-tool:/i.test(label))) return true;
+  if (entry.dataIo && /^data-io:(json-mirror-backup|normalized-test-data-cleanup|retention-preview|retention-cleanup):/i.test(label)) return true;
   if (/^admin-tool:/i.test(label) || /^render-admin-health$/i.test(label) || /^render-admin-report-save$/i.test(label)) return true;
   if (/^security-health/i.test(label) || /^normalized-health/i.test(label) || /^test-lab-report/i.test(label)) return true;
+  if (/^(render-json-mirror-backup|json-mirror-save|browser-full-state-save-skip)$/i.test(label)) return true;
+  if (/^(render-normalized-test-data-cleanup|normalized-reconciliation-dirty|test-lab-local-run)$/i.test(label)) return true;
+  if (/^(render-retention-preview|render-retention-cleanup)$/i.test(label)) return true;
   if (/skip$/i.test(label) || /-skip$/i.test(label) || /-disabled$/i.test(label)) return true;
   if (/^realtime-(resumed-visible|paused-hidden|disabled)$/i.test(label)) return true;
   if (/^ledger-events-subscription/i.test(label)) return true;

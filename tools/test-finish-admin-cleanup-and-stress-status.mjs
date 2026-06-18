@@ -14,7 +14,7 @@ assert.doesNotMatch(app, /async function flushStressSave\(label\) \{[\s\S]*?awai
 assert.match(app, /finishForegroundOperationsBySource\("advanced-stress", "Render backup path completed"\)/, 'Render-backed stress path must clear any advanced-stress foreground operation');
 assert.match(app, /browser-full-state-save-skip/, 'Render-backed admin generated-data paths should record browser full-state save skip breadcrumbs');
 assert.match(buildInfo, /finish-admin-cleanup-and-stress-status|normalized-test-data-cleanup|render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route/, 'build label should preserve or build on the admin cleanup/stress finish patch');
-assert.match(serviceWorker, /fuel-ledger-v(?:29[2-9]|30[0-9])/, 'service worker cache must stay bumped for runtime app.js changes');
+assert.match(serviceWorker, /fuel-ledger-v(?:29[2-9]|3[0-9][0-9])/, 'service worker cache must stay bumped for runtime app.js changes');
 assert.match(pkg, /test-finish-admin-cleanup-and-stress-status\.mjs/, 'validate script must include the cleanup/stress status guard');
 
 console.log('Admin cleanup/stress finish status guard check passed.');

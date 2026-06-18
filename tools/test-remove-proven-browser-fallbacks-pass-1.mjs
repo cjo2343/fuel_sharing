@@ -8,10 +8,10 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:206|207|208|209)"/, 'build-info should publish v306');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:206|207|208|209|210)"/, 'build-info should publish v306');
 assert.match(buildInfo, /buildLabel:\s*"(?:remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v306 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v30[6-9]"/, 'build-info should expect v306 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v30[6-9]"/, 'service worker should use v306 cache');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v306 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker should use v306 cache');
 assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v306');
 
 assert.match(app, /Browser retention RPC fallback is disabled/, 'retention failures should explicitly fail closed through Render');

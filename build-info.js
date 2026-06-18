@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.209",
+    version: "2026.06.18.210",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-18T20:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v309",
+    updatedAt: "2026-06-18T20:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v310",
     releaseNotes: Object.freeze([
+      "Supabase load monitor headline activity now also filters deliberate admin maintenance such as JSON mirror backups, generated Test Lab cleanup, retention preview/cleanup, and local Test Lab bookkeeping so those fast successful safety chores do not raise high-activity warnings.",
       "Supabase load monitor headline activity now filters expected admin diagnostics, Security Health/report-save rows, skip/realtime chatter, and Test Lab bookkeeping so deliberate admin checks do not trigger a scary high-activity warning.",
       "Security Health admin diagnostics now use a longer per-operation stale window and shorter bounded Supabase probes so a healthy Render backend is not shown as a stuck admin-tool timeout while live security checks finish.",
       "Test Lab/Security Health report saves now use a Render /api/admin/reports/save route that verifies workspace admin permission and calls upsert_test_lab_report server-side, removing the browser-owned report RPC save path.",
