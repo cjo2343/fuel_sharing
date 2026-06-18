@@ -1284,6 +1284,82 @@ def build_fuel_upsert_rpc_payload(payload):
     return required
 
 
+
+def build_admin_test_data_rpc_payload(payload, context):
+    if not isinstance(payload, dict):
+        raise ValueError("Admin test data payload must be an object")
+    entry_type = str(payload.get("type") or "").strip().lower()
+    entry = payload.get("entry") if isinstance(payload.get("entry"), dict) else {}
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or context.get("ledgerId") or "").strip()
+    if not ledger_id:
+        raise ValueError("Admin test data requires ledgerId")
+    if ledger_id != context.get("ledgerId"):
+        raise PermissionError("Cannot create generated test data for a different workspace")
+    if not context.get("canAdmin"):
+        raise PermissionError("Only workspace admins can create generated test data")
+
+    member_ids_by_name = context.get("memberIdsByName") or {}
+    if entry_type == "trip":
+        driver = str(entry.get("driver") or "").strip()
+        driver_member_id = member_ids_by_name.get(driver)
+        if not driver_member_id:
+            raise ValueError("Generated test trip driver must be an active workspace member")
+        participant_names = entry.get("participants") if isinstance(entry.get("participants"), list) else []
+        participant_member_ids = [member_ids_by_name.get(str(name or "").strip()) for name in participant_names]
+        participant_member_ids = [str(value) for value in participant_member_ids if value]
+        if not participant_member_ids:
+            participant_member_ids = [str(driver_member_id)]
+        return "trip", build_trip_upsert_rpc_payload({
+            "context": {"ledgerId": ledger_id, "openPeriodId": context.get("openPeriodId")},
+            "participantMemberIds": participant_member_ids,
+            "trip": {
+                "legacy_id": entry.get("id"),
+                "driver_member_id": driver_member_id,
+                "trip_date": entry.get("date"),
+                "start_km": entry.get("startKm"),
+                "end_km": entry.get("endKm"),
+                "note": entry.get("note"),
+            },
+        })
+
+    if entry_type == "fuel":
+        payer = str(entry.get("payer") or "").strip()
+        payer_member_id = member_ids_by_name.get(payer)
+        if not payer_member_id:
+            raise ValueError("Generated test fuel payer must be an active workspace member")
+        amount = entry.get("amount") or 0
+        liters = entry.get("liters") or 0
+        price_per_liter = entry.get("pricePerLiter")
+        if price_per_liter in (None, ""):
+            try:
+                price_per_liter = float(amount or 0) / float(liters or 0) if float(liters or 0) else None
+            except (TypeError, ValueError, ZeroDivisionError):
+                price_per_liter = None
+        station_info = entry.get("stationInfo") if isinstance(entry.get("stationInfo"), dict) else {}
+        location = entry.get("location") if isinstance(entry.get("location"), dict) else {}
+        return "fuel", build_fuel_upsert_rpc_payload({
+            "context": {"ledgerId": ledger_id, "openPeriodId": context.get("openPeriodId")},
+            "fuel": {
+                "legacy_id": entry.get("id"),
+                "payer_member_id": payer_member_id,
+                "payment_date": entry.get("date"),
+                "amount": amount,
+                "currency": payload.get("currency") or "DKK",
+                "liters": liters,
+                "price_per_liter": price_per_liter,
+                "odometer": entry.get("odometer"),
+                "station_name": entry.get("station") or station_info.get("name"),
+                "station_brand": station_info.get("brand"),
+                "station_lat": station_info.get("latitude"),
+                "station_lng": station_info.get("longitude"),
+                "user_lat": location.get("latitude"),
+                "user_lng": location.get("longitude"),
+                "full_tank": bool(entry.get("fullTank")),
+            },
+        })
+
+    raise ValueError("Admin test data type must be trip or fuel")
+
 def build_booking_upsert_rpc_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Booking upsert payload must be an object")
@@ -1525,6 +1601,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/backups/json-mirror":
             self.save_json_mirror_backup_backend()
             return
+        if self.path == "/api/admin/test-data/create":
+            self.create_admin_test_data_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1649,6 +1728,36 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "result": result, "backend": "render", "reason": reason, "userEmail": user.get("email")})
+
+
+    def create_admin_test_data_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before creating generated test data")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id = build_write_context_backend_payload(payload, user)
+            context = get_write_context_as_user(ledger_id, user, token)
+            entry_type, rpc_payload = build_admin_test_data_rpc_payload(payload, context)
+            rpc_name = "upsert_trip_with_participants" if entry_type == "trip" else "upsert_fuel_payment"
+            result = call_supabase_rpc_as_user(rpc_name, rpc_payload, user_token=token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "type": entry_type, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def get_write_context_backend(self):
         user = current_supabase_user(self)

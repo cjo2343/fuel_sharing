@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.193"/, "Build info must be bumped for v293.");
-assert.match(buildInfo, /buildLabel:\s*"normalized-test-data-cleanup"/, "Build label must describe normalized Test Lab cleanup.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v293"/, "Expected service-worker cache must be v293.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v293"/, "Service-worker cache must be v293.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"normalized-test-data-cleanup"/, "Service-worker build label must be v293 label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.19[34]"/, "Build info must be bumped for v293.");
+assert.match(buildInfo, /buildLabel:\s*"(?:normalized-test-data-cleanup|render-admin-test-data-routes)"/, "Build label must describe normalized Test Lab cleanup or a later build preserving it.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[34]"/, "Expected service-worker cache must be v293.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[34]"/, "Service-worker cache must be v293.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:normalized-test-data-cleanup|render-admin-test-data-routes)"/, "Service-worker build label must be v293 or a later preserving label.");
 
 assert.match(app, /async function cleanupGeneratedRowsFromNormalizedTables\(/, "Cleanup must include a normalized-table cleanup helper.");
 assert.match(app, /source = "normalized-test-data-cleanup"/, "Normalized cleanup must have its own Data I\/O source.");

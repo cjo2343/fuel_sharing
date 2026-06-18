@@ -151,3 +151,17 @@ Rollout rule: this is the first fallback-removal step. It removes only the redun
 Target build: `normalized-test-data-cleanup` / `fuel-ledger-v293`.
 
 Clean generated Test Lab data now removes the generated entries from the local/JSON state and soft-deletes matching generated rows in normalized Supabase tables (`trips`, `fuel_payments`, and `car_bookings`) before saving the Render JSON mirror backup. This closes the gap where app state was clean but normalized health still counted old generated trip/fuel rows.
+
+### v294: Render admin test-data create route
+
+Generated admin test trip/fuel buttons now prefer `POST /api/admin/test-data/create` before any browser-side normalized write fallback.
+
+The Render route:
+
+- verifies the signed-in Supabase session,
+- verifies the user is an active admin for the workspace,
+- resolves active member names and the open settlement period server-side,
+- calls the existing `upsert_trip_with_participants` or `upsert_fuel_payment` RPC, and
+- returns the backend result to the browser.
+
+After a successful Render test-data create, the browser only updates the local UI copy and saves the JSON mirror through the Render backup route. It skips the older browser full-state save path so Add generated test fuel/trip does not depend on browser-owned normalized write-context setup before the backend save can start.

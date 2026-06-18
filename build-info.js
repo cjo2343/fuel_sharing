@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.193",
-    buildLabel: "normalized-test-data-cleanup",
-    updatedAt: "2026-06-18T00:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v293",
+    version: "2026.06.18.194",
+    buildLabel: "render-admin-test-data-routes",
+    updatedAt: "2026-06-18T08:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v294",
     releaseNotes: Object.freeze([
+      "Generated test trip/fuel admin buttons now create normalized rows through a Render /api/admin/test-data/create route, so Add generated test fuel no longer depends on browser-side normalized write-context setup before the backend save can start.",
       "Clean generated Test Lab data now also soft-deletes generated trip, fuel, and booking rows from normalized Supabase tables before saving the Render JSON mirror backup, so normalized health no longer sees old generated rows after cleanup.",
       "Admin cleanup and advanced-stress paths now finish their admin-tool Data I/O rows and use the Render JSON mirror backup path without waking the old browser full-state save, preventing stale cleanup/stress timeout rows after backend backup succeeds.",
       "Admin tools that trigger cloud work now wrap their action in a Data I/O operation row, so the load monitor shows start/success/error/timeout status for buttons such as generated test data, Test Lab scenarios, Security Health, JSON backups, member/workspace invite tools, and admin diagnostics.",

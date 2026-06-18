@@ -25,6 +25,7 @@ const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
 const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
+const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -2742,10 +2743,24 @@ function getTestParticipantNames(actor) {
   return Array.from(new Set(ordered)).slice(0, Math.min(2, Math.max(1, ordered.length)));
 }
 
-async function persistGeneratedTestDataLocallyAndToCloud(message) {
+async function persistGeneratedTestDataLocallyAndToCloud(message, options = {}) {
+  const renderBacked = options.renderBacked === true;
+  const reason = options.reason || (renderBacked ? "admin-test-data Render JSON mirror backup" : "admin-test-data-table-primary");
   state.updatedAt = new Date().toISOString();
   writeLocalState();
-  if (supabaseClient && currentSession) {
+  if (supabaseClient && currentSession && renderBacked) {
+    saveState({ reason, queueRemote: false });
+    try {
+      const mirrored = await saveJsonMirrorBackup({ force: true, reason });
+      if (mirrored) {
+        markRemoteSaveSucceeded("Tables");
+        recordSupabaseLoadEvent("browser-full-state-save-skip", "admin generated test data already saved through Render routes and JSON mirror backup");
+      }
+    } catch (error) {
+      console.warn("Generated test data JSON mirror backup failed", error);
+      markRemoteSaveFailed(error, "Could not save generated test data JSON mirror backup.");
+    }
+  } else if (supabaseClient && currentSession) {
     await saveSupabaseState({ reason: "admin-test-data-table-primary" });
     if (pendingLocalChanges > 0) {
       recordSupabaseLoadEvent("admin-test-pending-clear", `${pendingLocalChanges} queued change(s) cleared after table-primary generated-data save`);
@@ -2757,6 +2772,63 @@ async function persistGeneratedTestDataLocallyAndToCloud(message) {
   setDefaultDates();
   render();
   setDataToolsMessage(message);
+}
+
+async function createGeneratedTestDataViaRender(type, entry) {
+  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const operationId = createDataIoOperationId(`admin-test-data-${type}`);
+  const traceMeta = { source: `admin-test-data:${type}`, route: "render-api", endpoint: renderAdminTestDataCreateUrl, operation: "create", operationId };
+  if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: true, backend: "render-api" };
+
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, ledgerId });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Render admin test data API", 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(renderAdminTestDataCreateUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify({ ledgerId, type, entry, currency: state.currency || "DKK" })
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent("render-admin-test-data-create", `created generated test ${type} via Render admin route`);
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, ledgerId });
+      return { ok: true, data: result.result, backend: "render-api" };
+    }
+
+    const message = result?.message || result?.error || text || `Render admin test data create failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    const shouldFallback = [404, 405, 501].includes(response.status);
+    recordDataIoDiagnostic("error", { ...traceMeta, error, ledgerId, detail: shouldFallback ? `HTTP ${response.status}; falling back to browser test-data save.` : `HTTP ${response.status}; not falling back.` });
+    return { ok: false, error, shouldFallback, backend: "render-api" };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render admin test data API", 12000);
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, ledgerId });
+    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
 }
 
 async function addGeneratedTestTrip() {
@@ -2781,8 +2853,15 @@ async function addGeneratedTestTrip() {
     note: `${generatedTestMarker} generated trip ${stamp}`
   };
 
-  const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
-  if (!normalizedTripSaved) return;
+  const renderSaved = await createGeneratedTestDataViaRender("trip", tripPayload);
+  if (!renderSaved.ok) {
+    if (!renderSaved.shouldFallback) {
+      showUserError(`Could not create generated test trip through Render: ${renderSaved.error?.message || renderSaved.error || "unknown error"}`);
+      return;
+    }
+    const normalizedTripSaved = await saveTripToNormalizedTablesFirst(tripPayload);
+    if (!normalizedTripSaved) return;
+  }
 
   state.trips.push(tripPayload);
   state.lastOdometer = getLatestOdometer();
@@ -2793,7 +2872,7 @@ async function addGeneratedTestTrip() {
     summary: `${formatLogRef(tripPayload)} · ${tripPayload.driver} · ${formatNumber(tripPayload.endKm - tripPayload.startKm)} km`,
     detail: `Generated admin test trip · ${getTripPeriodLabel(tripPayload)}`
   });
-  await persistGeneratedTestDataLocallyAndToCloud("Added one generated test trip through the table-primary trip save path. No local-only generated trip change is queued.");
+  await persistGeneratedTestDataLocallyAndToCloud("Added one generated test trip through the Render admin test-data route. No browser write-context setup is needed.", { renderBacked: true, reason: "admin generated test trip Render JSON mirror backup" });
 }
 
 async function addGeneratedTestFuel() {
@@ -2822,8 +2901,15 @@ async function addGeneratedTestFuel() {
     fullTank: false
   };
 
-  const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
-  if (!normalizedFuelSaved) return;
+  const renderSaved = await createGeneratedTestDataViaRender("fuel", fuelPayload);
+  if (!renderSaved.ok) {
+    if (!renderSaved.shouldFallback) {
+      showUserError(`Could not create generated test fuel through Render: ${renderSaved.error?.message || renderSaved.error || "unknown error"}`);
+      return;
+    }
+    const normalizedFuelSaved = await saveFuelToNormalizedTablesFirst(fuelPayload);
+    if (!normalizedFuelSaved) return;
+  }
 
   state.fuel.push(fuelPayload);
   addAuditEntry({
@@ -2833,7 +2919,7 @@ async function addGeneratedTestFuel() {
     summary: `${formatLogRef(fuelPayload)} · ${fuelPayload.payer} · ${formatFuelAmountLitersAndPrice(fuelPayload)}`,
     detail: `Generated admin test fuel log · ${fuelPayload.date || ""}${fuelPayload.odometer ? ` · ${formatNumber(fuelPayload.odometer)} km` : ""}`
   });
-  await persistGeneratedTestDataLocallyAndToCloud("Added one generated test fuel log through the table-primary fuel save path. No local-only generated fuel change is queued.");
+  await persistGeneratedTestDataLocallyAndToCloud("Added one generated test fuel log through the Render admin test-data route. No browser write-context setup is needed.", { renderBacked: true, reason: "admin generated test fuel Render JSON mirror backup" });
 }
 
 async function removeGeneratedTestData() {
