@@ -13,11 +13,11 @@ function assert(condition, message) {
   }
 }
 
-assert(/version:\s*"2026\.06\.18\.19[4-8]"/.test(buildInfo), 'build-info.js must be v294 or later while preserving the admin test-data routes.');
-assert(/buildLabel:\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/.test(buildInfo), 'build-info.js must use the v294 build label or a later label preserving it.');
-assert(/expectedServiceWorkerCache:\s*"fuel-ledger-v29[4-8]"/.test(buildInfo), 'build-info.js must expect the v294/v295/v296/v297 service-worker cache.');
-assert(/CACHE_NAME\s*=\s*"fuel-ledger-v29[4-8]"/.test(serviceWorker), 'service-worker.js must use the v294/v295/v296/v297 cache.');
-assert(/BUILD_LABEL\s*=\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/.test(serviceWorker), 'service-worker.js must use the v294 build label or a later label preserving it.');
+assert(/version:\s*"2026\.06\.18\.19[4-9]"/.test(buildInfo), 'build-info.js must be v294 or later while preserving the admin test-data routes.');
+assert(/buildLabel:\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen)"/.test(buildInfo), 'build-info.js must use the v294 build label or a later label preserving it.');
+assert(/expectedServiceWorkerCache:\s*"fuel-ledger-v29[4-9]"/.test(buildInfo), 'build-info.js must expect the v294/v295/v296/v297 service-worker cache.');
+assert(/CACHE_NAME\s*=\s*"fuel-ledger-v29[4-9]"/.test(serviceWorker), 'service-worker.js must use the v294/v295/v296/v297 cache.');
+assert(/BUILD_LABEL\s*=\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen)"/.test(serviceWorker), 'service-worker.js must use the v294 build label or a later label preserving it.');
 
 assert(app.includes('const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";'), 'app.js must define the Render admin test-data create URL.');
 assert(app.includes('async function createGeneratedTestDataViaRender(type, entry)'), 'app.js must include a Render admin test-data helper.');

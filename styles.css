@@ -5160,3 +5160,33 @@ body.auth-locked #authPanel .text-button {
     font-size: clamp(1.5rem, 12vw, 2.6rem);
   }
 }
+
+/* Startup hydration gate: avoid showing signed-in onboarding cards before the
+   workspace/member state has loaded from Render. */
+body.startup-hydrating #authPanel {
+  border-color: rgba(23, 108, 88, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+body.startup-hydrating #authPanel .panel-header {
+  margin-bottom: 8px;
+}
+
+body.startup-hydrating #authPanel .panel-header::after {
+  content: "Preparing the selected workspace before showing actions.";
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+body.startup-hydrating #loginForm,
+body.startup-hydrating #otpForm,
+body.startup-hydrating #signOut,
+body.startup-hydrating #inviteRedemptionPanel,
+body.startup-hydrating #pwaPanel,
+body.startup-hydrating #syncHealthBanner {
+  display: none !important;
+}

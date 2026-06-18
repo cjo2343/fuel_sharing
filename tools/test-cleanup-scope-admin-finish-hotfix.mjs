@@ -6,11 +6,11 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:197|198)"/, "build-info.js must be bumped to v297.");
-assert.match(buildInfo, /buildLabel:\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/, "build-info.js must use the v297 build label.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[78]"/, "build-info.js must expect the v297 service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[78]"/, "service-worker.js must use the v297 cache.");
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction)"/, "service-worker.js must use the v297 build label.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:197|198|199)"/, "build-info.js must be bumped to v297.");
+assert.match(buildInfo, /buildLabel:\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen)"/, "build-info.js must use the v297 build label.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v29[789]"/, "build-info.js must expect the v297 service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v29[789]"/, "service-worker.js must use the v297 cache.");
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen)"/, "service-worker.js must use the v297 build label.");
 
 const cleanupViaRenderStart = app.indexOf("async function cleanupGeneratedRowsFromNormalizedTablesViaRender");
 const cleanupViaRenderEnd = app.indexOf("async function cleanupGeneratedRowsFromNormalizedTables(reason", cleanupViaRenderStart);

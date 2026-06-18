@@ -435,6 +435,7 @@ const supabaseFocusReloadCooldownMs = 2 * 60 * 1000;
 let lastFocusSyncAttemptAt = 0;
 const recentHealthyFocusSyncGraceMs = 2 * 60 * 1000;
 const supabaseStartupLoadTimeoutMs = 15000;
+const startupHydrationGraceMs = 12000;
 const syncDelayHealthyGraceMs = 10 * 60 * 1000;
 const visibleSyncingFailsafeMs = 30000;
 const visibleSavingFailsafeMs = 20000;
@@ -444,6 +445,9 @@ let visibleSyncingFailsafeTimer = null;
 let visibleSavingStartedAt = 0;
 let visibleSavingSource = "";
 let visibleSavingFailsafeTimer = null;
+let startupHydrationActive = false;
+let startupHydrationStartedAt = 0;
+let startupHydrationReason = "";
 const foregroundOperationStaleMs = 20000;
 const foregroundOperations = new Map();
 let foregroundOperationCounter = 0;
@@ -490,6 +494,38 @@ function shouldAllowVisibleSyncStatus(label, source) {
   // Unknown foreground writes still pass, but they are recorded so the next
   // bug report names the source instead of just saying Saving/Syncing.
   return true;
+}
+
+
+function beginStartupHydration(reason = "startup") {
+  if (!supabaseClient || !currentSession) return;
+  startupHydrationActive = true;
+  startupHydrationStartedAt = Date.now();
+  startupHydrationReason = String(reason || "startup");
+  document.body.classList.add("startup-hydrating");
+  recordSyncDiagnostic("startup-hydration-start", startupHydrationReason, { reason: startupHydrationReason });
+}
+
+function finishStartupHydration(reason = "complete") {
+  if (!startupHydrationActive) return;
+  const ageMs = Date.now() - Number(startupHydrationStartedAt || Date.now());
+  startupHydrationActive = false;
+  startupHydrationStartedAt = 0;
+  startupHydrationReason = "";
+  document.body.classList.remove("startup-hydrating");
+  recordSyncDiagnostic("startup-hydration-clear", String(reason || "complete"), { reason, ageMs });
+}
+
+function isStartupHydrating() {
+  if (!supabaseClient || !currentSession || !startupHydrationActive) return false;
+  const ageMs = Date.now() - Number(startupHydrationStartedAt || Date.now());
+  return ageMs < startupHydrationGraceMs || supabaseLoadInFlight;
+}
+
+function shouldSuppressStartupHydrationDelay() {
+  if (!supabaseClient || !currentSession || !startupHydrationActive) return false;
+  const ageMs = Date.now() - Number(startupHydrationStartedAt || Date.now());
+  return ageMs < startupHydrationGraceMs;
 }
 
 
@@ -6185,6 +6221,7 @@ async function initializeSupabase() {
     localStorage.setItem(rememberedLoginEmailKey, currentSession.user.email);
     localStorage.removeItem(pendingLoginEmailKey);
   }
+  if (currentSession) beginStartupHydration("initial-session");
   updateAuthUi();
   if (currentSession) {
     await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Initial workspace list refresh failed", error));
@@ -6199,6 +6236,7 @@ async function initializeSupabase() {
       localStorage.removeItem(pendingLoginEmailKey);
     }
     if (!session) resetAuthBoundMemberProfile();
+    if (session && !lastCloudSyncAt) beginStartupHydration(`auth-${String(event || "session").toLowerCase()}`);
     updateAuthUi();
     if (session) {
       await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Auth workspace list refresh failed", error));
@@ -6216,6 +6254,9 @@ async function initializeSupabase() {
       const isDuplicateAuthEvent = isSameUser && isWithinAuthCooldown && (isRefreshOnly || isSignedInEvent || authEvent === "auth-change");
       if (isDuplicateAuthEvent) {
         recordSupabaseLoadEvent("auth-sync-skip", `${authEvent} cooldown`);
+        finishStartupHydration(`auth-skip:${authEvent}`);
+        updateAuthUi();
+        render();
         return;
       }
       lastAuthCloudSyncUserKey = userKey;
@@ -6226,7 +6267,11 @@ async function initializeSupabase() {
         supabaseStartupLoadTimeoutMs,
         "Cloud sync after sign-in is delayed. Retrying in the background."
       );
+      finishStartupHydration(`auth-loaded:${authEvent}`);
+      updateAuthUi();
+      render();
     } else {
+      finishStartupHydration("signed-out");
       lastAuthCloudSyncUserKey = "";
       lastAuthCloudSyncAt = 0;
       lastAuthCloudSyncEventAt = 0;
@@ -6236,6 +6281,8 @@ async function initializeSupabase() {
   });
 
   if (currentSession) {
+    beginStartupHydration("startup");
+    updateAuthUi();
     subscribeToLedgerEvents();
     subscribeToSupabaseState();
     await loadSupabaseStateWithTimeout(
@@ -6243,6 +6290,9 @@ async function initializeSupabase() {
       supabaseStartupLoadTimeoutMs,
       "Startup cloud sync is delayed. Retrying in the background."
     );
+    finishStartupHydration("startup-loaded");
+    updateAuthUi();
+    render();
   }
 }
 
@@ -6256,6 +6306,7 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
   const isManualSync = Boolean(options?.manual) || /^manual-/.test(reason);
   const isAdminDiagnosticsSync = reason === "manual-admin" || reason === "admin-diagnostics" || /^admin-/.test(reason);
   const shouldShowDelayedStatus = () => {
+    if (shouldSuppressStartupHydrationDelay()) return false;
     if (isAdminDiagnosticsSync) return false;
     if (isManualSync) return shouldSurfaceManualSyncDelay(startedAt);
     if (!isBackgroundSync) return true;
@@ -6414,18 +6465,41 @@ async function redeemPendingLoginInviteAfterSignIn() {
 }
 
 function updateAuthUi() {
+  const hydrating = isStartupHydrating();
   document.body.classList.toggle("auth-locked", Boolean(supabaseClient && !currentSession));
+  document.body.classList.toggle("startup-hydrating", hydrating);
 
   if (!supabaseClient) {
     els.authPanel.classList.add("hidden");
     document.body.classList.remove("auth-locked");
+    document.body.classList.remove("startup-hydrating");
     return;
   }
 
   const pendingEmail = localStorage.getItem(pendingLoginEmailKey);
   const rememberedEmail = localStorage.getItem(rememberedLoginEmailKey);
   const showOtpForm = Boolean(pendingEmail || loginRequestedFromUrl);
+  const authHeading = document.querySelector("#authHeading");
+  const authEyebrow = els.authPanel?.querySelector(".eyebrow");
 
+  if (hydrating) {
+    els.authPanel.classList.remove("hidden");
+    els.loginForm.classList.add("hidden");
+    els.otpForm.classList.add("hidden");
+    els.signOut.classList.add("hidden");
+    if (authEyebrow) authEyebrow.textContent = "Loading";
+    if (authHeading) authHeading.textContent = "Loading workspace";
+    els.authMessage.textContent = "Your signed-in session is active. Loading workspace data before showing the app.";
+    if (!["saving", "syncing"].includes(els.syncStatus.dataset.status || "")) {
+      setSyncStatus("Syncing", { source: "startup-hydration" });
+    }
+    updateLoginCooldown();
+    updatePwaUi();
+    return;
+  }
+
+  if (authEyebrow) authEyebrow.textContent = "Login";
+  if (authHeading) authHeading.textContent = "Join the shared car";
   els.authPanel.classList.remove("hidden");
   els.loginForm.classList.toggle("hidden", Boolean(currentSession));
   els.otpForm.classList.toggle("hidden", Boolean(currentSession) || !showOtpForm);
@@ -6448,6 +6522,7 @@ function updateAuthUi() {
           ? "Welcome back. Enter your email to sign in on this device if your saved session has expired."
           : "Enter your email to sign in. If you have a workspace invite code, paste it here and it will be redeemed after sign-in.";
   if (!currentSession) {
+    finishStartupHydration("signed-out");
     setSyncStatus("Login");
   } else if (!["saving", "syncing", "local", "delayed"].includes(els.syncStatus.dataset.status || "")) {
     setSyncStatus(normalizedReadModeActive ? "Tables" : "Cloud");
@@ -6676,6 +6751,10 @@ function renderPeriodEntryLock() {
 
 function buildSyncHealthBannerState() {
   clearRecoverableSyncDelayAfterHealthySync("render-banner-after-healthy-sync");
+
+  if (isStartupHydrating() || shouldSuppressStartupHydrationDelay()) {
+    return null;
+  }
 
   if (supabaseClient && !currentSession) {
     return {
@@ -11997,7 +12076,7 @@ function setRedeemInviteMessage(message, tone = "") {
 
 function renderInviteRedemptionPanel() {
   if (!els.inviteRedemptionPanel) return;
-  const visible = Boolean(supabaseClient && currentSession);
+  const visible = Boolean(supabaseClient && currentSession && !isStartupHydrating());
   els.inviteRedemptionPanel.classList.toggle("hidden", !visible);
   if (els.redeemInviteButton) els.redeemInviteButton.disabled = !visible;
   if (!visible) {
@@ -13745,6 +13824,10 @@ async function refreshPushState() {
 }
 
 function updatePwaUi() {
+  if (isStartupHydrating()) {
+    if (els.pwaPanel) els.pwaPanel.classList.add("hidden");
+    return;
+  }
   notifications.updatePwaUi({
     els,
     currentSession,

@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.198",
-    buildLabel: "admin-startup-flicker-reduction",
-    updatedAt: "2026-06-18T10:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v298",
+    version: "2026.06.18.199",
+    buildLabel: "startup-auth-hydration-screen",
+    updatedAt: "2026-06-18T10:15:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v299",
     releaseNotes: Object.freeze([
+      "Signed-in startup now shows a calm Loading workspace state while Render hydrates workspace/member data, and suppresses invite/phone/setup panels plus premature Cloud delayed banners until startup load settles.",
       "Admin/Test Lab tools now batch their Data I/O and full UI refreshes while a button action is running, so rapid generated-data and report-save flows repaint once at the end instead of flickering through start/ok status churn.",
       "Cleanup now uses the active ledger helper instead of an out-of-scope currentLedger variable, and Security Health plus cloud report saves confirm before opening admin Data I/O rows so cancelled prompts cannot leave timeout rows.",
       "Generated Test Lab cleanup now prefers a Render /api/admin/test-data/cleanup route that verifies workspace admin permission and soft-deletes generated trip, fuel, and booking rows server-side before the JSON mirror backup runs.",
