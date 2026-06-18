@@ -144,3 +144,10 @@ Target build: `disable-browser-full-state-after-render-backup` / `fuel-ledger-v2
 Generated-test cleanup and similar Render-backed backup flows now avoid waking the old browser `saveSupabaseState` / `saveRemoteState` full-state queue after the Render JSON mirror backup has already saved the safety snapshot. The cleaned local state is saved locally, a fresh Render JSON mirror backup is written, and the browser records `browser-full-state-save-skip` instead of leaving a foreground `saveSupabaseState` operation to be cleared by the stale-saving failsafe.
 
 Rollout rule: this is the first fallback-removal step. It removes only the redundant generic full-state browser write after a successful Render backup; user write route fallbacks for trip, fuel, booking, payment, state-load, ledger-directory, and JSON mirror direct-table fallback remain available until their load reports are repeatedly clean.
+
+
+## Pass: Normalized Test Lab cleanup
+
+Target build: `normalized-test-data-cleanup` / `fuel-ledger-v293`.
+
+Clean generated Test Lab data now removes the generated entries from the local/JSON state and soft-deletes matching generated rows in normalized Supabase tables (`trips`, `fuel_payments`, and `car_bookings`) before saving the Render JSON mirror backup. This closes the gap where app state was clean but normalized health still counted old generated trip/fuel rows.

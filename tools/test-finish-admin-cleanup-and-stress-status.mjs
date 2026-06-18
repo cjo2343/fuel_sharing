@@ -13,8 +13,8 @@ assert.match(app, /async function flushStressSave\(label\) \{[\s\S]*persistGener
 assert.doesNotMatch(app, /async function flushStressSave\(label\) \{[\s\S]*?await saveSupabaseState\(\{ reason: "advanced-stress" \}\)/, 'advanced stress must not call the old full-state save directly');
 assert.match(app, /finishForegroundOperationsBySource\("advanced-stress", "Render backup path completed"\)/, 'Render-backed stress path must clear any advanced-stress foreground operation');
 assert.match(app, /browser-full-state-save-skip/, 'Render-backed admin generated-data paths should record browser full-state save skip breadcrumbs');
-assert.match(buildInfo, /finish-admin-cleanup-and-stress-status/, 'build label should describe the admin cleanup/stress finish patch');
-assert.match(serviceWorker, /fuel-ledger-v292/, 'service worker cache must be bumped for runtime app.js changes');
+assert.match(buildInfo, /finish-admin-cleanup-and-stress-status|normalized-test-data-cleanup/, 'build label should preserve or build on the admin cleanup/stress finish patch');
+assert.match(serviceWorker, /fuel-ledger-v29[23]/, 'service worker cache must stay bumped for runtime app.js changes');
 assert.match(pkg, /test-finish-admin-cleanup-and-stress-status\.mjs/, 'validate script must include the cleanup/stress status guard');
 
 console.log('Admin cleanup/stress finish status guard check passed.');

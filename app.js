@@ -2839,7 +2839,9 @@ async function addGeneratedTestFuel() {
 async function removeGeneratedTestData() {
   await exportAdminSafetyBackup("remove generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
-  setDataToolsMessage(`${cleanup.message} Saved local cleanup and Render JSON mirror backup.`);
+  const normalizedCleanup = await cleanupGeneratedRowsFromNormalizedTables("remove-generated-test-data");
+  const normalizedCleanupMessage = normalizedCleanup?.total ? ` Soft-deleted ${normalizedCleanup.total} generated normalized row${normalizedCleanup.total === 1 ? "" : "s"}.` : "";
+  setDataToolsMessage(`${cleanup.message}${normalizedCleanupMessage} Saved local cleanup and Render JSON mirror backup.`);
   suppressNextQueuedRemoteSaveReason = "remove generated test data after Render JSON mirror backup";
   saveState({ reason: "remove generated test data", queueRemote: false });
   try {
@@ -3069,6 +3071,105 @@ function cleanupGeneratedTestEntriesFromState() {
     total: before.total - after.total
   } : null;
   return { before, after, removed, message: removed ? `Removed ${removed.total} generated test item(s).` : "Generated test data cleaned." };
+}
+
+
+function isGeneratedNormalizedTripRow(row) {
+  return Boolean(row) && (
+    String(row.legacy_id || "").startsWith(generatedTestPrefix) ||
+    String(row.note || "").includes(generatedTestMarker)
+  );
+}
+
+function isGeneratedNormalizedFuelRow(row) {
+  return Boolean(row) && (
+    String(row.legacy_id || "").startsWith(generatedTestPrefix) ||
+    String(row.station_name || "").includes(generatedTestMarker)
+  );
+}
+
+function isGeneratedNormalizedBookingRow(row) {
+  return Boolean(row) && (
+    String(row.legacy_id || "").startsWith(generatedTestPrefix) ||
+    String(row.purpose || "").includes(generatedTestMarker)
+  );
+}
+
+async function softDeleteGeneratedNormalizedRows(table, rows, source) {
+  const ids = (rows || []).map((row) => row.id).filter(Boolean);
+  if (!ids.length) return 0;
+  const result = await traceDataIo(
+    { source, route: "direct-table", table, operation: "soft-delete" },
+    () => supabaseClient
+      .from(table)
+      .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .in("id", ids)
+  );
+  if (result.error) throw result.error;
+  return ids.length;
+}
+
+async function cleanupGeneratedRowsFromNormalizedTables(reason = "cleanup-test-lab-data") {
+  if (!supabaseClient || !currentSession) return { skipped: true, trips: 0, fuel: 0, bookings: 0, total: 0 };
+  const source = "normalized-test-data-cleanup";
+  const context = await getNormalizedWriteContext({ source });
+  if (!context?.ledgerId) return { skipped: true, trips: 0, fuel: 0, bookings: 0, total: 0 };
+  const ledgerId = context.ledgerId;
+  const openPeriodId = context.openPeriodId || null;
+  const activePeriodFilter = (rows = []) => rows.filter((row) => !openPeriodId || !row.period_id || row.period_id === openPeriodId);
+
+  const [tripResult, fuelResult, bookingResult] = await Promise.all([
+    traceDataIo(
+      { source, route: "direct-table", table: "trips", operation: "select" },
+      () => supabaseClient
+        .from("trips")
+        .select("id,legacy_id,period_id,note,deleted_at")
+        .eq("ledger_id", ledgerId)
+        .is("deleted_at", null)
+    ),
+    traceDataIo(
+      { source, route: "direct-table", table: "fuel_payments", operation: "select" },
+      () => supabaseClient
+        .from("fuel_payments")
+        .select("id,legacy_id,period_id,station_name,deleted_at")
+        .eq("ledger_id", ledgerId)
+        .is("deleted_at", null)
+    ),
+    traceDataIo(
+      { source, route: "direct-table", table: "car_bookings", operation: "select" },
+      () => supabaseClient
+        .from("car_bookings")
+        .select("id,legacy_id,purpose,deleted_at")
+        .eq("ledger_id", ledgerId)
+        .is("deleted_at", null)
+    )
+  ]);
+
+  if (tripResult.error) throw tripResult.error;
+  if (fuelResult.error) throw fuelResult.error;
+  if (bookingResult.error) throw bookingResult.error;
+
+  const trips = activePeriodFilter(tripResult.data || []).filter(isGeneratedNormalizedTripRow);
+  const fuel = activePeriodFilter(fuelResult.data || []).filter(isGeneratedNormalizedFuelRow);
+  const bookings = (bookingResult.data || []).filter(isGeneratedNormalizedBookingRow);
+
+  const [tripCount, fuelCount, bookingCount] = await Promise.all([
+    softDeleteGeneratedNormalizedRows("trips", trips, source),
+    softDeleteGeneratedNormalizedRows("fuel_payments", fuel, source),
+    softDeleteGeneratedNormalizedRows("car_bookings", bookings, source)
+  ]);
+
+  const total = tripCount + fuelCount + bookingCount;
+  recordSupabaseLoadEvent("normalized-test-data-cleanup", `${reason}: soft-deleted ${tripCount} trip(s), ${fuelCount} fuel log(s), ${bookingCount} booking(s)`);
+  normalizedTableStatus = {
+    checked: true,
+    ok: true,
+    message: total
+      ? `Generated Test Lab cleanup soft-deleted ${total} generated normalized row${total === 1 ? "" : "s"} (${tripCount} trips, ${fuelCount} fuel logs, ${bookingCount} bookings).`
+      : "Generated Test Lab cleanup found no generated normalized rows to soft-delete.",
+    details: [`Generated normalized cleanup: ${tripCount} trips, ${fuelCount} fuel logs, ${bookingCount} bookings.`]
+  };
+  return { skipped: false, trips: tripCount, fuel: fuelCount, bookings: bookingCount, total };
 }
 
 function normalizeTestLabReports(value) {
@@ -4649,7 +4750,9 @@ async function runStandaloneSecurityHealthScenario() {
 async function cleanupGeneratedTestDataWithReport() {
   await exportAdminSafetyBackup("cleanup generated test data");
   const cleanup = cleanupGeneratedTestEntriesFromState();
-  await persistGeneratedAdminStateWithRenderMirror("cleanup-test-lab-data", `${cleanup.message} Saved cleanup through Render JSON mirror backup.`);
+  const normalizedCleanup = await cleanupGeneratedRowsFromNormalizedTables("cleanup-test-lab-data");
+  const normalizedCleanupMessage = normalizedCleanup?.total ? ` Soft-deleted ${normalizedCleanup.total} generated normalized row${normalizedCleanup.total === 1 ? "" : "s"}.` : "";
+  await persistGeneratedAdminStateWithRenderMirror("cleanup-test-lab-data", `${cleanup.message}${normalizedCleanupMessage} Saved cleanup through Render JSON mirror backup.`);
   const report = buildCurrentTestLabReport({
     id: testLab?.createTestRunId ? testLab.createTestRunId() : `testlab-${Date.now()}`,
     scenario: "cleanup-test-data",
