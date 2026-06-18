@@ -27,6 +27,8 @@ const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
 const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
 const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
 const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
+const renderRetentionPreviewUrl = "/api/admin/retention/preview";
+const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
@@ -4161,6 +4163,96 @@ function applyLocalRetentionCleanup() {
   };
 }
 
+function buildRetentionBackendPayload() {
+  return {
+    ledgerId: getActiveLedgerId(),
+    eventRetentionDays: retentionPolicy.ledgerEventDays,
+    stalePushDays: retentionPolicy.stalePushSubscriptionDays,
+    testLabReportDays: retentionPolicy.cloudTestLabReportDays,
+    keepLatestTestLabReports: retentionPolicy.keepLatestCloudTestLabReports
+  };
+}
+
+function normalizeCloudRetentionPreview(data, backend = "supabase-rpc") {
+  return {
+    available: true,
+    ledgerEvents: Number(data?.ledger_events || 0),
+    stalePushSubscriptions: Number(data?.global_stale_push_subscriptions || data?.stale_push_subscriptions || 0),
+    testLabReports: Number(data?.test_lab_reports || data?.cloud_test_lab_reports || 0),
+    keptTestLabReports: Number(data?.kept_test_lab_reports || 0),
+    pushSubscriptionScope: data?.push_subscription_scope || "global_user_device_records",
+    backend,
+    message: backend === "render-api"
+      ? "Cloud preview completed through Render. Stale push subscriptions are global user/device records, and old cloud Test Lab reports are pruned while keeping the newest reports."
+      : "Cloud preview completed. Stale push subscriptions are global user/device records, and old cloud Test Lab reports are pruned while keeping the newest reports."
+  };
+}
+
+async function callRetentionAdminRoute({ action, endpoint, operation }) {
+  if (!currentSession?.access_token || typeof fetch !== "function") return { ok: false, shouldFallback: true };
+  const payload = buildRetentionBackendPayload();
+  if (!payload.ledgerId) return { ok: false, shouldFallback: true };
+  const operationId = createDataIoOperationId(`retention-${action}`);
+  const traceMeta = { source: `retention-${action}`, route: "render-api", endpoint, operation, operationId, ledgerId: payload.ledgerId };
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    recordDataIoDiagnostic("start", { ...traceMeta, detail: `Render retention ${action}` });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError(`Render retention ${action} API`, 12000));
+      }, 12000);
+    });
+    const fetchPromise = fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${currentSession.access_token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (response.ok && result?.ok) {
+      recordDataIoDiagnostic("success", { ...traceMeta, detail: `Render retention ${action} completed` });
+      recordSupabaseLoadEvent(`render-retention-${action}`, `retention ${action} via Render admin route`);
+      return { ok: true, result, backend: "render-api" };
+    }
+    const error = new Error(result?.error || result?.message || text || `Render retention ${action} failed (${response.status})`);
+    error.status = response.status;
+    const shouldFallback = [404, 405, 501].includes(response.status);
+    recordDataIoDiagnostic(shouldFallback ? "skip" : "error", {
+      ...traceMeta,
+      error,
+      detail: shouldFallback ? `HTTP ${response.status}; falling back to browser retention RPC.` : `HTTP ${response.status}; Render retention ${action} failed.`
+    });
+    return { ok: false, shouldFallback, error };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, error, detail: `Render retention ${action} route unavailable; falling back to browser RPC.` });
+    return { ok: false, shouldFallback: true, error };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+async function previewRetentionCleanupViaRender() {
+  const renderResult = await callRetentionAdminRoute({ action: "preview", endpoint: renderRetentionPreviewUrl, operation: "preview" });
+  if (!renderResult.ok) return renderResult;
+  return { ok: true, cloud: normalizeCloudRetentionPreview(renderResult.result.preview || {}, "render-api") };
+}
+
+async function runRetentionCleanupViaRender() {
+  const renderResult = await callRetentionAdminRoute({ action: "cleanup", endpoint: renderRetentionCleanupUrl, operation: "delete" });
+  if (!renderResult.ok) return renderResult;
+  return { ok: true, cloud: renderResult.result.cleanup || {} };
+}
+
 async function fetchRetentionCleanupPreview() {
   const local = buildLocalRetentionPreview();
   const result = {
@@ -4175,6 +4267,13 @@ async function fetchRetentionCleanupPreview() {
   if (!supabaseClient || !currentSession || !canManageSettings()) return result;
 
   try {
+    const renderPreview = await previewRetentionCleanupViaRender();
+    if (renderPreview.ok) {
+      result.cloud = renderPreview.cloud;
+      return result;
+    }
+    if (renderPreview.error && renderPreview.shouldFallback === false) throw renderPreview.error;
+
     recordSupabaseLoadEvent("retention-preview", "preview retention cleanup");
     const { data, error } = await supabaseClient.rpc("preview_retention_cleanup", {
       target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
@@ -4184,15 +4283,7 @@ async function fetchRetentionCleanupPreview() {
       keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
     });
     if (error) throw error;
-    result.cloud = {
-      available: true,
-      ledgerEvents: Number(data?.ledger_events || 0),
-      stalePushSubscriptions: Number(data?.global_stale_push_subscriptions || data?.stale_push_subscriptions || 0),
-      testLabReports: Number(data?.test_lab_reports || data?.cloud_test_lab_reports || 0),
-      keptTestLabReports: Number(data?.kept_test_lab_reports || 0),
-      pushSubscriptionScope: data?.push_subscription_scope || "global_user_device_records",
-      message: "Cloud preview completed. Stale push subscriptions are global user/device records, and old cloud Test Lab reports are pruned while keeping the newest reports."
-    };
+    result.cloud = normalizeCloudRetentionPreview(data, "browser-rpc");
   } catch (error) {
     result.cloud = {
       available: false,
@@ -4263,16 +4354,22 @@ async function runRetentionCleanup() {
     const local = applyLocalRetentionCleanup();
     let cloud = { ledger_events: 0, stale_push_subscriptions: 0, test_lab_reports: 0 };
     if (supabaseClient && currentSession && canManageSettings()) {
-      recordSupabaseLoadEvent("retention-cleanup", "run retention cleanup");
-      const { data, error } = await supabaseClient.rpc("run_retention_cleanup", {
-        target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
-        event_retention_days: retentionPolicy.ledgerEventDays,
-        stale_push_days: retentionPolicy.stalePushSubscriptionDays,
-        test_lab_report_days: retentionPolicy.cloudTestLabReportDays,
-        keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
-      });
-      if (error) throw error;
-      cloud = data || cloud;
+      const renderCleanup = await runRetentionCleanupViaRender();
+      if (renderCleanup.ok) {
+        cloud = renderCleanup.cloud || cloud;
+      } else {
+        if (renderCleanup.error && renderCleanup.shouldFallback === false) throw renderCleanup.error;
+        recordSupabaseLoadEvent("retention-cleanup", "run retention cleanup");
+        const { data, error } = await supabaseClient.rpc("run_retention_cleanup", {
+          target_ledger_id: supabaseHelpers.getLedgerId(supabaseConfig),
+          event_retention_days: retentionPolicy.ledgerEventDays,
+          stale_push_days: retentionPolicy.stalePushSubscriptionDays,
+          test_lab_report_days: retentionPolicy.cloudTestLabReportDays,
+          keep_latest_test_lab_reports: retentionPolicy.keepLatestCloudTestLabReports
+        });
+        if (error) throw error;
+        cloud = data || cloud;
+      }
     }
     writeLocalState();
     render();

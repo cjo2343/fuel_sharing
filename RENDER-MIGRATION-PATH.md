@@ -8,20 +8,6 @@ Browser UI -> Render API -> Supabase Auth/RPC/tables
 
 Supabase remains the database, auth provider, realtime source, and RLS safety layer. Render becomes the app backend that validates requests, checks workspace permissions through the signed-in Supabase JWT, calls database RPCs, records predictable diagnostics, and returns one clear success/error response to the browser.
 
-
-## 2026-06-18 v299 startup auth hydration screen
-
-The app now keeps signed-in startup behind a short hydration gate. While Render `/api/state/load` is resolving the active workspace/member state, the browser shows a calm "Loading workspace" card and suppresses invite, phone setup, and premature sync-delay banners. This prevents a refresh from briefly showing onboarding/join screens before the authoritative workspace data arrives.
-
-Expected load-monitor markers after a normal refresh:
-
-```text
-startup-hydration-start
-state-load -> render-api /api/state/load -> ok
-startup-hydration-clear
-highActivity: false
-```
-
 ## Current Render-owned routes
 
 | Area | Browser endpoint | Server action | Supabase operation | Status |
@@ -171,3 +157,18 @@ Clean generated Test Lab data now removes the generated entries from the local/J
 - Added `POST /api/admin/test-data/cleanup` so generated Test Lab cleanup can soft-delete normalized `trips`, `fuel_payments`, and `car_bookings` rows on Render after verifying the signed-in user is a workspace admin.
 - Browser cleanup now tries the Render route first and keeps the v293 direct-table cleanup only as a route-unavailable fallback.
 - Expected load-monitor markers: `render-normalized-test-data-cleanup` and `data-io:normalized-test-data-cleanup:ok -> render-api /api/admin/test-data/cleanup`.
+
+## v300 — Render retention/admin cleanup routes
+
+Retention preview and cleanup now prefer Render admin routes before the browser falls back to direct Supabase RPC calls:
+
+- `POST /api/admin/retention/preview`
+- `POST /api/admin/retention/cleanup`
+
+Both routes verify the signed-in Supabase user, require active workspace admin membership through the existing write-context/admin check, and then call the Supabase retention RPCs server-side with the user's session token. The browser keeps the old direct RPC path only as an unavailable-route fallback.
+
+Expected Data I/O markers after deployment:
+
+- `render-retention-preview` -> `render-api /api/admin/retention/preview` -> ok
+- `render-retention-cleanup` -> `render-api /api/admin/retention/cleanup` -> ok
+- Browser `retention-preview` / `retention-cleanup` direct RPC markers should appear only if the Render route is unavailable.

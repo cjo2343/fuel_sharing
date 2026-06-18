@@ -925,6 +925,37 @@ def call_supabase_rpc_as_user(function_name, body=None, user_token=None):
 
 
 
+def clean_retention_int(value, default, minimum=0, maximum=3650):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    return max(minimum, min(maximum, parsed))
+
+
+def build_retention_admin_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Retention payload must be an object")
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    if not ledger_id:
+        raise ValueError("Missing ledgerId")
+    return ledger_id, {
+        "target_ledger_id": ledger_id,
+        "event_retention_days": clean_retention_int(payload.get("eventRetentionDays") or payload.get("event_retention_days"), 30, 1, 3650),
+        "stale_push_days": clean_retention_int(payload.get("stalePushDays") or payload.get("stale_push_days"), 180, 1, 3650),
+        "test_lab_report_days": clean_retention_int(payload.get("testLabReportDays") or payload.get("test_lab_report_days"), 30, 1, 3650),
+        "keep_latest_test_lab_reports": clean_retention_int(payload.get("keepLatestTestLabReports") or payload.get("keep_latest_test_lab_reports"), 10, 0, 1000),
+    }
+
+
+def run_retention_admin_rpc_as_user(action, payload, user, user_token):
+    ledger_id, rpc_payload = build_retention_admin_payload(payload)
+    assert_user_can_admin_ledger(ledger_id, user, user_token)
+    rpc_name = "preview_retention_cleanup" if action == "preview" else "run_retention_cleanup"
+    return ledger_id, call_supabase_rpc_as_user(rpc_name, rpc_payload, user_token=user_token) or {}
+
+
+
 def quote_postgrest_value(value):
     return urllib.parse.quote(str(value or ""), safe="")
 
@@ -1677,6 +1708,12 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/admin/test-data/cleanup":
             self.cleanup_admin_test_data_backend()
             return
+        if self.path == "/api/admin/retention/preview":
+            self.preview_retention_cleanup_backend()
+            return
+        if self.path == "/api/admin/retention/cleanup":
+            self.run_retention_cleanup_backend()
+            return
         if self.path == "/api/trips/upsert":
             self.upsert_trip_backend()
             return
@@ -1858,6 +1895,56 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "counts": counts, "backend": "render", "userEmail": user.get("email")})
+
+    def preview_retention_cleanup_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before previewing retention cleanup")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id, preview = run_retention_admin_rpc_as_user("preview", payload, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "preview": preview, "backend": "render", "ledgerId": ledger_id, "userEmail": user.get("email")})
+
+    def run_retention_cleanup_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before running retention cleanup")
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger_id, cleanup = run_retention_admin_rpc_as_user("cleanup", payload, user, token)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_error(error.code, body)
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_error(500, str(error))
+            return
+
+        self.send_json({"ok": True, "cleanup": cleanup, "backend": "render", "ledgerId": ledger_id, "userEmail": user.get("email")})
 
     def get_write_context_backend(self):
         user = current_supabase_user(self)
