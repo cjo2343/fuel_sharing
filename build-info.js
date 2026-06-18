@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.195",
-    buildLabel: "render-normalized-test-data-cleanup-route",
-    updatedAt: "2026-06-18T08:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v295",
+    version: "2026.06.18.196",
+    buildLabel: "render-cleanup-availability-hotfix",
+    updatedAt: "2026-06-18T09:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v296",
     releaseNotes: Object.freeze([
       "Generated Test Lab cleanup now prefers a Render /api/admin/test-data/cleanup route that verifies workspace admin permission and soft-deletes generated trip, fuel, and booking rows server-side before the JSON mirror backup runs.",
       "Generated test trip/fuel admin buttons now create normalized rows through a Render /api/admin/test-data/create route, so Add generated test fuel no longer depends on browser-side normalized write-context setup before the backend save can start.",

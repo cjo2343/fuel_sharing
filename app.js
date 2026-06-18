@@ -3197,7 +3197,7 @@ async function softDeleteGeneratedNormalizedRows(table, rows, source) {
 }
 
 async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "cleanup-test-lab-data") {
-  if (!supabaseClient || !currentSession || !renderBackendAvailable) return null;
+  if (!supabaseClient || !currentSession || typeof fetch !== "function") return null;
   const ledgerId = currentLedger?.id || defaultLedgerId;
   if (!ledgerId) return null;
   const operationId = createDataIoOperationId("normalized-test-data-cleanup");
