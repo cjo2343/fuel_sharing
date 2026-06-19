@@ -19,10 +19,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.223`
-- Service-worker cache: `fuel-ledger-v323`
-- Updated at: `2026-06-19T09:55:00.000Z`
-- Top release note: Migration 034 fixes invite creation failures caused by an ambiguous actor_email reference in the onboarding rate-limit RPC, and invite onboarding copy now clearly mentions invite links on the login/admin screens.
+- Version: `2026.06.18.224`
+- Service-worker cache: `fuel-ledger-v324`
+- Updated at: `2026-06-19T10:05:00.000Z`
+- Top release note: SQL migrations now have a release-check guardrail that blocks high-risk PL/pgSQL variable names such as actor_email from colliding with table columns, and migration 035 also hardens the payment-status actor-email variable.
 
 
 ## Invite beta readiness: regular-member write scope

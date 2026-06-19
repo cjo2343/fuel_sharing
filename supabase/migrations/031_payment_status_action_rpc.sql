@@ -24,7 +24,7 @@ set search_path = public
 as $$
 declare
   actor_member_id uuid;
-  actor_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  safe_actor_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
   saved_request_id uuid;
   requested_at_value timestamptz := null;
   requested_by_value uuid := null;
@@ -174,7 +174,7 @@ begin
     coalesce(nullif(audit_summary, ''), 'Payment status updated'),
     coalesce(nullif(audit_detail, ''), 'Payment status was updated by the backend action RPC.'),
     actor_member_id,
-    nullif(actor_email, ''),
+    nullif(safe_actor_email, ''),
     case when normalized_next = 'requested' then payer_member_id else recipient_member_id end,
     coalesce(audit_metadata, '{}'::jsonb) || jsonb_build_object(
       'settlement_request_id', saved_request_id,

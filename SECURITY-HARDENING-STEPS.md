@@ -288,6 +288,3 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 ## v318 debug/report redaction hardening
 
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
-
-### Invite rate-limit ambiguity fix
-- Migration `034_invite_rate_limit_actor_email_ambiguity_fix.sql` replaces the onboarding rate-limit RPC local `actor_email` variable with `safe_actor_email` so PL/pgSQL cannot confuse it with the table column during invite creation.

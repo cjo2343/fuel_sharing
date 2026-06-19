@@ -51,8 +51,8 @@ for (const [button, phrase] of [
   assert.match(block, new RegExp(`phrase:\\s*"${phrase}"`), `${button} must keep typed confirmation phrase ${phrase}.`);
 }
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|223)"/, 'runtime version must be bumped for app.js changes.');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[456789]|320|321|322|323)"/, 'build-info must expect the bumped service-worker cache.');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[456789]|320|321|322|323)"/, 'service-worker cache must be bumped with runtime changes.');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|223|224)"/, 'runtime version must be bumped for app.js changes.');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[456789]|320|321|322|323|324)"/, 'build-info must expect the bumped service-worker cache.');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[456789]|320|321|322|323|324)"/, 'service-worker cache must be bumped with runtime changes.');
 
 console.log('Admin/Test Lab protection guard check passed.');
