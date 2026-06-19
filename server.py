@@ -1359,38 +1359,100 @@ def select_booking_owner_as_user(ledger_id, legacy_booking_id, user_token):
         raise PermissionError("Booking must belong to the active workspace")
     return rows[0].get("member_id")
 
+def get_state_load_context_as_service(ledger_id, user):
+    """Authorize a signed-in user for state load, then read workspace state server-side.
+
+    Regular invited members must be able to load their workspace even when table
+    RLS is stricter than the app state view. We still verify the Supabase user
+    first, then use the service role only after the user is confirmed as an
+    active member of the requested ledger.
+    """
+    ledger_q = quote_postgrest_value(ledger_id)
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active&ledger_id=eq.{ledger_q}&is_active=eq.true",
+        api_key=supabase_key(),
+    ) or []
+    if not rows:
+        raise PermissionError("No active ledger members found for this workspace")
+
+    user_email = str(user.get("email") or "").strip().lower()
+    current = next((row for row in rows if str(row.get("email") or "").strip().lower() == user_email), None)
+    if not current or not current.get("id"):
+        raise PermissionError("Signed-in user is not an active member of this workspace")
+
+    open_period_id = ensure_open_settlement_period_as_service(ledger_id)
+    member_ids_by_name = {str(row.get("name") or ""): row.get("id") for row in rows if row.get("name") and row.get("id")}
+    return {
+        "ledgerId": ledger_id,
+        "openPeriodId": open_period_id,
+        "memberIdsByName": member_ids_by_name,
+        "currentMemberId": current.get("id"),
+        "role": current.get("role") or "member",
+        "canWrite": True,
+        "canAdmin": current.get("role") == "admin",
+        "activeMemberIds": [str(row.get("id")) for row in rows if row.get("id")],
+    }
+
+
+def select_open_settlement_period_as_service(ledger_id):
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/settlement_periods?select=id&ledger_id=eq.{quote_postgrest_value(ledger_id)}&status=eq.open&limit=1",
+        api_key=supabase_key(),
+    ) or []
+    if rows and rows[0].get("id"):
+        return rows[0]["id"]
+    return ""
+
+
+def ensure_open_settlement_period_as_service(ledger_id):
+    existing = select_open_settlement_period_as_service(ledger_id)
+    if existing:
+        return existing
+    try:
+        created = request_json(
+            f"{supabase_url()}/rest/v1/settlement_periods?select=id",
+            method="POST",
+            body={"ledger_id": ledger_id, "status": "open", "label": "Current period"},
+            api_key=supabase_key(),
+            prefer="return=representation",
+        ) or []
+        if created and created[0].get("id"):
+            return created[0]["id"]
+    except urllib.error.HTTPError as error:
+        if error.code != 409:
+            raise
+    retry = select_open_settlement_period_as_service(ledger_id)
+    if retry:
+        return retry
+    raise RuntimeError("Could not create or find an open settlement period")
+
+
 def get_normalized_state_rows_as_user(ledger_id, user, user_token):
-    context = get_write_context_as_user(ledger_id, user, user_token)
+    context = get_state_load_context_as_service(ledger_id, user)
     ledger_q = quote_postgrest_value(ledger_id)
     members = request_json(
         f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active,mobilepay_phone,created_at&ledger_id=eq.{ledger_q}&is_active=eq.true&order=created_at.asc",
-        token=user_token,
-        api_key=supabase_anon_key(),
+        api_key=supabase_key(),
     ) or []
     periods = request_json(
         f"{supabase_url()}/rest/v1/settlement_periods?select=id,status,label,closed_at,snapshot_json,created_at&ledger_id=eq.{ledger_q}&order=created_at.asc",
-        token=user_token,
-        api_key=supabase_anon_key(),
+        api_key=supabase_key(),
     ) or []
     trips = request_json(
         f"{supabase_url()}/rest/v1/trips?select=id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at&ledger_id=eq.{ledger_q}&deleted_at=is.null&order=trip_date.asc",
-        token=user_token,
-        api_key=supabase_anon_key(),
+        api_key=supabase_key(),
     ) or []
     fuel = request_json(
         f"{supabase_url()}/rest/v1/fuel_payments?select=id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at&ledger_id=eq.{ledger_q}&deleted_at=is.null&order=payment_date.asc",
-        token=user_token,
-        api_key=supabase_anon_key(),
+        api_key=supabase_key(),
     ) or []
     bookings = request_json(
         f"{supabase_url()}/rest/v1/car_bookings?select=id,legacy_id,member_id,start_at,end_at,purpose,deleted_at,created_by_member_id,created_at&ledger_id=eq.{ledger_q}&deleted_at=is.null&order=start_at.asc",
-        token=user_token,
-        api_key=supabase_anon_key(),
+        api_key=supabase_key(),
     ) or []
     requests = request_json(
         f"{supabase_url()}/rest/v1/settlement_requests?select=id,period_id,from_member_id,to_member_id,amount,currency,status&ledger_id=eq.{ledger_q}",
-        token=user_token,
-        api_key=supabase_anon_key(),
+        api_key=supabase_key(),
     ) or []
     trip_participants = []
     trip_ids = [str(row.get("id") or "").strip() for row in trips if str(row.get("id") or "").strip()]
@@ -1398,8 +1460,7 @@ def get_normalized_state_rows_as_user(ledger_id, user, user_token):
         in_values = ",".join(quote_postgrest_value(value) for value in trip_ids)
         trip_participants = request_json(
             f"{supabase_url()}/rest/v1/trip_participants?select=trip_id,member_id&trip_id=in.({in_values})",
-            token=user_token,
-            api_key=supabase_anon_key(),
+            api_key=supabase_key(),
         ) or []
     return {
         "context": context,

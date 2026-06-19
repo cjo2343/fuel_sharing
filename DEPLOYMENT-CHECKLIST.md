@@ -19,17 +19,17 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.226`
-- Service-worker cache: `fuel-ledger-v326`
-- Updated at: `2026-06-19T10:50:00.000Z`
-- Top release note: Restricted invite links now check the typed email against the invite before sending a Supabase email login code, so a wrong email cannot create/sign in first and only fail after authentication.
+- Version: `2026.06.18.227`
+- Service-worker cache: `fuel-ledger-v327`
+- Updated at: `2026-06-19T11:00:00.000Z`
+- Top release note: Regular invited members can now load their workspace through Render state-load after profile setup: the backend verifies active membership, then reads workspace state server-side so member RLS does not force JSON fallback.
 
 
-## Invite beta readiness: restricted invite email preflight
+## Invite beta readiness: regular-member state load
 
-- Apply migration `037_invite_email_preflight.sql` before testing restricted invite links.
-- Opening a restricted invite link and typing the wrong email must show an invite-email mismatch before Supabase sends an email login code.
-- Data I/O should include `INVITE_EMAIL_PREFLIGHT_STARTED` followed by `INVITE_EMAIL_MISMATCH` or an allowed code.
+- Regular invited members must be able to load their workspace via Render `/api/state/load` immediately after invite redemption and profile setup.
+- The backend verifies the Supabase user is an active member of the requested workspace before using service-side reads for the full workspace state view.
+- Cross-workspace state loads still fail closed before any state rows are returned.
 
 ## Invite beta readiness: regular-member write scope
 

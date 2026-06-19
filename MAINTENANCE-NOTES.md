@@ -1,3 +1,5 @@
+
+- 2026-06-19 v227: Regular invited members can now load their workspace through Render state-load after profile setup: the backend verifies active membership, then reads workspace state server-side so member RLS does not force JSON fallback.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 # Maintenance notes
 
@@ -686,5 +688,3 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 ## v318 debug/report redaction hardening
 
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
-
-- 2026-06-19: v226 adds invite email preflight so restricted invites block the wrong email before a login code is sent.
