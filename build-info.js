@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.234",
-    buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T13:40:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v334",
+    version: "2026.06.19.235",
+    buildLabel: "vehicle-lookup-credit-link",
+    updatedAt: "2026-06-19T14:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v335",
     releaseNotes: Object.freeze([
+      "Vehicle lookup now shows the required visible Nummerplade Tjek credit link beside the number-plate lookup controls, without nofollow, so the free API backlink requirement is tied to the feature.",
       "Vehicle lookup now fails softly when the Render provider is missing or unavailable: /api/vehicle/lookup returns stable lookup result codes instead of browser-visible 5xx responses, and the UI keeps manual fuel settings as the fallback.",
       "Workspace-admin scope is now separated from global app-admin tools: admins of secondary/private workspaces can manage only their workspace settings, members, and invites, while Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.",
       "Workspace settings now stay scoped to the active workspace: Render state-load returns the current ledger row, new workspaces no longer borrow car/fuel settings from another workspace JSON fallback, and signed-in one-member workspaces can save vehicle settings without the old two-person manual-list blocker.",

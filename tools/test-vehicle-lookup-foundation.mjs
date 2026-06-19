@@ -20,6 +20,9 @@ assert.match(app, /state\.vehicleInfo/, 'vehicle info must be persisted in state
 assert.match(index, /id="vehiclePlate"/, 'settings UI must include vehicle plate input');
 assert.match(index, /id="vehicleLookupButton"/, 'settings UI must include vehicle lookup button');
 assert.match(index, /id="vehicleLookupSummary"/, 'settings UI must include vehicle lookup summary');
+assert.match(index, /href="https:\/\/nummerplade-tjek\.dk"/, 'vehicle lookup UI must include the visible Nummerplade Tjek backlink');
+assert.match(index, /class="section-note wide vehicle-lookup-credit"/, 'vehicle lookup backlink must sit next to the lookup controls');
+assert.doesNotMatch(index, /nummerplade-tjek\.dk[\s\S]{0,160}nofollow/, 'vehicle lookup backlink must not use nofollow');
 
 assert.match(server, /if self\.path == "\/api\/vehicle\/lookup"/, 'server must mount /api/vehicle/lookup');
 assert.match(server, /def lookup_vehicle_backend\(self\):/, 'server must implement vehicle lookup handler');
