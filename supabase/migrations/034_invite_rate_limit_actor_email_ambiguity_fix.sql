@@ -1,46 +1,8 @@
--- Migration 033: Align onboarding rate-limit scope key schema.
--- Formalizes the scope_key column expected by Security Health and keeps the
--- onboarding rate-limit RPC using the same column for future writes.
-
-alter table public.ledger_onboarding_rate_limits
-add column if not exists scope_key text;
-
-do $$
-begin
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'ledger_onboarding_rate_limits'
-      and column_name = 'ledger_scope'
-  ) then
-    execute $sql$
-      update public.ledger_onboarding_rate_limits
-      set scope_key = coalesce(scope_key, nullif(ledger_scope, ''), '__global__')
-      where scope_key is null
-    $sql$;
-  else
-    update public.ledger_onboarding_rate_limits
-    set scope_key = coalesce(scope_key, '__global__')
-    where scope_key is null;
-  end if;
-end $$;
-
-alter table public.ledger_onboarding_rate_limits
-alter column scope_key set default '';
-
-update public.ledger_onboarding_rate_limits
-set scope_key = coalesce(scope_key, '__global__')
-where scope_key is null;
-
-alter table public.ledger_onboarding_rate_limits
-alter column scope_key set not null;
-
-create unique index if not exists ledger_onboarding_rate_limits_scope_key_window_idx
-on public.ledger_onboarding_rate_limits (action, actor_email, scope_key, window_started_at);
-
-create index if not exists ledger_onboarding_rate_limits_scope_key_idx
-on public.ledger_onboarding_rate_limits (scope_key, action, window_started_at desc);
+-- Migration 034: Fix invite rate-limit actor_email ambiguity.
+-- The onboarding rate-limit RPC used a local variable named actor_email, which
+-- can collide with the ledger_onboarding_rate_limits.actor_email column during
+-- invite creation. Use a safely named local variable and keep Security Health's
+-- migration expectation current.
 
 create or replace function public.enforce_onboarding_rate_limit(
   limit_action text,
@@ -180,7 +142,8 @@ as $$
       ('030_onboarding_abuse_rate_limits'),
       ('031_payment_status_action_rpc'),
       ('032_security_health_current_migration_expectations'),
-      ('033_onboarding_rate_limit_scope_key_alignment')
+      ('033_onboarding_rate_limit_scope_key_alignment'),
+      ('034_invite_rate_limit_actor_email_ambiguity_fix')
   ),
   migration_status as (
     select
@@ -397,16 +360,8 @@ as $$
   from critical_rpc_status, migration_status, schema_drift_status, workspace_status;
 $$;
 
-
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
-values ('032_security_health_current_migration_expectations', 'Refreshes Security Health migration expectations and critical RPC coverage through migration 032.')
-on conflict (migration_id) do update set
-  description = excluded.description,
-  applied_at = now();
-
-
-insert into public.fuel_ledger_schema_migrations (migration_id, description)
-values ('033_onboarding_rate_limit_scope_key_alignment', 'Align onboarding rate-limit scope_key column, RPC writes, and Security Health migration expectations.')
+values ('034_invite_rate_limit_actor_email_ambiguity_fix', 'Renames the onboarding rate-limit RPC local actor email variable to avoid actor_email column ambiguity during invite creation and updates Security Health expectations through migration 034.')
 on conflict (migration_id) do update set
   description = excluded.description,
   applied_at = now();

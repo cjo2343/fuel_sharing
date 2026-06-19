@@ -19,10 +19,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.222`
-- Service-worker cache: `fuel-ledger-v322`
-- Updated at: `2026-06-19T09:45:00.000Z`
-- Top release note: Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.
+- Version: `2026.06.18.223`
+- Service-worker cache: `fuel-ledger-v323`
+- Updated at: `2026-06-19T09:55:00.000Z`
+- Top release note: Migration 034 fixes invite creation failures caused by an ambiguous actor_email reference in the onboarding rate-limit RPC, and invite onboarding copy now clearly mentions invite links on the login/admin screens.
 
 
 ## Invite beta readiness: regular-member write scope
@@ -571,4 +571,6 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - v218: Debug/report redaction now covers auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
 
-- Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.
+### Invite actor_email ambiguity hotfix
+- Apply `supabase/migrations/034_invite_rate_limit_actor_email_ambiguity_fix.sql` after deploying v222 if invite creation shows `column reference actor_email is ambiguous`.
+- Verify invite creation reports Data I/O code `INVITE_CREATED` and Security Health reports migrations current through `034_invite_rate_limit_actor_email_ambiguity_fix`.

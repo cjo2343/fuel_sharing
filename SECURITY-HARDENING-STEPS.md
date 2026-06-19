@@ -289,4 +289,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
 
-- Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.
+### Invite rate-limit ambiguity fix
+- Migration `034_invite_rate_limit_actor_email_ambiguity_fix.sql` replaces the onboarding rate-limit RPC local `actor_email` variable with `safe_actor_email` so PL/pgSQL cannot confuse it with the table column during invite creation.

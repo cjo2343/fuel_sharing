@@ -9,7 +9,7 @@ const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 const audit = fs.readFileSync('BACKEND-PATH-AUDIT.md', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222)"/, 'build-info should publish v307 or a preserving v309 patch');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223)"/, 'build-info should publish v307 or a preserving v309 patch');
 assert.match(buildInfo, /buildLabel:\s*"render-admin-report-save-route"/, 'build-info should use v307 label');
 assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v307 or a preserving v309 cache');
 assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker should use v307 or a preserving v309 cache');

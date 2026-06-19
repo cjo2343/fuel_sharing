@@ -56,14 +56,14 @@ security definer
 set search_path = public
 as $$
 declare
-  actor_email text := public.current_user_email();
+  safe_actor_email text := public.current_user_email();
   safe_action text := nullif(btrim(coalesce(limit_action, '')), '');
   safe_scope_key text := coalesce(nullif(btrim(coalesce(target_ledger_id, '')), ''), '__global__');
   safe_window_minutes integer := greatest(coalesce(window_minutes, 60), 1);
   window_start timestamptz;
   current_attempts integer;
 begin
-  if actor_email is null or btrim(actor_email) = '' then
+  if safe_actor_email is null or btrim(safe_actor_email) = '' then
     raise exception 'A signed-in user email is required for onboarding actions.' using errcode = '42501';
   end if;
   if safe_action is null then
@@ -82,7 +82,7 @@ begin
     last_attempt_at
   ) values (
     safe_action,
-    lower(actor_email),
+    lower(safe_actor_email),
     nullif(btrim(coalesce(target_ledger_id, '')), ''),
     safe_scope_key,
     window_start,

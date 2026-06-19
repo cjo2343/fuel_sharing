@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.222",
+    version: "2026.06.18.223",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T09:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v322",
+    updatedAt: "2026-06-19T09:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v323",
     releaseNotes: Object.freeze([
+      "Migration 034 fixes invite creation failures caused by an ambiguous actor_email reference in the onboarding rate-limit RPC, and invite onboarding copy now clearly mentions invite links on the login/admin screens.",
       "Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.",
       "Invite links now use a copyable ?invite=CODE URL that is captured on startup, stored privately for post-login redemption, stripped from browser history, and paired with a clear copy-code fallback for existing users.",
       "Regular member write routes now enforce active-workspace membership server-side: non-admin users can only save their own trip/fuel/booking rows, payment actions must involve the signed-in member, and cross-workspace member IDs are rejected before Supabase RPCs run.",

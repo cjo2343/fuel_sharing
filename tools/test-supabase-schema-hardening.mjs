@@ -451,6 +451,7 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
   assert.match(schema, /'031_payment_status_action_rpc'/);
   assert.match(schema, /'033_onboarding_rate_limit_scope_key_alignment'/);
+  assert.match(schema, /'034_invite_rate_limit_actor_email_ambiguity_fix'/);
   assert.match(schema, /'apply_payment_status_action'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
@@ -509,6 +510,7 @@ function testWorkspaceFoundationExists() {
   assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
   assert.match(schema, /'031_payment_status_action_rpc'/);
   assert.match(schema, /'033_onboarding_rate_limit_scope_key_alignment'/);
+  assert.match(schema, /'034_invite_rate_limit_actor_email_ambiguity_fix'/);
   console.log("ok - testWorkspaceFoundationExists");
 }
 
@@ -523,6 +525,8 @@ function testInviteOnboardingFoundationExists() {
   assert.match(schema, /create policy "Ledger admins can update invites"/);
   assert.match(schema, /create or replace function public\.hash_ledger_invite_code/);
   assert.match(schema, /create or replace function public\.create_ledger_invite/);
+  assert.match(schema, /safe_actor_email text := public\.current_user_email\(\)/);
+  assert.doesNotMatch(schema, /declare\n  actor_email text := public\.current_user_email\(\)/);
   assert.match(schema, /create or replace function public\.redeem_ledger_invite/);
   assert.match(schema, /create or replace function public\.revoke_ledger_invite/);
   assert.match(schema, /create extension if not exists pgcrypto with schema extensions/);

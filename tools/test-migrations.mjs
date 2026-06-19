@@ -43,6 +43,7 @@ const expected = [
   "031_payment_status_action_rpc.sql",
   "032_security_health_current_migration_expectations.sql",
   "033_onboarding_rate_limit_scope_key_alignment.sql",
+  "034_invite_rate_limit_actor_email_ambiguity_fix.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -166,6 +167,9 @@ for (const marker of [
   "backend_action', 'apply_payment_status_action",
   "032_security_health_current_migration_expectations",
   "033_onboarding_rate_limit_scope_key_alignment",
+  "034_invite_rate_limit_actor_email_ambiguity_fix",
+  "safe_actor_email text := public.current_user_email()",
+  "lower(safe_actor_email)",
   "apply_payment_status_action",
   "latest_expected', migration_status.latest_expected",
   "scope_key",

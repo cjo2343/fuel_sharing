@@ -687,4 +687,4 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
 
-- Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.
+- Added migration 034 to fix invite creation failures caused by ambiguous `actor_email` references in the onboarding rate-limit RPC; apply the migration and verify Security Health expects/applies 034.
