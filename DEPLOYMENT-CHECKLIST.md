@@ -1,5 +1,6 @@
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
+- Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.
 ## Continuous integration
 
 Before pushing, run locally:
@@ -19,10 +20,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.224`
-- Service-worker cache: `fuel-ledger-v324`
-- Updated at: `2026-06-19T10:05:00.000Z`
-- Top release note: SQL migrations now have a release-check guardrail that blocks high-risk PL/pgSQL variable names such as actor_email from colliding with table columns, and migration 035 also hardens the payment-status actor-email variable.
+- Version: `2026.06.18.225`
+- Service-worker cache: `fuel-ledger-v325`
+- Updated at: `2026-06-19T10:35:00.000Z`
+- Top release note: Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.
 
 
 ## Invite beta readiness: regular-member write scope

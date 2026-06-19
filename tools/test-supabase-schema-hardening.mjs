@@ -126,6 +126,9 @@ function testAdminToolsGuardrailRpcsExist() {
   assert.match(schema, /Admins cannot demote or deactivate themselves/);
   assert.match(schema, /At least one active admin is required/);
   assert.match(schema, /create or replace function public\.set_ledger_member_active_admin\(/);
+  assert.match(schema, /create or replace function public\.update_own_ledger_member_profile\(/);
+  assert.match(schema, /Another active member in this workspace already uses that display name/);
+  assert.match(schema, /grant execute on function public\.update_own_ledger_member_profile\(text, text, text\) to authenticated/);
   assert.match(schema, /create or replace function public\.purge_generated_test_rows\(/);
   assert.match(schema, /Only ledger admins can purge generated test rows/);
   assert.match(schema, /grant execute on function public\.upsert_ledger_member_admin\(text, uuid, text, text, text, text, boolean\) to authenticated/);
@@ -564,12 +567,12 @@ function testInviteOnboardingFoundationExists() {
   assert.match(index, /id="redeemInviteForm"/);
   assert.match(index, /id="redeemInviteCode"/);
   assert.match(index, /id="loginInviteCode"/);
-  assert.match(index, /Optional: paste a workspace invite code here, or open an invite link/);
+  assert.match(index, /Invite link\/code = permission to join a workspace/);
   assert.match(app, /pendingWorkspaceInviteCodeKey/);
   assert.match(app, /redeemPendingLoginInviteAfterSignIn/);
   assert.match(app, /rememberLoginInviteCode/);
   assert.match(app, /redeemWorkspaceInvite\(pendingInviteCode\)/);
-  assert.match(app, /Your workspace invite will be redeemed after sign-in/);
+  assert.match(app, /If the invite was restricted to one email, it will only redeem for this exact email/);
   assert.match(app, /describeWorkspaceInviteError/);
   assert.match(app, /Supabase invite code generator is not installed/);
   assert.match(app, /027_invite_code_generation_pgcrypto_fix/);

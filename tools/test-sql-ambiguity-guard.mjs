@@ -64,5 +64,20 @@ assert.match(
   /safe_actor_email\s+text\s*:=\s*public\.current_user_email\(\)/,
   "onboarding rate-limit RPC should keep actor email in a safely named local variable",
 );
+assert.match(
+  allSql,
+  /create or replace function public\.update_own_ledger_member_profile\(/,
+  "invite profile setup should use a dedicated self-service member profile RPC",
+);
+assert.match(
+  allSql,
+  /safe_member_id\s+uuid;/,
+  "invite profile setup should avoid a bare member_id local variable",
+);
+assert.match(
+  allSql,
+  /saved_member\s+public\.ledger_members%rowtype;/,
+  "invite profile setup should use a safely named saved_member row variable",
+);
 
 console.log("ok - SQL ambiguity guard blocks high-risk PL/pgSQL variable/column name collisions");

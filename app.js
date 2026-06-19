@@ -1517,6 +1517,14 @@ const els = {
   redeemInviteCode: document.querySelector("#redeemInviteCode"),
   redeemInviteButton: document.querySelector("#redeemInviteButton"),
   redeemInviteMessage: document.querySelector("#redeemInviteMessage"),
+  memberProfileSetupPanel: document.querySelector("#memberProfileSetupPanel"),
+  memberProfileSetupForm: document.querySelector("#memberProfileSetupForm"),
+  memberProfileSetupIntro: document.querySelector("#memberProfileSetupIntro"),
+  memberProfileEmail: document.querySelector("#memberProfileEmail"),
+  memberProfileName: document.querySelector("#memberProfileName"),
+  memberProfileMobilePayPhone: document.querySelector("#memberProfileMobilePayPhone"),
+  saveMemberProfileSetup: document.querySelector("#saveMemberProfileSetup"),
+  memberProfileSetupMessage: document.querySelector("#memberProfileSetupMessage"),
   saveJsonBackupNow: document.querySelector("#saveJsonBackupNow"),
   cleanStaleRequests: document.querySelector("#cleanStaleRequests"),
   productionActivityReset: document.querySelector("#productionActivityReset"),
@@ -1631,6 +1639,14 @@ els.loginForm.addEventListener("submit", async (event) => {
 
 els.loginInviteCode?.addEventListener("input", () => {
   rememberLoginInviteCode();
+});
+
+els.memberProfileName?.addEventListener("input", () => {
+  els.memberProfileName.dataset.touched = "true";
+});
+
+els.memberProfileMobilePayPhone?.addEventListener("input", () => {
+  els.memberProfileMobilePayPhone.dataset.touched = "true";
 });
 
 els.otpForm.addEventListener("submit", async (event) => {
@@ -2954,6 +2970,11 @@ els.createInviteForm?.addEventListener("submit", async (event) => {
 els.redeemInviteForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   await traceAdminToolOperation("redeem-invite", "Redeem workspace invite", redeemWorkspaceInvite);
+});
+
+els.memberProfileSetupForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveOwnMemberProfileFromSetup();
 });
 
 els.workspaceList?.addEventListener("click", async (event) => {
@@ -6646,6 +6667,7 @@ function render() {
   renderMemberManagementPanel();
   renderWorkspaceInvitesPanel();
   renderInviteRedemptionPanel();
+  renderMemberProfileSetupPanel();
   renderSupabaseLoadMonitor();
   renderAdminGuardrailOverview();
   renderSyncHealthBanner();
@@ -6975,7 +6997,7 @@ function updateAuthUi() {
   const email = getLoggedInEmail();
   els.authMessage.textContent = currentSession
     ? profile
-      ? `Signed in as ${email}. You will stay signed in on this device, so you should not need a code next time.`
+      ? `Signed in as ${email}. If you log out or the session expires, sign in again with this email and a fresh email login code. You do not need the invite link again.`
       : `Signed in as ${email}, but this email is not assigned to a member yet. Ask an admin to add it.`
     : pendingEmail
       ? `Enter the login code sent to ${pendingEmail}.`
@@ -6983,7 +7005,7 @@ function updateAuthUi() {
         ? "Enter your email and the login code from the email."
         : rememberedEmail
           ? "Welcome back. Enter your email to sign in on this device if your saved session has expired."
-          : "Enter your email to sign in. If you have a workspace invite code, paste it here and it will be redeemed after sign-in.";
+          : "Enter your email to sign in. If this is your first time, open or paste a workspace invite. Returning users only need email + email login code.";
   if (!currentSession) {
     finishStartupHydration("signed-out");
     setSyncStatus("Login");
@@ -7029,8 +7051,8 @@ async function sendLoginLink() {
   els.otpForm.classList.remove("hidden");
   els.loginCode.focus();
   els.authMessage.textContent = inviteCode
-    ? "Check your email and enter the login code. Your workspace invite will be redeemed after sign-in."
-    : "Check your email and enter the login code.";
+    ? "Check your email and enter the email login code. If the invite was restricted to one email, it will only redeem for this exact email."
+    : "Check your email and enter the email login code. Returning users do not need an invite link again.";
 }
 
 async function verifyLoginCode() {
@@ -12685,10 +12707,12 @@ async function redeemWorkspaceInvite(inviteCodeOverride = "") {
       setRedeemInviteMessage("Invite accepted. Switching workspace...", "success");
       if (els.redeemInviteCode) els.redeemInviteCode.value = "";
       await switchActiveWorkspace(targetLedger, "invite-redemption");
-      setRedeemInviteMessage(`Joined ${getCurrentWorkspaceLabel()}.`, "success");
+      setRedeemInviteMessage(`Joined ${getCurrentWorkspaceLabel()}. Next, confirm your profile below.`, "success");
+      setMemberProfileSetupMessage("Invite accepted. Confirm your display name and optional MobilePay phone.", "success");
     } else {
       if (els.redeemInviteCode) els.redeemInviteCode.value = "";
-      setRedeemInviteMessage("Invite accepted. Refreshing workspace list...", "success");
+      setRedeemInviteMessage("Invite accepted. Refreshing workspace list. Next, confirm your profile below.", "success");
+      setMemberProfileSetupMessage("Invite accepted. Confirm your display name and optional MobilePay phone.", "success");
       await loadSupabaseStateWithTimeout(
         { force: true, reason: "invite-redemption" },
         supabaseStartupLoadTimeoutMs,
@@ -12705,6 +12729,146 @@ async function redeemWorkspaceInvite(inviteCodeOverride = "") {
   } finally {
     if (els.redeemInviteButton) els.redeemInviteButton.disabled = false;
     render();
+  }
+}
+
+
+function setMemberProfileSetupMessage(message = "", tone = "") {
+  if (!els.memberProfileSetupMessage) return;
+  els.memberProfileSetupMessage.textContent = message || "";
+  els.memberProfileSetupMessage.classList.toggle("error-text", tone === "error");
+  els.memberProfileSetupMessage.classList.toggle("success-text", tone === "success");
+}
+
+function isLikelyGeneratedInviteName(name, email) {
+  const value = String(name || "").trim().toLowerCase();
+  const local = normalizeEmail(String(email || "").split("@")[0] || "");
+  if (!value) return true;
+  if (!local) return false;
+  const normalizedValue = normalizeEmail(value.replace(/\s+/g, ""));
+  const normalizedLocal = normalizeEmail(local.replace(/[._-]+/g, ""));
+  return normalizedValue === local || normalizedValue === normalizedLocal || /^new member(?:[-\s]?\w+)?$/i.test(value);
+}
+
+function shouldShowMemberProfileSetup(profile = getCurrentMemberProfile()) {
+  if (!supabaseClient || !currentSession || !profile || profile.pendingInvite) return false;
+  if (!normalizeEmail(profile.email || getLoggedInEmail())) return false;
+  return true;
+}
+
+function renderMemberProfileSetupPanel() {
+  if (!els.memberProfileSetupPanel) return;
+  const profile = getCurrentMemberProfile();
+  const visible = shouldShowMemberProfileSetup(profile);
+  els.memberProfileSetupPanel.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  const email = normalizeEmail(profile.email || getLoggedInEmail());
+  const name = String(profile.name || "").trim();
+  const phone = normalizePhone(profile.mobilepayPhone || profile.mobilepay_phone || "");
+  const generated = isLikelyGeneratedInviteName(name, email);
+  if (els.memberProfileEmail) els.memberProfileEmail.value = email;
+  if (els.memberProfileName && !els.memberProfileName.dataset.touched) els.memberProfileName.value = name || inferMemberNameFromEmail(email);
+  if (els.memberProfileMobilePayPhone && !els.memberProfileMobilePayPhone.dataset.touched) els.memberProfileMobilePayPhone.value = formatPhoneDisplay(phone);
+  if (els.memberProfileSetupIntro) {
+    els.memberProfileSetupIntro.textContent = generated
+      ? `Welcome to ${getCurrentWorkspaceLabel()}. Confirm the display name and optional MobilePay phone this workspace will see.`
+      : `Signed in as ${email}. You can update your display name and optional MobilePay phone for ${getCurrentWorkspaceLabel()}.`;
+  }
+  if (!els.memberProfileSetupMessage?.textContent) {
+    setMemberProfileSetupMessage(generated ? "Please confirm your profile after joining by invite." : "Returning users only need their email login code; no invite code is needed again.");
+  }
+}
+
+async function saveOwnMemberProfileFromSetup() {
+  if (!supabaseClient || !currentSession) {
+    setMemberProfileSetupMessage("Sign in before saving your profile.", "error");
+    return false;
+  }
+  const ledgerId = getActiveLedgerId();
+  const name = String(els.memberProfileName?.value || "").trim();
+  const mobilepayPhone = normalizePhone(els.memberProfileMobilePayPhone?.value || "");
+  if (!name) {
+    setMemberProfileSetupMessage("Enter the display name your workspace should see.", "error");
+    els.memberProfileName?.focus();
+    return false;
+  }
+  if (els.saveMemberProfileSetup) els.saveMemberProfileSetup.disabled = true;
+  setMemberProfileSetupMessage("Saving profile...");
+  const operationId = createDataIoOperationId("member-profile", "save");
+  recordDataIoDiagnostic("start", {
+    source: "member-profile-setup",
+    route: "supabase-rpc",
+    rpc: "update_own_ledger_member_profile",
+    operation: "update",
+    operationId,
+    resultCode: "PROFILE_SAVE_STARTED",
+    ok: true,
+    detail: "Save own member profile"
+  });
+  try {
+    const { data, error } = await supabaseClient.rpc("update_own_ledger_member_profile", {
+      target_ledger_id: ledgerId,
+      member_name: name,
+      member_mobilepay_phone: mobilepayPhone || null
+    });
+    if (error) throw error;
+    const saved = Array.isArray(data) ? data[0] : data;
+    authBoundMemberProfile = {
+      ...(authBoundMemberProfile || {}),
+      id: saved?.member_id || authBoundMemberProfile?.id || "",
+      name: saved?.name || name,
+      email: normalizeEmail(saved?.email || getLoggedInEmail()),
+      role: saved?.role === "admin" ? "admin" : "member",
+      mobilepayPhone: normalizePhone(saved?.mobilepay_phone || mobilepayPhone || ""),
+      authBound: true
+    };
+    authBoundMemberProfileLedgerId = ledgerId;
+    const previousName = getMemberNames().find((member) => normalizeEmail(getMemberProfile(member).email) === authBoundMemberProfile.email);
+    if (previousName && previousName !== authBoundMemberProfile.name) {
+      state.members = state.members.map((member) => member === previousName ? authBoundMemberProfile.name : member);
+      delete state.memberProfiles[previousName];
+    } else if (!getMemberNames().includes(authBoundMemberProfile.name)) {
+      state.members.push(authBoundMemberProfile.name);
+    }
+    state.memberProfiles[authBoundMemberProfile.name] = {
+      email: authBoundMemberProfile.email,
+      role: authBoundMemberProfile.role,
+      mobilepayPhone: authBoundMemberProfile.mobilepayPhone
+    };
+    currentUser = authBoundMemberProfile.name;
+    localStorage.setItem(userKey, currentUser);
+    recordDataIoDiagnostic("success", {
+      source: "member-profile-setup",
+      route: "supabase-rpc",
+      rpc: "update_own_ledger_member_profile",
+      operation: "update",
+      operationId,
+      resultCode: "PROFILE_SAVED",
+      ok: true,
+      detail: "Own member profile saved"
+    });
+    setMemberProfileSetupMessage("Profile saved. Returning logins only need your email and email login code.", "success");
+    render();
+    return true;
+  } catch (error) {
+    recordDataIoDiagnostic("error", {
+      source: "member-profile-setup",
+      route: "supabase-rpc",
+      rpc: "update_own_ledger_member_profile",
+      operation: "update",
+      operationId,
+      resultCode: "PROFILE_SAVE_ERROR",
+      ok: false,
+      error,
+      detail: "Own member profile save failed"
+    });
+    const message = String(error?.message || error || "Profile save failed.");
+    setMemberProfileSetupMessage(message, "error");
+    showUserError(`Could not save profile: ${message}`);
+    return false;
+  } finally {
+    if (els.saveMemberProfileSetup) els.saveMemberProfileSetup.disabled = false;
+    renderSupabaseLoadMonitor();
   }
 }
 

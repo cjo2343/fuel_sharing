@@ -71,12 +71,12 @@
                 placeholder="Paste invite code from admin"
               />
             </label>
-            <p id="loginInviteHint" class="section-note compact-note">Optional: paste a workspace invite code here, or open an invite link. The app will redeem it automatically after sign-in.</p>
-            <button class="action-button" type="submit">Send login code</button>
+            <p id="loginInviteHint" class="section-note compact-note">Invite link/code = permission to join a workspace. Email login code = proof you own the email. If an invite is restricted to one email, you must sign in with that exact email. Returning users do not need the invite again.</p>
+            <button class="action-button" type="submit">Send email login code</button>
           </form>
           <form id="otpForm" class="auth-form hidden">
             <label>
-              Login code
+              Email login code
               <input
                 id="loginCode"
                 type="text"
@@ -85,9 +85,36 @@
                 placeholder="123456"
               />
             </label>
-            <button class="action-button" type="submit">Verify code</button>
+            <p class="section-note compact-note">This code comes from your email provider via Supabase Auth. It is separate from the workspace invite code.</p>
+            <button class="action-button" type="submit">Verify email code</button>
           </form>
           <p id="authMessage" class="section-note"></p>
+        </section>
+
+        <section id="memberProfileSetupPanel" data-view="log" class="panel wide-panel member-profile-setup-panel hidden" aria-labelledby="memberProfileSetupHeading">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Profile</p>
+              <h2 id="memberProfileSetupHeading">Set up your member profile</h2>
+            </div>
+          </div>
+          <p id="memberProfileSetupIntro" class="section-note">After your first invite redemption, set the name and optional MobilePay phone your workspace will see.</p>
+          <form id="memberProfileSetupForm" class="auth-form member-profile-setup-form">
+            <label>
+              Email
+              <input id="memberProfileEmail" type="email" readonly />
+            </label>
+            <label>
+              Display name
+              <input id="memberProfileName" type="text" autocomplete="name" maxlength="80" placeholder="Your name" />
+            </label>
+            <label>
+              MobilePay phone <span class="entry-meta">optional</span>
+              <input id="memberProfileMobilePayPhone" type="tel" autocomplete="tel" placeholder="e.g. +45 12 34 56 78" />
+            </label>
+            <button id="saveMemberProfileSetup" class="primary-button" type="submit">Save profile</button>
+          </form>
+          <p id="memberProfileSetupMessage" class="section-note" aria-live="polite"></p>
         </section>
 
 
@@ -811,10 +838,10 @@
             <article class="data-tool-card">
               <strong>Create invite for current workspace</strong>
               <p id="inviteWorkspaceScope" class="workspace-invite-scope">Creating invite for: Current workspace. This code joins only that workspace.</p>
-              <p>Create a one-time or limited-use invite for the selected workspace only. Codes are shown once, stored hashed in Supabase, and are not emailed automatically.</p>
+              <p>Create a one-time or limited-use invite for the selected workspace only. Codes are shown once, stored hashed in Supabase, and are not emailed automatically. If you add an email restriction, only that exact email can redeem the invite after entering the email login code.</p>
               <form id="createInviteForm" class="member-management-form compact-admin-form">
                 <label>
-                  Email restriction <span class="entry-meta">optional</span>
+                  Email restriction <span class="entry-meta">optional, exact-login email</span>
                   <input id="inviteEmail" type="email" autocomplete="off" placeholder="person@example.com" />
                 </label>
                 <label>
