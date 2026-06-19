@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v335";
-const BUILD_LABEL = "vehicle-lookup-credit-link";
+const CACHE_NAME = "fuel-ledger-v336";
+const BUILD_LABEL = "render-admin-report-save-route-vehicle-lookup-credit-link";
 const BUILD_UPDATED_AT = "2026-06-19T14:25:00.000Z";
 const CORE_ASSETS = [
   "/",
