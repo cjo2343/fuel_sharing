@@ -8,10 +8,10 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:205|206|207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230)"/, 'build-info should publish v305');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:205|206|207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231)"/, 'build-info should publish v305');
 assert.match(buildInfo, /buildLabel:\s*"(?:backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v305 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|319|320|321|322|323|324|325|326|327|328|329|330)"/, 'build-info should expect v305 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|319|320|321|322|323|324|325|326|327|328|329|330)"/, 'service worker cache should be v305');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|319|320|321|322|323|324|325|326|327|328|329|330|331)"/, 'build-info should expect v305 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|319|320|321|322|323|324|325|326|327|328|329|330|331)"/, 'service worker cache should be v305');
 assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v305');
 
 assert.match(app, /const testLabReportCloudSaveTimeoutMs\s*=\s*(?:25000|35000);/, 'report cloud save timeout should avoid false 15s boundary failures');

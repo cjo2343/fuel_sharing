@@ -6,10 +6,10 @@ const server = readFileSync("server.py", "utf8");
 const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 
-assert.match(buildInfo, /version: "2026\.06\.18\.(?:200|201|202|203|204|205|206|207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230)"/);
+assert.match(buildInfo, /version: "2026\.06\.18\.(?:200|201|202|203|204|205|206|207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231)"/);
 assert.match(buildInfo, /buildLabel: "(?:render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/);
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:300|301|302|303|304|305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|320|321|322|323|324|325|326|327|328|329|330)"/);
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:300|301|302|303|304|305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|320|321|322|323|324|325|326|327|328|329|330)"/);
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:300|301|302|303|304|305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|320|321|322|323|324|325|326|327|328|329|330|331)"/);
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:300|301|302|303|304|305|306|307|308|309|310|311|312|313|314|315|316|317|318|319|320|321|322|323|324|325|326|327|328|329|330|331)"/);
 assert.match(serviceWorker, /BUILD_LABEL = "(?:render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/);
 
 assert.match(app, /const renderRetentionPreviewUrl = "\/api\/admin\/retention\/preview"/);

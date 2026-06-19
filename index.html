@@ -385,6 +385,15 @@
               <input id="currency" type="text" maxlength="8" required />
             </label>
             <label>
+              Number plate
+              <input id="vehiclePlate" type="text" maxlength="16" placeholder="Optional, e.g. AB12345" autocomplete="off" />
+            </label>
+            <div class="wide fuel-location-actions">
+              <button id="vehicleLookupButton" class="subtle-button" type="button">Lookup vehicle</button>
+              <span id="vehicleLookupStatus" class="entry-meta" aria-live="polite"></span>
+            </div>
+            <p id="vehicleLookupSummary" class="section-note wide">Optional. Enter a plate and lookup can suggest fuel settings when the Render vehicle API is configured.</p>
+            <label>
               Fuel type
               <select id="fuelType">
                 <option value="diesel">Diesel</option>

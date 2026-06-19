@@ -319,6 +319,7 @@ RATE_LIMIT_POLICIES = {
     "state-load": {"limit": 90, "window": 60},
     "write-context": {"limit": 90, "window": 60},
     "write": {"limit": 60, "window": 60},
+    "vehicle-lookup": {"limit": 20, "window": 300},
     "admin": {"limit": 20, "window": 300},
     "admin-heavy": {"limit": 8, "window": 300},
     "admin-health": {"limit": 30, "window": 60},
@@ -1101,6 +1102,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("bookingUpsert", "/api/bookings/upsert", "Render booking save route"),
         ("bookingDelete", "/api/bookings/delete", "Render booking delete route"),
         ("paymentStatusAction", "/api/payments/status-action", "Render payment-status action route"),
+        ("vehicleLookup", "/api/vehicle/lookup", "Render vehicle lookup proxy route"),
     ]
     return [
         {
@@ -1269,6 +1271,116 @@ def ensure_open_settlement_period_as_user(ledger_id, user_token):
         return retry
     raise RuntimeError("Could not create or find an open settlement period")
 
+
+
+def normalize_vehicle_plate(value):
+    return re.sub(r"[^A-Za-z0-9]+", "", str(value or "").strip()).upper()[:16]
+
+
+def parse_vehicle_float(*values):
+    for value in values:
+        try:
+            if value is None or value == "":
+                continue
+            if isinstance(value, str):
+                value = value.replace(",", ".")
+            parsed = float(value)
+            if parsed > 0:
+                return round(parsed, 2)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def vehicle_nested_get(data, *paths):
+    for path in paths:
+        current = data
+        ok = True
+        for part in path.split("."):
+            if isinstance(current, dict) and part in current:
+                current = current.get(part)
+            else:
+                ok = False
+                break
+        if ok and current not in (None, ""):
+            return current
+    return None
+
+
+def normalize_vehicle_fuel(value):
+    text = str(value or "").strip().lower()
+    if "diesel" in text:
+        return "diesel"
+    if any(term in text for term in ("benzin", "petrol", "gasoline", "95")):
+        return "95"
+    if any(term in text for term in ("electric", "elbil", "ev")):
+        return "electric"
+    if "hybrid" in text:
+        return "hybrid"
+    return text[:40]
+
+
+def sanitize_vehicle_lookup_response(raw, plate, source_label):
+    data = raw
+    if isinstance(raw, list) and raw:
+        data = raw[0]
+    if isinstance(data, dict) and isinstance(data.get("data"), dict):
+        data = data.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    consumption = parse_vehicle_float(
+        vehicle_nested_get(data, "consumptionLPer100Km", "consumption_l_per_100km", "fuel.consumptionLPer100Km", "technical.consumption_l_per_100km", "technical.fuel_consumption_combined"),
+        vehicle_nested_get(data, "consumption", "fuelConsumption", "fuel_consumption"),
+    )
+    # Some APIs expose km/l. Convert to L/100 km when that is clearly the field.
+    km_per_l = parse_vehicle_float(vehicle_nested_get(data, "kmPerLiter", "km_per_liter", "fuel.kmPerLiter"))
+    if not consumption and km_per_l:
+        consumption = round(100 / km_per_l, 2)
+    vehicle = {
+        "plate": normalize_vehicle_plate(vehicle_nested_get(data, "plate", "registrationNumber", "numberPlate", "regno") or plate),
+        "make": str(vehicle_nested_get(data, "make", "brand", "manufacturer", "vehicle.make") or "")[:80],
+        "model": str(vehicle_nested_get(data, "model", "vehicle.model") or "")[:120],
+        "variant": str(vehicle_nested_get(data, "variant", "version", "modelVariant") or "")[:120],
+        "fuelType": normalize_vehicle_fuel(vehicle_nested_get(data, "fuelType", "fuel_type", "fuel", "technical.fuel_type")),
+        "consumptionLPer100Km": consumption,
+        "tankCapacityL": parse_vehicle_float(vehicle_nested_get(data, "tankCapacityL", "tank_capacity_l", "fuel.tankCapacityL", "technical.tank_capacity_l")),
+        "co2GPerKm": parse_vehicle_float(vehicle_nested_get(data, "co2GPerKm", "co2_g_per_km", "co2", "emissions.co2")),
+        "year": str(vehicle_nested_get(data, "year", "modelYear", "model_year") or "")[:20],
+        "source": source_label,
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    return {key: value for key, value in vehicle.items() if value not in (None, "")}
+
+
+def vehicle_lookup_url_for_plate(plate):
+    template = env_value("VEHICLE_LOOKUP_API_URL")
+    if not template:
+        return ""
+    if "{plate}" in template:
+        return template.replace("{plate}", urllib.parse.quote(plate))
+    delimiter = "&" if "?" in template else "?"
+    param = env_value("VEHICLE_LOOKUP_PLATE_PARAM", "plate") or "plate"
+    return f"{template}{delimiter}{urllib.parse.quote(param)}={urllib.parse.quote(plate)}"
+
+
+def fetch_vehicle_lookup(plate):
+    url = vehicle_lookup_url_for_plate(plate)
+    if not url:
+        return {"ok": False, "code": "VEHICLE_LOOKUP_NOT_CONFIGURED", "message": "Vehicle lookup API is not configured on Render."}, 503
+    headers = {"Accept": "application/json", "User-Agent": "FuelLedger/1.0"}
+    api_key = env_value("VEHICLE_LOOKUP_API_KEY")
+    if api_key:
+        header_name = env_value("VEHICLE_LOOKUP_API_KEY_HEADER", "Authorization") or "Authorization"
+        prefix = env_value("VEHICLE_LOOKUP_API_KEY_PREFIX", "Bearer ")
+        headers[header_name] = f"{prefix}{api_key}" if prefix else api_key
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=8) as response:
+        raw = response.read()
+        if response.headers.get("Content-Encoding", "").lower() == "gzip":
+            raw = gzip.decompress(raw)
+        data = json.loads(raw.decode("utf-8-sig", errors="replace")) if raw else {}
+    source = env_value("VEHICLE_LOOKUP_SOURCE_LABEL", "Configured vehicle lookup API")
+    return {"ok": True, "code": "VEHICLE_LOOKUP_OK", "vehicle": sanitize_vehicle_lookup_response(data, plate, source), "message": "Vehicle lookup completed."}, 200
 
 def build_write_context_backend_payload(payload, user):
     if not isinstance(payload, dict):
@@ -2123,6 +2235,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/bookings/delete":
             self.delete_booking_backend()
             return
+        if self.path == "/api/vehicle/lookup":
+            self.lookup_vehicle_backend()
+            return
         if self.path == "/api/run-reminders":
             self.run_reminders()
             return
@@ -2730,6 +2845,50 @@ class Handler(SimpleHTTPRequestHandler):
                 failed += 1
 
         self.send_json({"ok": True, "sent": sent, "failed": failed})
+
+
+    def lookup_vehicle_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_error(401, "Sign in before looking up a vehicle")
+            return
+        try:
+            payload = read_request_body(self)
+            ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+            plate = normalize_vehicle_plate(payload.get("plate") or payload.get("numberPlate") or payload.get("licensePlate") or "")
+            if not ledger_id:
+                self.send_error(400, "Missing ledgerId")
+                return
+            if not plate:
+                self.send_error(400, "Missing plate")
+                return
+            if not check_backend_rate_limit(self, "vehicle-lookup", user=user, ledger_id=ledger_id):
+                return
+            # Any active workspace member may ask Render to lookup the configured
+            # vehicle data, but the app UI only applies it to settings for admins.
+            get_state_load_context_as_service(ledger_id, user)
+            result, status = fetch_vehicle_lookup(plate)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode("utf-8"))
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            self.send_response(error.code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_HTTP_ERROR", "message": detail or str(error)}).encode("utf-8"))
+        except urllib.error.URLError as error:
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_NETWORK_ERROR", "message": str(error)}).encode("utf-8"))
+        except PermissionError as error:
+            self.send_error(403, str(error))
+        except Exception as error:
+            self.send_error(500, str(error))
 
     def run_reminders(self):
         auth_error = reminder_job_auth_error(self)

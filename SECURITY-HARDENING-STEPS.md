@@ -1,3 +1,5 @@
+
+- 2026-06-19 v231: Added optional Render-only vehicle number-plate lookup foundation. Configure VEHICLE_LOOKUP_API_URL/KEY on Render to enable lookup; manual fuel settings remain the fallback and API keys must never be exposed to browser JavaScript.
 - 2026.06.18.230: Workspace creation now records its own member-action Data I/O start/success/error/timeout codes, blocks duplicate create clicks, and verifies after timeouts whether the workspace was actually created before suggesting a retry.
 - 2026-06-19 v229: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
 - 2026-06-19 v228: Account now has member-facing profile/workspace/invite tools, while service-worker updates activate and reload once automatically when it is safe so users do not have to close/reopen for every deploy.

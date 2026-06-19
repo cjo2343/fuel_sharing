@@ -33,6 +33,7 @@ const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const renderAdminHealthUrl = "/api/admin/health";
 const renderAdminReportSaveUrl = "/api/admin/reports/save";
 const renderAdminSecurityHealthUrl = "/api/admin/security-health";
+const renderVehicleLookupUrl = "/api/vehicle/lookup";
 const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
@@ -407,7 +408,11 @@ const defaults = {
   paymentReminderAfterDays: 3,
   paymentReminderRepeatDays: 3,
   paymentReminderMaxCount: 3,
-  carSettingsVersion: 2,
+  vehiclePlate: "",
+  vehicleInfo: null,
+  vehicleLookupSource: "manual",
+  vehicleLookupAt: "",
+  carSettingsVersion: 3,
   updatedAt: ""
 };
 
@@ -690,6 +695,7 @@ let latestFuelPrice = null;
 let fuelPriceTimer = null;
 const fuelPriceRefreshIntervalMs = 60 * 60 * 1000;
 const fuelPriceFetchTimeoutMs = 3500;
+const vehicleLookupTimeoutMs = 10000;
 let fuelPriceInFlight = false;
 let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
@@ -1000,7 +1006,7 @@ function dataIoOperationGroup(operation = {}) {
   const route = String(entry.route || "").toLowerCase();
   const rpc = String(entry.rpc || "").toLowerCase();
   if (source.startsWith("admin-tool:") || source.startsWith("admin-") || /retention|security-health|admin-report|admin-test-data|normalized-test-data|json-mirror-backup/.test(source)) return "Admin actions";
-  if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
+  if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.startsWith("vehicle-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
   if (/state-load|write-context|trip-save|fuel-save|booking|payment|settlement/.test(source) || route === "render-api") return "Sync/load/write actions";
   return "Background diagnostics";
 }
@@ -1508,6 +1514,10 @@ const els = {
   fuelPriceWarningMin: document.querySelector("#fuelPriceWarningMin"),
   fuelPriceWarningMax: document.querySelector("#fuelPriceWarningMax"),
   fuelWarningThreshold: document.querySelector("#fuelWarningThreshold"),
+  vehiclePlate: document.querySelector("#vehiclePlate"),
+  vehicleLookupButton: document.querySelector("#vehicleLookupButton"),
+  vehicleLookupStatus: document.querySelector("#vehicleLookupStatus"),
+  vehicleLookupSummary: document.querySelector("#vehicleLookupSummary"),
   paymentRemindersEnabled: document.querySelector("#paymentRemindersEnabled"),
   paymentReminderAfterDays: document.querySelector("#paymentReminderAfterDays"),
   paymentReminderRepeatDays: document.querySelector("#paymentReminderRepeatDays"),
@@ -2353,6 +2363,12 @@ els.settingsForm.addEventListener("submit", async (event) => {
   state.fuelPriceWarningMinDkkPerLiter = round(minFuelPriceWarning);
   state.fuelPriceWarningMaxDkkPerLiter = round(maxFuelPriceWarning);
   state.fuelWarningThreshold = Math.min(100, Math.max(1, Number(els.fuelWarningThreshold?.value) || defaults.fuelWarningThreshold));
+  state.vehiclePlate = normalizeVehiclePlateInput(els.vehiclePlate?.value || state.vehiclePlate || "");
+  if (state.vehicleInfo && state.vehicleInfo.plate && state.vehiclePlate && normalizeVehiclePlateInput(state.vehicleInfo.plate) !== state.vehiclePlate) {
+    state.vehicleInfo = null;
+    state.vehicleLookupSource = "manual";
+    state.vehicleLookupAt = "";
+  }
   state.paymentRemindersEnabled = Boolean(els.paymentRemindersEnabled?.checked);
   const reminderAfterValue = Number(els.paymentReminderAfterDays?.value);
   const reminderRepeatValue = Number(els.paymentReminderRepeatDays?.value);
@@ -2389,6 +2405,10 @@ els.settingsForm.addEventListener("submit", async (event) => {
   }
   render();
 });
+
+if (els.vehicleLookupButton) {
+  els.vehicleLookupButton.addEventListener("click", lookupVehicleByPlateFromUi);
+}
 
 els.resetPeriod.addEventListener("click", async () => {
   if (!canManageSettings()) {
@@ -7295,6 +7315,148 @@ function updateLoginCooldown() {
   loginCooldownTimer = window.setTimeout(updateLoginCooldown, 1000);
 }
 
+
+function normalizeVehiclePlateInput(value = "") {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+}
+
+function normalizeVehicleInfo(info) {
+  if (!info || typeof info !== "object") return null;
+  const consumption = Number(info.consumptionLPer100Km || info.consumption_l_per_100km || info.fuelConsumptionLPer100Km || 0);
+  const tank = Number(info.tankCapacityL || info.tank_capacity_l || 0);
+  const co2 = Number(info.co2GPerKm || info.co2_g_per_km || 0);
+  return {
+    plate: normalizeVehiclePlateInput(info.plate || info.registrationNumber || info.numberPlate || ""),
+    make: String(info.make || info.brand || "").trim().slice(0, 80),
+    model: String(info.model || "").trim().slice(0, 120),
+    variant: String(info.variant || info.version || "").trim().slice(0, 120),
+    fuelType: normalizeVehicleFuelType(info.fuelType || info.fuel_type || info.fuel || ""),
+    consumptionLPer100Km: Number.isFinite(consumption) && consumption > 0 ? round(consumption) : "",
+    tankCapacityL: Number.isFinite(tank) && tank > 0 ? round(tank) : "",
+    co2GPerKm: Number.isFinite(co2) && co2 > 0 ? round(co2) : "",
+    year: String(info.year || info.modelYear || info.model_year || "").trim().slice(0, 20),
+    source: String(info.source || "vehicle-lookup").trim().slice(0, 120),
+    checkedAt: String(info.checkedAt || info.checked_at || "").trim().slice(0, 80)
+  };
+}
+
+function normalizeVehicleFuelType(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (/diesel/.test(text)) return "diesel";
+  if (/95|petrol|benzin|gasoline/.test(text)) return "95";
+  if (/electric|elbil|ev/.test(text)) return "electric";
+  if (/hybrid/.test(text)) return "hybrid";
+  return text.slice(0, 40);
+}
+
+function renderVehicleLookupSummary() {
+  if (!els.vehicleLookupSummary) return;
+  const info = normalizeVehicleInfo(state.vehicleInfo);
+  if (!info) {
+    els.vehicleLookupSummary.textContent = state.vehiclePlate
+      ? "No saved vehicle lookup yet. Manual fuel settings are used."
+      : "Optional. Enter a plate and lookup can suggest fuel settings when the Render vehicle API is configured.";
+    return;
+  }
+  const parts = [info.make, info.model, info.variant, info.year].filter(Boolean).join(" ");
+  const facts = [];
+  if (info.fuelType) facts.push(`fuel ${info.fuelType}`);
+  if (info.consumptionLPer100Km) facts.push(`${info.consumptionLPer100Km} L/100 km`);
+  if (info.tankCapacityL) facts.push(`${info.tankCapacityL} L tank`);
+  if (info.co2GPerKm) facts.push(`${info.co2GPerKm} g CO₂/km`);
+  els.vehicleLookupSummary.textContent = `${info.plate || state.vehiclePlate || "Vehicle"}: ${parts || "vehicle details saved"}${facts.length ? ` · ${facts.join(" · ")}` : ""}.`;
+}
+
+function applyVehicleLookupToSettings(vehicle) {
+  const info = normalizeVehicleInfo(vehicle);
+  if (!info) return false;
+  state.vehicleInfo = info;
+  state.vehiclePlate = info.plate || normalizeVehiclePlateInput(els.vehiclePlate?.value || state.vehiclePlate || "");
+  state.vehicleLookupSource = info.source || "vehicle-lookup";
+  state.vehicleLookupAt = info.checkedAt || new Date().toISOString();
+  if (info.fuelType && info.fuelType !== "electric" && info.fuelType !== "hybrid") state.fuelType = info.fuelType;
+  if (info.consumptionLPer100Km) state.fuelConsumption = Math.max(0.1, Number(info.consumptionLPer100Km));
+  if (info.tankCapacityL) state.fuelTankCapacity = Math.max(1, Number(info.tankCapacityL));
+  if (els.vehiclePlate) els.vehiclePlate.value = state.vehiclePlate;
+  if (els.fuelType && state.fuelType) els.fuelType.value = state.fuelType;
+  if (els.fuelConsumption) els.fuelConsumption.value = state.fuelConsumption;
+  if (els.fuelTankCapacity) els.fuelTankCapacity.value = state.fuelTankCapacity;
+  renderVehicleLookupSummary();
+  return true;
+}
+
+async function lookupVehicleByPlateFromUi() {
+  if (!canManageSettings()) {
+    showUserError("Only an admin can lookup and apply vehicle settings.");
+    return false;
+  }
+  if (!currentSession?.access_token) {
+    showUserError("Sign in before looking up a vehicle.");
+    return false;
+  }
+  const plate = normalizeVehiclePlateInput(els.vehiclePlate?.value || state.vehiclePlate || "");
+  if (!plate || plate.length < 2) {
+    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Enter a number plate first.";
+    return false;
+  }
+  const ledgerId = getActiveLedgerId();
+  const operationId = createDataIoOperationId("vehicle-lookup", "lookup");
+  const traceMeta = { source: "vehicle-lookup", route: "render-api", endpoint: renderVehicleLookupUrl, operation: "lookup", operationId, ledgerId, staleAfterMs: vehicleLookupTimeoutMs, detail: `Lookup vehicle ${plate}` };
+  let controller = null;
+  let timeoutId = 0;
+  if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = true;
+  if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Looking up vehicle through Render...";
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_STARTED" });
+  try {
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Vehicle lookup", vehicleLookupTimeoutMs));
+      }, vehicleLookupTimeoutMs);
+    });
+    const fetchPromise = fetch(renderVehicleLookupUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentSession.access_token}` },
+      body: JSON.stringify({ ledgerId, plate })
+    });
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (!response.ok || !result?.ok) {
+      const error = new Error(result?.message || result?.error || text || `Vehicle lookup failed (${response.status})`);
+      error.status = response.status;
+      error.code = result?.code || response.status;
+      throw error;
+    }
+    applyVehicleLookupToSettings(result.vehicle || {});
+    saveState();
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_OK", detail: result.message || "Vehicle lookup completed" });
+    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Vehicle lookup found data. Review the suggested fuel settings, then Save settings.";
+    return true;
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || /timed out/i.test(String(error?.message || error || ""));
+    const code = String(error?.code || error?.status || "");
+    const notConfigured = /not configured|VEHICLE_LOOKUP_NOT_CONFIGURED|503/.test(String(error?.message || error || code));
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, ok: false, error, resultCode: timedOut ? "VEHICLE_LOOKUP_TIMEOUT" : notConfigured ? "VEHICLE_LOOKUP_NOT_CONFIGURED" : "VEHICLE_LOOKUP_ERROR", errorCode: code, detail: timedOut ? "Vehicle lookup timed out." : String(error?.message || error || "Vehicle lookup failed.") });
+    const message = notConfigured
+      ? "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings."
+      : timedOut
+        ? "Vehicle lookup timed out. Keep using manual fuel settings or try again."
+        : `Vehicle lookup failed: ${String(error?.message || error || "Unknown error")}`;
+    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = message;
+    return false;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canManageSettings() || !currentSession;
+    renderSupabaseLoadMonitor();
+  }
+}
+
 function renderSettings() {
   const canManage = canManageSettings();
 
@@ -7313,6 +7475,8 @@ function renderSettings() {
     if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.value = fuelPriceRange.minDkkPerLiter;
     if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.value = fuelPriceRange.maxDkkPerLiter;
     if (els.fuelWarningThreshold) els.fuelWarningThreshold.value = state.fuelWarningThreshold || defaults.fuelWarningThreshold;
+    if (els.vehiclePlate) els.vehiclePlate.value = state.vehiclePlate || "";
+    renderVehicleLookupSummary();
   }
   if (!isEditingSettings) {
     if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.checked = state.paymentRemindersEnabled !== false;
@@ -7337,6 +7501,8 @@ function renderSettings() {
   if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.disabled = !canManage;
   if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.disabled = !canManage;
   if (els.fuelWarningThreshold) els.fuelWarningThreshold.disabled = !canManage;
+  if (els.vehiclePlate) els.vehiclePlate.disabled = !canManage;
+  if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canManage || !currentSession;
   if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.disabled = !canManage;
   if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.disabled = !canManage;
   if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.disabled = !canManage;
@@ -14751,6 +14917,10 @@ function normalizeState(saved) {
     paymentReminderAfterDays: Math.max(0, Number(saved.paymentReminderAfterDays ?? defaults.paymentReminderAfterDays)),
     paymentReminderRepeatDays: Math.max(1, Number(saved.paymentReminderRepeatDays || defaults.paymentReminderRepeatDays)),
     paymentReminderMaxCount: Math.max(1, Number(saved.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount)),
+    vehiclePlate: normalizeVehiclePlateInput(saved.vehiclePlate || saved.numberPlate || saved.licensePlate || ""),
+    vehicleInfo: normalizeVehicleInfo(saved.vehicleInfo),
+    vehicleLookupSource: saved.vehicleLookupSource || (saved.vehicleInfo ? "lookup" : "manual"),
+    vehicleLookupAt: saved.vehicleLookupAt || "",
     carSettingsVersion: saved.carSettingsVersion || defaults.carSettingsVersion,
     updatedAt: saved.updatedAt || ""
   };

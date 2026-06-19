@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.230",
+    version: "2026.06.18.231",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T12:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v330",
+    updatedAt: "2026-06-19T12:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v331",
     releaseNotes: Object.freeze([
+      "Vehicle settings now have an optional number-plate lookup foundation: admins can enter a plate, call a Render-only /api/vehicle/lookup proxy, keep provider API keys off the browser, and apply sanitized fuel-type/consumption/tank suggestions with manual fallback.",
       "Workspace creation now records its own member-action Data I/O start/success/error/timeout codes, blocks duplicate create clicks, and verifies after timeouts whether the workspace was actually created before suggesting a retry.",
       "Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.",
       "Account now has member-facing profile/workspace/invite tools, while service-worker updates activate and reload once automatically when it is safe so users do not have to close/reopen for every deploy.",

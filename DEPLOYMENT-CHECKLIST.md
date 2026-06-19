@@ -1,3 +1,5 @@
+
+- 2026-06-19 v231: Added optional Render-only vehicle number-plate lookup foundation. Configure VEHICLE_LOOKUP_API_URL/KEY on Render to enable lookup; manual fuel settings remain the fallback and API keys must never be exposed to browser JavaScript.
 - 2026-06-19 v229: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
@@ -20,10 +22,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.230`
-- Service-worker cache: `fuel-ledger-v330`
-- Updated at: `2026-06-19T12:00:00.000Z`
-- Top release note: Workspace creation now records its own member-action Data I/O start/success/error/timeout codes, blocks duplicate create clicks, and verifies after timeouts whether the workspace was actually created before suggesting a retry.
+- Version: `2026.06.18.231`
+- Service-worker cache: `fuel-ledger-v331`
+- Updated at: `2026-06-19T12:20:00.000Z`
+- Top release note: Vehicle settings now have an optional number-plate lookup foundation: admins can enter a plate, call a Render-only /api/vehicle/lookup proxy, keep provider API keys off the browser, and apply sanitized fuel-type/consumption/tank suggestions with manual fallback.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
