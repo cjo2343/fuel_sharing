@@ -1,3 +1,4 @@
+- 2026-06-19 v218: Debug/report redaction now covers auth headers, cookies, Supabase key spellings, camelCase tokens, and saved/exported diagnostic reports before local, cloud, or download paths.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
 ## Continuous integration
@@ -19,10 +20,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.217`
-- Service-worker cache: `fuel-ledger-v317`
-- Updated at: `2026-06-19T08:20:00.000Z`
-- Top release note: Normal trip, fuel, booking, payment-status, and ledger-directory writes now fail closed through Render instead of falling back to browser-owned Supabase RPC/direct-table writes when proven Render routes are unavailable.
+- Version: `2026.06.18.218`
+- Service-worker cache: `fuel-ledger-v318`
+- Updated at: `2026-06-19T08:35:00.000Z`
+- Top release note: Debug, load-monitor, and saved Test Lab/Security Health reports now redact more token spellings, auth headers, cookies, Supabase anon/service keys, and camelCase secret names before export or cloud/local storage.
 
 
 ## Required release gate

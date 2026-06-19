@@ -2498,7 +2498,7 @@ async function exportAdminSafetyBackup(reason = "admin action") {
 }
 
 function redactDiagnosticUrlSecrets(value) {
-  return String(value || "").replace(/([?&](?:access_token|refresh_token|token|apikey|api_key|key|code|password|secret)=)[^&#\s]+/gi, "$1[redacted]");
+  return String(value || "").replace(/([?&](?:access_token|refresh_token|accessToken|refreshToken|auth|authorization|jwt|token|apikey|api_key|apiKey|anon_key|anonKey|supabase_key|supabaseKey|service_role|serviceRole|serviceRoleKey|client_secret|clientSecret|key|code|password|secret)=)[^&#\s]+/gi, "$1[redacted]");
 }
 
 function redactDiagnosticString(value) {
@@ -2506,17 +2506,14 @@ function redactDiagnosticString(value) {
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [redacted-token]")
-    .replace(/\b(?:access_token|refresh_token|api[_-]?key|apikey|authorization|password|secret)\s*[:=]\s*[^\s,;&]+/gi, (match) => {
-      const separator = match.includes(":") ? ":" : "=";
-      return `${match.split(separator)[0]}${separator}[redacted]`;
-    })
+    .replace(/((?:\x22|\x27)?\b(?:access_token|refresh_token|accessToken|refreshToken|api[_-]?key|apiKey|apikey|anon_key|anonKey|supabase_key|supabaseKey|service_role|serviceRole|serviceRoleKey|authorization|auth|jwt|bearer|password|secret|client_secret|clientSecret)(?:\x22|\x27)?\s*[:=]\s*(?:\x22|\x27)?)[^\x22\x27\s,;&}]+/gi, "$1[redacted]")
     .replace(/\+\d[0-9 ()-]{7,}\d/g, "[redacted-phone]")
     .replace(/\b\d{2,4}[ -](?:\d[ -]?){6,}\d\b/g, "[redacted-phone]")
     .replace(/\b-?\d{1,3}\.\d{4,},\s*-?\d{1,3}\.\d{4,}\b/g, "[redacted-coordinates]");
 }
 
 function isSensitiveDiagnosticKey(key) {
-  return /email|phone|mobilepay|latitude|longitude|\b(?:lat|lng|lon)\b|coordinate|location|browser|useragent|user_agent|session|token|authorization|api[_-]?key|apikey|secret|password|cookie|jwt/i.test(String(key || ""));
+  return /email|phone|mobilepay|latitude|longitude|\b(?:lat|lng|lon)\b|coordinate|location|browser|useragent|user_agent|headers|session|token|authorization|auth|bearer|credential|api[_-]?key|apiKey|apikey|anon[_-]?key|anonKey|supabase[_-]?key|supabaseKey|service[_-]?role|serviceRole|serviceRoleKey|client[_-]?secret|clientSecret|secret|password|cookie|jwt/i.test(String(key || ""));
 }
 
 function redactSensitiveDiagnostics(value) {

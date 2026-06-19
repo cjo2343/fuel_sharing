@@ -1,3 +1,7 @@
+## v318 debug/report redaction hardening
+
+Debug exports, Supabase load-monitor reports, and saved Test Lab/Security Health reports now redact additional secret spellings before download, local persistence, or cloud report save. Covered patterns include Authorization/Bearer values, cookies, JWTs, Supabase anon/service-role key names, camelCase token/key names, URL query secrets, email, phone, browser, and coordinate fields.
+
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 # Security hardening notes
 

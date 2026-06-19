@@ -168,8 +168,8 @@ function testDiagnosticPrivacyRedactionExists() {
   assert.match(app, /\[redacted-coordinates\]/);
   assert.match(app, /\[redacted-jwt\]/);
   assert.match(app, /\[redacted-token\]/);
-  assert.match(app, /access_token\|refresh_token\|token\|apikey\|api_key\|key\|code\|password\|secret/);
-  assert.match(app, /api\[_-\]\?key\|apikey\|secret\|password\|cookie\|jwt/);
+  assert.match(app, /access_token\|refresh_token\|accessToken\|refreshToken\|auth\|authorization\|jwt\|token\|apikey\|api_key\|apiKey\|anon_key\|anonKey/);
+  assert.match(app, /api\[_-\]\?key\|apiKey\|apikey\|anon\[_-\]\?key\|anonKey\|supabase\[_-\]\?key\|supabaseKey\|service\[_-\]\?role\|serviceRole/);
   assert.match(app, /redactSensitiveDiagnostics\(buildSupabaseLoadReport\(\)\)/);
   assert.match(app, /const exportedReport = redactSensitiveDiagnostics\(report\)/);
   assert.match(app, /const reportToStore = sanitizeStoredDiagnosticReport\(report\)/);
