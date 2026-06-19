@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.229",
+    version: "2026.06.18.230",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T11:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v329",
+    updatedAt: "2026-06-19T12:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v330",
     releaseNotes: Object.freeze([
+      "Workspace creation now records its own member-action Data I/O start/success/error/timeout codes, blocks duplicate create clicks, and verifies after timeouts whether the workspace was actually created before suggesting a retry.",
       "Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.",
       "Account now has member-facing profile/workspace/invite tools, while service-worker updates activate and reload once automatically when it is safe so users do not have to close/reopen for every deploy.",
       "Regular invited members can now load their workspace through Render state-load after profile setup: the backend verifies active membership, then reads workspace state server-side so member RLS does not force JSON fallback.",

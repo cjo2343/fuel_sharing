@@ -20,10 +20,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.229`
-- Service-worker cache: `fuel-ledger-v329`
-- Updated at: `2026-06-19T11:45:00.000Z`
-- Top release note: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
+- Version: `2026.06.18.230`
+- Service-worker cache: `fuel-ledger-v330`
+- Updated at: `2026-06-19T12:00:00.000Z`
+- Top release note: Workspace creation now records its own member-action Data I/O start/success/error/timeout codes, blocks duplicate create clicks, and verifies after timeouts whether the workspace was actually created before suggesting a retry.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

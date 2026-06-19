@@ -3041,7 +3041,7 @@ els.refreshWorkspaceInvites?.addEventListener("click", async () => {
 
 els.createWorkspaceForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await traceMemberActionOperation("workspace-create", "Create private workspace", createPrivateWorkspaceFromUi, { operation: "create", staleAfterMs: workspaceInviteRequestTimeoutMs });
+  await createPrivateWorkspaceFromUi();
 });
 
 els.createInviteForm?.addEventListener("submit", async (event) => {
@@ -13117,6 +13117,13 @@ function describeWorkspaceCreateError(error) {
 }
 
 async function createPrivateWorkspaceFromUi() {
+  const actionKey = "workspace-create";
+  if (activeMemberActionOperations.has(actionKey)) {
+    recordMemberActionSkip(actionKey, "Create private workspace", { operation: "create" });
+    setCreateWorkspaceMessage("Workspace creation is already running. Wait for it to finish before trying again.", "error");
+    if (typeof showUserWarning === "function") showUserWarning("Workspace creation is already running. Wait for it to finish before trying again.");
+    return false;
+  }
   if (!supabaseClient || !currentSession) {
     setCreateWorkspaceMessage("Sign in before creating a workspace.", "error");
     return;
@@ -13133,10 +13140,11 @@ async function createPrivateWorkspaceFromUi() {
   }
   const submitButton = els.createWorkspaceForm ? els.createWorkspaceForm.querySelector('button[type="submit"]') : null;
   if (submitButton) submitButton.disabled = true;
-  setCreateWorkspaceMessage("Creating private workspace...");
-  const operationId = createDataIoOperationId("workspace-create-rpc", "create");
+  setCreateWorkspaceMessage("Creating private workspace... This can take up to 15 seconds.");
+  activeMemberActionOperations.add(actionKey);
+  const operationId = createDataIoOperationId("workspace-create", "create");
   const traceMeta = {
-    source: "workspace-create-rpc",
+    source: "workspace-create",
     route: "supabase-rpc",
     rpc: "create_private_ledger_workspace",
     operation: "create",
@@ -13164,6 +13172,7 @@ async function createPrivateWorkspaceFromUi() {
     setCreateWorkspaceMessage(`Created ${result && result.name ? result.name : name}. You are admin of this private workspace. Create invite codes here to add other people.`, "success");
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_CREATED", detail: `Created private workspace ${result && result.name ? result.name : name}` });
     scheduleWorkspaceInviteRefresh("after-create-workspace");
+    return true;
   } catch (error) {
     const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
     recordDataIoDiagnostic(timedOut ? "timeout" : "error", {
@@ -13171,13 +13180,79 @@ async function createPrivateWorkspaceFromUi() {
       ok: false,
       error,
       resultCode: timedOut ? "WORKSPACE_CREATE_TIMEOUT" : "WORKSPACE_CREATE_ERROR",
-      detail: timedOut ? "Workspace creation timed out before the browser received a result." : "Workspace creation failed."
+      detail: timedOut ? "Workspace creation timed out before the browser received a result." : describeWorkspaceCreateError(error)
     });
+    if (timedOut) {
+      const recovered = await reconcileWorkspaceCreateAfterTimeout({ name, slug, traceMeta });
+      if (recovered) return true;
+    }
     setCreateWorkspaceMessage(describeWorkspaceCreateError(error), "error");
     showUserError(`Could not create workspace: ${describeWorkspaceCreateError(error)}`);
+    return false;
   } finally {
+    activeMemberActionOperations.delete(actionKey);
     if (submitButton) submitButton.disabled = false;
     renderWorkspaceInvitesPanel();
+  }
+}
+
+async function reconcileWorkspaceCreateAfterTimeout({ name, slug, traceMeta }) {
+  const verifyMeta = {
+    ...traceMeta,
+    operationId: createDataIoOperationId("workspace-create-verify", "refresh"),
+    operation: "verify",
+    rpc: "list_my_ledgers",
+    detail: `Verify whether timed-out workspace creation completed for ${name}`
+  };
+  recordDataIoDiagnostic("start", { ...verifyMeta, ok: true, resultCode: "WORKSPACE_CREATE_VERIFY_STARTED" });
+  try {
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    const { data, error } = await withWorkspaceInviteRequestTimeout(
+      supabaseClient.rpc("list_my_ledgers"),
+      "Workspace creation verification",
+      7000
+    );
+    if (error) throw error;
+    const ledgers = Array.isArray(data) ? data : [];
+    const match = ledgers.find((ledger) => {
+      const ledgerId = String(ledger.ledger_id || ledger.id || "").toLowerCase();
+      const ledgerSlug = String(ledger.slug || ledger.ledger_slug || "").toLowerCase();
+      const ledgerName = String(ledger.name || ledger.ledger_name || "").trim().toLowerCase();
+      return ledgerId === slug.toLowerCase() || ledgerSlug === slug.toLowerCase() || ledgerName === name.trim().toLowerCase();
+    });
+    if (match) {
+      workspaceInviteStatus.ledgers = ledgers;
+      workspaceInviteStatus.loaded = true;
+      const newLedgerId = match.ledger_id || match.id || slug;
+      recordDataIoDiagnostic("success", {
+        ...verifyMeta,
+        ok: true,
+        resultCode: "WORKSPACE_CREATE_CONFIRMED_AFTER_TIMEOUT",
+        detail: `Workspace ${match.name || match.ledger_name || name} was created even though the first request timed out.`
+      });
+      setCreateWorkspaceMessage(`Created ${match.name || match.ledger_name || name}. The first request timed out, but refresh confirmed the workspace exists.`, "success");
+      await switchActiveWorkspace(newLedgerId, "create-workspace-timeout-confirmed");
+      scheduleWorkspaceInviteRefresh("after-create-timeout-confirmed");
+      return true;
+    }
+    recordDataIoDiagnostic("error", {
+      ...verifyMeta,
+      ok: false,
+      resultCode: "WORKSPACE_CREATE_NOT_CONFIRMED_AFTER_TIMEOUT",
+      detail: "Workspace creation timed out and the follow-up workspace list did not show the new workspace."
+    });
+    setCreateWorkspaceMessage("Workspace creation timed out. I refreshed your workspace list and did not find the new workspace yet. Please wait a moment, press Refresh, then retry only if it still is not listed.", "error");
+    showUserError("Could not confirm whether the workspace was created. Refresh workspace tools before trying again.");
+    return false;
+  } catch (verifyError) {
+    recordDataIoDiagnostic("error", {
+      ...verifyMeta,
+      ok: false,
+      error: verifyError,
+      resultCode: "WORKSPACE_CREATE_VERIFY_ERROR",
+      detail: describeWorkspaceRefreshError(verifyError)
+    });
+    return false;
   }
 }
 

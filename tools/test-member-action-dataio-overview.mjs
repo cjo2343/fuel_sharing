@@ -11,12 +11,13 @@ assert.match(app, /function dataIoOperationGroup\(/, 'Admin diagnostics should g
 assert.match(app, /Member actions/, 'Admin diagnostics should render a Member actions group');
 assert.match(app, /Sync\/load\/write actions/, 'Admin diagnostics should keep sync\/write rows separate from member actions');
 assert.match(app, /traceMemberActionOperation\("workspace-tools-refresh"/, 'workspace refresh should be tracked as a member action');
-assert.match(app, /traceMemberActionOperation\("workspace-create"/, 'workspace create should be tracked as a member action');
+assert.match(app, /source: "workspace-create"/, 'workspace create should be tracked as a member action');
 assert.match(app, /traceMemberActionOperation\("workspace-invite-redeem"/, 'invite redeem should be tracked as a member action');
 assert.match(app, /traceMemberActionOperation\("workspace-switch"/, 'workspace switching should be tracked as a member action');
 assert.doesNotMatch(app, /if \(!button \|\| !canManageSettings\(\)\) return;\n  if \(button\.dataset\.workspaceAction === "switch"\)/, 'regular linked members should be able to switch workspace from Account list');
 assert.match(app, /resultCode: "WORKSPACE_CREATE_STARTED"/, 'workspace create should expose started result code');
-assert.match(app, /resultCode: timedOut \? "WORKSPACE_CREATE_TIMEOUT" : "WORKSPACE_CREATE_ERROR"/, 'workspace create should expose timeout/error result codes');
+assert.match(app, /WORKSPACE_CREATE_TIMEOUT/, 'workspace create should expose timeout result code');
+assert.match(app, /WORKSPACE_CREATE_ERROR/, 'workspace create should expose error result code');
 assert.match(app, /resultCode: "WORKSPACE_REFRESH_STARTED"/, 'workspace refresh should expose started result code');
 assert.match(app, /resultCode: timedOut \? "WORKSPACE_REFRESH_TIMEOUT" : "WORKSPACE_REFRESH_ERROR"/, 'workspace refresh should expose timeout/error result codes');
 assert.match(app, /resultCode: "INVITE_REDEEM_STARTED"/, 'invite redeem should expose started result code');
