@@ -1,3 +1,4 @@
+- 2026-06-19 v229: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
 ## Continuous integration
@@ -19,10 +20,16 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.228`
-- Service-worker cache: `fuel-ledger-v328`
-- Updated at: `2026-06-19T11:20:00.000Z`
-- Top release note: Account now has member-facing profile/workspace/invite tools, while service-worker updates activate and reload once automatically when it is safe so users do not have to close/reopen for every deploy.
+- Version: `2026.06.18.229`
+- Service-worker cache: `fuel-ledger-v329`
+- Updated at: `2026-06-19T11:45:00.000Z`
+- Top release note: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
+## Invite beta readiness: member action Data I/O
+
+- Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
+- Member-facing invite-beta flows record stable result codes for workspace refresh, workspace creation, workspace switch, invite redemption, restricted-invite email preflight, and profile setup.
+- Use the Member actions group before DevTools when a beta user reports onboarding trouble.
+
 
 ## Invite beta readiness: Account tab and update handoff
 

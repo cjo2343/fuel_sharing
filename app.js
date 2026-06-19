@@ -213,10 +213,21 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   const targetLedgerId = String(ledgerId || "").trim();
   if (!targetLedgerId || targetLedgerId === getActiveLedgerId()) return;
   if (!isLedgerLinkedToCurrentUser(targetLedgerId)) {
+    recordDataIoDiagnostic("blocked", {
+      source: "workspace-switch",
+      route: "member-action",
+      operation: "switch",
+      resultCode: "WORKSPACE_SWITCH_BLOCKED",
+      ok: false,
+      detail: "Workspace is not linked to the signed-in email."
+    });
     showUserError("You can only switch to workspaces linked to your signed-in email.");
     renderActiveWorkspaceSelector();
     return;
   }
+  const operationId = createDataIoOperationId("workspace-switch", "switch");
+  const traceMeta = { source: "workspace-switch", route: "member-action", operation: "switch", operationId, detail: `Switch workspace to ${targetLedgerId}` };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCH_STARTED" });
   setActiveLedgerId(targetLedgerId, { persist: true });
   await refreshAuthBoundMemberProfile();
   workspaceInviteStatus.loaded = false;
@@ -233,7 +244,12 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     supabaseStartupLoadTimeoutMs,
     "Workspace switch sync is delayed. You can keep using local data and try Sync now."
   );
-  if (loaded) showAppMessage(`Switched workspace to ${getCurrentWorkspaceLabel()}.`);
+  if (loaded) {
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCHED", detail: `Switched workspace to ${getCurrentWorkspaceLabel()}` });
+    showAppMessage(`Switched workspace to ${getCurrentWorkspaceLabel()}.`);
+  } else {
+    recordDataIoDiagnostic("timeout", { ...traceMeta, ok: false, resultCode: "WORKSPACE_SWITCH_LOAD_DELAYED", detail: "Workspace switch completed but state load is delayed." });
+  }
 }
 
 function getMobilePayReturnPrompt(key) {
@@ -935,6 +951,70 @@ function recordAdminToolSkip(source, detail, { operation = "run" } = {}) {
   recordDataIoDiagnostic("skip", { ...makeAdminToolDiagnosticMeta(source, detail, operation), ok: false });
 }
 
+function normalizeMemberActionSource(source) {
+  return String(source || "member-action").trim().replace(/[^a-z0-9:-]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "member-action";
+}
+
+function makeMemberActionDiagnosticMeta(source, detail, operation = "run", extras = {}) {
+  const normalizedSource = normalizeMemberActionSource(source);
+  return {
+    source: normalizedSource,
+    route: extras.route || "member-action",
+    endpoint: extras.endpoint || "",
+    rpc: extras.rpc || "",
+    operation,
+    operationId: extras.operationId || createDataIoOperationId(normalizedSource, operation),
+    resultCode: extras.resultCode || "MEMBER_ACTION_STARTED",
+    detail: detail || normalizedSource,
+    staleAfterMs: extras.staleAfterMs || dataIoOperationStaleMs,
+    ok: true
+  };
+}
+
+function recordMemberActionSkip(source, detail, { operation = "run" } = {}) {
+  const normalizedSource = normalizeMemberActionSource(source);
+  recordDataIoDiagnostic("skip", {
+    ...makeMemberActionDiagnosticMeta(normalizedSource, `${detail || normalizedSource} skipped because the same member action is already running.`, operation, { resultCode: "MEMBER_ACTION_SKIPPED" }),
+    ok: false
+  });
+}
+
+async function traceMemberActionOperation(source, detail, action, { operation = "run", staleAfterMs = dataIoOperationStaleMs } = {}) {
+  const normalizedSource = normalizeMemberActionSource(source);
+  if (activeMemberActionOperations.has(normalizedSource)) {
+    recordMemberActionSkip(normalizedSource, detail, { operation });
+    if (typeof showUserWarning === "function") showUserWarning("That action is already running. Wait for it to finish before trying again.");
+    return { ok: false, skipped: true, reason: "member-action-already-running", source: normalizedSource };
+  }
+  activeMemberActionOperations.add(normalizedSource);
+  try {
+    return await traceDataIo(makeMemberActionDiagnosticMeta(normalizedSource, detail, operation, { staleAfterMs }), action);
+  } finally {
+    activeMemberActionOperations.delete(normalizedSource);
+  }
+}
+
+function dataIoOperationGroup(operation = {}) {
+  const entry = operation.latest || operation.start || operation.finish || {};
+  const source = String(entry.source || "").toLowerCase();
+  const route = String(entry.route || "").toLowerCase();
+  const rpc = String(entry.rpc || "").toLowerCase();
+  if (source.startsWith("admin-tool:") || source.startsWith("admin-") || /retention|security-health|admin-report|admin-test-data|normalized-test-data|json-mirror-backup/.test(source)) return "Admin actions";
+  if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
+  if (/state-load|write-context|trip-save|fuel-save|booking|payment|settlement/.test(source) || route === "render-api") return "Sync/load/write actions";
+  return "Background diagnostics";
+}
+
+function latestDataIoOperationsByGroup(limitPerGroup = 8) {
+  const groups = new Map();
+  latestDataIoOperations(40).forEach((operation) => {
+    const group = dataIoOperationGroup(operation);
+    if (!groups.has(group)) groups.set(group, []);
+    if (groups.get(group).length < limitPerGroup) groups.get(group).push(operation);
+  });
+  return groups;
+}
+
 function latestDataIoDiagnostics(limit = 6) {
   return dataIoDiagnostics.slice(-limit).reverse();
 }
@@ -1346,6 +1426,7 @@ let workspaceInviteStatus = {
 };
 let workspaceInviteRefreshPromise = null;
 let workspaceInviteRefreshQueued = false;
+const activeMemberActionOperations = new Set();
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 const viewStorageKey = "fuel-ledger-active-view";
@@ -2955,13 +3036,12 @@ els.refreshMembers?.addEventListener("click", async () => {
 });
 
 els.refreshWorkspaceInvites?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
-  await traceAdminToolOperation("refresh-workspace-invites", "Refresh workspace invites", () => scheduleWorkspaceInviteRefresh("manual-refresh") || Promise.resolve());
+  await traceMemberActionOperation("workspace-tools-refresh", "Refresh workspace tools", () => scheduleWorkspaceInviteRefresh("manual-refresh") || Promise.resolve(), { operation: "refresh" });
 });
 
 els.createWorkspaceForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await traceAdminToolOperation("create-workspace", "Create private workspace", createPrivateWorkspaceFromUi);
+  await traceMemberActionOperation("workspace-create", "Create private workspace", createPrivateWorkspaceFromUi, { operation: "create", staleAfterMs: workspaceInviteRequestTimeoutMs });
 });
 
 els.createInviteForm?.addEventListener("submit", async (event) => {
@@ -2972,7 +3052,7 @@ els.createInviteForm?.addEventListener("submit", async (event) => {
 
 els.redeemInviteForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await traceAdminToolOperation("redeem-invite", "Redeem workspace invite", redeemWorkspaceInvite);
+  await traceMemberActionOperation("workspace-invite-redeem", "Redeem workspace invite", redeemWorkspaceInvite, { operation: "redeem", staleAfterMs: workspaceInviteRequestTimeoutMs });
 });
 
 els.memberProfileSetupForm?.addEventListener("submit", async (event) => {
@@ -2982,9 +3062,9 @@ els.memberProfileSetupForm?.addEventListener("submit", async (event) => {
 
 els.workspaceList?.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-workspace-action]");
-  if (!button || !canManageSettings()) return;
+  if (!button) return;
   if (button.dataset.workspaceAction === "switch") {
-    await traceAdminToolOperation("switch-workspace", "Switch active workspace from Admin", () => switchActiveWorkspace(button.dataset.ledgerId, "workspace-admin-list"));
+    await traceMemberActionOperation("workspace-switch", "Switch active workspace", () => switchActiveWorkspace(button.dataset.ledgerId, "workspace-list"), { operation: "switch" });
   }
 });
 
@@ -3931,7 +4011,7 @@ function renderSupabaseLoadMonitor() {
         <span>Latest data I/O</span>
         <strong>${escapeHtml(latestOperationStatus)}</strong>
         <small>${latestDataIoOp ? escapeHtml(formatDataIoOperationLine(latestDataIoOp)) : "No operation yet"}</small>
-        <p>Grouped by operation so start/finish pairs are readable.</p>
+        <p>Latest data I/O operations are grouped by action type so start/finish pairs are readable.</p>
       </article>
       ${renderRenderAdminHealthCard()}
       <article class="admin-metric-card ${activeForeground.length ? "warning" : "ok"}">
@@ -3948,19 +4028,22 @@ function renderSupabaseLoadMonitor() {
       </article>
     </div>
     ${recentDataIoOps.length ? `
-      <details class="admin-diagnostics-section" open>
-        <summary>Latest data I/O operations</summary>
-        <div class="admin-operation-list">
-          ${recentDataIoOps.map((operation) => {
-            const entry = operation.latest || operation.start || {};
-            const timeSource = operation.finish || operation.start || entry;
-            const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
-            const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
-            const code = operation.finish?.resultCode || operation.finish?.code || operation.latest?.resultCode || operation.latest?.code || operation.start?.resultCode || operation.start?.code || "";
-            return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${entry.endpoint || entry.rpc || entry.table ? `→ ${escapeHtml(entry.endpoint || entry.rpc || entry.table)}` : ""}${code ? ` · code ${escapeHtml(code)}` : ""}</small></div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
-          }).join("")}
-        </div>
-      </details>
+      ${Array.from(latestDataIoOperationsByGroup(8).entries()).map(([group, operations]) => `
+        <details class="admin-diagnostics-section" ${group === "Member actions" || group === "Admin actions" ? "open" : ""}>
+          <summary>${escapeHtml(group)}</summary>
+          <div class="admin-operation-list">
+            ${operations.map((operation) => {
+              const entry = operation.latest || operation.start || operation.finish || {};
+              const timeSource = operation.finish || operation.start || entry;
+              const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
+              const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
+              const code = operation.finish?.resultCode || operation.finish?.code || operation.latest?.resultCode || operation.latest?.code || operation.start?.resultCode || operation.start?.code || "";
+              const target = entry.endpoint || entry.rpc || entry.table || entry.operation || "";
+              return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${target ? `→ ${escapeHtml(target)}` : ""}${code ? ` · code ${escapeHtml(code)}` : ""}</small>${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
+            }).join("")}
+          </div>
+        </details>
+      `).join("")}
     ` : ""}
     ${topLabels.length ? `
       <details class="admin-diagnostics-section">
@@ -12779,6 +12862,17 @@ async function redeemWorkspaceInvite(inviteCodeOverride = "") {
 
   if (els.redeemInviteButton) els.redeemInviteButton.disabled = true;
   setRedeemInviteMessage("Redeeming invite...");
+  const operationId = createDataIoOperationId("workspace-invite-redeem", "redeem");
+  const traceMeta = {
+    source: "workspace-invite-redeem",
+    route: "supabase-rpc",
+    rpc: "redeem_ledger_invite",
+    operation: "redeem",
+    operationId,
+    staleAfterMs: workspaceInviteRequestTimeoutMs,
+    detail: "Redeem workspace invite"
+  };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "INVITE_REDEEM_STARTED" });
   try {
     const { data, error } = await supabaseClient.rpc("redeem_ledger_invite", { invite_code: inviteCode });
     if (error) throw error;
@@ -12802,10 +12896,12 @@ async function redeemWorkspaceInvite(inviteCodeOverride = "") {
         "Invite accepted, but workspace sync is delayed. Use Sync now to retry."
       );
     }
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "INVITE_REDEEMED", detail: `Invite redeemed for ${getCurrentWorkspaceLabel()}` });
     if (canManageSettings()) await refreshWorkspaceInvites();
     return true;
   } catch (error) {
     const message = describeInviteRedeemError(error);
+    recordDataIoDiagnostic("error", { ...traceMeta, ok: false, error, resultCode: "INVITE_REDEEM_ERROR", detail: message });
     showUserError(`Could not redeem invite: ${message}`);
     setRedeemInviteMessage(message, "error");
     return false;
@@ -13038,6 +13134,17 @@ async function createPrivateWorkspaceFromUi() {
   const submitButton = els.createWorkspaceForm ? els.createWorkspaceForm.querySelector('button[type="submit"]') : null;
   if (submitButton) submitButton.disabled = true;
   setCreateWorkspaceMessage("Creating private workspace...");
+  const operationId = createDataIoOperationId("workspace-create-rpc", "create");
+  const traceMeta = {
+    source: "workspace-create-rpc",
+    route: "supabase-rpc",
+    rpc: "create_private_ledger_workspace",
+    operation: "create",
+    operationId,
+    staleAfterMs: workspaceInviteRequestTimeoutMs,
+    detail: `Create private workspace ${name}`
+  };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "WORKSPACE_CREATE_STARTED" });
   try {
     const response = await withWorkspaceInviteRequestTimeout(
       supabaseClient.rpc("create_private_ledger_workspace", {
@@ -13055,8 +13162,17 @@ async function createPrivateWorkspaceFromUi() {
     await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Workspace list refresh after create failed", error));
     await switchActiveWorkspace(newLedgerId, "create-workspace");
     setCreateWorkspaceMessage(`Created ${result && result.name ? result.name : name}. You are admin of this private workspace. Create invite codes here to add other people.`, "success");
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_CREATED", detail: `Created private workspace ${result && result.name ? result.name : name}` });
     scheduleWorkspaceInviteRefresh("after-create-workspace");
   } catch (error) {
+    const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", {
+      ...traceMeta,
+      ok: false,
+      error,
+      resultCode: timedOut ? "WORKSPACE_CREATE_TIMEOUT" : "WORKSPACE_CREATE_ERROR",
+      detail: timedOut ? "Workspace creation timed out before the browser received a result." : "Workspace creation failed."
+    });
     setCreateWorkspaceMessage(describeWorkspaceCreateError(error), "error");
     showUserError(`Could not create workspace: ${describeWorkspaceCreateError(error)}`);
   } finally {
@@ -13177,6 +13293,17 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   workspaceInviteStatus.loading = true;
   workspaceInviteStatus.error = "";
   renderWorkspaceInvitesPanel();
+  const operationId = createDataIoOperationId("workspace-tools-refresh", "refresh");
+  const traceMeta = {
+    source: "workspace-tools-refresh",
+    route: "supabase-rpc",
+    rpc: "list_my_ledgers",
+    operation: "refresh",
+    operationId,
+    staleAfterMs: workspaceInviteRequestTimeoutMs,
+    detail: `Refresh workspace tools (${reason})`
+  };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "WORKSPACE_REFRESH_STARTED" });
   try {
     const { data: ledgers, error: ledgersError } = await withWorkspaceInviteRequestTimeout(
       supabaseClient.rpc("list_my_ledgers"),
@@ -13202,10 +13329,19 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
       workspaceInviteStatus.invites = [];
     }
     workspaceInviteStatus.loaded = true;
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_REFRESHED", detail: `Loaded ${workspaceInviteStatus.ledgers.length} workspace(s)${canManageSettings() ? ` and ${workspaceInviteStatus.invites.length} invite(s)` : ""}.` });
   } catch (error) {
+    const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
     workspaceInviteStatus.error = describeWorkspaceRefreshError(error);
     workspaceInviteStatus.loaded = true;
     workspaceInviteStatus.invites = [];
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", {
+      ...traceMeta,
+      ok: false,
+      error,
+      resultCode: timedOut ? "WORKSPACE_REFRESH_TIMEOUT" : "WORKSPACE_REFRESH_ERROR",
+      detail: workspaceInviteStatus.error
+    });
   } finally {
     workspaceInviteStatus.loading = false;
     if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = false;
