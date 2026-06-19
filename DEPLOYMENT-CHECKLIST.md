@@ -23,8 +23,8 @@ These values are checked by `npm run release:check`. When a runtime release chan
 
 - Version: `2026.06.18.234`
 - Service-worker cache: `fuel-ledger-v334`
-- Updated at: `2026-06-19T13:40:00.000Z`
-- Top release note: Vehicle lookup now fails softly when the Render provider is missing or unavailable: /api/vehicle/lookup returns stable lookup result codes instead of browser-visible 5xx responses, and the UI keeps manual fuel settings as the fallback.
+- Updated at: `2026-06-19T14:25:00.000Z`
+- Top release note: Vehicle lookup now shows the required visible Nummerplade Tjek credit link beside the number-plate lookup controls, without nofollow, so the free API backlink requirement is tied to the feature.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
