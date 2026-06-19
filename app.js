@@ -7433,8 +7433,19 @@ async function lookupVehicleByPlateFromUi() {
     const text = await response.text();
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-    if (!response.ok || !result?.ok) {
+    if (!response.ok) {
       const error = new Error(result?.message || result?.error || text || `Vehicle lookup failed (${response.status})`);
+      error.status = response.status;
+      error.code = result?.code || response.status;
+      throw error;
+    }
+    if (result?.code === "VEHICLE_LOOKUP_NOT_CONFIGURED") {
+      recordDataIoDiagnostic("skipped", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_NOT_CONFIGURED", detail: result.message || "Vehicle lookup API is not configured on Render." });
+      if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = result.message || "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings.";
+      return false;
+    }
+    if (!result?.ok) {
+      const error = new Error(result?.message || result?.error || text || "Vehicle lookup failed");
       error.status = response.status;
       error.code = result?.code || response.status;
       throw error;
@@ -7447,13 +7458,16 @@ async function lookupVehicleByPlateFromUi() {
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || /timed out/i.test(String(error?.message || error || ""));
     const code = String(error?.code || error?.status || "");
-    const notConfigured = /not configured|VEHICLE_LOOKUP_NOT_CONFIGURED|503/.test(String(error?.message || error || code));
-    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, ok: false, error, resultCode: timedOut ? "VEHICLE_LOOKUP_TIMEOUT" : notConfigured ? "VEHICLE_LOOKUP_NOT_CONFIGURED" : "VEHICLE_LOOKUP_ERROR", errorCode: code, detail: timedOut ? "Vehicle lookup timed out." : String(error?.message || error || "Vehicle lookup failed.") });
+    const notConfigured = /not configured|VEHICLE_LOOKUP_NOT_CONFIGURED/.test(String(error?.message || error || code));
+    const providerUnavailable = /VEHICLE_LOOKUP_PROVIDER_ERROR|VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE|502|503/.test(String(error?.message || error || code));
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, ok: false, error, resultCode: timedOut ? "VEHICLE_LOOKUP_TIMEOUT" : notConfigured ? "VEHICLE_LOOKUP_NOT_CONFIGURED" : providerUnavailable ? "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE" : "VEHICLE_LOOKUP_ERROR", errorCode: code, detail: timedOut ? "Vehicle lookup timed out." : String(error?.message || error || "Vehicle lookup failed.") });
     const message = notConfigured
       ? "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings."
       : timedOut
         ? "Vehicle lookup timed out. Keep using manual fuel settings or try again."
-        : `Vehicle lookup failed: ${String(error?.message || error || "Unknown error")}`;
+        : providerUnavailable
+          ? "Vehicle lookup provider is unavailable right now. Keep using manual fuel settings or try again later."
+          : `Vehicle lookup failed: ${String(error?.message || error || "Unknown error")}`;
     if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = message;
     return false;
   } finally {

@@ -11,6 +11,7 @@ assert.match(app, /source: "vehicle-lookup"/, 'vehicle lookup must be recorded i
 assert.match(app, /VEHICLE_LOOKUP_STARTED/, 'vehicle lookup start code must be present');
 assert.match(app, /VEHICLE_LOOKUP_OK/, 'vehicle lookup success code must be present');
 assert.match(app, /VEHICLE_LOOKUP_NOT_CONFIGURED/, 'not-configured code must be present');
+assert.match(app, /VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE/, 'provider unavailable code must be present');
 assert.match(app, /Authorization": `Bearer \$\{currentSession\.access_token\}`/, 'vehicle lookup must use signed-in Supabase bearer token');
 assert.match(app, /applyVehicleLookupToSettings/, 'vehicle lookup must apply suggested fuel settings only through app logic');
 assert.match(app, /state\.vehiclePlate/, 'vehicle plate must be persisted in state');
@@ -25,6 +26,8 @@ assert.match(server, /def lookup_vehicle_backend\(self\):/, 'server must impleme
 assert.match(server, /current_supabase_user\(self\)/, 'server lookup must verify Supabase auth');
 assert.match(server, /get_state_load_context_as_service\(ledger_id, user\)/, 'server lookup must verify active workspace membership');
 assert.match(server, /VEHICLE_LOOKUP_API_KEY/, 'server must keep vehicle API key in environment');
+assert.match(server, /VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE/, 'server must convert provider network failures to a safe lookup result code');
+assert.match(server, /send_response\(200\)[\s\S]*VEHICLE_LOOKUP_PROVIDER_ERROR/, 'provider HTTP errors must not return browser-visible 5xx statuses');
 assert.match(server, /sanitize_vehicle_lookup_response/, 'server must sanitize provider response');
 assert.doesNotMatch(app, /VEHICLE_LOOKUP_API_KEY/, 'browser app must not reference vehicle API keys');
 assert.match(env, /VEHICLE_LOOKUP_API_URL=/, 'env example must document vehicle lookup URL');

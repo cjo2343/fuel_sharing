@@ -693,3 +693,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
 
 - 2026-06-19 v232: Workspace settings isolation fix: Render state-load carries the active ledger row so new workspaces do not inherit another workspace car/fuel settings, and signed-in one-member workspaces can save vehicle settings without the legacy two-person manual list blocker.
+
+- 2026.06.18.234 / fuel-ledger-v334: Vehicle lookup now treats missing/unavailable providers as safe lookup outcomes with stable result codes instead of browser-visible 5xx responses; manual fuel settings remain the fallback.

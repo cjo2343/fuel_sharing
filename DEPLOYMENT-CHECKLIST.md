@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.233`
-- Service-worker cache: `fuel-ledger-v333`
-- Updated at: `2026-06-19T13:05:00.000Z`
-- Top release note: Workspace-admin scope is now separated from global app-admin tools: admins of secondary/private workspaces can manage only their workspace settings, members, and invites, while Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
+- Version: `2026.06.18.234`
+- Service-worker cache: `fuel-ledger-v334`
+- Updated at: `2026-06-19T13:40:00.000Z`
+- Top release note: Vehicle lookup now fails softly when the Render provider is missing or unavailable: /api/vehicle/lookup returns stable lookup result codes instead of browser-visible 5xx responses, and the UI keeps manual fuel settings as the fallback.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -596,3 +596,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Verify invite creation reports Data I/O code `INVITE_CREATED` and Security Health reports migrations current through `034_invite_rate_limit_actor_email_ambiguity_fix`.
 
 - 2026-06-19 v232: Workspace settings isolation fix: Render state-load carries the active ledger row so new workspaces do not inherit another workspace car/fuel settings, and signed-in one-member workspaces can save vehicle settings without the legacy two-person manual list blocker.
+
+- 2026.06.18.234 / fuel-ledger-v334: Vehicle lookup now treats missing/unavailable providers as safe lookup outcomes with stable result codes instead of browser-visible 5xx responses; manual fuel settings remain the fallback.

@@ -1366,7 +1366,7 @@ def vehicle_lookup_url_for_plate(plate):
 def fetch_vehicle_lookup(plate):
     url = vehicle_lookup_url_for_plate(plate)
     if not url:
-        return {"ok": False, "code": "VEHICLE_LOOKUP_NOT_CONFIGURED", "message": "Vehicle lookup API is not configured on Render."}, 503
+        return {"ok": False, "code": "VEHICLE_LOOKUP_NOT_CONFIGURED", "message": "Vehicle lookup API is not configured on Render. Keep using manual fuel settings."}, 200
     headers = {"Accept": "application/json", "User-Agent": "FuelLedger/1.0"}
     api_key = env_value("VEHICLE_LOOKUP_API_KEY")
     if api_key:
@@ -2882,15 +2882,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, str(error))
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
-            self.send_response(error.code)
+            # Provider problems are expected lookup outcomes, not app-backend
+            # failures. Return HTTP 200 with a stable result code so browsers do
+            # not show scary 503 console errors and the app can keep manual
+            # settings as the safe fallback. Auth/permission failures above still
+            # use real HTTP error statuses.
+            self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_HTTP_ERROR", "message": detail or str(error)}).encode("utf-8"))
+            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_ERROR", "message": detail or str(error)}).encode("utf-8"))
         except urllib.error.URLError as error:
-            self.send_response(502)
+            self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_NETWORK_ERROR", "message": str(error)}).encode("utf-8"))
+            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", "message": str(error)}).encode("utf-8"))
         except PermissionError as error:
             self.send_error(403, str(error))
         except Exception as error:
