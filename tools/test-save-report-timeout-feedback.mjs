@@ -7,7 +7,7 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:204|205|206|207|208|209|210|211|212|213|214|215)"/, 'build-info should publish v304 or later');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:204|205|206|207|208|209|210|211|212|213|214|215|216)"/, 'build-info should publish v304 or later');
 assert.match(buildInfo, /buildLabel:\s*"(?:save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v304 or later label');
 assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v304 or later cache');
 assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker cache should be v304 or later');

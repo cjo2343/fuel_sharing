@@ -86,7 +86,11 @@
     if (Object.keys(criticalRpcs).length) details.push(`${Object.keys(criticalRpcs).length} critical RPC(s) available`);
     else if (closeRpc === true) details.push("close_settlement_period exists");
     if (schemaMigrations.latest_expected) {
-      details.push(`schema migrations ${schemaMigrations.latest_applied || "unknown"}/${schemaMigrations.latest_expected}`);
+      const latestApplied = schemaMigrations.latest_applied || "unknown";
+      const latestExpected = schemaMigrations.latest_expected;
+      details.push(latestApplied === latestExpected
+        ? `schema migrations current through ${latestApplied}`
+        : `schema migrations applied ${latestApplied}; expected ${latestExpected}`);
     }
     if (schemaDrift.ok === true) details.push("schema drift OK");
     if (ledgerEventsEnabled === false) details.push("ledger_events is not in Realtime publication");

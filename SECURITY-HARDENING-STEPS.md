@@ -268,3 +268,10 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - The retention path remains scoped to temporary/debug/privacy-sensitive records and excludes real ledger accounting history.
 
 - Ordinary app saves must not trigger full-state JSON mirror writes; mirror writes are reserved for manual backups, safety backups, and audit-cadence backups, with validation covering the rule.
+
+
+## 2026-06-19 Security Health migration expectation cleanup
+
+- Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.
+- Apply `supabase/migrations/032_security_health_current_migration_expectations.sql` after deploying the app runtime.
+- Verify Security Health reports migrations current through `032_security_health_current_migration_expectations` and includes `apply_payment_status_action` in critical RPC coverage.

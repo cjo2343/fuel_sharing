@@ -447,6 +447,11 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /'026_invite_onboarding_foundation'/);
   assert.match(schema, /'027_invite_code_generation_pgcrypto_fix'/);
   assert.match(schema, /'028_invite_code_hash_pgcrypto_fix'/);
+  assert.match(schema, /'029_invite_redeem_return_ambiguity_fix'/);
+  assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
+  assert.match(schema, /'031_payment_status_action_rpc'/);
+  assert.match(schema, /'032_security_health_current_migration_expectations'/);
+  assert.match(schema, /'apply_payment_status_action'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
   assert.match(schema, /'missing_migrations'/);
@@ -501,6 +506,9 @@ function testWorkspaceFoundationExists() {
   assert.match(schema, /'027_invite_code_generation_pgcrypto_fix'/);
   assert.match(schema, /'028_invite_code_hash_pgcrypto_fix'/);
   assert.match(schema, /'029_invite_redeem_return_ambiguity_fix'/);
+  assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
+  assert.match(schema, /'031_payment_status_action_rpc'/);
+  assert.match(schema, /'032_security_health_current_migration_expectations'/);
   console.log("ok - testWorkspaceFoundationExists");
 }
 

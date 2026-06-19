@@ -18,10 +18,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.215`
-- Service-worker cache: `fuel-ledger-v315`
-- Updated at: `2026-06-19T07:25:00.000Z`
-- Top release note: Ordinary app saves now fail closed away from full-state JSON mirror writes: JSON mirror writes are explicitly classified as manual, safety, or audit-cadence backups, and reasonless forced mirror writes are blocked by validation.
+- Version: `2026.06.18.216`
+- Service-worker cache: `fuel-ledger-v316`
+- Updated at: `2026-06-19T07:50:00.000Z`
+- Top release note: Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.
 
 
 ## Required release gate
@@ -553,3 +553,10 @@ Before pushing a release, run `npm run release:check`. The release-readiness com
 ### v302 Render admin health endpoint
 
 Admin diagnostics now includes a Render admin health check (`POST /api/admin/health`) that verifies the signed-in session, workspace admin permission, open settlement period, Supabase connectivity, and mounted backend safety routes before dangerous admin work.
+
+
+## 2026-06-19 Security Health migration expectation cleanup
+
+- Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.
+- Apply `supabase/migrations/032_security_health_current_migration_expectations.sql` after deploying the app runtime.
+- Verify Security Health reports migrations current through `032_security_health_current_migration_expectations` and includes `apply_payment_status_action` in critical RPC coverage.

@@ -4032,7 +4032,7 @@ function getSchemaMigrationDiagnostics() {
     };
   }
   const missing = Array.isArray(migrations.missing_migrations) ? migrations.missing_migrations.filter(Boolean) : [];
-  const extra = Array.isArray(migrations.extra_migrations) ? migrations.extra_migrations.filter(Boolean) : [];
+  const futureTracked = Array.isArray(migrations.extra_migrations) ? migrations.extra_migrations.filter(Boolean) : [];
   if (missing.length) {
     return {
       status: `${missing.length} migration${missing.length === 1 ? "" : "s"} missing`,
@@ -4044,7 +4044,9 @@ function getSchemaMigrationDiagnostics() {
   const latestExpected = migrations.latest_expected || "unknown";
   return {
     status: "Migrations current",
-    detail: `Applied ${latestApplied}; expected ${latestExpected}${extra.length ? ` · extra tracked: ${extra.join(", ")}` : ""}.`,
+    detail: latestApplied === latestExpected
+      ? `Current through ${latestApplied}.`
+      : `Applied ${latestApplied}; expected ${latestExpected}${futureTracked.length ? ` · future tracked: ${futureTracked.join(", ")}` : ""}.`,
     level: "ok"
   };
 }

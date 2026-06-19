@@ -40,7 +40,7 @@ function testRpcProbeNormalization() {
     }
   });
   assert.equal(tracked.ok, true);
-  assert.match(tracked.detail, /schema migrations 023_schema_migration_tracking\/023_schema_migration_tracking/);
+  assert.match(tracked.detail, /schema migrations current through 023_schema_migration_tracking/);
 
   const missingMigration = helper.normalizeHealthcheckRpcResult({
     data: {
