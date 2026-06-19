@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.19.236",
-    buildLabel: "render-admin-report-save-route-vehicle-lookup-credit-link",
+    version: "2026.06.18.234",
+    buildLabel: "render-admin-report-save-route",
     updatedAt: "2026-06-19T14:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v336",
+    expectedServiceWorkerCache: "fuel-ledger-v334",
     releaseNotes: Object.freeze([
       "Vehicle lookup now shows the required visible Nummerplade Tjek credit link beside the number-plate lookup controls, without nofollow, so the free API backlink requirement is tied to the feature.",
       "Vehicle lookup now fails softly when the Render provider is missing or unavailable: /api/vehicle/lookup returns stable lookup result codes instead of browser-visible 5xx responses, and the UI keeps manual fuel settings as the fallback.",
