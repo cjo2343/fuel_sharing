@@ -19,11 +19,18 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.220`
-- Service-worker cache: `fuel-ledger-v320`
-- Updated at: `2026-06-19T09:00:00.000Z`
-- Top release note: Regular member write routes now enforce active-workspace membership server-side: non-admin users can only save their own trip/fuel/booking rows, payment actions must involve the signed-in member, and cross-workspace member IDs are rejected before Supabase RPCs run.
+- Version: `2026.06.18.221`
+- Service-worker cache: `fuel-ledger-v321`
+- Updated at: `2026-06-19T09:20:00.000Z`
+- Top release note: Invite links now use a copyable ?invite=CODE URL that is captured on startup, stored privately for post-login redemption, stripped from browser history, and paired with a clear copy-code fallback for existing users.
 
+
+
+## Invite beta readiness: invite link/onboarding polish
+
+- Admin-created invites now show a copyable `?invite=CODE` link plus a copy-code fallback.
+- Opening an invite link stores the code for redemption after login and removes the code from browser history so invite secrets are not left in the visible URL.
+- New users can open the link before requesting their email code; existing signed-in users can paste the code in the Join another workspace card.
 
 ## Invite beta readiness: regular-member write scope
 

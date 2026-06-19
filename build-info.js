@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.220",
+    version: "2026.06.18.221",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T09:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v320",
+    updatedAt: "2026-06-19T09:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v321",
     releaseNotes: Object.freeze([
+      "Invite links now use a copyable ?invite=CODE URL that is captured on startup, stored privately for post-login redemption, stripped from browser history, and paired with a clear copy-code fallback for existing users.",
       "Regular member write routes now enforce active-workspace membership server-side: non-admin users can only save their own trip/fuel/booking rows, payment actions must involve the signed-in member, and cross-workspace member IDs are rejected before Supabase RPCs run.",
       "Admin and Test Lab tools now skip duplicate in-flight clicks with a clear skipped Data I/O row instead of starting overlapping admin operations that add stale diagnostic noise.",
       "Debug, load-monitor, and saved Test Lab/Security Health reports now redact more token spellings, auth headers, cookies, Supabase anon/service keys, and camelCase secret names before export or cloud/local storage.",

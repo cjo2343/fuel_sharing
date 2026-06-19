@@ -556,7 +556,7 @@ function testInviteOnboardingFoundationExists() {
   assert.match(index, /id="redeemInviteForm"/);
   assert.match(index, /id="redeemInviteCode"/);
   assert.match(index, /id="loginInviteCode"/);
-  assert.match(index, /Optional: paste the workspace invite code here before requesting your email login code/);
+  assert.match(index, /Optional: paste a workspace invite code here, or open an invite link/);
   assert.match(app, /pendingWorkspaceInviteCodeKey/);
   assert.match(app, /redeemPendingLoginInviteAfterSignIn/);
   assert.match(app, /rememberLoginInviteCode/);
@@ -646,7 +646,8 @@ function testAuthBoundWorkspaceIdentityExists() {
   assert.match(app, /refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
   assert.doesNotMatch(app, /supabaseClient\.from\("ledgers"\)\.select\("\*"\)\.eq\("id", ledgerId\)\.maybeSingle\(\)/);
   assert.match(app, /Paste an invite code to join another workspace/);
-  assert.match(app, /It is not emailed automatically/);
+  assert.match(app, /Share the invite link below/);
+  assert.match(app, /data-copy=\"\$\{escapeHtml\(inviteLink\)\}\"/);
   assert.match(app, /const linkedWorkspace = getLinkedWorkspaceForActiveLedger\(\)/);
   console.log("ok - testAuthBoundWorkspaceIdentityExists");
 }

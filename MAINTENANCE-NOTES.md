@@ -1,6 +1,10 @@
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 # Maintenance notes
 
+## Invite link onboarding
+
+Invite creation shows a one-time code and a copyable `?invite=CODE` link. The frontend accepts `invite`, `invite_code`, `workspaceInvite`, and `workspace_invite` query/hash parameters, stores the normalized code in local storage for post-login redemption, and removes the code from the visible URL with `history.replaceState`. Keep this behavior when changing login/onboarding so invite codes are not left in shared screenshots or browser history.
+
 ## Current architecture
 
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.

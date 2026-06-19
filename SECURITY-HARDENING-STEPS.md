@@ -11,6 +11,10 @@ drop function if exists public.production_activity_reset(text);
 
 Then rerun the full schema.
 
+## Invite link onboarding
+
+Invite creation shows a one-time code and a copyable `?invite=CODE` link. The frontend accepts `invite`, `invite_code`, `workspaceInvite`, and `workspace_invite` query/hash parameters, stores the normalized code in local storage for post-login redemption, and removes the code from the visible URL with `history.replaceState`. Keep this behavior when changing login/onboarding so invite codes are not left in shared screenshots or browser history.
+
 ## What the hardened RLS is intended to enforce
 
 - Only active ledger members can read ledger data.

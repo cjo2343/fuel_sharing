@@ -9,6 +9,7 @@ const loginCooldownKey = "car-share-login-cooldown-until";
 const pendingLoginEmailKey = "car-share-pending-login-email";
 const rememberedLoginEmailKey = "car-share-remembered-login-email";
 const pendingWorkspaceInviteCodeKey = "fuel-ledger-pending-workspace-invite-code";
+const inviteDeepLinkParamNames = Object.freeze(["invite", "invite_code", "workspaceInvite", "workspace_invite"]);
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
 const pushConfigUrl = "/api/push-config";
@@ -1580,6 +1581,7 @@ const describeBookingPermissionMessage = bookingCalendarController.describeBooki
 
 state.lastOdometer = getLatestOdometer();
 setDefaultDates();
+initializeInviteDeepLink();
 render();
 initializeSync()
   .then(() => {
@@ -6665,6 +6667,7 @@ async function initializeSupabase() {
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentSession = session;
+    initializeInviteDeepLink();
     if (session?.user?.email) {
       localStorage.setItem(rememberedLoginEmailKey, session.user.email);
       localStorage.removeItem(pendingLoginEmailKey);
@@ -12530,6 +12533,85 @@ function normalizeInviteCodeInput(value) {
   return String(value || "").trim().replace(/\s+/g, "");
 }
 
+function getInviteCodeFromParams(params) {
+  for (const name of inviteDeepLinkParamNames) {
+    const code = normalizeInviteCodeInput(params.get(name) || "");
+    if (code) return code;
+  }
+  return "";
+}
+
+function readInviteCodeFromCurrentUrl() {
+  let inviteCode = "";
+  try {
+    inviteCode = getInviteCodeFromParams(new URLSearchParams(window.location.search || ""));
+    if (!inviteCode) {
+      const rawHash = String(window.location.hash || "").replace(/^#/, "");
+      inviteCode = getInviteCodeFromParams(new URLSearchParams(rawHash));
+    }
+  } catch (error) {
+    console.warn("Could not read invite code from URL", error);
+  }
+  return inviteCode;
+}
+
+function removeInviteCodeFromCurrentUrl() {
+  if (!window.history || !window.history.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    let changed = false;
+    inviteDeepLinkParamNames.forEach((name) => {
+      if (url.searchParams.has(name)) {
+        url.searchParams.delete(name);
+        changed = true;
+      }
+    });
+    const rawHash = String(url.hash || "").replace(/^#/, "");
+    if (rawHash) {
+      const hashParams = new URLSearchParams(rawHash);
+      let hashChanged = false;
+      inviteDeepLinkParamNames.forEach((name) => {
+        if (hashParams.has(name)) {
+          hashParams.delete(name);
+          hashChanged = true;
+        }
+      });
+      if (hashChanged) {
+        const nextHash = hashParams.toString();
+        url.hash = nextHash ? `#${nextHash}` : "";
+        changed = true;
+      }
+    }
+    if (changed) window.history.replaceState(window.history.state, document.title, url.toString());
+  } catch (error) {
+    console.warn("Could not remove invite code from URL", error);
+  }
+}
+
+function initializeInviteDeepLink() {
+  const inviteCode = readInviteCodeFromCurrentUrl();
+  if (!inviteCode) {
+    hydrateLoginInviteCodeInput();
+    return "";
+  }
+  localStorage.setItem(pendingWorkspaceInviteCodeKey, inviteCode);
+  if (els.loginInviteCode && !currentSession) els.loginInviteCode.value = inviteCode;
+  if (els.redeemInviteCode && currentSession) els.redeemInviteCode.value = inviteCode;
+  removeInviteCodeFromCurrentUrl();
+  recordSupabaseLoadEvent("invite-link-detected", "workspace invite code stored for redemption");
+  return inviteCode;
+}
+
+function buildWorkspaceInviteLink(inviteCode) {
+  const code = normalizeInviteCodeInput(inviteCode);
+  if (!code) return "";
+  const url = new URL(window.location.href);
+  url.hash = "";
+  inviteDeepLinkParamNames.forEach((name) => url.searchParams.delete(name));
+  url.searchParams.set("invite", code);
+  return url.toString();
+}
+
 function describeInviteRedeemError(error) {
   const message = String(error?.message || error || "Invite redemption failed.");
   if (/signed-in user email/i.test(message) || /JWT|auth/i.test(message)) return "Sign in with the email that should join this workspace, then try the invite code again.";
@@ -12862,6 +12944,7 @@ function renderCreatedInvite(result) {
     return;
   }
   const inviteCode = result.invite_code || "";
+  const inviteLink = buildWorkspaceInviteLink(inviteCode);
   const role = result.role || "member";
   const email = result.invited_email || "any signed-in user with this code";
   const context = getCurrentWorkspaceContext();
@@ -12869,10 +12952,14 @@ function renderCreatedInvite(result) {
   els.createdInviteResult.innerHTML = `
     <strong>Invite created for ${escapeHtml(workspaceLabel)}.</strong>
     <p>This code joins <strong>${escapeHtml(workspaceLabel)}</strong> only. It will not add the person to your other workspaces.</p>
-    <p>Copy this one-time code and send it to ${escapeHtml(email)} out-of-band, such as SMS, email, or chat. It is not emailed automatically and cannot be recovered later because Supabase stores only a hash.</p>
+    <p>Share the invite link below with ${escapeHtml(email)} out-of-band, such as SMS, email, or chat. The code is shown once and cannot be recovered later because Supabase stores only a hash.</p>
     <div class="copyable-code" data-created-invite-code="true">${escapeHtml(inviteCode)}</div>
+    <div class="button-row compact-actions">
+      <button class="primary-button compact-button" type="button" data-copy="${escapeHtml(inviteLink)}">Copy invite link</button>
+      <button class="subtle-button compact-button" type="button" data-copy="${escapeHtml(inviteCode)}">Copy code only</button>
+    </div>
     <p class="entry-meta">Workspace: ${escapeHtml(workspaceLabel)} · Role: ${escapeHtml(role)} · Expires: ${escapeHtml(formatInviteExpiry(result.expires_at))}</p>
-    <p class="entry-meta">New users can paste this code on the login screen before requesting their email login code. Existing signed-in users can paste it in the Join another workspace card.</p>
+    <p class="entry-meta">New users can open the invite link or paste the code on the login screen before requesting their email login code. Existing signed-in users can paste the code in the Join another workspace card.</p>
   `;
 }
 
