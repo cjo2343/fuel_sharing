@@ -150,6 +150,76 @@ class RenderFuelUpsertPayloadTests(unittest.TestCase):
                 "fuel": {"legacy_id": "fuel-1", "payment_date": "2026-06-17", "amount": 100},
             })
 
+class RenderMemberWriteScopeTests(unittest.TestCase):
+    def context(self, role="member"):
+        return {
+            "ledgerId": "main-car",
+            "openPeriodId": "period-1",
+            "currentMemberId": "member-a",
+            "activeMemberIds": ["member-a", "member-b"],
+            "canAdmin": role == "admin",
+        }
+
+    def test_member_can_write_own_trip_with_workspace_participants(self):
+        server.assert_trip_write_allowed(self.context(), {
+            "driver_member_id": "member-a",
+            "participant_member_ids": ["member-a", "member-b"],
+        })
+
+    def test_member_cannot_write_trip_for_another_driver(self):
+        with self.assertRaises(PermissionError):
+            server.assert_trip_write_allowed(self.context(), {
+                "driver_member_id": "member-b",
+                "participant_member_ids": ["member-a", "member-b"],
+            })
+
+    def test_member_cannot_attach_participant_from_another_workspace(self):
+        with self.assertRaises(PermissionError):
+            server.assert_trip_write_allowed(self.context(), {
+                "driver_member_id": "member-a",
+                "participant_member_ids": ["member-a", "outside-member"],
+            })
+
+    def test_admin_can_write_for_another_active_workspace_member(self):
+        server.assert_trip_write_allowed(self.context(role="admin"), {
+            "driver_member_id": "member-b",
+            "participant_member_ids": ["member-a", "member-b"],
+        })
+
+    def test_member_can_write_own_fuel_and_booking_only(self):
+        server.assert_member_scoped_write_allowed(self.context(), "member-a", "fuel payer")
+        server.assert_member_scoped_write_allowed(self.context(), "member-a", "booking member")
+        with self.assertRaises(PermissionError):
+            server.assert_member_scoped_write_allowed(self.context(), "member-b", "fuel payer")
+        with self.assertRaises(PermissionError):
+            server.assert_member_scoped_write_allowed(self.context(), "outside-member", "booking member")
+
+    def test_payment_status_member_permissions_match_frontend_model(self):
+        base = {
+            "payer_member_id": "member-a",
+            "recipient_member_id": "member-b",
+        }
+        server.assert_payment_status_action_allowed(self.context(), {**base, "next_status": "paid"})
+        with self.assertRaises(PermissionError):
+            server.assert_payment_status_action_allowed(self.context(), {**base, "next_status": "requested"})
+
+        recipient_context = {
+            **self.context(),
+            "currentMemberId": "member-b",
+        }
+        server.assert_payment_status_action_allowed(recipient_context, {**base, "next_status": "requested"})
+        server.assert_payment_status_action_allowed(recipient_context, {**base, "next_status": "open"})
+        with self.assertRaises(PermissionError):
+            server.assert_payment_status_action_allowed(recipient_context, {**base, "next_status": "paid"})
+
+    def test_payment_status_rejects_members_from_other_workspace(self):
+        with self.assertRaises(PermissionError):
+            server.assert_payment_status_action_allowed(self.context(role="admin"), {
+                "payer_member_id": "member-a",
+                "recipient_member_id": "outside-member",
+                "next_status": "requested",
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

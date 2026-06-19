@@ -1,5 +1,3 @@
-- 2026-06-19 v219: Admin and Test Lab tools now skip duplicate in-flight clicks with a clear skipped Data I/O row instead of starting overlapping admin operations that add stale diagnostic noise.
-- 2026-06-19 v218: Debug/report redaction now covers auth headers, cookies, Supabase key spellings, camelCase token names, and saved report/export paths.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
 ## Continuous integration
@@ -21,11 +19,17 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.219`
-- Service-worker cache: `fuel-ledger-v319`
-- Updated at: `2026-06-19T08:45:00.000Z`
-- Top release note: Admin and Test Lab tools now skip duplicate in-flight clicks with a clear skipped Data I/O row instead of starting overlapping admin operations that add stale diagnostic noise.
+- Version: `2026.06.18.220`
+- Service-worker cache: `fuel-ledger-v320`
+- Updated at: `2026-06-19T09:00:00.000Z`
+- Top release note: Regular member write routes now enforce active-workspace membership server-side: non-admin users can only save their own trip/fuel/booking rows, payment actions must involve the signed-in member, and cross-workspace member IDs are rejected before Supabase RPCs run.
 
+
+## Invite beta readiness: regular-member write scope
+
+- Confirm invite beta testing includes a non-admin user session, not only the workspace admin.
+- Normal trip, fuel, booking, booking delete, and payment-status write routes verify the signed-in user is an active member of the target workspace before calling Supabase RPCs.
+- Non-admin users can write only their own trip/fuel/booking rows. Admins can write for other active members. Cross-workspace member IDs fail closed before RPC execution.
 
 ## Required release gate
 
@@ -563,3 +567,6 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.
 - Apply `supabase/migrations/033_onboarding_rate_limit_scope_key_alignment.sql` after deploying the app runtime.
 - Verify Security Health reports migrations current through `033_onboarding_rate_limit_scope_key_alignment` and includes `apply_payment_status_action` in critical RPC coverage.
+
+
+- v218: Debug/report redaction now covers auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.

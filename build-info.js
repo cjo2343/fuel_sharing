@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.219",
+    version: "2026.06.18.220",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T08:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v319",
+    updatedAt: "2026-06-19T09:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v320",
     releaseNotes: Object.freeze([
+      "Regular member write routes now enforce active-workspace membership server-side: non-admin users can only save their own trip/fuel/booking rows, payment actions must involve the signed-in member, and cross-workspace member IDs are rejected before Supabase RPCs run.",
       "Admin and Test Lab tools now skip duplicate in-flight clicks with a clear skipped Data I/O row instead of starting overlapping admin operations that add stale diagnostic noise.",
       "Debug, load-monitor, and saved Test Lab/Security Health reports now redact more token spellings, auth headers, cookies, Supabase anon/service keys, and camelCase secret names before export or cloud/local storage.",
       "Normal trip, fuel, booking, payment-status, and ledger-directory writes now fail closed through Render instead of falling back to browser-owned Supabase RPC/direct-table writes when proven Render routes are unavailable.",

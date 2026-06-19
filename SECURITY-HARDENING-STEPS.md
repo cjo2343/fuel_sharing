@@ -1,5 +1,3 @@
-- 2026-06-19 v218: v318 debug/report redaction hardening covers auth headers, cookies, Supabase key spellings, and camelCase secret names before export or storage.
-- 2026-06-19 v219: Admin/Test Lab duplicate-run protection prevents repeated clicks from starting overlapping admin operations and records skipped diagnostics instead.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 # Security hardening notes
 
@@ -279,8 +277,14 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Apply `supabase/migrations/033_onboarding_rate_limit_scope_key_alignment.sql` after deploying the app runtime.
 - Verify Security Health reports migrations current through `033_onboarding_rate_limit_scope_key_alignment` and includes `apply_payment_status_action` in critical RPC coverage.
 
-### v319 Admin/Test Lab duplicate-run guard
 
-- Admin/Test Lab operations must be single-flight by source: if the same admin tool is already running, the second click is skipped.
-- Skipped duplicate runs must produce a skipped Data I/O diagnostic, not a successful operation row, so Admin diagnostics stays honest and quiet.
-- Keep duplicate-run skips filtered from the Supabase activity headline so a harmless double-click does not create a high-activity warning.
+## 2026-06-19 invite beta regular-member write scope
+
+- Added server-side regular-member ownership checks to Render write routes before invite beta testing.
+- Active workspace membership is verified before normal trip, fuel, booking, booking delete, and payment-status RPC calls.
+- Non-admin users can only save their own trip/fuel/booking rows; payment status updates must involve the signed-in member; cross-workspace member IDs are rejected before Supabase RPCs run.
+- Added Python unit coverage for member-owned writes, admin overrides, payment actor rules, and cross-workspace member rejection.
+
+## v318 debug/report redaction hardening
+
+- Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.

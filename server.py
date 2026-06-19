@@ -1305,7 +1305,59 @@ def get_write_context_as_user(ledger_id, user, user_token):
         "role": current.get("role") or "member",
         "canWrite": True,
         "canAdmin": current.get("role") == "admin",
+        "activeMemberIds": [str(row.get("id")) for row in rows if row.get("id")],
     }
+
+def assert_member_ids_belong_to_context(context, member_ids, label="member"):
+    active_ids = {str(value) for value in (context.get("activeMemberIds") or []) if str(value or "").strip()}
+    checked = [str(value) for value in member_ids if str(value or "").strip()]
+    missing = [value for value in checked if value not in active_ids]
+    if missing:
+        raise PermissionError(f"{label} must belong to the active workspace")
+
+
+def assert_member_scoped_write_allowed(context, target_member_id, action_label):
+    target = str(target_member_id or "").strip()
+    if not target:
+        raise ValueError(f"{action_label} requires a member id")
+    assert_member_ids_belong_to_context(context, [target], action_label)
+    if context.get("canAdmin"):
+        return
+    if target != str(context.get("currentMemberId") or ""):
+        raise PermissionError(f"Only workspace admins can save {action_label} for another member")
+
+
+def assert_trip_write_allowed(context, rpc_payload):
+    assert_member_scoped_write_allowed(context, rpc_payload.get("driver_member_id"), "trip driver")
+    assert_member_ids_belong_to_context(context, rpc_payload.get("participant_member_ids") or [], "trip participants")
+
+
+def assert_payment_status_action_allowed(context, rpc_payload):
+    payer = str(rpc_payload.get("payer_member_id") or "").strip()
+    recipient = str(rpc_payload.get("recipient_member_id") or "").strip()
+    assert_member_ids_belong_to_context(context, [payer, recipient], "payment members")
+    if context.get("canAdmin"):
+        return
+    current = str(context.get("currentMemberId") or "").strip()
+    next_status = str(rpc_payload.get("next_status") or "").strip().lower()
+    if next_status == "paid" and current == payer:
+        return
+    if next_status in {"requested", "open"} and current == recipient:
+        return
+    raise PermissionError("Only involved workspace members can update this payment status")
+
+
+def select_booking_owner_as_user(ledger_id, legacy_booking_id, user_token):
+    ledger_q = quote_postgrest_value(ledger_id)
+    booking_q = quote_postgrest_value(legacy_booking_id)
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/car_bookings?select=member_id&ledger_id=eq.{ledger_q}&legacy_id=eq.{booking_q}&deleted_at=is.null&limit=1",
+        token=user_token,
+        api_key=supabase_anon_key(),
+    ) or []
+    if not rows:
+        raise PermissionError("Booking must belong to the active workspace")
+    return rows[0].get("member_id")
 
 def get_normalized_state_rows_as_user(ledger_id, user, user_token):
     context = get_write_context_as_user(ledger_id, user, user_token)
@@ -2368,6 +2420,8 @@ class Handler(SimpleHTTPRequestHandler):
             rpc_payload = build_payment_status_rpc_payload(payload)
             if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
                 return
+            context = get_write_context_as_user(rpc_payload.get("target_ledger_id"), user, token)
+            assert_payment_status_action_allowed(context, rpc_payload)
             result = call_supabase_rpc_as_user("apply_payment_status_action", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2376,7 +2430,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except PermissionError as error:
-            self.send_error(401, str(error))
+            self.send_error(403, str(error))
             return
         except Exception as error:
             self.send_error(500, str(error))
@@ -2395,6 +2449,8 @@ class Handler(SimpleHTTPRequestHandler):
             rpc_payload = build_trip_upsert_rpc_payload(payload)
             if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
                 return
+            context = get_write_context_as_user(rpc_payload.get("target_ledger_id"), user, token)
+            assert_trip_write_allowed(context, rpc_payload)
             result = call_supabase_rpc_as_user("upsert_trip_with_participants", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2403,7 +2459,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except PermissionError as error:
-            self.send_error(401, str(error))
+            self.send_error(403, str(error))
             return
         except Exception as error:
             self.send_error(500, str(error))
@@ -2422,6 +2478,8 @@ class Handler(SimpleHTTPRequestHandler):
             rpc_payload = build_fuel_upsert_rpc_payload(payload)
             if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
                 return
+            context = get_write_context_as_user(rpc_payload.get("target_ledger_id"), user, token)
+            assert_member_scoped_write_allowed(context, rpc_payload.get("payer_member_id"), "fuel payer")
             result = call_supabase_rpc_as_user("upsert_fuel_payment", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2430,7 +2488,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except PermissionError as error:
-            self.send_error(401, str(error))
+            self.send_error(403, str(error))
             return
         except Exception as error:
             self.send_error(500, str(error))
@@ -2449,6 +2507,8 @@ class Handler(SimpleHTTPRequestHandler):
             rpc_payload = build_booking_upsert_rpc_payload(payload)
             if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
                 return
+            context = get_write_context_as_user(rpc_payload.get("target_ledger_id"), user, token)
+            assert_member_scoped_write_allowed(context, rpc_payload.get("booking_member_id"), "booking member")
             result = call_supabase_rpc_as_user("upsert_car_booking", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2457,7 +2517,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except PermissionError as error:
-            self.send_error(401, str(error))
+            self.send_error(403, str(error))
             return
         except Exception as error:
             self.send_error(500, str(error))
@@ -2476,6 +2536,9 @@ class Handler(SimpleHTTPRequestHandler):
             rpc_payload = build_booking_delete_rpc_payload(payload)
             if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
                 return
+            context = get_write_context_as_user(rpc_payload.get("target_ledger_id"), user, token)
+            owner_member_id = select_booking_owner_as_user(rpc_payload.get("target_ledger_id"), rpc_payload.get("legacy_booking_id"), token)
+            assert_member_scoped_write_allowed(context, owner_member_id, "booking delete")
             result = call_supabase_rpc_as_user("soft_delete_car_booking", rpc_payload, user_token=token)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
@@ -2484,7 +2547,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except PermissionError as error:
-            self.send_error(401, str(error))
+            self.send_error(403, str(error))
             return
         except Exception as error:
             self.send_error(500, str(error))
