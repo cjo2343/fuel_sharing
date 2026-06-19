@@ -12,11 +12,11 @@ Supabase remains the database, auth provider, realtime source, and RLS safety la
 
 | Area | Browser endpoint | Server action | Supabase operation | Status |
 | --- | --- | --- | --- | --- |
-| Trips | `POST /api/trips/upsert` | `upsert_trip_backend` | `upsert_trip_with_participants` RPC as user | Primary path, browser RPC/table fallback still present |
-| Fuel | `POST /api/fuel/upsert` | `upsert_fuel_backend` | `upsert_fuel_payment` RPC as user | Primary path, browser RPC/table fallback still present |
-| Payments | `POST /api/payments/status-action` | `apply_payment_status_action_backend` | `apply_payment_status_action` RPC as user | Primary path, browser RPC/table fallback still present |
-| Bookings | `POST /api/bookings/upsert` | `upsert_booking_backend` | `upsert_car_booking` RPC as user | Primary path, browser RPC/table fallback still present |
-| Booking delete | `POST /api/bookings/delete` | `delete_booking_backend` | `soft_delete_car_booking` RPC as user | Primary path, browser RPC/table fallback still present |
+| Trips | `POST /api/trips/upsert` | `upsert_trip_backend` | Browser write fallback disabled | Render-owned foreground write |
+| Fuel | `POST /api/fuel/upsert` | `upsert_fuel_backend` | Browser write fallback disabled | Render-owned foreground write |
+| Payments | `POST /api/payments/status-action` | `apply_payment_status_action_backend` | Browser write fallback disabled | Render-owned foreground write |
+| Bookings | `POST /api/bookings/upsert` | `upsert_booking_backend` | Browser write fallback disabled | Render-owned foreground write |
+| Booking delete | `POST /api/bookings/delete` | `delete_booking_backend` | Browser write fallback disabled | Render-owned foreground write |
 
 Legacy/local-support routes that are not yet part of the final production API shape:
 
@@ -96,6 +96,13 @@ Every production Render route should:
 6. Return clear `400`, `401`, `403`, `409`, `429`, or `5xx` errors on failure.
 7. Have a browser timeout and a matched Data I/O start/finish diagnostic.
 8. Have a validation test that blocks accidental reversion to browser-owned writes.
+
+
+## Browser write fallback lockdown
+
+Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render. If a Render route is unavailable or rejected, the browser records a `browser-write-fallback` diagnostic and stops instead of taking over with Supabase RPC/direct-table writes.
+
+Read-only browser fallbacks and the documented JSON mirror backup emergency fallback remain separate from this rule.
 
 ## Browser fallback removal rule
 

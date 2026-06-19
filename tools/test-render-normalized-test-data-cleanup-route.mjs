@@ -7,7 +7,7 @@ const buildInfo = readFileSync("build-info.js", "utf8");
 const serviceWorker = readFileSync("service-worker.js", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:195|196|197|198|199|200|201|202|203|204|205|206|207|208|209|210|211|212|213|214|215|216)"/, "build-info.js must be v295 or a later preserving hotfix.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:195|196|197|198|199|200|201|202|203|204|205|206|207|208|209|210|211|212|213|214|215|216|217)"/, "build-info.js must be v295 or a later preserving hotfix.");
 assert.match(buildInfo, /buildLabel:\s*"(?:render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, "build-info.js must use the v295 build label or the v296 hotfix label.");
 assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[5-9]|3[0-9][0-9])"/, "build-info.js must expect the v295/v296/v297 service-worker cache.");
 assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[5-9]|3[0-9][0-9])"/, "service-worker.js must use the v295/v296/v297 cache.");

@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.216",
+    version: "2026.06.18.217",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T07:50:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v316",
+    updatedAt: "2026-06-19T08:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v317",
     releaseNotes: Object.freeze([
+      "Normal trip, fuel, booking, payment-status, and ledger-directory writes now fail closed through Render instead of falling back to browser-owned Supabase RPC/direct-table writes when proven Render routes are unavailable.",
       "Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.",
       "Ordinary app saves now fail closed away from full-state JSON mirror writes: JSON mirror writes are explicitly classified as manual, safety, or audit-cadence backups, and reasonless forced mirror writes are blocked by validation.",
       "Advanced Admin/Test Lab protections now require the advanced unlock plus typed confirmation and a fresh Render admin-health workspace-admin verification before generated-data, stress, purge, cleanup, cloud-report, Security Health, and production reset actions can run.",

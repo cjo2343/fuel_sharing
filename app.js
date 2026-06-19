@@ -14767,6 +14767,25 @@ async function upsertLedgerSettings(ledgerPayload, source = "ledger-directory-sy
   throw result.error;
 }
 
+
+function failClosedBrowserWriteFallback(source, operation, error, detail) {
+  const blockedError = error instanceof Error ? error : new Error(String(error || detail || "Browser write fallback is disabled."));
+  const message = detail || "Browser Supabase write fallback is disabled; Render must own this write.";
+  recordDataIoDiagnostic("blocked", {
+    source,
+    route: "browser-write-fallback",
+    operation: operation || "fallback-blocked",
+    detail: message,
+    error: blockedError
+  });
+  return {
+    ok: false,
+    error: new Error(`${message}${blockedError?.message ? ` ${blockedError.message}` : ""}`),
+    shouldFallback: false,
+    backend: "render-api"
+  };
+}
+
 async function syncLedgerDirectoryForAdmin(ledgerId) {
   const now = new Date().toISOString();
   const ledgerPayload = {
@@ -14796,17 +14815,14 @@ async function syncLedgerDirectoryForAdmin(ledgerId) {
 
   const renderResult = await syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads);
   if (renderResult.ok) return;
-  if (!renderResult.shouldFallback) throw renderResult.error || new Error("Render ledger directory sync failed.");
 
-  await upsertLedgerSettings(ledgerPayload);
-
-  if (memberPayloads.length) {
-    const memberResult = await traceDataIo({ source: "ledger-directory-sync", route: "direct-table", table: "ledger_members", operation: "upsert" }, () => supabaseClient
-      .from("ledger_members")
-      .upsert(memberPayloads, { onConflict: "ledger_id,name" })
-      .select("id,name"));
-    if (memberResult.error) throw memberResult.error;
-  }
+  const blocked = failClosedBrowserWriteFallback(
+    "ledger-directory-sync",
+    "upsert",
+    renderResult.error || new Error("Render ledger directory sync failed."),
+    "Browser ledger-directory direct-table fallback is disabled; Render /api/ledgers/sync must own ledger/member directory writes."
+  );
+  throw blocked.error;
 }
 
 async function saveTripToNormalizedTablesFirst(trip) {
@@ -14882,26 +14898,12 @@ async function saveTripWithParticipantsRpc(context, payload, participantMemberId
   const renderResult = await saveTripWithParticipantsViaRender(context, payload, participantMemberIds);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
-  const { data, error } = await traceDataIo({ source: "trip-save", route: "supabase-rpc", rpc: "upsert_trip_with_participants", operation: "rpc" }, () => supabaseClient.rpc("upsert_trip_with_participants", {
-    target_ledger_id: context.ledgerId,
-    target_open_period_id: context.openPeriodId,
-    legacy_trip_id: payload.legacy_id,
-    driver_member_id: payload.driver_member_id,
-    trip_date_value: payload.trip_date,
-    start_km_value: payload.start_km,
-    end_km_value: payload.end_km,
-    note_value: payload.note,
-    participant_member_ids: participantMemberIds
-  }));
-
-  if (!error) return { ok: true, data, backend: "supabase-rpc" };
-
-  return {
-    ok: false,
-    error,
-    shouldFallback: isMissingTripTransactionRpcError(error),
-    backend: "supabase-rpc"
-  };
+  return failClosedBrowserWriteFallback(
+    "trip-save",
+    "upsert",
+    renderResult.error,
+    "Browser trip Supabase RPC/table fallback is disabled; Render /api/trips/upsert must own trip writes."
+  );
 }
 
 async function saveTripWithParticipantsViaRender(context, payload, participantMemberIds) {
@@ -15017,34 +15019,12 @@ async function saveFuelPaymentRpc(context, payload) {
   const renderResult = await saveFuelPaymentViaRender(context, payload);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
-  const { data, error } = await traceDataIo({ source: "fuel-save", route: "supabase-rpc", rpc: "upsert_fuel_payment", operation: "rpc" }, () => supabaseClient.rpc("upsert_fuel_payment", {
-    target_ledger_id: context.ledgerId,
-    target_open_period_id: context.openPeriodId,
-    legacy_fuel_id: payload.legacy_id,
-    payer_member_id: payload.payer_member_id,
-    payment_date_value: payload.payment_date,
-    amount_value: payload.amount,
-    currency_value: payload.currency,
-    liters_value: payload.liters,
-    price_per_liter_value: payload.price_per_liter,
-    odometer_value: payload.odometer,
-    station_name_value: payload.station_name,
-    station_brand_value: payload.station_brand,
-    station_lat_value: payload.station_lat,
-    station_lng_value: payload.station_lng,
-    user_lat_value: payload.user_lat,
-    user_lng_value: payload.user_lng,
-    full_tank_value: payload.full_tank
-  }));
-
-  if (!error) return { ok: true, data, backend: "supabase-rpc" };
-
-  return {
-    ok: false,
-    error,
-    shouldFallback: isMissingFuelPaymentRpcError(error),
-    backend: "supabase-rpc"
-  };
+  return failClosedBrowserWriteFallback(
+    "fuel-save",
+    "upsert",
+    renderResult.error,
+    "Browser fuel Supabase RPC/table fallback is disabled; Render /api/fuel/upsert must own fuel writes."
+  );
 }
 
 async function saveFuelPaymentViaRender(context, payload) {
@@ -15214,23 +15194,12 @@ async function saveBookingRpc(context, payload) {
   const renderResult = await saveBookingViaRender(context, payload);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
-  const { data, error } = await traceDataIo({ source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "rpc" }, () => supabaseClient.rpc("upsert_car_booking", {
-    target_ledger_id: context.ledgerId,
-    legacy_booking_id: payload.legacy_id,
-    booking_member_id: payload.member_id,
-    start_at_value: payload.start_at,
-    end_at_value: payload.end_at,
-    purpose_value: payload.purpose
-  }));
-
-  if (!error) return { ok: true, data, backend: "supabase-rpc" };
-
-  return {
-    ok: false,
-    error,
-    shouldFallback: isMissingBookingTransactionRpcError(error),
-    backend: "supabase-rpc"
-  };
+  return failClosedBrowserWriteFallback(
+    "booking-save",
+    "upsert",
+    renderResult.error,
+    "Browser booking Supabase RPC/table fallback is disabled; Render /api/bookings/upsert must own booking writes."
+  );
 }
 
 async function saveBookingViaRender(context, payload) {
@@ -15328,19 +15297,12 @@ async function softDeleteBookingRpc(context, legacyBookingId) {
   const renderResult = await softDeleteBookingViaRender(context, legacyBookingId);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
-  const { data, error } = await traceDataIo({ source: "booking-delete", route: "supabase-rpc", rpc: "soft_delete_car_booking", operation: "rpc" }, () => supabaseClient.rpc("soft_delete_car_booking", {
-    target_ledger_id: context.ledgerId,
-    legacy_booking_id: legacyBookingId
-  }));
-
-  if (!error) return { ok: true, data, backend: "supabase-rpc" };
-
-  return {
-    ok: false,
-    error,
-    shouldFallback: isMissingBookingTransactionRpcError(error),
-    backend: "supabase-rpc"
-  };
+  return failClosedBrowserWriteFallback(
+    "booking-delete",
+    "delete",
+    renderResult.error,
+    "Browser booking-delete Supabase RPC/table fallback is disabled; Render /api/bookings/delete must own booking deletes."
+  );
 }
 
 async function softDeleteBookingViaRender(context, legacyBookingId) {
@@ -15580,16 +15542,12 @@ async function applyPaymentStatusActionRpc(context, payload, options = {}) {
   const renderResult = await applyPaymentStatusActionViaRender(context, payload, options, rpcPayload);
   if (renderResult.ok || !renderResult.shouldFallback) return renderResult;
 
-  const { data, error } = await traceDataIo({ source: "settlement-request-save", route: "supabase-rpc", rpc: "apply_payment_status_action", operation: rpcPayload.next_status || "payment-status" }, () => supabaseClient.rpc("apply_payment_status_action", rpcPayload));
-
-  if (!error) return { ok: true, data, backend: "supabase-rpc" };
-
-  return {
-    ok: false,
-    error,
-    shouldFallback: isMissingPaymentStatusActionRpcError(error),
-    backend: "supabase-rpc"
-  };
+  return failClosedBrowserWriteFallback(
+    "settlement-request-save",
+    rpcPayload.next_status || "payment-status",
+    renderResult.error,
+    "Browser payment-action Supabase RPC fallback is disabled; Render /api/payments/status-action must own payment status writes."
+  );
 }
 
 async function applyPaymentStatusActionViaRender(context, payload, options = {}, rpcPayload = {}) {

@@ -17,9 +17,12 @@ assert(app.includes('source, route: "render-api", endpoint: renderLedgerDirector
 assert(app.includes('recordSupabaseLoadEvent("render-ledger-directory-sync"'), 'Render ledger-directory success should be visible in load monitor');
 assert(app.includes('const renderResult = await syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads);'), 'admin directory sync should try Render first');
 assert(app.includes('if (renderResult.ok) return;'), 'successful Render directory sync should skip browser direct-table upsert');
-assert(app.includes('if (!renderResult.shouldFallback) throw renderResult.error'), 'non-fallback Render failures should not silently use browser writes');
-assert(app.indexOf('const renderResult = await syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads);') < app.indexOf('await upsertLedgerSettings(ledgerPayload);'), 'Render ledger sync should run before direct ledgers upsert fallback');
-assert(app.includes('route: "direct-table", table: "ledger_members", operation: "upsert"'), 'fallback member upsert should remain diagnosed');
+assert(app.includes('Browser ledger-directory direct-table fallback is disabled'), 'Render failure should fail closed instead of browser direct-table fallback');
+const syncStart = app.indexOf('async function syncLedgerDirectoryForAdmin');
+const syncEnd = app.indexOf('async function saveTripToNormalizedTablesFirst', syncStart);
+const syncBody = app.slice(syncStart, syncEnd);
+assert(!syncBody.includes('await upsertLedgerSettings(ledgerPayload);'), 'ledger sync should not direct-upsert ledgers after Render failure');
+assert(!/from\("ledger_members"\)\s*\.upsert/.test(syncBody), 'ledger sync should not direct-upsert members after Render failure');
 
 assert(server.includes('if self.path == "/api/ledgers/sync":'), 'server should route /api/ledgers/sync');
 assert(server.includes('def sync_ledger_directory_backend'), 'server should implement ledger directory sync backend');

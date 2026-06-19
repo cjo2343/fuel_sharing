@@ -1,3 +1,4 @@
+- 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
 ## Continuous integration
 
@@ -18,10 +19,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.216`
-- Service-worker cache: `fuel-ledger-v316`
-- Updated at: `2026-06-19T07:50:00.000Z`
-- Top release note: Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.
+- Version: `2026.06.18.217`
+- Service-worker cache: `fuel-ledger-v317`
+- Updated at: `2026-06-19T08:20:00.000Z`
+- Top release note: Normal trip, fuel, booking, payment-status, and ledger-directory writes now fail closed through Render instead of falling back to browser-owned Supabase RPC/direct-table writes when proven Render routes are unavailable.
 
 
 ## Required release gate

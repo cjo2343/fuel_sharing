@@ -15,13 +15,13 @@ Normal user/admin actions should use exactly one primary owner:
 | Area | Current owner | Primary route/RPC | Browser fallback status | Next simplification |
 | --- | --- | --- | --- | --- |
 | Startup normalized state load | Render primary | `POST /api/state/load` | Read fallback only | Keep Render primary; remove obsolete JSON-first startup branches after more deploy history. |
-| Write context | Render primary | `POST /api/context/write` | Browser lookup fallback kept | Keep while trip/fuel/booking/payment paths finish migration. |
-| Trip save | Render primary | `POST /api/trips/upsert` | Browser RPC fallback kept | Remove direct RPC fallback after transaction wrapper pass. |
-| Fuel save | Render primary | `POST /api/fuel/upsert` | Browser RPC fallback kept | Remove direct RPC fallback after transaction wrapper pass. |
-| Booking save/delete | Render primary | `POST /api/bookings/upsert`, `POST /api/bookings/delete` | Browser RPC fallback kept | Remove fallback after booking smoke history is stable. |
-| Payment status action | Render primary | `POST /api/payments/status-action` | Browser RPC fallback kept | Remove fallback after settlement transaction wrapper pass. |
+| Write context | Render primary | `POST /api/context/write` | Browser lookup fallback kept | Read/setup fallback only; foreground writes still fail closed through Render. |
+| Trip save | Render primary | `POST /api/trips/upsert` | Browser write fallback disabled | Render route must save trips; browser RPC/table fallback is blocked. |
+| Fuel save | Render primary | `POST /api/fuel/upsert` | Browser write fallback disabled | Render route must save fuel logs; browser RPC/table fallback is blocked. |
+| Booking save/delete | Render primary | `POST /api/bookings/upsert`, `POST /api/bookings/delete` | Browser write fallback disabled | Render routes must save/delete bookings; browser RPC/table fallback is blocked. |
+| Payment status action | Render primary | `POST /api/payments/status-action` | Browser write fallback disabled | Render route must apply payment status actions; browser RPC fallback is blocked. |
 | JSON mirror backup | Render primary | `POST /api/backups/json-mirror` | Browser direct-table fallback kept | Keep only as emergency backup/export fallback. |
-| Ledger directory sync | Render primary | `POST /api/ledgers/sync` | Browser direct-table fallback kept | Remove browser upsert once workspace admin tools are Render-owned. |
+| Ledger directory sync | Render primary | `POST /api/ledgers/sync` | Browser write fallback disabled | Render route must sync ledgers/members; browser direct-table fallback is blocked. |
 | Generated Test Lab create | Render primary | `POST /api/admin/test-data/create` | Legacy fallback should not be used for normal admin flow | Remove remaining direct generated-row paths after admin route coverage. |
 | Generated Test Lab cleanup | Render primary | `POST /api/admin/test-data/cleanup` | Legacy fallback should not be used for normal admin flow | Keep only emergency cleanup fallback. |
 | Retention preview/cleanup | Render primary | `POST /api/admin/retention/preview`, `POST /api/admin/retention/cleanup` | RPC fallback kept only if Render route is unavailable | Remove direct RPC fallback once Render deploy history is stable. |
@@ -37,6 +37,13 @@ Admin buttons that touch cloud state should use `traceAdminToolOperation(...)`. 
 - `{ ok: false, error }` for a real failure.
 
 The tracker converts `{ ok: false, error }` into a matched Data I/O error row. This prevents UI code from swallowing backend failures and turning them into misleading `ok` rows.
+
+
+## v317 Render-owned write fallback lockdown
+
+- Normal trip, fuel, booking, booking-delete, payment-status, and ledger-directory writes now fail closed if the proven Render route is unavailable or rejected.
+- Browser-owned Supabase RPC/direct-table fallbacks for those foreground writes are blocked with a `browser-write-fallback` Data I/O diagnostic instead of silently taking over the write.
+- Browser read fallbacks and the emergency JSON mirror backup fallback remain documented separately; this pass targets normal foreground writes only.
 
 ## v307 Render admin report save route
 

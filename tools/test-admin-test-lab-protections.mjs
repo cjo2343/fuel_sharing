@@ -51,8 +51,8 @@ for (const [button, phrase] of [
   assert.match(block, new RegExp(`phrase:\\s*"${phrase}"`), `${button} must keep typed confirmation phrase ${phrase}.`);
 }
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:214|215|216)"/, 'runtime version must be bumped for app.js changes.');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v31[456]"/, 'build-info must expect the bumped service-worker cache.');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v31[456]"/, 'service-worker cache must be bumped with runtime changes.');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:214|215|216|217)"/, 'runtime version must be bumped for app.js changes.');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v31[4567]"/, 'build-info must expect the bumped service-worker cache.');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v31[4567]"/, 'service-worker cache must be bumped with runtime changes.');
 
 console.log('Admin/Test Lab protection guard check passed.');

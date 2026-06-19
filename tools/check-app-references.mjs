@@ -228,9 +228,10 @@ assertNoBareIdentifierReference(
 
 const tripRpcBody = extractFunctionBody(source, 'saveTripWithParticipantsRpc') || '';
 const tripRenderCallIndex = tripRpcBody.indexOf('saveTripWithParticipantsViaRender');
+const tripFallbackBlockIndex = tripRpcBody.indexOf('Browser trip Supabase RPC/table fallback is disabled');
 const tripDirectRpcIndex = tripRpcBody.indexOf('supabaseClient.rpc("upsert_trip_with_participants"');
-if (tripRenderCallIndex < 0 || tripDirectRpcIndex < 0 || tripRenderCallIndex > tripDirectRpcIndex) {
-  console.error('Regression guard failed: trip saves must attempt the Render /api/trips/upsert path before direct Supabase RPC fallback.');
+if (tripRenderCallIndex < 0 || tripFallbackBlockIndex < 0 || tripDirectRpcIndex >= 0 || tripRenderCallIndex > tripFallbackBlockIndex) {
+  console.error('Regression guard failed: trip saves must attempt the Render /api/trips/upsert path and fail closed instead of using browser Supabase RPC fallback.');
   process.exit(1);
 }
 
@@ -265,9 +266,10 @@ if (tripSaveFirstBody.includes('if (!savedThroughNormalizedTables)') && tripSave
 
 const fuelRpcBody = extractFunctionBody(source, 'saveFuelPaymentRpc') || '';
 const fuelRenderCallIndex = fuelRpcBody.indexOf('saveFuelPaymentViaRender');
+const fuelFallbackBlockIndex = fuelRpcBody.indexOf('Browser fuel Supabase RPC/table fallback is disabled');
 const fuelDirectRpcIndex = fuelRpcBody.indexOf('supabaseClient.rpc("upsert_fuel_payment"');
-if (fuelRenderCallIndex < 0 || fuelDirectRpcIndex < 0 || fuelRenderCallIndex > fuelDirectRpcIndex) {
-  console.error('Regression guard failed: fuel saves must attempt the Render /api/fuel/upsert path before direct Supabase RPC fallback.');
+if (fuelRenderCallIndex < 0 || fuelFallbackBlockIndex < 0 || fuelDirectRpcIndex >= 0 || fuelRenderCallIndex > fuelFallbackBlockIndex) {
+  console.error('Regression guard failed: fuel saves must attempt the Render /api/fuel/upsert path and fail closed instead of using browser Supabase RPC fallback.');
   process.exit(1);
 }
 

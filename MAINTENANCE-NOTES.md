@@ -1,3 +1,4 @@
+- 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 # Maintenance notes
 
 ## Current architecture
