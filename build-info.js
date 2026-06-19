@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.221",
+    version: "2026.06.18.222",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T09:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v321",
+    updatedAt: "2026-06-19T09:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v322",
     releaseNotes: Object.freeze([
+      "Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.",
       "Invite links now use a copyable ?invite=CODE URL that is captured on startup, stored privately for post-login redemption, stripped from browser history, and paired with a clear copy-code fallback for existing users.",
       "Regular member write routes now enforce active-workspace membership server-side: non-admin users can only save their own trip/fuel/booking rows, payment actions must involve the signed-in member, and cross-workspace member IDs are rejected before Supabase RPCs run.",
       "Admin and Test Lab tools now skip duplicate in-flight clicks with a clear skipped Data I/O row instead of starting overlapping admin operations that add stale diagnostic noise.",

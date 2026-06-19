@@ -660,7 +660,7 @@ function recordBlockedVisibleSyncStatus(label, source, options = {}) {
   recordSupabaseLoadEvent("visible-sync-status-blocked", detail);
   recordSyncDiagnostic("visible-sync-status-blocked", detail, { label, source: normalizedSource, ...options });
 }
-const workspaceInviteRequestTimeoutMs = 8000;
+const workspaceInviteRequestTimeoutMs = 15000;
 const supabaseAuthRefreshSyncCooldownMs = 5 * 60 * 1000;
 let lastAuthCloudSyncUserKey = "";
 let lastAuthCloudSyncAt = 0;
@@ -742,8 +742,10 @@ function formatDataIoOperationLine(operation = {}) {
   const target = entry.table ? ` → ${entry.table}` : entry.rpc ? ` → ${entry.rpc}` : entry.endpoint ? ` → ${entry.endpoint}` : "";
   const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
   const duration = Number.isFinite(operation.durationMs) ? ` · ${operation.durationMs} ms` : "";
+  const code = operation.finish?.resultCode || operation.finish?.code || operation.latest?.resultCode || operation.latest?.code || operation.start?.resultCode || operation.start?.code || "";
+  const codeText = code ? ` · code ${code}` : "";
   const detail = operation.finish?.detail || operation.finish?.error?.message || operation.start?.detail || operation.start?.error?.message || "";
-  return `${entry.source || "unknown"} via ${entry.route || "unknown"}${target} — ${status}${duration}${detail ? ` · ${detail}` : ""}`;
+  return `${entry.source || "unknown"} via ${entry.route || "unknown"}${target} — ${status}${duration}${codeText}${detail ? ` · ${detail}` : ""}`;
 }
 
 let adminUiBatchDepth = 0;
@@ -800,7 +802,26 @@ async function withAdminUiBatch(action) {
   }
 }
 
+function dataIoResultCodeFor(phase, ok, meta = {}) {
+  const error = summarizeSupabaseError(meta.error);
+  const explicit = meta.resultCode || meta.statusCode || meta.code || meta.httpStatus || meta.httpStatusCode || meta.status;
+  if (explicit) return String(explicit);
+  if (error?.code) return String(error.code);
+  if (error?.name === "AbortError" || /timed out|timeout/i.test(error?.message || "")) return "TIMEOUT";
+  const normalizedPhase = String(phase || "data-io").toLowerCase();
+  if (normalizedPhase === "start") return "STARTED";
+  if (normalizedPhase === "skip") return "SKIPPED";
+  if (normalizedPhase === "timeout") return "TIMEOUT";
+  if (normalizedPhase === "exception") return "EXCEPTION";
+  if (normalizedPhase === "error") return "ERROR";
+  if (normalizedPhase === "blocked") return "BLOCKED";
+  if (ok === true || normalizedPhase === "success") return "OK";
+  return normalizedPhase.toUpperCase();
+}
+
 function recordDataIoDiagnostic(phase, meta = {}) {
+  const summarizedError = summarizeSupabaseError(meta.error);
+  const resultCode = dataIoResultCodeFor(phase, meta.ok === true, meta);
   const diagnostic = {
     at: new Date().toISOString(),
     phase: String(phase || "data-io"),
@@ -813,11 +834,15 @@ function recordDataIoDiagnostic(phase, meta = {}) {
     operationId: meta.operationId || "",
     detail: meta.detail || "",
     ok: meta.ok === true,
+    code: resultCode,
+    resultCode,
+    statusCode: resultCode,
+    errorCode: summarizedError?.code || "",
     ledgerId: supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : "",
     activeLedgerId,
     hasSession: Boolean(currentSession),
     pendingLocalChanges,
-    error: summarizeSupabaseError(meta.error),
+    error: summarizedError,
     staleAfterMs: normalizeDataIoOperationStaleMs(meta.staleAfterMs)
   };
   lastDataIoDiagnostic = diagnostic;
@@ -3907,7 +3932,8 @@ function renderSupabaseLoadMonitor() {
             const timeSource = operation.finish || operation.start || entry;
             const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
             const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
-            return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${entry.endpoint || entry.rpc || entry.table ? `→ ${escapeHtml(entry.endpoint || entry.rpc || entry.table)}` : ""}</small></div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
+            const code = operation.finish?.resultCode || operation.finish?.code || operation.latest?.resultCode || operation.latest?.code || operation.start?.resultCode || operation.start?.code || "";
+            return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${entry.endpoint || entry.rpc || entry.table ? `→ ${escapeHtml(entry.endpoint || entry.rpc || entry.table)}` : ""}${code ? ` · code ${escapeHtml(code)}` : ""}</small></div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
           }).join("")}
         </div>
       </details>
@@ -12982,7 +13008,18 @@ async function createWorkspaceInvite() {
   const expiresInHours = Math.max(1, Math.min(Number(els.inviteExpiresHours?.value || 168), 720));
   const maxUses = Math.max(1, Math.min(Number(els.inviteMaxUses?.value || 1), 25));
   if (role === "admin" && !confirmUserAction("Create an admin invite? Only share admin invites with someone who should manage members, backups, and diagnostics.")) return;
-  setWorkspaceInvitesMessage("Creating invite...");
+  const inviteTraceMeta = {
+    source: "workspace-invite-create",
+    route: "supabase-rpc",
+    rpc: "create_ledger_invite",
+    operation: "create",
+    operationId: createDataIoOperationId("workspace-invite-create"),
+    ledgerId,
+    staleAfterMs: workspaceInviteRequestTimeoutMs,
+    detail: `Creating invite for ${context.label}`
+  };
+  setWorkspaceInvitesMessage("Creating invite... This can take up to 15 seconds on a cold Supabase function.");
+  recordDataIoDiagnostic("start", { ...inviteTraceMeta, ok: true, resultCode: "STARTED" });
   try {
     const { data, error } = await withWorkspaceInviteRequestTimeout(
       supabaseClient.rpc("create_ledger_invite", {
@@ -12998,7 +13035,14 @@ async function createWorkspaceInvite() {
     const result = Array.isArray(data) ? data[0] : data;
     workspaceInviteStatus.lastCreatedInvite = result || null;
     renderCreatedInvite(result);
-    setWorkspaceInvitesMessage(`Invite created for ${context.label}. Copy the code now; it will not be shown again after refresh.`);
+    const inviteCode = normalizeInviteCodeInput(result?.invite_code || "");
+    recordDataIoDiagnostic("success", {
+      ...inviteTraceMeta,
+      ok: true,
+      resultCode: inviteCode ? "INVITE_CREATED" : "OK",
+      detail: inviteCode ? `Invite created for ${context.label}; code returned once.` : `Invite created for ${context.label}; no code was returned.`
+    });
+    setWorkspaceInvitesMessage(`Invite created for ${context.label}. Copy the invite link now; the code will not be shown again after refresh.`);
     if (els.inviteEmail) els.inviteEmail.value = "";
     if (els.inviteRole) els.inviteRole.value = "member";
     if (els.inviteExpiresHours) els.inviteExpiresHours.value = "168";
@@ -13006,8 +13050,16 @@ async function createWorkspaceInvite() {
     scheduleWorkspaceInviteRefresh("after-create-invite");
     renderCreatedInvite(result);
   } catch (error) {
+    const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", {
+      ...inviteTraceMeta,
+      ok: false,
+      error,
+      resultCode: timedOut ? "INVITE_CREATE_TIMEOUT" : "INVITE_CREATE_ERROR",
+      detail: timedOut ? "Invite creation timed out before the browser received a result." : "Invite creation failed before a code was returned."
+    });
     showUserError(`Could not create invite: ${describeWorkspaceInviteError(error)}`);
-    setWorkspaceInvitesMessage("Invite creation failed.");
+    setWorkspaceInvitesMessage(timedOut ? "Invite creation timed out before the browser received a code. Refresh invites before retrying, because the server may still have created it." : "Invite creation failed before a code was returned.");
   } finally {
     renderWorkspaceInvitesPanel();
   }

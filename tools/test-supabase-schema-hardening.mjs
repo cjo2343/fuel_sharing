@@ -666,7 +666,7 @@ function testWorkspaceSyncCompletionGuardExists() {
 
 function testWorkspaceInviteRefreshFailSafeExists() {
   const app = readFileSync("app.js", "utf8");
-  assert.match(app, /const workspaceInviteRequestTimeoutMs = 8000/);
+  assert.match(app, /const workspaceInviteRequestTimeoutMs = 15000/);
   assert.match(app, /function describeWorkspaceRefreshError\(error\)/);
   assert.match(app, /Workspace invite refresh timed out/);
   assert.match(app, /async function withWorkspaceInviteRequestTimeout\(requestPromise, label/);

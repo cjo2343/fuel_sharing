@@ -11,10 +11,6 @@ drop function if exists public.production_activity_reset(text);
 
 Then rerun the full schema.
 
-## Invite link onboarding
-
-Invite creation shows a one-time code and a copyable `?invite=CODE` link. The frontend accepts `invite`, `invite_code`, `workspaceInvite`, and `workspace_invite` query/hash parameters, stores the normalized code in local storage for post-login redemption, and removes the code from the visible URL with `history.replaceState`. Keep this behavior when changing login/onboarding so invite codes are not left in shared screenshots or browser history.
-
 ## What the hardened RLS is intended to enforce
 
 - Only active ledger members can read ledger data.
@@ -292,3 +288,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 ## v318 debug/report redaction hardening
 
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
+
+- Data I/O diagnostics now include stable result/status codes such as STARTED, OK, TIMEOUT, INVITE_CREATED, and Supabase error codes, and invite creation has a clearer 15-second pending/success/error flow before refresh can hide the one-time link.
