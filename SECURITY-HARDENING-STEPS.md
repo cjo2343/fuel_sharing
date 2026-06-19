@@ -267,11 +267,4 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Retention cleanup now requires the fresh destructive-action safety backup gate.
 - The retention path remains scoped to temporary/debug/privacy-sensitive records and excludes real ledger accounting history.
 
-
-## Admin/Test Lab protection pass
-
-- Risky generated-data, stress, purge, cleanup, and production reset actions now pass through a shared client-side gate before work starts.
-- The gate keeps the existing local admin check, requires the advanced admin unlock for risky/generated/stress/destructive Test Lab tools, requires typed confirmation, then refreshes Render admin health silently.
-- The action continues only when Render confirms the signed-in session is a workspace admin through the `workspace-admin` check.
-- Normal Security Health and cloud report saves keep typed confirmation plus Render admin verification, but they do not require the advanced unlock because they are routine admin diagnostics.
-- Existing fresh safety backups still guard destructive actions after the Render-admin verification passes.
+- Ordinary app saves must not trigger full-state JSON mirror writes; mirror writes are reserved for manual backups, safety backups, and audit-cadence backups, with validation covering the rule.

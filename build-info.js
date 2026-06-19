@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.214",
+    version: "2026.06.18.215",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T07:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v314",
+    updatedAt: "2026-06-19T07:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v315",
     releaseNotes: Object.freeze([
+      "Ordinary app saves now fail closed away from full-state JSON mirror writes: JSON mirror writes are explicitly classified as manual, safety, or audit-cadence backups, and reasonless forced mirror writes are blocked by validation.",
       "Advanced Admin/Test Lab protections now require the advanced unlock plus typed confirmation and a fresh Render admin-health workspace-admin verification before generated-data, stress, purge, cleanup, cloud-report, Security Health, and production reset actions can run.",
       "Data retention/privacy cleanup now prunes stored Test Lab/Security Health report payloads before local/cloud storage, trims long release-note and diagnostic histories, removes raw browser/Data I/O traces from saved reports, and requires a fresh safety backup before retention cleanup runs.",
       "Destructive admin actions now require a recorded fresh safety backup immediately before continuing, with known backup reasons, a one-minute freshness window, and diagnostics so cleanup/reset/import paths fail closed if the backup step is skipped or stale.",

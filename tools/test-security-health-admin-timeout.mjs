@@ -56,7 +56,7 @@ assert.match(
 
 assert.match(
   serviceWorkerSource,
-  /fuel-ledger-v314/,
+  /fuel-ledger-v31[45]/,
   "service worker cache should be bumped for the runtime Security Health diagnostic patch"
 );
 

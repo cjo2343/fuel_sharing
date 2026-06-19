@@ -2962,7 +2962,7 @@ els.saveJsonBackupNow?.addEventListener("click", async () => {
   els.saveJsonBackupNow.disabled = true;
   try {
     await traceAdminToolOperation("save-json-backup", "Save JSON mirror backup", async () => {
-      await saveJsonMirrorBackup({ force: true });
+      await saveJsonMirrorBackup({ force: true, reason: "manual JSON mirror backup" });
       await refreshDatabaseDiagnostics();
     });
   } finally {
@@ -12991,7 +12991,7 @@ async function runProductionActivityReset() {
       supabaseStartupLoadTimeoutMs,
       "Production reset cloud refresh is delayed."
     );
-    await saveJsonMirrorBackup({ force: true }).catch((error) => console.warn("JSON backup after reset failed", error));
+    await saveJsonMirrorBackup({ force: true, reason: "production activity reset JSON mirror backup" }).catch((error) => console.warn("JSON backup after reset failed", error));
     await refreshDatabaseDiagnostics().catch(() => {});
     await checkNormalizedTablesAgainstCurrentState({ force: true, reason: "admin-action" }).catch(() => {});
     setDefaultDates();
@@ -15851,7 +15851,7 @@ async function ensureReconciliationSoftDeleteSafety(summary = {}) {
   }
 
   try {
-    const backedUp = await saveJsonMirrorBackup({ force: true });
+    const backedUp = await saveJsonMirrorBackup({ force: true, reason: "admin reconciliation safety backup" });
     if (!backedUp) {
       recordSupabaseLoadEvent("reconciliation-soft-delete-blocked", `JSON mirror backup failed; would hide ${details}`);
       normalizedTableStatus = {
@@ -16918,6 +16918,20 @@ async function loadSupabaseState(options = {}) {
 }
 
 
+
+function classifyJsonMirrorBackupReason(reason = "", force = false) {
+  const normalized = String(reason || "").trim().toLowerCase();
+  if (/manual|save-json-backup|admin manual/.test(normalized)) return "manual";
+  if (/audit|scheduled json mirror backup|deferred audit/.test(normalized)) return "audit-cadence";
+  if (/safety backup|json mirror backup|backup before|cleanup|reset|import|close current period|period close|retention|generated|test lab|reconciliation|purge|production activity/.test(normalized)) return "safety";
+  if (force && /backup/.test(normalized)) return "safety";
+  return "";
+}
+
+function isJsonMirrorBackupReasonAllowed(reason = "", force = false) {
+  return Boolean(classifyJsonMirrorBackupReason(reason, force));
+}
+
 function markNormalizedReconciliationDirty(reason = "state-change") {
   normalizedReconciliationDirty = true;
   recordSupabaseLoadEvent("normalized-reconciliation-dirty", reason);
@@ -17084,12 +17098,19 @@ async function saveJsonMirrorBackupViaRender({ force = false, reason = "", saved
 }
 
 async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
-  recordSupabaseLoadEvent("json-mirror-save", reason || (force ? "forced JSON mirror backup" : "scheduled JSON mirror backup"));
+  const resolvedReason = reason || (force ? "manual JSON mirror backup" : "scheduled JSON mirror backup");
+  const mirrorPurpose = classifyJsonMirrorBackupReason(resolvedReason, force);
+  if (!mirrorPurpose) {
+    recordSupabaseLoadEvent("json-mirror-blocked-ordinary-save", `blocked JSON mirror write for ordinary save reason: ${resolvedReason}`);
+    return false;
+  }
+  recordSupabaseLoadEvent("json-mirror-save", `${resolvedReason}; purpose=${mirrorPurpose}`);
   if (!supabaseClient || !currentSession) return false;
   if (!canManageSettings()) return false;
   if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
 
   const savedAt = new Date().toISOString();
+  reason = resolvedReason;
   const renderResult = await saveJsonMirrorBackupViaRender({ force, reason, savedAt });
   if (renderResult.ok) {
     lastRenderJsonMirrorBackupAt = Date.now();

@@ -114,7 +114,7 @@ function testAdminReconciliationSafetyGateExists() {
   assert.match(app, /function hasFreshNormalizedTableLoadForReconciliation\(\)/);
   assert.match(app, /async function ensureReconciliationSoftDeleteSafety\(summary = \{\}\)/);
   assert.match(app, /reconciliation-soft-delete-blocked/);
-  assert.match(app, /await saveJsonMirrorBackup\(\{ force: true \}\)/);
+  assert.match(app, /saveJsonMirrorBackup\(\{ force: true, reason: "admin reconciliation safety backup" \}\)/);
   assert.match(app, /lastNormalizedTableLoadAt = Date\.now\(\)/);
   console.log("ok - testAdminReconciliationSafetyGateExists");
 }

@@ -18,22 +18,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.214`
-- Service-worker cache: `fuel-ledger-v314`
-- Updated at: `2026-06-19T07:05:00.000Z`
-- Top release note: Advanced Admin/Test Lab protections now require the advanced unlock plus typed confirmation and a fresh Render admin-health workspace-admin verification before generated-data, stress, purge, cleanup, cloud-report, Security Health, and production reset actions can run.
-
-### Admin/Test Lab protection verification
-
-After deploying this patch, verify that risky Admin/Test Lab tools fail closed unless the user is locally admin, has unlocked advanced admin tools when required, types the exact confirmation phrase, and passes the Render admin-health workspace-admin check.
-
-Recommended smoke checks:
-
-- Run Render admin health and confirm `workspace-admin` is green.
-- Try an advanced generated-data action while locked; it should be blocked before any write.
-- Unlock advanced admin tools, type the requested phrase, and confirm Add generated test trip/fuel plus cleanup still route through Render.
-- Run Security Health and Save report to cloud; they should require typed confirmation and Render admin verification but not the advanced unlock.
-- Production activity reset remains protected by typed `RESET PRODUCTION`, Render admin verification, and a fresh safety backup.
+- Version: `2026.06.18.215`
+- Service-worker cache: `fuel-ledger-v315`
+- Updated at: `2026-06-19T07:25:00.000Z`
+- Top release note: Ordinary app saves now fail closed away from full-state JSON mirror writes: JSON mirror writes are explicitly classified as manual, safety, or audit-cadence backups, and reasonless forced mirror writes are blocked by validation.
 
 
 ## Required release gate
