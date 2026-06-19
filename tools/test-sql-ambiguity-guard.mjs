@@ -66,6 +66,16 @@ assert.match(
 );
 assert.match(
   allSql,
+  /create or replace function public\.check_ledger_invite_email\(/,
+  "restricted invite email preflight should use a dedicated RPC before login code delivery",
+);
+assert.match(
+  allSql,
+  /safe_login_email\s+text\s*:=\s*lower\(btrim\(coalesce\(login_email, ''\)\)\)/,
+  "invite email preflight should avoid a bare email local variable",
+);
+assert.match(
+  allSql,
   /create or replace function public\.update_own_ledger_member_profile\(/,
   "invite profile setup should use a dedicated self-service member profile RPC",
 );

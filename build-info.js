@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.225",
+    version: "2026.06.18.226",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T10:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v325",
+    updatedAt: "2026-06-19T10:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v326",
     releaseNotes: Object.freeze([
+      "Restricted invite links now check the typed email against the invite before sending a Supabase email login code, so a wrong email cannot create/sign in first and only fail after authentication.",
       "Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.",
       "SQL migrations now have a release-check guardrail that blocks high-risk PL/pgSQL variable names such as actor_email from colliding with table columns, and migration 035 also hardens the payment-status actor-email variable.",
       "Migration 034 fixes invite creation failures caused by an ambiguous actor_email reference in the onboarding rate-limit RPC, and invite onboarding copy now clearly mentions invite links on the login/admin screens.",

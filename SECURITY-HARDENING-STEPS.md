@@ -1,5 +1,4 @@
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
-- Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.
 # Security hardening notes
 
 For a fresh Supabase project, run `supabase-schema.sql`. It creates the normalized tables, helper functions, and member-restricted RLS policies used by the table-primary app.
@@ -289,3 +288,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 ## v318 debug/report redaction hardening
 
 - Debug, load-monitor, and saved Test Lab/Security Health reports redact broader auth headers, cookies, Supabase key spellings, camelCase token fields, and credential containers before export or cloud/local storage.
+
+- Invite onboarding now preflights restricted invite email addresses before OTP delivery; wrong-email attempts are blocked with Data I/O result codes.

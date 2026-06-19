@@ -71,12 +71,12 @@
                 placeholder="Paste invite code from admin"
               />
             </label>
-            <p id="loginInviteHint" class="section-note compact-note">Invite link/code = permission to join a workspace. Email login code = proof you own the email. If an invite is restricted to one email, you must sign in with that exact email. Returning users do not need the invite again.</p>
-            <button class="action-button" type="submit">Send email login code</button>
+            <p id="loginInviteHint" class="section-note compact-note">Optional: paste a workspace invite code here, or open an invite link. Invite link/code = permission to join a workspace. Email login code = proof you own the email. Restricted invites check this email before a login code is sent; returning users do not need the invite again.</p>
+            <button class="action-button" type="submit">Send login code</button>
           </form>
           <form id="otpForm" class="auth-form hidden">
             <label>
-              Email login code
+              Login code
               <input
                 id="loginCode"
                 type="text"
@@ -85,11 +85,11 @@
                 placeholder="123456"
               />
             </label>
-            <p class="section-note compact-note">This code comes from your email provider via Supabase Auth. It is separate from the workspace invite code.</p>
-            <button class="action-button" type="submit">Verify email code</button>
+            <button class="action-button" type="submit">Verify code</button>
           </form>
           <p id="authMessage" class="section-note"></p>
         </section>
+
 
         <section id="memberProfileSetupPanel" data-view="log" class="panel wide-panel member-profile-setup-panel hidden" aria-labelledby="memberProfileSetupHeading">
           <div class="panel-header">
@@ -98,25 +98,24 @@
               <h2 id="memberProfileSetupHeading">Set up your member profile</h2>
             </div>
           </div>
-          <p id="memberProfileSetupIntro" class="section-note">After your first invite redemption, set the name and optional MobilePay phone your workspace will see.</p>
+          <p id="memberProfileSetupIntro" class="section-note">Confirm the name your workspace should see. Returning users only need email + email login code.</p>
           <form id="memberProfileSetupForm" class="auth-form member-profile-setup-form">
             <label>
-              Email
+              Signed-in email
               <input id="memberProfileEmail" type="email" readonly />
             </label>
             <label>
               Display name
-              <input id="memberProfileName" type="text" autocomplete="name" maxlength="80" placeholder="Your name" />
+              <input id="memberProfileName" type="text" autocomplete="name" placeholder="Your name" />
             </label>
             <label>
-              MobilePay phone <span class="entry-meta">optional</span>
-              <input id="memberProfileMobilePayPhone" type="tel" autocomplete="tel" placeholder="e.g. +45 12 34 56 78" />
+              MobilePay phone, optional
+              <input id="memberProfileMobilePayPhone" type="tel" autocomplete="tel" placeholder="Optional" />
             </label>
             <button id="saveMemberProfileSetup" class="primary-button" type="submit">Save profile</button>
           </form>
           <p id="memberProfileSetupMessage" class="section-note" aria-live="polite"></p>
         </section>
-
 
         <section id="inviteRedemptionPanel" data-view="log" class="panel wide-panel invite-redemption-panel hidden" aria-labelledby="inviteRedemptionHeading">
           <div class="panel-header">
@@ -838,11 +837,12 @@
             <article class="data-tool-card">
               <strong>Create invite for current workspace</strong>
               <p id="inviteWorkspaceScope" class="workspace-invite-scope">Creating invite for: Current workspace. This code joins only that workspace.</p>
-              <p>Create a one-time or limited-use invite for the selected workspace only. Codes are shown once, stored hashed in Supabase, and are not emailed automatically. If you add an email restriction, only that exact email can redeem the invite after entering the email login code.</p>
+              <p>Create a one-time or limited-use invite for the selected workspace only. Codes are shown once, stored hashed in Supabase, and are not emailed automatically.</p>
               <form id="createInviteForm" class="member-management-form compact-admin-form">
                 <label>
-                  Email restriction <span class="entry-meta">optional, exact-login email</span>
+                  Email restriction <span class="entry-meta">optional</span>
                   <input id="inviteEmail" type="email" autocomplete="off" placeholder="person@example.com" />
+                  <span class="entry-meta">Email restriction uses the exact-login email: the invitee must type this exact email before the app sends an email login code.</span>
                 </label>
                 <label>
                   Role

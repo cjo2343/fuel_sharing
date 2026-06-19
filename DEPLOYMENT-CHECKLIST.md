@@ -1,6 +1,5 @@
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
-- Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.
 ## Continuous integration
 
 Before pushing, run locally:
@@ -20,11 +19,17 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.225`
-- Service-worker cache: `fuel-ledger-v325`
-- Updated at: `2026-06-19T10:35:00.000Z`
-- Top release note: Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.
+- Version: `2026.06.18.226`
+- Service-worker cache: `fuel-ledger-v326`
+- Updated at: `2026-06-19T10:50:00.000Z`
+- Top release note: Restricted invite links now check the typed email against the invite before sending a Supabase email login code, so a wrong email cannot create/sign in first and only fail after authentication.
 
+
+## Invite beta readiness: restricted invite email preflight
+
+- Apply migration `037_invite_email_preflight.sql` before testing restricted invite links.
+- Opening a restricted invite link and typing the wrong email must show an invite-email mismatch before Supabase sends an email login code.
+- Data I/O should include `INVITE_EMAIL_PREFLIGHT_STARTED` followed by `INVITE_EMAIL_MISMATCH` or an allowed code.
 
 ## Invite beta readiness: regular-member write scope
 

@@ -46,6 +46,7 @@ const expected = [
   "034_invite_rate_limit_actor_email_ambiguity_fix.sql",
   "035_sql_ambiguity_guardrail.sql",
   "036_invite_profile_setup.sql",
+  "037_invite_email_preflight.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -172,8 +173,11 @@ for (const marker of [
   "034_invite_rate_limit_actor_email_ambiguity_fix",
   "035_sql_ambiguity_guardrail",
   "036_invite_profile_setup",
+  "037_invite_email_preflight",
   "create or replace function public.update_own_ledger_member_profile",
   "grant execute on function public.update_own_ledger_member_profile",
+  "create or replace function public.check_ledger_invite_email",
+  "grant execute on function public.check_ledger_invite_email(text, text) to anon",
   "safe_actor_email text := public.current_user_email()",
   "lower(safe_actor_email)",
   "safe_actor_email text := lower(coalesce(auth.jwt() ->> 'email', ''))",

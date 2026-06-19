@@ -6923,6 +6923,83 @@ function hydrateLoginInviteCodeInput() {
   if (storedInviteCode && !els.loginInviteCode.value) els.loginInviteCode.value = storedInviteCode;
 }
 
+async function verifyLoginInviteEmailBeforeOtp(inviteCode, email) {
+  const normalizedInviteCode = normalizeInviteCodeInput(inviteCode);
+  const normalizedLoginEmail = normalizeEmail(email);
+  if (!normalizedInviteCode) return true;
+  if (!supabaseClient) return false;
+  const operationId = createDataIoOperationId("invite-email-preflight", "check");
+  recordDataIoDiagnostic("start", {
+    source: "invite-email-preflight",
+    route: "supabase-rpc",
+    rpc: "check_ledger_invite_email",
+    operation: "check",
+    operationId,
+    resultCode: "INVITE_EMAIL_PREFLIGHT_STARTED",
+    ok: true,
+    detail: "Check invite email before sending login code"
+  });
+  try {
+    const { data, error } = await supabaseClient.rpc("check_ledger_invite_email", {
+      invite_code: normalizedInviteCode,
+      login_email: normalizedLoginEmail
+    });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    const allowed = Boolean(result?.allowed);
+    const resultCode = String(result?.result_code || (allowed ? "INVITE_EMAIL_ALLOWED" : "INVITE_EMAIL_BLOCKED"));
+    const message = String(result?.message || "Invite email check completed.");
+    recordDataIoDiagnostic(allowed ? "success" : "error", {
+      source: "invite-email-preflight",
+      route: "supabase-rpc",
+      rpc: "check_ledger_invite_email",
+      operation: "check",
+      operationId,
+      resultCode,
+      ok: allowed,
+      detail: message
+    });
+    if (!allowed) {
+      els.authMessage.textContent = message;
+      showUserError(message);
+      return false;
+    }
+    els.authMessage.textContent = message;
+    return true;
+  } catch (error) {
+    const message = describeInviteEmailPreflightError(error);
+    recordDataIoDiagnostic("error", {
+      source: "invite-email-preflight",
+      route: "supabase-rpc",
+      rpc: "check_ledger_invite_email",
+      operation: "check",
+      operationId,
+      resultCode: error?.code || "INVITE_EMAIL_PREFLIGHT_ERROR",
+      statusCode: error?.status || "",
+      errorCode: error?.code || "INVITE_EMAIL_PREFLIGHT_ERROR",
+      ok: false,
+      error,
+      detail: message
+    });
+    els.authMessage.textContent = message;
+    showUserError(message);
+    return false;
+  } finally {
+    renderSupabaseLoadMonitor();
+  }
+}
+
+function describeInviteEmailPreflightError(error) {
+  const message = String(error?.message || error || "Invite email check failed.");
+  if (/check_ledger_invite_email|PGRST202|Could not find the function/i.test(message)) {
+    return "Invite email check is not installed yet. Apply migration 037_invite_email_preflight.sql, then try the invite link again.";
+  }
+  if (/invalid|expired|revoked|already used/i.test(message)) {
+    return "Invite code is invalid, expired, revoked, or already used. Ask the workspace admin for a fresh invite.";
+  }
+  return message;
+}
+
 async function redeemPendingLoginInviteAfterSignIn() {
   let pendingInviteCode = "";
   try {
@@ -7028,6 +7105,9 @@ async function sendLoginLink() {
     return;
   }
 
+  const inviteEmailAllowed = await verifyLoginInviteEmailBeforeOtp(inviteCode, email);
+  if (!inviteEmailAllowed) return;
+
   startLoginCooldown();
 
   const { error } = await supabaseClient.auth.signInWithOtp({
@@ -7051,7 +7131,7 @@ async function sendLoginLink() {
   els.otpForm.classList.remove("hidden");
   els.loginCode.focus();
   els.authMessage.textContent = inviteCode
-    ? "Check your email and enter the email login code. If the invite was restricted to one email, it will only redeem for this exact email."
+    ? "Invite email accepted. Check your email and enter the email login code. If the invite was restricted to one email, it will only redeem for this exact email."
     : "Check your email and enter the email login code. Returning users do not need an invite link again.";
 }
 
