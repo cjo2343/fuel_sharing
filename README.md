@@ -1,6 +1,5 @@
 # Fuel Sharing
 
-- 2026-06-19 v231: Added optional Render-only vehicle number-plate lookup foundation. Configure VEHICLE_LOOKUP_API_URL/KEY on Render to enable lookup; manual fuel settings remain the fallback and API keys must never be exposed to browser JavaScript.
 A lightweight car-sharing fuel ledger for friends.
 
 ## Features

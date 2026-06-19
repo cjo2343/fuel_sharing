@@ -30,4 +30,9 @@ assert.doesNotMatch(app, /VEHICLE_LOOKUP_API_KEY/, 'browser app must not referen
 assert.match(env, /VEHICLE_LOOKUP_API_URL=/, 'env example must document vehicle lookup URL');
 assert.match(env, /VEHICLE_LOOKUP_API_KEY=/, 'env example must document vehicle lookup key without value');
 
+assert.match(server, /"ledger": ledger/, 'Render state-load must return the active ledger row so workspace settings do not inherit another workspace');
+assert.match(app, /const renderLedger = renderStateRows && renderStateRows\.ledger/, 'normalized load must prefer the active Render ledger row for workspace settings');
+assert.match(app, /const minimumSettingsMembers = currentSession \? 1 : 2;/, 'signed-in normalized workspaces must allow settings save with one active member');
+assert.doesNotMatch(app, /fuelType: ledger\.fuel_type \|\| jsonFallbackState\.fuelType/, 'workspace fuel type must not fall back to another workspace JSON value when a ledger row is loaded');
+
 console.log('Vehicle lookup foundation guard passed.');

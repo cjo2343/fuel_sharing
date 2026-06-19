@@ -1542,6 +1542,11 @@ def ensure_open_settlement_period_as_service(ledger_id):
 def get_normalized_state_rows_as_user(ledger_id, user, user_token):
     context = get_state_load_context_as_service(ledger_id, user)
     ledger_q = quote_postgrest_value(ledger_id)
+    ledger_rows = request_json(
+        f"{supabase_url()}/rest/v1/ledgers?select=id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent&id=eq.{ledger_q}",
+        api_key=supabase_key(),
+    ) or []
+    ledger = ledger_rows[0] if isinstance(ledger_rows, list) and ledger_rows else {}
     members = request_json(
         f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active,mobilepay_phone,created_at&ledger_id=eq.{ledger_q}&is_active=eq.true&order=created_at.asc",
         api_key=supabase_key(),
@@ -1576,6 +1581,7 @@ def get_normalized_state_rows_as_user(ledger_id, user, user_token):
         ) or []
     return {
         "context": context,
+        "ledger": ledger,
         "members": members,
         "periods": periods,
         "trips": trips,

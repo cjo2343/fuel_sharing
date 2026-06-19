@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.231",
+    version: "2026.06.18.232",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T12:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v331",
+    updatedAt: "2026-06-19T12:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v332",
     releaseNotes: Object.freeze([
+      "Workspace settings now stay scoped to the active workspace: Render state-load returns the current ledger row, new workspaces no longer borrow car/fuel settings from another workspace JSON fallback, and signed-in one-member workspaces can save vehicle settings without the old two-person manual-list blocker.",
       "Vehicle settings now have an optional number-plate lookup foundation: admins can enter a plate, call a Render-only /api/vehicle/lookup proxy, keep provider API keys off the browser, and apply sanitized fuel-type/consumption/tank suggestions with manual fallback.",
       "Workspace creation now records its own member-action Data I/O start/success/error/timeout codes, blocks duplicate create clicks, and verifies after timeouts whether the workspace was actually created before suggesting a retry.",
       "Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.",

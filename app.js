@@ -2347,9 +2347,10 @@ els.settingsForm.addEventListener("submit", async (event) => {
 
   const parsed = parseMemberSettings(els.members.value);
   const members = parsed.map((member) => member.name);
+  const minimumSettingsMembers = currentSession ? 1 : 2;
 
-  if (members.length < 2) {
-    showUserError("Add at least two people.");
+  if (members.length < minimumSettingsMembers) {
+    showUserError(currentSession ? "Add at least one active workspace member." : "Add at least two people.");
     return;
   }
 
@@ -17038,7 +17039,8 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   if (firstError) throw firstError;
 
   const linkedWorkspace = getLinkedWorkspaceForActiveLedger();
-  const ledger = {
+  const renderLedger = renderStateRows && renderStateRows.ledger && typeof renderStateRows.ledger === "object" ? renderStateRows.ledger : null;
+  const ledger = renderLedger || {
     id: ledgerId,
     name: linkedWorkspace?.name || jsonFallbackState?.ledgerName || "Fuel Ledger",
     currency: jsonFallbackState?.currency || defaults.currency,
@@ -17204,12 +17206,12 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
 
   return normalizeState({
     ...jsonFallbackState,
-    currency: ledger.currency || jsonFallbackState.currency,
-    fuelType: ledger.fuel_type || jsonFallbackState.fuelType,
-    fuelConsumption: Number(ledger.estimated_consumption_l_per_100km) || jsonFallbackState.fuelConsumption,
-    fuelTankCapacity: Number(ledger.fuel_tank_capacity_l) || jsonFallbackState.fuelTankCapacity || defaults.fuelTankCapacity,
-    fuelFallbackPrice: Number(ledger.fallback_fuel_price) || jsonFallbackState.fuelFallbackPrice,
-    fuelWarningThreshold: Number(ledger.low_fuel_threshold_percent) || jsonFallbackState.fuelWarningThreshold,
+    currency: ledger.currency || defaults.currency,
+    fuelType: ledger.fuel_type || defaults.fuelType,
+    fuelConsumption: Number(ledger.estimated_consumption_l_per_100km) || defaults.fuelConsumption,
+    fuelTankCapacity: Number(ledger.fuel_tank_capacity_l) || defaults.fuelTankCapacity,
+    fuelFallbackPrice: Number(ledger.fallback_fuel_price) || defaults.fuelFallbackPrice,
+    fuelWarningThreshold: Number(ledger.low_fuel_threshold_percent) || defaults.fuelWarningThreshold,
     members: memberNames,
     memberProfiles,
     trips,
