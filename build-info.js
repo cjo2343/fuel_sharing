@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.218",
+    version: "2026.06.18.219",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T08:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v318",
+    updatedAt: "2026-06-19T08:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v319",
     releaseNotes: Object.freeze([
+      "Admin and Test Lab tools now skip duplicate in-flight clicks with a clear skipped Data I/O row instead of starting overlapping admin operations that add stale diagnostic noise.",
       "Debug, load-monitor, and saved Test Lab/Security Health reports now redact more token spellings, auth headers, cookies, Supabase anon/service keys, and camelCase secret names before export or cloud/local storage.",
       "Normal trip, fuel, booking, payment-status, and ledger-directory writes now fail closed through Render instead of falling back to browser-owned Supabase RPC/direct-table writes when proven Render routes are unavailable.",
       "Security Health migration reporting now expects the full shipped Supabase migration set through 032, includes the payment-status action RPC in critical RPC checks, and labels current migrations as current instead of showing later applied IDs as confusing extras.",

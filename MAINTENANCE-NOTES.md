@@ -1,7 +1,5 @@
-## v318 debug/report redaction hardening
-
-Debug exports, Supabase load-monitor reports, and saved Test Lab/Security Health reports now redact additional secret spellings before download, local persistence, or cloud report save. Covered patterns include Authorization/Bearer values, cookies, JWTs, Supabase anon/service-role key names, camelCase token/key names, URL query secrets, email, phone, browser, and coordinate fields.
-
+- 2026-06-19 v219: Admin/Test Lab duplicate-run protection now records skipped Data I/O rows for duplicate in-flight admin tools instead of starting overlapping operations.
+- 2026-06-19 v218: v318 debug/report redaction hardening covers auth headers, cookies, Supabase key spellings, and camelCase secret names before export or storage.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 # Maintenance notes
 
@@ -10,6 +8,13 @@ Debug exports, Supabase load-monitor reports, and saved Test Lab/Security Health
 The app is mostly frontend-driven and uses Supabase for authentication, storage, realtime sync, and row-level security. `server.py` serves static files and handles push-notification endpoints that require server-side secrets.
 
 `app.js` still contains most application behavior and event wiring, but high-risk reusable logic has been extracted into focused helper modules. Formatting/date/number helpers live in `utils.js`; persistence helpers in `data-store.js`; settlement/balance/rounding logic in `settlement-calculations.js`; permission rules in `permission-helpers.js`; toast/confirmation helpers in `ui-messages.js`; sync status copy in `sync-status-helpers.js`; fuel-location privacy logic in `location-privacy-helpers.js`; data-shape helpers and JSDoc typedefs in `ledger-model.js`; period-close readiness/fingerprint logic in `period-closing-helpers.js`; push helpers in `notifications.js`; audit normalization in `audit-log.js`; and admin diagnostics in `admin-tools.js`. Keep those helper files focused and avoid moving sensitive event wiring unnecessarily.
+
+
+### v319 admin/Test Lab duplicate-run guard
+
+- Admin/Test Lab tools now track active operation sources and skip duplicate clicks while the same tool is already running.
+- Duplicate clicks record a skipped Data I/O row and show a calm warning instead of starting overlapping Security Health, report-save, cleanup, or generated-data operations.
+- Keep `tools/test-admin-tool-dedup-guard.mjs` wired into validation when changing admin tool tracing or Data I/O operation rows.
 
 ## Security model
 

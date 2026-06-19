@@ -688,6 +688,7 @@ const syncDiagnostics = [];
 let lastDataIoDiagnostic = null;
 const dataIoDiagnostics = [];
 let dataIoOperationCounter = 0;
+const activeAdminToolOperations = new Set();
 const dataIoOperationStaleMs = 15000;
 const longAdminToolDataIoOperationStaleMs = 45000;
 const standaloneSecurityHealthProbeTimeoutMs = 6000;
@@ -859,9 +860,13 @@ async function traceDataIo(meta, operation) {
   }
 }
 
+function normalizeAdminToolSource(source = "admin-tool") {
+  return String(source || "admin-tool").trim() || "admin-tool";
+}
+
 function makeAdminToolDiagnosticMeta(source, detail = "", operation = "run", options = {}) {
   return {
-    source: `admin-tool:${source}`,
+    source: `admin-tool:${normalizeAdminToolSource(source)}`,
     route: "admin-tool",
     operation,
     detail,
@@ -885,11 +890,23 @@ async function runTracedAdminToolAction(action) {
 }
 
 async function traceAdminToolOperation(source, detail, action, { operation = "run", staleAfterMs = dataIoOperationStaleMs } = {}) {
-  return withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(source, detail, operation, { staleAfterMs }), () => runTracedAdminToolAction(action)));
+  const normalizedSource = normalizeAdminToolSource(source);
+  if (activeAdminToolOperations.has(normalizedSource)) {
+    const skipDetail = `${detail || normalizedSource} skipped because the same admin tool is already running.`;
+    recordAdminToolSkip(normalizedSource, skipDetail, { operation });
+    if (typeof showUserWarning === "function") showUserWarning("That admin action is already running. Wait for it to finish before running it again.");
+    return { ok: false, skipped: true, reason: "admin-tool-already-running", source: normalizedSource };
+  }
+  activeAdminToolOperations.add(normalizedSource);
+  try {
+    return await withAdminUiBatch(() => traceDataIo(makeAdminToolDiagnosticMeta(normalizedSource, detail, operation, { staleAfterMs }), () => runTracedAdminToolAction(action)));
+  } finally {
+    activeAdminToolOperations.delete(normalizedSource);
+  }
 }
 
 function recordAdminToolSkip(source, detail, { operation = "run" } = {}) {
-  recordDataIoDiagnostic("skip", makeAdminToolDiagnosticMeta(source, detail, operation));
+  recordDataIoDiagnostic("skip", { ...makeAdminToolDiagnosticMeta(source, detail, operation), ok: false });
 }
 
 function latestDataIoDiagnostics(limit = 6) {

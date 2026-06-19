@@ -8,6 +8,7 @@ const isSupabaseLoadNoiseEvent = Function(`${match[0]}; return isSupabaseLoadNoi
 
 const noisyEvents = [
   { label: "data-io:admin-tool:security-health:ok", dataIo: true },
+  { label: "data-io:admin-tool:security-health:skip", dataIo: true },
   { label: "data-io:admin-report-save:ok", dataIo: true },
   { label: "data-io:json-mirror-backup:ok", dataIo: true },
   { label: "data-io:normalized-test-data-cleanup:start", dataIo: true },
