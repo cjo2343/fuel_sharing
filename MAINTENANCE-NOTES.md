@@ -664,3 +664,12 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Long release-note history and latest diagnostic samples are capped in saved reports so report history stays useful without becoming a full debug dump.
 - Retention cleanup is treated as destructive and must take a fresh admin safety backup before it deletes temporary/privacy-sensitive records.
 - Retention cleanup must never delete ledger accounting history such as trips, fuel logs, bookings, settlements, closed periods, or audit-critical history.
+
+
+## Admin/Test Lab protection guardrails
+
+- Risky generated-data, stress, purge, cleanup, and production reset actions now pass through a shared client-side gate before work starts.
+- The gate keeps the existing local admin check, requires the advanced admin unlock for risky/generated/stress/destructive Test Lab tools, requires typed confirmation, then refreshes Render admin health silently.
+- The action continues only when Render confirms the signed-in session is a workspace admin through the `workspace-admin` check.
+- Normal Security Health and cloud report saves keep typed confirmation plus Render admin verification, but they do not require the advanced unlock because they are routine admin diagnostics.
+- Existing fresh safety backups still guard destructive actions after the Render-admin verification passes.

@@ -2339,16 +2339,22 @@ els.downloadPeriodReport?.addEventListener("click", () => {
 });
 
 els.removeTestUsers?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "remove unused generated/test members",
+    phrase: "REMOVE TEST USERS",
+    title: "Remove unused generated/test members?",
+    detail: "This removes generated/test members that have no ledger activity after taking a safety backup."
+  }))) return;
   await traceAdminToolOperation("remove-test-users", "Remove unused generated/test members", removeUnusedTestUsers);
 });
 
 els.addTestTrip?.addEventListener("click", async () => {
-  if (!requireAdvancedAdminAction({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "add generated test trip",
     phrase: "ADD TEST TRIP",
     title: "Add generated test trip?",
     detail: "This writes one clearly marked generated test trip to the live ledger. Use Safe Test Lab for local-only checks."
-  })) return;
+  }))) return;
   els.addTestTrip.disabled = true;
   try {
     await traceAdminToolOperation("add-test-trip", "Add generated test trip", addGeneratedTestTrip);
@@ -2358,11 +2364,12 @@ els.addTestTrip?.addEventListener("click", async () => {
 });
 
 els.addTestFuel?.addEventListener("click", async () => {
-  if (!requireAdvancedAdminAction({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "add generated test fuel log",
     phrase: "ADD TEST FUEL",
     title: "Add generated test fuel log?",
     detail: "This writes one clearly marked generated test fuel log to the live ledger. Use Safe Test Lab for local-only checks."
-  })) return;
+  }))) return;
   els.addTestFuel.disabled = true;
   try {
     await traceAdminToolOperation("add-test-fuel", "Add generated test fuel", addGeneratedTestFuel);
@@ -2372,16 +2379,20 @@ els.addTestFuel?.addEventListener("click", async () => {
 });
 
 els.removeTestData?.addEventListener("click", async () => {
-  if (!requireAdvancedAdminAction({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "remove generated test data",
     phrase: "REMOVE TEST DATA",
     title: "Remove generated test data?",
     detail: "This removes only strict generated test entries with the auto-test id prefix after taking a safety backup."
-  })) return;
+  }))) return;
   await traceAdminToolOperation("remove-test-data", "Remove generated test data", removeGeneratedTestData);
 });
 
 els.purgeSoftDeletedTestRows?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "purge soft-deleted generated test rows",
+    requireUnlock: true
+  }))) return;
   if (!window.FuelAdminTools?.purgeSoftDeletedGeneratedTestRows) {
     setDataToolsMessage("Soft-deleted test row cleanup is not available in this build.");
     return;
@@ -2601,6 +2612,21 @@ function requireAdvancedAdminAction({ phrase, title, detail, requireUnlock = tru
   return requireTypedAdminConfirmation({ phrase, title, detail });
 }
 
+async function requireRenderVerifiedAdvancedAdminAction({ actionLabel = "advanced admin action", phrase, title, detail, requireUnlock = true } = {}) {
+  if (!requireAdvancedAdminAction({ phrase, title, detail, requireUnlock })) return false;
+  const status = await checkRenderAdminHealth({ silent: true });
+  const checks = Array.isArray(status?.checks) ? status.checks : [];
+  const adminCheckOk = checks.some((check) => check?.id === "workspace-admin" && check.ok === true);
+  if (!status?.ok || !adminCheckOk) {
+    const message = `Render admin verification failed before ${actionLabel}. Run Render admin health, sign in as a workspace admin, then try again.`;
+    showUserError(message);
+    setDataToolsMessage(message);
+    return false;
+  }
+  setDataToolsMessage(`Render admin verified for ${actionLabel}.`);
+  return true;
+}
+
 els.unlockAdvancedAdminTools?.addEventListener("click", () => {
   if (!canManageSettings()) return;
   if (advancedAdminToolsUnlocked) {
@@ -2626,22 +2652,22 @@ els.unlockAdvancedAdminTools?.addEventListener("click", () => {
 });
 
 els.runStressTest?.addEventListener("click", async () => {
-  if (!canManageSettings() || !assertAdvancedAdminToolsUnlocked()) return;
-  if (!requireTypedAdminConfirmation({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "advanced stress test",
     phrase: "RUN STRESS TEST",
     title: "Run advanced stress test?",
     detail: "This can create generated data and Supabase activity. Use only while diagnosing sync behavior."
-  })) return;
+  }))) return;
   await traceAdminToolOperation("advanced-stress-test", "Run generated stress test", runGeneratedStressTest);
 });
 
 els.runRapidSaveTest?.addEventListener("click", async () => {
-  if (!canManageSettings() || !assertAdvancedAdminToolsUnlocked()) return;
-  if (!requireTypedAdminConfirmation({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "rapid save test",
     phrase: "RUN RAPID SAVE TEST",
     title: "Run rapid save test?",
     detail: "This intentionally creates repeated save activity. Use only while Supabase CPU is calm."
-  })) return;
+  }))) return;
   await traceAdminToolOperation("rapid-save-test", "Run generated rapid save test", runGeneratedRapidSaveTest);
 });
 
@@ -2699,11 +2725,13 @@ els.runSecurityScenario?.addEventListener("click", async () => {
     showUserWarning(`Security Health is on cooldown. Try again in about ${seconds} second${seconds === 1 ? "" : "s"}.`);
     return;
   }
-  if (!requireTypedAdminConfirmation({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "live Security Health",
     phrase: "RUN SECURITY HEALTH",
     title: "Run live Security Health?",
-    detail: "This is cloud-touching. It uses live Supabase checks and should only be run when CPU is calm. Routine Test Lab skips the deep backend probe."
-  })) return;
+    detail: "This is cloud-touching. It uses live Supabase checks and should only be run when CPU is calm. Routine Test Lab skips the deep backend probe.",
+    requireUnlock: false
+  }))) return;
   lastStandaloneSecurityHealthAt = Date.now();
   await traceAdminToolOperation("security-health", "Run live Security Health", () => runStandaloneSecurityHealthScenario({ skipConfirmation: true }), { staleAfterMs: longAdminToolDataIoOperationStaleMs });
 });
@@ -2725,21 +2753,23 @@ els.saveTestLabReportCloud?.addEventListener("click", async () => {
     setDataToolsMessage("Historical saved report was not re-saved. Run a fresh check, then save the new report to cloud.");
     return { ok: false, skipped: true, reason: "historical-report" };
   }
-  if (!requireTypedAdminConfirmation({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "save Test Lab report to cloud",
     phrase: "SAVE REPORT TO CLOUD",
     title: "Save Test Lab report to cloud?",
-    detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage."
-  })) return;
+    detail: "Routine Test Lab reports stay local. This writes report metadata to shared cloud storage.",
+    requireUnlock: false
+  }))) return;
   await traceAdminToolOperation("save-test-lab-report-cloud", "Save Test Lab report to cloud", () => saveCurrentTestLabReportToCloud({ skipConfirmation: true }));
 });
 
 els.cleanupTestLabData?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
-  if (!requireTypedAdminConfirmation({
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "clean generated Test Lab data",
     phrase: "CLEAN TEST DATA",
     title: "Clean generated Test Lab data?",
     detail: "This removes entries carrying the generated test marker. Production data should be left untouched."
-  })) return;
+  }))) return;
   await traceAdminToolOperation("cleanup-test-lab-data", "Clean generated Test Lab data", cleanupGeneratedTestDataWithReport);
 });
 
@@ -12920,12 +12950,12 @@ async function runProductionActivityReset() {
     "Members, emails, roles, MobilePay phones, and ledger settings are kept.",
     "A JSON backup download will start before the reset."
   ].join("\n");
-  if (!confirmUserAction(warning)) return;
-  const typed = prompt("Type RESET PRODUCTION to delete all bookings, trips, fuel logs, settlement data, and start one fresh empty period.");
-  if (typed !== "RESET PRODUCTION") {
-    showUserError("Reset cancelled. The confirmation text did not match.");
-    return;
-  }
+  if (!(await requireRenderVerifiedAdvancedAdminAction({
+    actionLabel: "production activity reset",
+    phrase: "RESET PRODUCTION",
+    title: "Reset production activity?",
+    detail: warning
+  }))) return;
 
   try {
     await exportAdminSafetyBackup("production activity reset");
