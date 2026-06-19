@@ -19,11 +19,17 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.227`
-- Service-worker cache: `fuel-ledger-v327`
-- Updated at: `2026-06-19T11:00:00.000Z`
-- Top release note: Regular invited members can now load their workspace through Render state-load after profile setup: the backend verifies active membership, then reads workspace state server-side so member RLS does not force JSON fallback.
+- Version: `2026.06.18.228`
+- Service-worker cache: `fuel-ledger-v328`
+- Updated at: `2026-06-19T11:20:00.000Z`
+- Top release note: Account now has member-facing profile/workspace/invite tools, while service-worker updates activate and reload once automatically when it is safe so users do not have to close/reopen for every deploy.
 
+## Invite beta readiness: Account tab and update handoff
+
+- Signed-in members now have an Account tab for their own profile, workspace switching/creation, invite redemption, and current-workspace invite creation when they are admin for that workspace.
+- Regular members can create their own new private workspace; they become admin there before creating invite links for it.
+- Existing admin-only diagnostics remain in Admin; Account only exposes member/workspace onboarding tools.
+- Service-worker updates now request immediate activation and perform one safe reload when no local changes/foreground writes are pending.
 
 ## Invite beta readiness: regular-member state load
 

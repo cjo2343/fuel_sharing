@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v327";
+const CACHE_NAME = "fuel-ledger-v328";
 const BUILD_LABEL = "render-admin-report-save-route";
-const BUILD_UPDATED_AT = "2026-06-19T11:00:00.000Z";
+const BUILD_UPDATED_AT = "2026-06-19T11:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -36,6 +36,7 @@ const CORE_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches
       .open(CACHE_NAME)
@@ -48,13 +49,16 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") {
-      return;
+    self.skipWaiting();
+    return;
   }
   if (event.data?.type === "GET_BUILD_INFO") {
     event.ports?.[0]?.postMessage({

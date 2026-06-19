@@ -109,20 +109,20 @@ assert.match(
 
 assert.match(
   appSource,
-  /recordSyncDiagnostic\("service-worker-controllerchange", "App update is ready; close\/reopen once so page files and the service-worker cache use the same build\."\)/,
-  "service worker controller changes should explain the clean close/reopen version handoff"
+  /recordSyncDiagnostic\("service-worker-controllerchange", "App update activated; reloading once so page files and the service-worker cache use the same build\."\)/,
+  "service worker controller changes should explain the automatic version handoff"
 );
 
 assert.match(
   appSource,
-  /service-worker-update-ready[\s\S]*Waiting service worker will activate after old pages are closed\./,
-  "service worker updates should wait for close/reopen instead of forcing mixed-version control"
+  /service-worker-update-ready[\s\S]*Waiting service worker requested to activate immediately\./,
+  "service worker updates should request immediate activation instead of requiring close/reopen"
 );
 
-assert.doesNotMatch(
+assert.match(
   appSource,
-  /controllerchange[\s\S]{0,250}window\.location\.reload\(\)/,
-  "service worker controller changes should not force reloads that recreate Supabase sessions and realtime sockets"
+  /controllerchange[\s\S]*!state\.pendingLocalChanges && !hasForegroundWriteInFlight\(\)[\s\S]*window\.location\.reload\(\)/,
+  "service worker controller changes should reload only when no local changes or foreground writes are pending"
 );
 
 assert.match(

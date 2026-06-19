@@ -560,7 +560,7 @@ function testInviteOnboardingFoundationExists() {
   assert.match(schema, /'revoke_ledger_invite'/);
   assert.match(schema, /'invite_onboarding_ready'/);
   assert.match(schema, /'026_invite_onboarding_foundation'/);
-  assert.match(index, /id="workspaceInvitesHeading">Invites &amp; workspaces/);
+  assert.match(index, /id="workspaceInvitesHeading">Workspaces &amp; invites/);
   assert.match(index, /id="createInviteForm"/);
   assert.match(index, /id="inviteList"/);
   assert.match(index, /id="inviteRedemptionPanel"/);
@@ -698,7 +698,7 @@ function testWorkspaceInviteAutoRefreshExists() {
   assert.match(app, /if \(activeView === "admin"\) scheduleWorkspaceInviteRefresh\("admin-tab-open"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("startup-session"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("auth-session"\)/);
-  assert.match(app, /scheduleWorkspaceInviteRefresh\("admin-panel-render"\)/);
+  assert.match(app, /scheduleWorkspaceInviteRefresh\("account-panel-render"\)/);
   assert.match(app, /await ensureWorkspaceInviteToolsReady\("before-create-invite"\)/);
   assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\.rpc\("create_ledger_invite"/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("after-create-invite"\)/);

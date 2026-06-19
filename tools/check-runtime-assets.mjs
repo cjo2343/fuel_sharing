@@ -82,8 +82,8 @@ assert.ok(serviceWorker.includes("function cacheFirstCoreAsset"), "service worke
 assert.ok(serviceWorker.includes("function networkFirstBuildInfo"), "service worker should fetch build-info.js network-first for version consistency");
 assert.ok(serviceWorker.includes("build-info-network-failure"), "service worker should log build-info network failures for diagnostics");
 assert.ok(!serviceWorker.includes("eventlessRefreshCoreAsset"), "service worker must not mutate versioned runtime files inside an existing cache");
-assert.ok(!serviceWorker.includes("self.skipWaiting();"), "service worker updates should wait for a clean close/reopen instead of taking over old pages");
-assert.ok(!serviceWorker.includes("self.clients.claim();"), "service worker updates should not claim already-loaded pages with a different app shell");
+assert.ok(serviceWorker.includes("self.skipWaiting();"), "service worker updates should activate without requiring users to close/reopen manually");
+assert.ok(serviceWorker.includes("self.clients.claim()"), "service worker updates should claim clients after activation so the app can do one controlled reload");
 assert.ok(serviceWorker.includes("function sanitizeNotificationUrl"), "service worker should sanitize notification click URLs");
 assert.ok(serviceWorker.includes("candidate.origin !== self.location.origin"), "notification click URLs must be restricted to same-origin paths");
 

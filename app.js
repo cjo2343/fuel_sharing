@@ -2222,19 +2222,22 @@ function renderPaymentSectionTabs() {
 
 function setActiveView(view) {
   const requestedView = view || "log";
-  activeView = requestedView === "admin" && !canManageSettings() ? "log" : requestedView;
+  activeView = requestedView === "admin" && !canManageSettings() ? "log" : requestedView === "account" && !currentSession ? "log" : requestedView;
   localStorage.setItem(viewStorageKey, activeView);
   render();
   if (activeView === "admin") scheduleWorkspaceInviteRefresh("admin-tab-open");
+  if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
 
 function renderSectionNavigation() {
   if (activeView === "admin" && !canManageSettings()) activeView = "log";
+  if (activeView === "account" && !currentSession) activeView = "log";
   renderHistorySections();
   els.sectionTabs.forEach((button) => {
     const view = button.dataset.viewTab;
     const isAdminTab = view === "admin";
-    button.classList.toggle("hidden", isAdminTab && !canManageSettings());
+    const isAccountTab = view === "account";
+    button.classList.toggle("hidden", (isAdminTab && !canManageSettings()) || (isAccountTab && !currentSession));
     button.classList.toggle("active", view === activeView);
     button.setAttribute("aria-current", view === activeView ? "page" : "false");
   });
@@ -6682,7 +6685,7 @@ function render() {
   if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
   if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
   if (els.memberManagementPanel) els.memberManagementPanel.classList.toggle("hidden", !canManageSettings());
-  if (els.workspaceInvitesPanel) els.workspaceInvitesPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.workspaceInvitesPanel) els.workspaceInvitesPanel.classList.toggle("hidden", !currentSession);
   renderSectionNavigation();
   updateEditUi();
 }
@@ -13070,19 +13073,19 @@ function renderInviteWorkspaceScope() {
 
 function renderWorkspaceInvitesPanel() {
   renderInviteWorkspaceScope();
+  const isSignedIn = Boolean(currentSession);
+  const isCurrentWorkspaceAdmin = canManageSettings();
+  document.querySelectorAll(".account-current-workspace-invite-card, .account-active-invites-card").forEach((card) => {
+    card.classList.toggle("hidden", !isCurrentWorkspaceAdmin);
+  });
   if (!els.workspaceList && !els.inviteList) return;
-  if (!canManageSettings()) {
-    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Admin access is required to manage workspace invites.</p>`;
-    if (els.inviteList) els.inviteList.innerHTML = "";
-    return;
-  }
-  if (supabaseClient && !currentSession) {
-    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Sign in before loading workspace invites.</p>`;
+  if (supabaseClient && !isSignedIn) {
+    if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Sign in before loading workspace tools.</p>`;
     if (els.inviteList) els.inviteList.innerHTML = `<p class="empty-state">Sign in to review invites.</p>`;
     return;
   }
   if (!workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && canRefreshWorkspaceInviteTools()) {
-    scheduleWorkspaceInviteRefresh("admin-panel-render");
+    scheduleWorkspaceInviteRefresh("account-panel-render");
   }
   if (workspaceInviteStatus.loading) {
     if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Loading workspaces and invites...</p>`;
@@ -13142,7 +13145,7 @@ function renderWorkspaceInvitesPanel() {
 }
 
 function canRefreshWorkspaceInviteTools() {
-  return Boolean(supabaseClient && currentSession && canManageSettings());
+  return Boolean(supabaseClient && currentSession);
 }
 
 function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
@@ -13170,7 +13173,6 @@ async function ensureWorkspaceInviteToolsReady(reason = "workspace-invite-ready"
 
 async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   if (!supabaseClient || !currentSession) return;
-  if (!canManageSettings()) return;
   if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = true;
   workspaceInviteStatus.loading = true;
   workspaceInviteStatus.error = "";
@@ -13184,17 +13186,21 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
     workspaceInviteStatus.ledgers = Array.isArray(ledgers) ? ledgers : [];
     reconcileActiveLedgerSelection();
     const ledgerId = getActiveLedgerId();
-    const { data: invites, error: invitesError } = await withWorkspaceInviteRequestTimeout(
-      supabaseClient
-        .from("ledger_invites")
-        .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
-        .eq("ledger_id", ledgerId)
-        .order("created_at", { ascending: false })
-        .limit(25),
-      "Invite list refresh"
-    );
-    if (invitesError) throw invitesError;
-    workspaceInviteStatus.invites = Array.isArray(invites) ? invites : [];
+    if (canManageSettings()) {
+      const { data: invites, error: invitesError } = await withWorkspaceInviteRequestTimeout(
+        supabaseClient
+          .from("ledger_invites")
+          .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
+          .eq("ledger_id", ledgerId)
+          .order("created_at", { ascending: false })
+          .limit(25),
+        "Invite list refresh"
+      );
+      if (invitesError) throw invitesError;
+      workspaceInviteStatus.invites = Array.isArray(invites) ? invites : [];
+    } else {
+      workspaceInviteStatus.invites = [];
+    }
     workspaceInviteStatus.loaded = true;
   } catch (error) {
     workspaceInviteStatus.error = describeWorkspaceRefreshError(error);
@@ -14615,8 +14621,11 @@ async function initializePwa() {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         if (serviceWorkerControllerChanged) return;
         serviceWorkerControllerChanged = true;
-        recordSyncDiagnostic("service-worker-controllerchange", "App update is ready; close/reopen once so page files and the service-worker cache use the same build.");
-        recordSupabaseLoadEvent("service-worker-controllerchange", "Update handoff recorded without forcing reload or cloud reconnects.");
+        recordSyncDiagnostic("service-worker-controllerchange", "App update activated; reloading once so page files and the service-worker cache use the same build.");
+        recordSupabaseLoadEvent("service-worker-controllerchange", "Service-worker update activated; one controlled reload will complete the handoff.");
+        if (!state.pendingLocalChanges && !hasForegroundWriteInFlight()) {
+          window.setTimeout(() => window.location.reload(), 250);
+        }
       });
 
       const registration = await navigator.serviceWorker.register("/service-worker.js");
@@ -14625,8 +14634,9 @@ async function initializePwa() {
         if (!newWorker) return;
         newWorker.addEventListener("statechange", () => {
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            recordSyncDiagnostic("service-worker-update-ready", "New app shell is waiting; close/reopen once to switch builds cleanly.");
-            recordSupabaseLoadEvent("service-worker-update-ready", "Waiting service worker will activate after old pages are closed.");
+            recordSyncDiagnostic("service-worker-update-ready", "New app shell is ready; activating it now and reloading once if no local changes are pending.");
+            recordSupabaseLoadEvent("service-worker-update-ready", "Waiting service worker requested to activate immediately.");
+            newWorker.postMessage({ type: "SKIP_WAITING" });
           }
         });
       });

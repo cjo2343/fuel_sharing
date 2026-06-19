@@ -10,7 +10,7 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 assert.match(html, /Invite link\/code = permission to join a workspace/, 'login UI should explain invite code vs email login code');
 assert.match(html, /Email login code = proof you own the email/, 'login UI should explain email auth code');
 assert.match(html, /memberProfileSetupPanel/, 'new members should have a profile setup panel');
-assert.match(html, /Set up your member profile/, 'profile setup heading should be present');
+assert.match(html, /Your member profile/, 'profile setup heading should be present');
 assert.match(html, /Email restriction.*exact-login email/s, 'invite admin UI should explain exact-email restrictions');
 
 assert.match(app, /function renderMemberProfileSetupPanel\(\)/, 'app should render member profile setup');

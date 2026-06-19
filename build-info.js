@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.227",
+    version: "2026.06.18.228",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-19T11:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v327",
+    updatedAt: "2026-06-19T11:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v328",
     releaseNotes: Object.freeze([
+      "Account now has member-facing profile/workspace/invite tools, while service-worker updates activate and reload once automatically when it is safe so users do not have to close/reopen for every deploy.",
       "Regular invited members can now load their workspace through Render state-load after profile setup: the backend verifies active membership, then reads workspace state server-side so member RLS does not force JSON fallback.",
       "Restricted invite links now check the typed email against the invite before sending a Supabase email login code, so a wrong email cannot create/sign in first and only fail after authentication.",
       "Invite onboarding now explains invite codes versus email login codes, restricted invites require the exact login email, returning users are told they only need email + email login code, and invited members can confirm their display name/MobilePay phone through a self-service profile setup RPC.",
@@ -228,12 +229,12 @@
     const updatePending = pageIsOlderThanDeploy || (cacheMatchesLoadedPage === false && cacheMatchesDeploy === true);
     const cacheClass = updatePending ? "warning" : cacheMatchesLoadedPage === false ? "warning" : "ok";
     const cacheNote = updatePending
-      ? "Update ready — close/reopen once so page files and the service worker use the same build."
+      ? "Update ready — the app will activate it and reload once when safe."
       : cacheMatchesLoadedPage === false
-        ? "Update handoff in progress — close/reopen once if this persists."
+        ? "Update handoff in progress — use Refresh status or reload once if this persists."
         : cacheMatchesLoadedPage === true
           ? "Cache matches this loaded build."
-          : "Reload once if this looks stale.";
+          : "Refresh status; the app can now activate waiting updates automatically.";
     const latestDeployLabel = deployedInfo?.buildLabel || BUILD_INFO.buildLabel;
     const latestDeployCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
     const latestDeployVersion = deployedInfo?.version || BUILD_INFO.version;
