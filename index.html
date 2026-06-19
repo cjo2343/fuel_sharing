@@ -660,10 +660,10 @@
           <div class="panel-header">
             <div>
               <p class="eyebrow">Admin</p>
-              <h2 id="dataToolsHeading">Data tools</h2>
+              <h2 id="dataToolsHeading">Global app data tools</h2>
             </div>
           </div>
-          <p class="section-note">Backup, restore, clean test data, and export trips/fuel before making bigger changes.</p>
+          <p class="section-note">Primary app-admin-only diagnostics and maintenance tools. Workspace admins manage their own workspace from Group settings, Member management, and Account invites.</p>
           <div id="adminGuardrailOverview" class="admin-guardrail-overview" aria-live="polite"></div>
           <div class="data-tools-grid">
             <article class="data-tool-card">
@@ -780,12 +780,12 @@
         <section class="panel wide-panel member-management-panel hidden" data-view="admin" aria-labelledby="memberManagementHeading">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Admin</p>
+              <p class="eyebrow">Workspace admin</p>
               <h2 id="memberManagementHeading">Member management</h2>
             </div>
             <button id="refreshMembers" class="subtle-button" type="button">Refresh members</button>
           </div>
-          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL. Admins can manage settings and maintenance tools; members can use the ledger and manage their own allowed activity.</p>
+          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL. Workspace admins can manage this workspace's members/settings/invites; global app diagnostics stay restricted to the primary app-admin workspace.</p>
 
           <form id="memberManagementForm" class="member-management-form">
             <label>
@@ -804,7 +804,7 @@
               Role
               <select id="newMemberRole">
                 <option value="member">Member - use ledger</option>
-                <option value="admin">Admin - manage app</option>
+                <option value="admin">Workspace admin - manage this workspace</option>
               </select>
             </label>
             <button class="primary-button" type="submit">Add member</button>

@@ -1,3 +1,4 @@
+- 2026-06-19: v233 separates workspace-admin scope from primary app-admin tools. Admins of secondary/private workspaces can manage only their workspace settings, members, and invites; global Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
 - 2026-06-19 v229: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
 
@@ -20,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.232`
-- Service-worker cache: `fuel-ledger-v332`
-- Updated at: `2026-06-19T12:55:00.000Z`
-- Top release note: Workspace settings now stay scoped to the active workspace: Render state-load returns the current ledger row, new workspaces no longer borrow car/fuel settings from another workspace JSON fallback, and signed-in one-member workspaces can save vehicle settings without the old two-person manual-list blocker.
+- Version: `2026.06.18.233`
+- Service-worker cache: `fuel-ledger-v333`
+- Updated at: `2026-06-19T13:05:00.000Z`
+- Top release note: Workspace-admin scope is now separated from global app-admin tools: admins of secondary/private workspaces can manage only their workspace settings, members, and invites, while Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

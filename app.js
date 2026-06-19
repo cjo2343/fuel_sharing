@@ -2479,27 +2479,27 @@ els.resetData.addEventListener("click", async () => {
 
 
 els.exportLedger?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Export backup")) return;
   exportLedgerBackup();
 });
 
 els.importLedger?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Import backup")) return;
   els.importLedgerFile?.click();
 });
 
 els.importLedgerFile?.addEventListener("change", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Import backup")) return;
   await importLedgerBackup();
 });
 
 els.downloadCsv?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Download CSV")) return;
   downloadLedgerCsv();
 });
 
 els.downloadPeriodReport?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Download period report")) return;
   downloadCurrentPeriodReport();
 });
 
@@ -2748,19 +2748,24 @@ function scheduleAdvancedAdminToolsRelock() {
 }
 
 function updateAdvancedAdminToolsUi() {
-  if (els.advancedAdminToolsPanel) els.advancedAdminToolsPanel.classList.toggle("hidden", !advancedAdminToolsUnlocked);
+  const canUseGlobalTools = canUseGlobalAdminTools();
+  if (!canUseGlobalTools) advancedAdminToolsUnlocked = false;
+  if (els.advancedAdminToolsPanel) els.advancedAdminToolsPanel.classList.toggle("hidden", !canUseGlobalTools || !advancedAdminToolsUnlocked);
   if (els.advancedAdminToolsStatus) {
-    els.advancedAdminToolsStatus.textContent = advancedAdminToolsUnlocked
-      ? "Advanced admin/test tools unlocked for this tab for 15 minutes. Use only for generated-data or stress diagnostics."
-      : "Advanced admin/test tools are locked.";
+    els.advancedAdminToolsStatus.textContent = !canUseGlobalTools
+      ? "Global admin/test tools are hidden outside the primary app-admin workspace."
+      : advancedAdminToolsUnlocked
+        ? "Advanced admin/test tools unlocked for this tab for 15 minutes. Use only for generated-data or stress diagnostics."
+        : "Advanced admin/test tools are locked.";
   }
   if (els.unlockAdvancedAdminTools) {
+    els.unlockAdvancedAdminTools.classList.toggle("hidden", !canUseGlobalTools);
     els.unlockAdvancedAdminTools.textContent = advancedAdminToolsUnlocked ? "Lock advanced admin tools" : "Unlock advanced admin tools";
   }
 }
 
 function assertAdvancedAdminToolsUnlocked() {
-  if (!canManageSettings()) return false;
+  if (!requireGlobalAdminToolsPermission("Advanced admin tools")) return false;
   if (advancedAdminToolsUnlocked) return true;
   showUserWarning("Unlock advanced admin tools before running stress/debug actions.");
   setDataToolsMessage("Advanced admin/test tools are locked. Unlock them first, then use typed confirmation.");
@@ -2768,7 +2773,7 @@ function assertAdvancedAdminToolsUnlocked() {
 }
 
 function requireAdvancedAdminAction({ phrase, title, detail, requireUnlock = true } = {}) {
-  if (!canManageSettings()) return false;
+  if (!requireGlobalAdminToolsPermission("Advanced admin action")) return false;
   if (requireUnlock && !assertAdvancedAdminToolsUnlocked()) return false;
   if (!phrase) return true;
   return requireTypedAdminConfirmation({ phrase, title, detail });
@@ -2790,7 +2795,7 @@ async function requireRenderVerifiedAdvancedAdminAction({ actionLabel = "advance
 }
 
 els.unlockAdvancedAdminTools?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Unlock advanced admin tools")) return;
   if (advancedAdminToolsUnlocked) {
     advancedAdminToolsUnlocked = false;
     if (advancedAdminToolsRelockTimer) window.clearTimeout(advancedAdminToolsRelockTimer);
@@ -2834,17 +2839,17 @@ els.runRapidSaveTest?.addEventListener("click", async () => {
 });
 
 els.runFullTestLab?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run full safe Test Lab")) return;
   await traceAdminToolOperation("full-test-lab", "Run full safe Test Lab", runFullTestLabScenario);
 });
 
 els.runScenarioMatrix?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run Test Lab scenario matrix")) return;
   await traceAdminToolOperation("scenario-matrix", "Run Test Lab scenario matrix", runTestLabScenarioMatrix);
 });
 
 els.runPaymentScenario?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run payment and permission checks")) return;
   await traceAdminToolOperation("payment-permission-checks", "Run payment and permission checks", () => runTestLabScenarioMatrix({
     scenarioName: "payment-permission-checks",
     scenarioFilter: ["payments", "permissions"],
@@ -2853,7 +2858,7 @@ els.runPaymentScenario?.addEventListener("click", async () => {
 });
 
 els.runBackupScenario?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run backup/import checks")) return;
   await traceAdminToolOperation("backup-import-checks", "Run backup/import checks", () => runTestLabScenarioMatrix({
     scenarioName: "backup-import-checks",
     scenarioFilter: ["backup"],
@@ -2862,7 +2867,7 @@ els.runBackupScenario?.addEventListener("click", async () => {
 });
 
 els.runPrivacyScenario?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run location privacy checks")) return;
   await traceAdminToolOperation("location-privacy-checks", "Run location privacy checks", () => runTestLabScenarioMatrix({
     scenarioName: "location-privacy-checks",
     scenarioFilter: ["privacy"],
@@ -2871,7 +2876,7 @@ els.runPrivacyScenario?.addEventListener("click", async () => {
 });
 
 els.runRuntimeScenario?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run runtime/PWA checks")) return;
   await traceAdminToolOperation("runtime-pwa-checks", "Run runtime/PWA checks", () => runTestLabScenarioMatrix({
     scenarioName: "runtime-pwa-checks",
     scenarioFilter: ["runtime", "sync"],
@@ -2880,7 +2885,7 @@ els.runRuntimeScenario?.addEventListener("click", async () => {
 });
 
 els.runSecurityScenario?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Run live Security Health")) return;
   const remaining = securityHealthCooldownMs - (Date.now() - lastStandaloneSecurityHealthAt);
   if (remaining > 0) {
     const seconds = Math.ceil(remaining / 1000);
@@ -2899,12 +2904,12 @@ els.runSecurityScenario?.addEventListener("click", async () => {
 });
 
 els.exportTestLabReport?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Export Test Lab report")) return;
   downloadLastTestLabReport();
 });
 
 els.saveTestLabReportCloud?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Save Test Lab report to cloud")) return;
   const report = getCurrentTestLabReport();
   if (!report) {
     showUserWarning("Run or export a Test Lab report before saving it to cloud.");
@@ -2940,20 +2945,20 @@ els.refreshAboutBuildInfo?.addEventListener("click", () => {
 });
 
 els.refreshBuildInfo?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Refresh admin version status")) return;
   window.FuelBuildInfo?.refreshBuildInfo?.();
   renderAdminGuardrailOverview();
 });
 
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Refresh load monitor")) return;
   renderSupabaseLoadMonitor();
   renderAdminGuardrailOverview();
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
 
 els.checkRenderAdminHealth?.addEventListener("click", async () => {
-  if (!canManageSettings()) return;
+  if (!requireGlobalAdminToolsPermission("Check Render admin health")) return;
   await traceAdminToolOperation("render-admin-health", "Check Render admin health", () => checkRenderAdminHealth());
 });
 
@@ -3883,7 +3888,7 @@ function buildSupabaseLoadReport() {
 }
 
 async function checkRenderAdminHealth({ silent = false } = {}) {
-  if (!canManageSettings()) return renderAdminHealthStatus;
+  if (!canUseGlobalAdminTools()) return renderAdminHealthStatus;
   if (!currentSession?.access_token || typeof fetch !== "function") {
     renderAdminHealthStatus = {
       checked: true,
@@ -4315,7 +4320,7 @@ function getAdminHealthSummary({ rpcDiagnostics, realtimePublicationDiagnostics,
       level: "ok"
     };
   }
-  if (!supabaseSecurityStatus?.checked && supabaseClient && canManageSettings()) {
+  if (!supabaseSecurityStatus?.checked && supabaseClient && canUseGlobalAdminTools()) {
     return {
       status: "Run Security Health for a fresh read",
       detail: "The summary updates after live Supabase health checks finish.",
@@ -6784,10 +6789,10 @@ function render() {
   els.resetPeriod.classList.toggle("hidden", !canManageSettings());
   els.resetData.disabled = !canManageSettings();
   els.resetData.classList.toggle("hidden", !canManageSettings());
-  if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.dataToolsPanel) els.dataToolsPanel.classList.toggle("hidden", !canUseGlobalAdminTools());
   updateAdvancedAdminToolsUi();
-  if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canManageSettings());
-  if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canManageSettings());
+  if (els.systemHealthPanel) els.systemHealthPanel.classList.toggle("hidden", !canUseGlobalAdminTools());
+  if (els.databaseDiagnosticsPanel) els.databaseDiagnosticsPanel.classList.toggle("hidden", !canUseGlobalAdminTools());
   if (els.memberManagementPanel) els.memberManagementPanel.classList.toggle("hidden", !canManageSettings());
   if (els.workspaceInvitesPanel) els.workspaceInvitesPanel.classList.toggle("hidden", !currentSession);
   renderSectionNavigation();
@@ -14666,6 +14671,24 @@ function canManageSettings() {
   if (!currentSession) return false;
   const profile = getCurrentMemberProfile();
   return Boolean(profile && !profile.pendingInvite && profile.role === "admin");
+}
+
+function isPrimaryConfiguredWorkspace() {
+  return String(getActiveLedgerId() || "") === String(getConfiguredLedgerId() || "");
+}
+
+function canUseGlobalAdminTools() {
+  if (!canManageSettings()) return false;
+  if (!supabaseClient) return true;
+  return isPrimaryConfiguredWorkspace();
+}
+
+function requireGlobalAdminToolsPermission(actionLabel = "admin tools") {
+  if (canUseGlobalAdminTools()) return true;
+  const message = `This action is restricted to the primary Fuel Ledger app admin workspace. Workspace admins can manage only their own workspace settings, members, and invites.`;
+  showUserError(message);
+  if (typeof setDataToolsMessage === "function") setDataToolsMessage(`${actionLabel}: ${message}`);
+  return false;
 }
 
 function canManageSettlementRequest(settlement) {
