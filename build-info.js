@@ -2,7 +2,7 @@
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
     version: "2026.06.18.216",
-    buildLabel: "render-admin-report-save-route-security-health-migration-expectations",
+    buildLabel: "render-admin-report-save-route",
     updatedAt: "2026-06-19T07:50:00.000Z",
     expectedServiceWorkerCache: "fuel-ledger-v316",
     releaseNotes: Object.freeze([
