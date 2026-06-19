@@ -85,3 +85,5 @@ Adds private invite onboarding foundation for future public workspace joins. Adm
 ### 030_onboarding_abuse_rate_limits
 
 Adds server-side onboarding abuse monitoring/rate-limit storage and enforces throttles on private workspace creation, invite creation, and invite redemption. Public signup remains disabled.
+
+- `033_onboarding_rate_limit_scope_key_alignment.sql` formalizes `ledger_onboarding_rate_limits.scope_key`, backfills existing rows safely, updates the onboarding rate-limit RPC to write `scope_key`, and moves Security Health migration expectations to 033.

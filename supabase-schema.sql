@@ -4046,12 +4046,18 @@ create table if not exists public.ledger_onboarding_rate_limits (
   action text not null,
   actor_email text not null,
   ledger_id text,
-  ledger_scope text not null default '',
+  scope_key text not null default '',
   window_started_at timestamptz not null default now(),
   attempts integer not null default 1 check (attempts > 0),
   last_attempt_at timestamptz not null default now(),
-  unique (action, actor_email, ledger_scope, window_started_at)
+  unique (action, actor_email, scope_key, window_started_at)
 );
+
+create unique index if not exists ledger_onboarding_rate_limits_scope_key_window_idx
+on public.ledger_onboarding_rate_limits (action, actor_email, scope_key, window_started_at);
+
+create index if not exists ledger_onboarding_rate_limits_scope_key_idx
+on public.ledger_onboarding_rate_limits (scope_key, action, window_started_at desc);
 
 create index if not exists ledger_onboarding_rate_limits_actor_idx
 on public.ledger_onboarding_rate_limits (actor_email, action, window_started_at desc);
@@ -4098,6 +4104,7 @@ as $$
 declare
   actor_email text := public.current_user_email();
   safe_action text := nullif(btrim(coalesce(limit_action, '')), '');
+  safe_scope_key text := coalesce(nullif(btrim(coalesce(target_ledger_id, '')), ''), '__global__');
   safe_window_minutes integer := greatest(coalesce(window_minutes, 60), 1);
   window_start timestamptz;
   current_attempts integer;
@@ -4115,7 +4122,7 @@ begin
     action,
     actor_email,
     ledger_id,
-    ledger_scope,
+    scope_key,
     window_started_at,
     attempts,
     last_attempt_at
@@ -4123,12 +4130,12 @@ begin
     safe_action,
     lower(actor_email),
     nullif(btrim(coalesce(target_ledger_id, '')), ''),
-    coalesce(nullif(btrim(coalesce(target_ledger_id, '')), ''), '__global__'),
+    safe_scope_key,
     window_start,
     1,
     now()
   )
-  on conflict (action, actor_email, ledger_scope, window_started_at)
+  on conflict (action, actor_email, scope_key, window_started_at)
   do update set attempts = public.ledger_onboarding_rate_limits.attempts + 1,
                 last_attempt_at = now()
   returning attempts into current_attempts;
@@ -4962,7 +4969,8 @@ as $$
       ('029_invite_redeem_return_ambiguity_fix'),
       ('030_onboarding_abuse_rate_limits'),
       ('031_payment_status_action_rpc'),
-      ('032_security_health_current_migration_expectations')
+      ('032_security_health_current_migration_expectations'),
+      ('033_onboarding_rate_limit_scope_key_alignment')
   ),
   migration_status as (
     select

@@ -42,6 +42,7 @@ const expected = [
   "030_onboarding_abuse_rate_limits.sql",
   "031_payment_status_action_rpc.sql",
   "032_security_health_current_migration_expectations.sql",
+  "033_onboarding_rate_limit_scope_key_alignment.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -164,8 +165,11 @@ for (const marker of [
   "grant execute on function public.apply_payment_status_action",
   "backend_action', 'apply_payment_status_action",
   "032_security_health_current_migration_expectations",
+  "033_onboarding_rate_limit_scope_key_alignment",
   "apply_payment_status_action",
   "latest_expected', migration_status.latest_expected",
+  "scope_key",
+  "ledger_onboarding_rate_limits_scope_key_window_idx",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

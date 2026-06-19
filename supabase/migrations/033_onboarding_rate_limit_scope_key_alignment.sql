@@ -1,48 +1,46 @@
--- Migration 030: Add onboarding abuse monitoring and rate-limit foundation for private workspace/invite flows.
--- This keeps public signup disabled and adds server-side throttles before broader private-beta testing.
+-- Migration 033: Align onboarding rate-limit scope key schema.
+-- Formalizes the scope_key column expected by Security Health and keeps the
+-- onboarding rate-limit RPC using the same column for future writes.
 
-create table if not exists public.ledger_onboarding_rate_limits (
-  id uuid primary key default gen_random_uuid(),
-  action text not null,
-  actor_email text not null,
-  ledger_id text,
-  scope_key text not null default '',
-  window_started_at timestamptz not null default now(),
-  attempts integer not null default 1 check (attempts > 0),
-  last_attempt_at timestamptz not null default now(),
-  unique (action, actor_email, scope_key, window_started_at)
-);
+alter table public.ledger_onboarding_rate_limits
+add column if not exists scope_key text;
 
-create index if not exists ledger_onboarding_rate_limits_actor_idx
-on public.ledger_onboarding_rate_limits (actor_email, action, window_started_at desc);
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'ledger_onboarding_rate_limits'
+      and column_name = 'ledger_scope'
+  ) then
+    execute $sql$
+      update public.ledger_onboarding_rate_limits
+      set scope_key = coalesce(scope_key, nullif(ledger_scope, ''), '__global__')
+      where scope_key is null
+    $sql$;
+  else
+    update public.ledger_onboarding_rate_limits
+    set scope_key = coalesce(scope_key, '__global__')
+    where scope_key is null;
+  end if;
+end $$;
 
-create index if not exists ledger_onboarding_rate_limits_ledger_idx
-on public.ledger_onboarding_rate_limits (ledger_id, action, window_started_at desc)
-where ledger_id is not null;
+alter table public.ledger_onboarding_rate_limits
+alter column scope_key set default '';
 
-alter table public.ledger_onboarding_rate_limits enable row level security;
+update public.ledger_onboarding_rate_limits
+set scope_key = coalesce(scope_key, '__global__')
+where scope_key is null;
 
-revoke all on public.ledger_onboarding_rate_limits from public;
-revoke all on public.ledger_onboarding_rate_limits from anon;
-revoke all on public.ledger_onboarding_rate_limits from authenticated;
-grant select on public.ledger_onboarding_rate_limits to authenticated;
+alter table public.ledger_onboarding_rate_limits
+alter column scope_key set not null;
 
-drop policy if exists "Ledger admins can read onboarding rate limits" on public.ledger_onboarding_rate_limits;
-create policy "Ledger admins can read onboarding rate limits"
-  on public.ledger_onboarding_rate_limits
-  for select
-  to authenticated
-  using (
-    (ledger_id is not null and public.is_ledger_admin(ledger_id))
-    or exists (
-      select 1
-      from public.ledger_members lm
-      where lm.is_active = true
-        and lm.role = 'admin'
-        and lm.email is not null
-        and lower(lm.email) = public.current_user_email()
-    )
-  );
+create unique index if not exists ledger_onboarding_rate_limits_scope_key_window_idx
+on public.ledger_onboarding_rate_limits (action, actor_email, scope_key, window_started_at);
+
+create index if not exists ledger_onboarding_rate_limits_scope_key_idx
+on public.ledger_onboarding_rate_limits (scope_key, action, window_started_at desc);
 
 create or replace function public.enforce_onboarding_rate_limit(
   limit_action text,
@@ -104,244 +102,6 @@ revoke all on function public.enforce_onboarding_rate_limit(text, text, integer,
 revoke all on function public.enforce_onboarding_rate_limit(text, text, integer, integer) from anon;
 grant execute on function public.enforce_onboarding_rate_limit(text, text, integer, integer) to authenticated;
 
-create or replace function public.create_private_ledger_workspace(
-  workspace_name text,
-  workspace_slug text default null
-)
-returns table (
-  ledger_id text,
-  slug text,
-  name text,
-  admin_member_id uuid
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  normalized_slug text;
-  new_ledger_id text;
-  new_member_id uuid;
-  current_email text := public.current_user_email();
-begin
-  perform public.enforce_onboarding_rate_limit('create_private_workspace', null, 3, 60);
-
-  if current_email is null or btrim(current_email) = '' then
-    raise exception 'A signed-in user email is required to create a private ledger workspace.' using errcode = 'P0001';
-  end if;
-
-  normalized_slug := public.normalize_ledger_slug(coalesce(workspace_slug, workspace_name));
-  if normalized_slug is null or length(normalized_slug) < 3 then
-    raise exception 'Workspace slug must contain at least 3 letters or numbers.' using errcode = 'P0001';
-  end if;
-
-  if normalized_slug = 'main-car' then
-    raise exception 'main-car is reserved for the existing private beta ledger.' using errcode = 'P0001';
-  end if;
-
-  new_ledger_id := normalized_slug;
-
-  insert into public.ledgers (
-    id,
-    slug,
-    name,
-    is_public_signup_enabled,
-    invite_required,
-    bootstrap_locked_at
-  ) values (
-    new_ledger_id,
-    normalized_slug,
-    nullif(btrim(workspace_name), ''),
-    false,
-    true,
-    now()
-  );
-
-  insert into public.ledger_members (
-    ledger_id,
-    name,
-    email,
-    role,
-    is_active
-  ) values (
-    new_ledger_id,
-    split_part(current_email, '@', 1),
-    current_email,
-    'admin',
-    true
-  ) returning id into new_member_id;
-
-  update public.ledgers
-  set created_by_member_id = new_member_id,
-      updated_at = now()
-  where id = new_ledger_id;
-
-  return query
-  select new_ledger_id, normalized_slug, nullif(btrim(workspace_name), ''), new_member_id;
-exception
-  when unique_violation then
-    raise exception 'Workspace slug is already in use.' using errcode = '23505';
-end;
-$$;
-
-create or replace function public.create_ledger_invite(
-  target_ledger_id text default 'main-car',
-  invite_role text default 'member',
-  invite_email text default null,
-  expires_in_hours integer default 168,
-  max_uses integer default 1
-)
-returns table (
-  invite_id uuid,
-  invite_code text,
-  ledger_id text,
-  role text,
-  invited_email text,
-  expires_at timestamptz
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  actor_member_id uuid;
-  generated_code text;
-  normalized_role text := case when invite_role = 'admin' then 'admin' else 'member' end;
-  normalized_email text := nullif(lower(btrim(coalesce(invite_email, ''))), '');
-  safe_max_uses integer := greatest(coalesce(max_uses, 1), 1);
-  safe_expires_at timestamptz := case
-    when expires_in_hours is null or expires_in_hours <= 0 then now() + interval '7 days'
-    else now() + make_interval(hours => least(expires_in_hours, 24 * 30))
-  end;
-begin
-  perform public.enforce_onboarding_rate_limit('create_ledger_invite', target_ledger_id, 20, 60);
-
-  if not public.is_ledger_admin(target_ledger_id) then
-    raise exception 'Only ledger admins can create invites' using errcode = '42501';
-  end if;
-
-  actor_member_id := public.current_ledger_member_id(target_ledger_id);
-  if actor_member_id is null then
-    raise exception 'Current user is not linked to this ledger' using errcode = '42501';
-  end if;
-
-  generated_code := 'fl-' || lower(encode(extensions.gen_random_bytes(16), 'hex'));
-
-  insert into public.ledger_invites (
-    ledger_id,
-    invite_code_hash,
-    role,
-    invited_email,
-    max_uses,
-    uses_count,
-    expires_at,
-    created_by_member_id
-  ) values (
-    target_ledger_id,
-    public.hash_ledger_invite_code(generated_code),
-    normalized_role,
-    normalized_email,
-    safe_max_uses,
-    0,
-    safe_expires_at,
-    actor_member_id
-  ) returning id into invite_id;
-
-  return query
-  select invite_id, generated_code, target_ledger_id, normalized_role, normalized_email, safe_expires_at;
-end;
-$$;
-
-create or replace function public.redeem_ledger_invite(invite_code text)
-returns table (
-  ledger_id text,
-  member_id uuid,
-  role text
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  current_email text := public.current_user_email();
-  invite_row public.ledger_invites%rowtype;
-  existing_member public.ledger_members%rowtype;
-  base_name text;
-  saved_member_id uuid;
-  redeemed_ledger_id text;
-  redeemed_role text;
-begin
-  perform public.enforce_onboarding_rate_limit('redeem_ledger_invite', null, 8, 60);
-
-  if current_email is null or btrim(current_email) = '' then
-    raise exception 'A signed-in user email is required to redeem an invite.' using errcode = 'P0001';
-  end if;
-
-  select * into invite_row
-  from public.ledger_invites li
-  where li.invite_code_hash = public.hash_ledger_invite_code(invite_code)
-    and li.revoked_at is null
-    and (li.expires_at is null or li.expires_at > now())
-    and li.uses_count < li.max_uses
-  order by li.created_at asc
-  limit 1
-  for update;
-
-  if invite_row.id is null then
-    raise exception 'Invite is invalid, expired, revoked, or already used.' using errcode = 'P0001';
-  end if;
-
-  if invite_row.invited_email is not null and lower(invite_row.invited_email) <> current_email then
-    raise exception 'This invite is for a different email address.' using errcode = '42501';
-  end if;
-
-  select * into existing_member
-  from public.ledger_members lm
-  where lm.ledger_id = invite_row.ledger_id
-    and lm.email is not null
-    and lower(lm.email) = current_email
-  limit 1;
-
-  if existing_member.id is not null then
-    update public.ledger_members
-    set is_active = true,
-        role = case when existing_member.role = 'admin' then 'admin' else invite_row.role end,
-        updated_at = now()
-    where id = existing_member.id
-    returning public.ledger_members.id, public.ledger_members.ledger_id, public.ledger_members.role into saved_member_id, redeemed_ledger_id, redeemed_role;
-  else
-    base_name := split_part(current_email, '@', 1);
-    if exists (select 1 from public.ledger_members lm where lm.ledger_id = invite_row.ledger_id and lm.name = base_name) then
-      base_name := base_name || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
-    end if;
-
-    insert into public.ledger_members (
-      ledger_id,
-      name,
-      email,
-      role,
-      is_active
-    ) values (
-      invite_row.ledger_id,
-      base_name,
-      current_email,
-      invite_row.role,
-      true
-    ) returning public.ledger_members.id, public.ledger_members.ledger_id, public.ledger_members.role into saved_member_id, redeemed_ledger_id, redeemed_role;
-  end if;
-
-  update public.ledger_invites
-  set uses_count = uses_count + 1,
-      updated_at = now()
-  where id = invite_row.id;
-
-  redeem_ledger_invite.ledger_id := redeemed_ledger_id;
-  redeem_ledger_invite.member_id := saved_member_id;
-  redeem_ledger_invite.role := redeemed_role;
-  return next;
-end;
-$$;
-
 create or replace function public.fuel_ledger_healthcheck(target_ledger_id text default 'main-car')
 returns jsonb
 language sql
@@ -369,7 +129,8 @@ as $$
       ('create_ledger_invite'),
       ('enforce_onboarding_rate_limit'),
       ('redeem_ledger_invite'),
-      ('revoke_ledger_invite')
+      ('revoke_ledger_invite'),
+      ('apply_payment_status_action')
   ),
   critical_rpc_status as (
     select jsonb_object_agg(
@@ -414,7 +175,12 @@ as $$
       ('025_workspace_foundation'),
       ('026_invite_onboarding_foundation'),
       ('027_invite_code_generation_pgcrypto_fix'),
-      ('028_invite_code_hash_pgcrypto_fix')
+      ('028_invite_code_hash_pgcrypto_fix'),
+      ('029_invite_redeem_return_ambiguity_fix'),
+      ('030_onboarding_abuse_rate_limits'),
+      ('031_payment_status_action_rpc'),
+      ('032_security_health_current_migration_expectations'),
+      ('033_onboarding_rate_limit_scope_key_alignment')
   ),
   migration_status as (
     select
@@ -444,6 +210,7 @@ as $$
       ('ledgers'),
       ('ledger_members'),
       ('ledger_invites'),
+      ('ledger_onboarding_rate_limits'),
       ('trips'),
       ('trip_participants'),
       ('fuel_payments'),
@@ -486,6 +253,10 @@ as $$
       ('ledger_invites', 'uses_count'),
       ('ledger_invites', 'expires_at'),
       ('ledger_invites', 'revoked_at'),
+      ('ledger_onboarding_rate_limits', 'action'),
+      ('ledger_onboarding_rate_limits', 'scope_key'),
+      ('ledger_onboarding_rate_limits', 'window_started_at'),
+      ('ledger_onboarding_rate_limits', 'attempts'),
       ('trips', 'ledger_id'),
       ('trips', 'driver_member_id'),
       ('trip_participants', 'trip_id'),
@@ -628,7 +399,14 @@ $$;
 
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
-values ('030_onboarding_abuse_rate_limits', 'Adds server-side onboarding abuse monitoring and throttles for private workspace creation, invite creation, and invite redemption.')
+values ('032_security_health_current_migration_expectations', 'Refreshes Security Health migration expectations and critical RPC coverage through migration 032.')
+on conflict (migration_id) do update set
+  description = excluded.description,
+  applied_at = now();
+
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('033_onboarding_rate_limit_scope_key_alignment', 'Align onboarding rate-limit scope_key column, RPC writes, and Security Health migration expectations.')
 on conflict (migration_id) do update set
   description = excluded.description,
   applied_at = now();

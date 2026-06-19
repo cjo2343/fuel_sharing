@@ -450,7 +450,7 @@ function testSchemaMigrationTrackingExists() {
   assert.match(schema, /'029_invite_redeem_return_ambiguity_fix'/);
   assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
   assert.match(schema, /'031_payment_status_action_rpc'/);
-  assert.match(schema, /'032_security_health_current_migration_expectations'/);
+  assert.match(schema, /'033_onboarding_rate_limit_scope_key_alignment'/);
   assert.match(schema, /'apply_payment_status_action'/);
   assert.match(schema, /'schema_migrations', jsonb_build_object/);
   assert.match(schema, /'latest_expected'/);
@@ -508,7 +508,7 @@ function testWorkspaceFoundationExists() {
   assert.match(schema, /'029_invite_redeem_return_ambiguity_fix'/);
   assert.match(schema, /'030_onboarding_abuse_rate_limits'/);
   assert.match(schema, /'031_payment_status_action_rpc'/);
-  assert.match(schema, /'032_security_health_current_migration_expectations'/);
+  assert.match(schema, /'033_onboarding_rate_limit_scope_key_alignment'/);
   console.log("ok - testWorkspaceFoundationExists");
 }
 
@@ -712,7 +712,8 @@ function testPrivateWorkspaceCreationUiExists() {
 function testOnboardingAbuseRateLimitFoundationExists() {
   assert.match(schema, /create table if not exists public\.ledger_onboarding_rate_limits/);
   assert.match(schema, /create or replace function public\.enforce_onboarding_rate_limit/);
-  assert.match(schema, /unique \(action, actor_email, ledger_scope, window_started_at\)/);
+  assert.match(schema, /unique \(action, actor_email, scope_key, window_started_at\)/);
+  assert.match(schema, /ledger_onboarding_rate_limits_scope_key_window_idx/);
   assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('create_private_workspace', null, 3, 60\)/);
   assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('create_ledger_invite', target_ledger_id, 20, 60\)/);
   assert.match(schema, /perform public\.enforce_onboarding_rate_limit\('redeem_ledger_invite', null, 8, 60\)/);
