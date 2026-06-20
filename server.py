@@ -1811,6 +1811,34 @@ def get_state_load_context_as_service(ledger_id, user):
     }
 
 
+def get_member_context_as_service_fast(ledger_id, user, timeout=5):
+    """Fast active-member authorization for lightweight routes such as vehicle lookup.
+
+    This intentionally avoids open-period creation/reads so a lookup cannot hang
+    behind unrelated settlement setup before it writes an owner-activity receipt.
+    """
+    ledger_q = quote_postgrest_value(ledger_id)
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active&ledger_id=eq.{ledger_q}&is_active=eq.true",
+        api_key=supabase_key(),
+        timeout=timeout,
+    ) or []
+    if not rows:
+        raise PermissionError("No active ledger members found for this workspace")
+    user_email = str(user.get("email") or "").strip().lower()
+    current = next((row for row in rows if str(row.get("email") or "").strip().lower() == user_email), None)
+    if not current or not current.get("id"):
+        raise PermissionError("Signed-in user is not an active member of this workspace")
+    return {
+        "ledgerId": ledger_id,
+        "currentMemberId": current.get("id"),
+        "role": current.get("role") or "member",
+        "canWrite": True,
+        "canAdmin": current.get("role") == "admin",
+        "activeMemberIds": [str(row.get("id")) for row in rows if row.get("id")],
+    }
+
+
 def select_open_settlement_period_as_service(ledger_id):
     rows = request_json(
         f"{supabase_url()}/rest/v1/settlement_periods?select=id&ledger_id=eq.{quote_postgrest_value(ledger_id)}&status=eq.open&limit=1",
@@ -3584,59 +3612,90 @@ class Handler(SimpleHTTPRequestHandler):
     def lookup_vehicle_backend(self):
         user = current_supabase_user(self)
         if not user or not user.get("email"):
-            self.send_error(401, "Sign in before looking up a vehicle")
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before looking up a vehicle"}, status=401)
             return
         started_at = time.time()
         ledger_id = ""
         plate = ""
+        context = None
+        result = None
+        response_status = 500
+        activity_recorded = False
+
+        def record_lookup_activity(ok=False, result_code="VEHICLE_LOOKUP_ERROR", status_code=None, summary=None, metadata=None):
+            nonlocal activity_recorded
+            if activity_recorded or not ledger_id:
+                return
+            activity_recorded = True
+            record_owner_activity_as_service(
+                ledger_id,
+                user,
+                action="vehicle-lookup",
+                route="/api/vehicle/lookup",
+                ok=bool(ok),
+                result_code=result_code,
+                status_code=status_code if status_code is not None else response_status,
+                duration_ms=(time.time() - started_at) * 1000,
+                summary=summary or f"Vehicle lookup for {plate or 'unknown plate'}.",
+                metadata={"plate": plate, **(metadata or {})},
+                context=context,
+            )
+
         try:
             payload = read_request_body(self)
             ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
             plate = normalize_vehicle_plate(payload.get("plate") or payload.get("numberPlate") or payload.get("licensePlate") or "")
             if not ledger_id:
-                self.send_error(400, "Missing ledgerId")
+                response_status = 400
+                self.send_json({"ok": False, "code": "MISSING_LEDGER_ID", "message": "Missing ledgerId"}, status=400)
                 return
             if not plate:
-                self.send_error(400, "Missing plate")
+                response_status = 400
+                self.send_json({"ok": False, "code": "MISSING_PLATE", "message": "Missing plate"}, status=400)
                 return
             if not check_backend_rate_limit(self, "vehicle-lookup", user=user, ledger_id=ledger_id):
+                response_status = 429
+                record_lookup_activity(False, "VEHICLE_LOOKUP_RATE_LIMITED", 429, f"Vehicle lookup rate-limited for {plate}.")
                 return
-            # Any active workspace member may ask Render to lookup the configured
-            # vehicle data, but the app UI only applies it to settings for admins.
-            get_state_load_context_as_service(ledger_id, user)
-            result, status = fetch_vehicle_lookup(plate)
-            record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=bool(result.get("ok")), result_code=result.get("code") or ("OK" if result.get("ok") else "VEHICLE_LOOKUP_FAILED"), status_code=status, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup for {plate}.", metadata={"plate": plate, "providerStatus": status})
-            self.send_response(status)
+            # Any active workspace member may ask Render to lookup vehicle data,
+            # but this route should not wait on settlement/open-period setup.
+            context = get_member_context_as_service_fast(ledger_id, user, timeout=5)
+            result, response_status = fetch_vehicle_lookup(plate)
+            result_code = result.get("code") or ("VEHICLE_LOOKUP_OK" if result.get("ok") else "VEHICLE_LOOKUP_FAILED")
+            record_lookup_activity(bool(result.get("ok")), result_code, response_status, f"Vehicle lookup for {plate}.", {"providerStatus": response_status})
+            self.send_response(response_status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
         except (ValueError, json.JSONDecodeError) as error:
-            self.send_error(400, str(error))
+            response_status = 400
+            record_lookup_activity(False, "VEHICLE_LOOKUP_BAD_REQUEST", 400, f"Vehicle lookup bad request for {plate or 'unknown plate'}." )
+            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_BAD_REQUEST", "message": str(error)}, status=400)
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
-            # Provider problems are expected lookup outcomes, not app-backend
-            # failures. Return HTTP 200 with a stable result code so browsers do
-            # not show scary 503 console errors and the app can keep manual
-            # settings as the safe fallback. Auth/permission failures above still
-            # use real HTTP error statuses.
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_PROVIDER_ERROR", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup provider error for {plate}.", metadata={"plate": plate})
-            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_ERROR", "message": detail or str(error)}).encode("utf-8"))
+            # Provider problems are expected lookup outcomes, not app-backend failures.
+            response_status = 200
+            record_lookup_activity(False, "VEHICLE_LOOKUP_PROVIDER_ERROR", 200, f"Vehicle lookup provider error for {plate}.")
+            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_ERROR", "message": detail or str(error)}, status=200)
         except urllib.error.URLError as error:
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup provider unavailable for {plate}.", metadata={"plate": plate})
-            self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", "message": str(error)}).encode("utf-8"))
+            response_status = 200
+            record_lookup_activity(False, "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", 200, f"Vehicle lookup provider unavailable for {plate}.")
+            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", "message": str(error)}, status=200)
+        except TimeoutError as error:
+            response_status = 200
+            record_lookup_activity(False, "VEHICLE_LOOKUP_TIMEOUT", 200, f"Vehicle lookup timed out for {plate or 'unknown plate'}.")
+            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_TIMEOUT", "message": str(error) or "Vehicle lookup timed out."}, status=200)
         except PermissionError as error:
-            if ledger_id:
-                record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_FORBIDDEN", status_code=403, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup forbidden for {plate or 'unknown plate'}.", metadata={"plate": plate})
-            self.send_error(403, str(error))
+            response_status = 403
+            record_lookup_activity(False, "VEHICLE_LOOKUP_FORBIDDEN", 403, f"Vehicle lookup forbidden for {plate or 'unknown plate'}." )
+            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_FORBIDDEN", "message": str(error)}, status=403)
+        except BrokenPipeError:
+            # Client gave up, but keep the owner activity receipt if we have enough context.
+            response_status = 499
+            record_lookup_activity(False, "VEHICLE_LOOKUP_CLIENT_CLOSED", 499, f"Vehicle lookup client closed for {plate or 'unknown plate'}." )
         except Exception as error:
-            if ledger_id:
-                record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_ERROR", status_code=500, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup failed for {plate or 'unknown plate'}.", metadata={"plate": plate})
+            response_status = 500
+            record_lookup_activity(False, "VEHICLE_LOOKUP_ERROR", 500, f"Vehicle lookup failed for {plate or 'unknown plate'}." )
             self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_ERROR", "message": str(error)}, status=500)
 
     def run_reminders(self):

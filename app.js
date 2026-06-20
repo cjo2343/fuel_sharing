@@ -1603,6 +1603,8 @@ let ownerActivityStatus = {
   checkedAt: ""
 };
 let ownerActivityFetchInFlight = false;
+let ownerActivityFetchStartedAt = 0;
+let ownerActivityInFlightTraceMeta = null;
 let lastOwnerActivityFetchAt = 0;
 let supabaseSecurityStatus = {
   checked: false,
@@ -4204,9 +4206,48 @@ function renderOwnerActivityCard() {
 async function refreshOwnerActivity({ force = false, silent = true } = {}) {
   if (!canUseGlobalAdminTools()) return ownerActivityStatus;
   const now = Date.now();
-  if (ownerActivityFetchInFlight) return ownerActivityStatus;
+  if (ownerActivityFetchInFlight) {
+    const ageMs = now - (ownerActivityFetchStartedAt || now);
+    if (ageMs > dataIoOperationStaleMs) {
+      if (ownerActivityInFlightTraceMeta) {
+        recordDataIoDiagnostic("timeout", {
+          ...ownerActivityInFlightTraceMeta,
+          ok: false,
+          detail: "Owner activity refresh timed out before a finish row was recorded.",
+          resultCode: "OWNER_ACTIVITY_TIMEOUT",
+          errorCode: "OWNER_ACTIVITY_TIMEOUT"
+        });
+      }
+      ownerActivityFetchInFlight = false;
+      ownerActivityFetchStartedAt = 0;
+      ownerActivityInFlightTraceMeta = null;
+    } else {
+      if (force) {
+        const skippedContext = buildDataIoWorkspaceContext();
+        recordDataIoDiagnostic("skipped", {
+          source: "owner-activity",
+          route: "render-api",
+          endpoint: renderOwnerActivityUrl,
+          operation: "load",
+          operationId: createDataIoOperationId("owner-activity", "skip"),
+          ledgerId: skippedContext.loadedWorkspaceId,
+          selectedWorkspaceId: skippedContext.selectedWorkspaceId,
+          selectedWorkspaceLabel: skippedContext.selectedWorkspaceLabel,
+          loadedWorkspaceId: skippedContext.loadedWorkspaceId,
+          loadedWorkspaceLabel: skippedContext.loadedWorkspaceLabel,
+          workspaceMismatch: skippedContext.workspaceMismatch,
+          ok: true,
+          resultCode: "OWNER_ACTIVITY_REFRESH_IN_FLIGHT",
+          detail: "Owner activity refresh already running; skipped duplicate refresh.",
+          staleAfterMs: dataIoOperationStaleMs
+        });
+      }
+      return ownerActivityStatus;
+    }
+  }
   if (!force && ownerActivityStatus.checked && now - lastOwnerActivityFetchAt < 30000) return ownerActivityStatus;
   ownerActivityFetchInFlight = true;
+  ownerActivityFetchStartedAt = Date.now();
   ownerActivityStatus = { ...ownerActivityStatus, loading: true, message: "Loading server-owned owner activity..." };
   if (!silent) setDataToolsMessage(ownerActivityStatus.message);
   renderSupabaseLoadMonitor();
@@ -4223,8 +4264,10 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
     selectedWorkspaceLabel: ownerActivityWorkspaceContext.selectedWorkspaceLabel,
     loadedWorkspaceId: ownerActivityWorkspaceContext.loadedWorkspaceId,
     loadedWorkspaceLabel: ownerActivityWorkspaceContext.loadedWorkspaceLabel,
+    workspaceMismatch: ownerActivityWorkspaceContext.workspaceMismatch,
     staleAfterMs: dataIoOperationStaleMs
   };
+  ownerActivityInFlightTraceMeta = traceMeta;
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: ownerActivityWorkspaceContext.workspaceMismatch ? "Load owner activity (workspace selector differs from loaded workspace)" : "Load owner activity" });
   try {
     const { result } = await callRenderJson(renderOwnerActivityUrl, {
@@ -4246,18 +4289,21 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, detail: ownerActivityStatus.message, resultCode: "OWNER_ACTIVITY_LOADED" });
     if (!silent) setDataToolsMessage(ownerActivityStatus.message);
   } catch (error) {
+    const timedOut = /timeout|timed out|AbortError|PaymentActionTimeoutError/i.test(String(error?.code || error?.name || error?.message || error || ""));
     ownerActivityStatus = {
       checked: true,
       ok: false,
       loading: false,
-      message: `Owner activity failed: ${error.message || error}`,
+      message: timedOut ? "Owner activity timed out. Try Refresh again; duplicate refreshes are skipped." : `Owner activity failed: ${error.message || error}`,
       rows: ownerActivityStatus.rows || [],
       checkedAt: new Date().toISOString()
     };
-    recordDataIoDiagnostic(/timeout/i.test(error?.code || error?.name || error?.message || "") ? "timeout" : "error", { ...traceMeta, error, detail: "Owner activity load failed" });
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, ok: false, error, detail: ownerActivityStatus.message, resultCode: timedOut ? "OWNER_ACTIVITY_TIMEOUT" : "OWNER_ACTIVITY_ERROR", errorCode: error?.code || error?.status || "" });
     if (!silent) setDataToolsMessage(ownerActivityStatus.message);
   } finally {
     ownerActivityFetchInFlight = false;
+    ownerActivityFetchStartedAt = 0;
+    ownerActivityInFlightTraceMeta = null;
     renderSupabaseLoadMonitor();
   }
   return ownerActivityStatus;
@@ -15787,14 +15833,17 @@ async function callRenderJson(endpoint, options = {}) {
   const method = options.method || "POST";
   const timeoutMs = Number(options.timeoutMs || 12000);
   const timeoutLabel = options.timeoutLabel || `Render API ${endpoint}`;
-  const headers = await buildRenderRequestHeaders({
-    "Content-Type": "application/json",
-    ...(options.headers || {})
-  });
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const setTimer = typeof window !== "undefined" && window.setTimeout ? window.setTimeout.bind(window) : setTimeout;
+  const clearTimer = typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout.bind(window) : clearTimeout;
+  let controller = null;
   let timeoutId = 0;
   try {
     const requestAndReadPromise = (async () => {
+      const headers = await buildRenderRequestHeaders({
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      });
+      controller = typeof AbortController !== "undefined" ? new AbortController() : null;
       const response = await fetch(endpoint, {
         method,
         signal: controller ? controller.signal : undefined,
@@ -15805,7 +15854,7 @@ async function callRenderJson(endpoint, options = {}) {
       return { response, text };
     })();
     const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
+      timeoutId = setTimer(() => {
         if (controller) controller.abort();
         reject(createRenderApiTimeoutError(timeoutLabel, timeoutMs));
       }, timeoutMs);
@@ -15827,7 +15876,7 @@ async function callRenderJson(endpoint, options = {}) {
     if (error?.name === "AbortError") throw createRenderApiTimeoutError(timeoutLabel, timeoutMs);
     throw error;
   } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
+    if (timeoutId) clearTimer(timeoutId);
   }
 }
 

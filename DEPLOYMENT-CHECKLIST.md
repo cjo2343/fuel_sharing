@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.254`
-- Service-worker cache: `fuel-ledger-v354`
-- Updated at: `2026-06-20T15:35:00.000Z`
-- Top release note: Vehicle lookup now uses the shared Render API helper with a full request/body timeout, records matched Data I/O start/finish rows, refreshes Owner activity after each attempt, and records server-side owner activity for lookup errors instead of throwing uncaught timeout errors.
+- Version: `2026.06.18.255`
+- Service-worker cache: `fuel-ledger-v355`
+- Updated at: `2026-06-20T15:45:00.000Z`
+- Top release note: Owner activity refreshes are now serialized and fail closed: duplicate refreshes record a skipped row, stale in-flight refreshes get a timeout finish row, Render API timeouts cover token/header setup too, and vehicle lookup uses a fast membership check plus a guaranteed owner-activity receipt for success, errors, timeouts, and client disconnects.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

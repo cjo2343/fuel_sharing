@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.254",
+    version: "2026.06.18.255",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T15:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v354",
+    updatedAt: "2026-06-20T15:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v355",
     releaseNotes: Object.freeze([
+      "Owner activity refreshes are now serialized and fail closed: duplicate refreshes record a skipped row, stale in-flight refreshes get a timeout finish row, Render API timeouts cover token/header setup too, and vehicle lookup uses a fast membership check plus a guaranteed owner-activity receipt for success, errors, timeouts, and client disconnects.",
       "Vehicle lookup now uses the shared Render API helper with a full request/body timeout, records matched Data I/O start/finish rows, refreshes Owner activity after each attempt, and records server-side owner activity for lookup errors instead of throwing uncaught timeout errors.",
       "Owner activity now fails closed instead of hanging: the shared Render helper times out the full response body, Owner activity shows a clear empty/error state, and Data I/O records selected-vs-loaded workspace IDs when the selector and loaded workspace differ.",
       "Owner activity is now server-owned: Render records safe cross-user/cross-workspace activity rows for state loads, vehicle lookup, settings saves, member management, trips, fuel, bookings, and payment status actions, and the app owner can view recent activity from Admin without relying on browser-local Data I/O.",
