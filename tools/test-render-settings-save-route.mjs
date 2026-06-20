@@ -21,6 +21,15 @@ assert.match(server, /assert_user_can_admin_ledger\(ledger\["id"\], user, token\
 assert.match(server, /upsert_settings_as_service\(ledger, members\)/, "settings save should use backend-owned service role persistence after admin verification");
 assert.match(server, /select_ledger_settings_as_service\(ledger_id, require_vehicle_columns=True\)/, "settings save should read back saved vehicle fields for verification");
 assert.match(server, /SETTINGS_SCHEMA_MISSING/, "settings save should fail clearly when vehicle settings columns are missing");
+
+assert.match(app, /const timeoutMs = 12000/, "frontend settings save should have a bounded end-to-end timeout");
+assert.match(app, /response\.text\(\)/, "frontend settings save should parse the response body inside the timeout window");
+assert.match(app, /SETTINGS_SAVE_TIMEOUT/, "frontend settings save should record timeout failures explicitly");
+assert.match(app, /normalizedDiagnosticPhase === "success"/, "Data I/O labels should only use :ok for successful finishes, not start rows");
+assert.match(server, /SETTINGS_SAVE_SUPABASE_TIMEOUT = 5/, "backend settings save should bound Supabase ledger calls");
+assert.match(server, /SETTINGS_MEMBER_SYNC_TIMEOUT = 4/, "backend settings save should not let member directory sync hang car settings saves");
+assert.match(server, /memberWarning/, "settings route should return member sync warnings without blocking saved car settings");
+assert.match(server, /SETTINGS_SAVE_TIMEOUT/, "backend settings save should return explicit timeout JSON");
 assert.doesNotMatch(server, /fallback_ledger = dict\(ledger\)/, "settings save must not silently drop vehicle fields when schema is missing");
 assert.match(server, /"settings-save": \{"limit": 30, "window": 300\}/, "settings save should have a dedicated rate limit bucket");
 assert.match(server, /"settingsSave", "\/api\/settings\/save"/, "Render admin health should list the settings-save route");

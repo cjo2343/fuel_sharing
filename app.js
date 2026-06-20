@@ -872,7 +872,10 @@ function recordDataIoDiagnostic(phase, meta = {}) {
   dataIoDiagnostics.push(diagnostic);
   while (dataIoDiagnostics.length > 30) dataIoDiagnostics.shift();
   const target = summarizeDataIoTarget(diagnostic);
-  const label = diagnostic.ok ? `data-io:${diagnostic.source}:ok` : `data-io:${diagnostic.source}:${diagnostic.phase}`;
+  const normalizedDiagnosticPhase = String(diagnostic.phase || "data-io").toLowerCase();
+  const label = diagnostic.ok && normalizedDiagnosticPhase === "success"
+    ? `data-io:${diagnostic.source}:ok`
+    : `data-io:${diagnostic.source}:${normalizedDiagnosticPhase}`;
   const detail = diagnostic.detail || diagnostic.error?.message || `${diagnostic.route} ${target}`;
   recordSupabaseLoadEvent(label, detail, { dataIo: true });
   if (!diagnostic.ok && /fail|error|timeout|blocked/i.test(diagnostic.phase)) {
@@ -2449,7 +2452,8 @@ els.settingsForm.addEventListener("submit", async (event) => {
     render();
   } catch (error) {
     state = previousState;
-    recordDataIoDiagnostic("error", { ...settingsTraceMeta, ok: false, error, resultCode: "SETTINGS_SAVE_ERROR" });
+    const settingsErrorCode = error?.resultCode || error?.code || (/timeout|timed out/i.test(error?.message || "") ? "SETTINGS_SAVE_TIMEOUT" : "SETTINGS_SAVE_ERROR");
+    recordDataIoDiagnostic(/TIMEOUT/i.test(String(settingsErrorCode)) ? "timeout" : "error", { ...settingsTraceMeta, ok: false, error, resultCode: settingsErrorCode });
     showUserError(`Could not save group settings: ${error.message || error}`);
     render();
   }
@@ -15467,16 +15471,17 @@ async function saveSettingsViaRender({ traceMeta } = {}) {
   if (!accessToken) throw new Error("Sign in before saving settings.");
   const payload = buildSettingsSavePayload();
   const controller = new AbortController();
+  const timeoutMs = 12000;
   let timeoutId = 0;
+  const timeoutError = () => {
+    const error = paymentActionTimeoutError("Render settings save API", timeoutMs);
+    error.code = "SETTINGS_SAVE_TIMEOUT";
+    error.resultCode = "SETTINGS_SAVE_TIMEOUT";
+    return error;
+  };
   try {
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        controller.abort();
-        reject(paymentActionTimeoutError("Render settings save API", 15000));
-      }, 15000);
-    });
-    const response = await Promise.race([
-      fetch(renderSettingsSaveUrl, {
+    const requestPromise = (async () => {
+      const response = await fetch(renderSettingsSaveUrl, {
         method: "POST",
         signal: controller.signal,
         headers: {
@@ -15484,25 +15489,37 @@ async function saveSettingsViaRender({ traceMeta } = {}) {
           "Authorization": `Bearer ${accessToken}`
         },
         body: JSON.stringify(payload)
-      }),
-      timeoutPromise
-    ]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-    if (!response.ok || !result?.ok) {
-      const message = result?.message || result?.error || text || `Render settings save failed (${response.status})`;
-      const error = new Error(message);
-      error.status = response.status;
-      error.code = result?.code || response.status;
-      throw error;
-    }
+      });
+      const text = await response.text();
+      let result = null;
+      try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+      if (!response.ok || !result?.ok) {
+        const message = result?.message || result?.error || text || `Render settings save failed (${response.status})`;
+        const error = new Error(message);
+        error.status = response.status;
+        error.code = result?.code || response.status;
+        error.resultCode = result?.code || response.status;
+        throw error;
+      }
+      const verifiedResult = result?.result && typeof result.result === "object"
+        ? { ...result.result, settings: result.settings || result.result.settings }
+        : result;
+      return verifiedResult;
+    })();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        controller.abort();
+        reject(timeoutError());
+      }, timeoutMs);
+    });
+    const result = await Promise.race([requestPromise, timeoutPromise]);
     assertSettingsSaveVerified(result, payload);
     applySavedSettingsResult(result);
     saveState({ queueRemote: false, reason: "backend settings save confirmed" });
     return result;
+  } catch (error) {
+    if (error?.name === "AbortError") throw timeoutError();
+    throw error;
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
   }

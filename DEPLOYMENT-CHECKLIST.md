@@ -21,9 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.242`
-- Service-worker cache: `fuel-ledger-v342`
-- Updated at: `2026-06-20T13:35:00.000Z`
+- Version: `2026.06.18.243`
+- Service-worker cache: `fuel-ledger-v343`
+- Updated at: `2026-06-20T13:45:00.000Z`
+- Top release note: Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.
 - Top release note: Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.
 ## Invite beta readiness: member action Data I/O
 
@@ -601,4 +602,4 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 ## Release readiness metadata
 - Top release note: Render backend auth now verifies Supabase ECC/P-256 access tokens locally through the project JWKS/public keys with rotation-aware caching, keeping the Supabase Auth network check as an explicit emergency fallback instead of the normal path.
-- Top release note: Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.
+- Top release note: `Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.`

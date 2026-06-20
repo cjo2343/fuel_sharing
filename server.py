@@ -7,6 +7,7 @@ import gzip
 import hmac
 import os
 import secrets
+import socket
 import sys
 import time
 from datetime import datetime, timezone
@@ -152,6 +153,10 @@ def supabase_anon_key():
 
 class SettingsSchemaMissingError(RuntimeError):
     pass
+
+
+SETTINGS_SAVE_SUPABASE_TIMEOUT = 5
+SETTINGS_MEMBER_SYNC_TIMEOUT = 4
 
 
 def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=None, timeout=20):
@@ -1791,6 +1796,7 @@ def select_ledger_settings_as_service(ledger_id, require_vehicle_columns=False):
         rows = request_json(
             f"{supabase_url()}/rest/v1/ledgers?select={extended_select}&id=eq.{ledger_q}",
             api_key=supabase_key(),
+            timeout=SETTINGS_SAVE_SUPABASE_TIMEOUT,
         ) or []
     except urllib.error.HTTPError as error:
         raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
@@ -1800,6 +1806,7 @@ def select_ledger_settings_as_service(ledger_id, require_vehicle_columns=False):
             rows = request_json(
                 f"{supabase_url()}/rest/v1/ledgers?select={base_select}&id=eq.{ledger_q}",
                 api_key=supabase_key(),
+                timeout=SETTINGS_SAVE_SUPABASE_TIMEOUT,
             ) or []
         else:
             raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
@@ -1876,6 +1883,7 @@ def upsert_settings_as_service(ledger, members):
             body=ledger,
             prefer="resolution=merge-duplicates,return=representation",
             api_key=supabase_key(),
+            timeout=SETTINGS_SAVE_SUPABASE_TIMEOUT,
         ) or []
     except urllib.error.HTTPError as error:
         raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
@@ -1902,6 +1910,8 @@ def upsert_settings_as_service(ledger, members):
             raise RuntimeError("Settings save verification failed: vehicle details were not persisted.")
         saved = read_back
 
+    member_result = []
+    member_warning = ""
     try:
         member_result = request_json(
             f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role,email,mobilepay_phone",
@@ -1909,6 +1919,7 @@ def upsert_settings_as_service(ledger, members):
             body=members,
             prefer="resolution=merge-duplicates,return=representation",
             api_key=supabase_key(),
+            timeout=SETTINGS_MEMBER_SYNC_TIMEOUT,
         ) or []
     except urllib.error.HTTPError as error:
         raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
@@ -1918,15 +1929,24 @@ def upsert_settings_as_service(ledger, members):
                 item = dict(member)
                 item.pop("mobilepay_phone", None)
                 fallback_members.append(item)
-            member_result = request_json(
-                f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role,email",
-                method="POST",
-                body=fallback_members,
-                prefer="resolution=merge-duplicates,return=representation",
-                api_key=supabase_key(),
-            ) or []
+            try:
+                member_result = request_json(
+                    f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role,email",
+                    method="POST",
+                    body=fallback_members,
+                    prefer="resolution=merge-duplicates,return=representation",
+                    api_key=supabase_key(),
+                    timeout=SETTINGS_MEMBER_SYNC_TIMEOUT,
+                ) or []
+            except (TimeoutError, socket.timeout, urllib.error.URLError) as member_error:
+                member_warning = f"Member directory sync skipped after settings save: {member_error}"
+                member_result = []
         else:
             raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+    except (TimeoutError, socket.timeout, urllib.error.URLError) as member_error:
+        member_warning = f"Member directory sync skipped after settings save: {member_error}"
+        member_result = []
+
 
     settings = {
         "currency": saved.get("currency") or ledger.get("currency"),
@@ -1955,6 +1975,7 @@ def upsert_settings_as_service(ledger, members):
         "verified": True,
         "members": member_result,
         "memberCount": len(member_result) if isinstance(member_result, list) else 0,
+        "memberWarning": member_warning,
     }
 
 def build_ledger_directory_sync_payload(payload, user):
@@ -2693,6 +2714,9 @@ class Handler(SimpleHTTPRequestHandler):
         except urllib.error.HTTPError as error:
             body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
             self.send_json({"ok": False, "code": "SUPABASE_ERROR", "message": body}, status=error.code)
+            return
+        except (TimeoutError, socket.timeout, urllib.error.URLError) as error:
+            self.send_json({"ok": False, "code": "SETTINGS_SAVE_TIMEOUT", "message": f"Settings save timed out while talking to Supabase: {error}"}, status=504)
             return
         except PermissionError as error:
             self.send_json({"ok": False, "code": "FORBIDDEN", "message": str(error)}, status=403)

@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.242",
+    version: "2026.06.18.243",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T13:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v342",
+    updatedAt: "2026-06-20T13:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v343",
     releaseNotes: Object.freeze([
       "Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.",
       "Workspace/car settings now save through a dedicated Render /api/settings/save route that verifies Supabase JWKS auth plus workspace-admin permission, persists ledger fuel and sanitized vehicle fields server-side, and avoids the old broad JSON-to-table reconciliation path for Save settings.",
