@@ -7,9 +7,11 @@ const migrations = readFileSync("supabase/migrations/038_vehicle_settings_column
 
 assert.match(app, /const renderSettingsSaveUrl = "\/api\/settings\/save"/, "frontend should define the dedicated settings-save route");
 assert.match(app, /async function saveSettingsViaRender/, "frontend should save settings through Render");
-assert.match(app, /await saveSettingsViaRender\(\{ traceMeta: settingsTraceMeta \}\)/, "settings form should call the backend settings save route");
+assert.match(app, /settingsSaveResult = await saveSettingsViaRender\(\{ traceMeta: settingsTraceMeta \}\)/, "settings form should call the backend settings save route and keep the result");
 assert.doesNotMatch(app, /await saveSupabaseState\(\{ reason: "group-settings" \}\)/, "settings save must not use broad full-state Supabase save");
 assert.doesNotMatch(app, /markNormalizedReconciliationDirty\("group settings changed"\)/, "settings save must not trigger broad JSON-to-table reconciliation");
+assert.match(app, /assertSettingsSaveVerified\(result, payload\)/, "frontend should require backend verification before accepting a settings save");
+assert.match(app, /formatSettingsPersistedSummary\(settingsSaveResult\.persisted\)/, "settings save diagnostics should summarize which settings were persisted");
 assert.match(app, /vehiclePlate: normalizeVehiclePlateInput\(ledger\.vehicle_plate/, "normalized table load should hydrate saved vehicle plate from ledgers");
 assert.match(app, /vehicleInfo: normalizeVehicleInfo\(ledger\.vehicle_info/, "normalized table load should hydrate saved vehicle info from ledgers");
 
@@ -17,6 +19,9 @@ assert.match(server, /if self\.path == "\/api\/settings\/save":\n\s+self\.save_s
 assert.match(server, /def save_settings_backend\(self\):/, "server should implement the settings save handler");
 assert.match(server, /assert_user_can_admin_ledger\(ledger\["id"\], user, token\)/, "settings save should require workspace admin permission");
 assert.match(server, /upsert_settings_as_service\(ledger, members\)/, "settings save should use backend-owned service role persistence after admin verification");
+assert.match(server, /select_ledger_settings_as_service\(ledger_id, require_vehicle_columns=True\)/, "settings save should read back saved vehicle fields for verification");
+assert.match(server, /SETTINGS_SCHEMA_MISSING/, "settings save should fail clearly when vehicle settings columns are missing");
+assert.doesNotMatch(server, /fallback_ledger = dict\(ledger\)/, "settings save must not silently drop vehicle fields when schema is missing");
 assert.match(server, /"settings-save": \{"limit": 30, "window": 300\}/, "settings save should have a dedicated rate limit bucket");
 assert.match(server, /"settingsSave", "\/api\/settings\/save"/, "Render admin health should list the settings-save route");
 

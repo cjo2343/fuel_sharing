@@ -2435,14 +2435,16 @@ els.settingsForm.addEventListener("submit", async (event) => {
   recordDataIoDiagnostic("start", { ...settingsTraceMeta, ok: true });
   try {
     if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+    let settingsSaveResult = null;
     if (supabaseClient) {
-      await saveSettingsViaRender({ traceMeta: settingsTraceMeta });
+      settingsSaveResult = await saveSettingsViaRender({ traceMeta: settingsTraceMeta });
     } else {
       saveState({ queueRemote: false, reason: "group settings explicit save" });
       await saveRemoteState();
       if (lastSyncError) throw new Error(lastSyncError);
     }
-    recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED", detail: "Saved group settings through backend-owned settings route." });
+    const persistedSummary = settingsSaveResult?.persisted ? formatSettingsPersistedSummary(settingsSaveResult.persisted) : "legacy remote state saved";
+    recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED", detail: `Saved group settings through backend-owned settings route · ${persistedSummary}` });
     renderSupabaseLoadMonitor();
     render();
   } catch (error) {
@@ -15418,6 +15420,32 @@ function buildSettingsSavePayload() {
   };
 }
 
+function formatSettingsPersistedSummary(persisted = {}) {
+  const parts = [];
+  parts.push(`fuel=${persisted.fuelType ? "yes" : "no"}`);
+  parts.push(`tank=${persisted.fuelTankCapacity ? "yes" : "no"}`);
+  parts.push(`consumption=${persisted.fuelConsumption ? "yes" : "no"}`);
+  parts.push(`plate=${persisted.vehiclePlate ? "yes" : "no"}`);
+  parts.push(`vehicleInfo=${persisted.vehicleInfo ? "yes" : "no"}`);
+  return parts.join(", ");
+}
+
+function assertSettingsSaveVerified(result, payload) {
+  if (!result?.verified) {
+    throw new Error("Settings save did not return backend verification.");
+  }
+  const requested = payload?.settings || {};
+  const saved = result?.settings || {};
+  const requestedPlate = normalizeVehiclePlateInput(requested.vehiclePlate || requested.vehicleInfo?.plate || "");
+  const savedPlate = normalizeVehiclePlateInput(saved.vehiclePlate || saved.vehicleInfo?.plate || "");
+  if (requestedPlate && savedPlate !== requestedPlate) {
+    throw new Error("Settings save verification failed: vehicle plate was not returned by the backend.");
+  }
+  if (requested.vehicleInfo && Object.keys(requested.vehicleInfo).length && !result?.persisted?.vehicleInfo) {
+    throw new Error("Settings save verification failed: vehicle details were not persisted. Apply Supabase migration 038_vehicle_settings_columns.sql.");
+  }
+}
+
 function applySavedSettingsResult(result) {
   const saved = result?.settings || {};
   if (saved.currency) state.currency = saved.currency;
@@ -15468,8 +15496,10 @@ async function saveSettingsViaRender({ traceMeta } = {}) {
       const message = result?.message || result?.error || text || `Render settings save failed (${response.status})`;
       const error = new Error(message);
       error.status = response.status;
+      error.code = result?.code || response.status;
       throw error;
     }
+    assertSettingsSaveVerified(result, payload);
     applySavedSettingsResult(result);
     saveState({ queueRemote: false, reason: "backend settings save confirmed" });
     return result;

@@ -150,6 +150,10 @@ def supabase_anon_key():
     return env_value("SUPABASE_ANON_KEY") or env_value("SUPABASE_SERVICE_ROLE_KEY")
 
 
+class SettingsSchemaMissingError(RuntimeError):
+    pass
+
+
 def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=None, timeout=20):
     key = api_key or supabase_key()
     headers = {
@@ -1779,7 +1783,7 @@ def clean_settings_vehicle_info(value):
     return cleaned
 
 
-def select_ledger_settings_as_service(ledger_id):
+def select_ledger_settings_as_service(ledger_id, require_vehicle_columns=False):
     ledger_q = quote_postgrest_value(ledger_id)
     extended_select = "id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,vehicle_plate,vehicle_info,vehicle_lookup_source,vehicle_lookup_at"
     base_select = "id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent"
@@ -1791,13 +1795,18 @@ def select_ledger_settings_as_service(ledger_id):
     except urllib.error.HTTPError as error:
         raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
         if error.code == 400 and any(column in raw for column in ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at")):
+            if require_vehicle_columns:
+                raise SettingsSchemaMissingError("Apply Supabase migration 038_vehicle_settings_columns.sql before saving vehicle settings.")
             rows = request_json(
                 f"{supabase_url()}/rest/v1/ledgers?select={base_select}&id=eq.{ledger_q}",
                 api_key=supabase_key(),
             ) or []
         else:
             raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
-    return rows[0] if isinstance(rows, list) and rows else {}
+    row = rows[0] if isinstance(rows, list) and rows else {}
+    if require_vehicle_columns and row and not all(key in row for key in ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at")):
+        raise SettingsSchemaMissingError("Apply Supabase migration 038_vehicle_settings_columns.sql before saving vehicle settings.")
+    return row
 
 
 def build_settings_save_payload(payload, user):
@@ -1859,6 +1868,7 @@ def build_settings_save_payload(payload, user):
 
 def upsert_settings_as_service(ledger, members):
     ledger_id = str(ledger.get("id") or "").strip()
+    requested_vehicle = bool(ledger.get("vehicle_plate") or ledger.get("vehicle_info") or ledger.get("vehicle_lookup_source") or ledger.get("vehicle_lookup_at"))
     try:
         ledger_result = request_json(
             f"{supabase_url()}/rest/v1/ledgers?on_conflict=id&select=id,slug,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,vehicle_plate,vehicle_info,vehicle_lookup_source,vehicle_lookup_at,updated_at",
@@ -1869,20 +1879,29 @@ def upsert_settings_as_service(ledger, members):
         ) or []
     except urllib.error.HTTPError as error:
         raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
-        optional_columns = ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at", "mobilepay_phone")
+        optional_columns = ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at")
         if error.code == 400 and any(column in raw for column in optional_columns):
-            fallback_ledger = dict(ledger)
-            for key in ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at"):
-                fallback_ledger.pop(key, None)
-            ledger_result = request_json(
-                f"{supabase_url()}/rest/v1/ledgers?on_conflict=id&select=id,slug,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,updated_at",
-                method="POST",
-                body=fallback_ledger,
-                prefer="resolution=merge-duplicates,return=representation",
-                api_key=supabase_key(),
-            ) or []
-        else:
-            raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+            raise SettingsSchemaMissingError("Apply Supabase migration 038_vehicle_settings_columns.sql before saving vehicle settings.")
+        raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+
+    saved = ledger_result[0] if isinstance(ledger_result, list) and ledger_result else {}
+    if not saved:
+        saved = select_ledger_settings_as_service(ledger_id, require_vehicle_columns=requested_vehicle)
+    elif requested_vehicle and not all(key in saved for key in ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at")):
+        raise SettingsSchemaMissingError("Apply Supabase migration 038_vehicle_settings_columns.sql before saving vehicle settings.")
+
+    if requested_vehicle:
+        read_back = select_ledger_settings_as_service(ledger_id, require_vehicle_columns=True)
+        expected_plate = str(ledger.get("vehicle_plate") or "").strip().upper()
+        actual_plate = str(read_back.get("vehicle_plate") or "").strip().upper()
+        expected_info = ledger.get("vehicle_info") if isinstance(ledger.get("vehicle_info"), dict) else {}
+        actual_info = read_back.get("vehicle_info") if isinstance(read_back.get("vehicle_info"), dict) else {}
+        if expected_plate and actual_plate != expected_plate:
+            raise RuntimeError("Settings save verification failed: vehicle plate was not persisted.")
+        if expected_info and not actual_info:
+            raise RuntimeError("Settings save verification failed: vehicle details were not persisted.")
+        saved = read_back
+
     try:
         member_result = request_json(
             f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role,email,mobilepay_phone",
@@ -1908,22 +1927,32 @@ def upsert_settings_as_service(ledger, members):
             ) or []
         else:
             raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
-    saved = ledger_result[0] if isinstance(ledger_result, list) and ledger_result else ledger
+
+    settings = {
+        "currency": saved.get("currency") or ledger.get("currency"),
+        "fuelType": saved.get("fuel_type") or ledger.get("fuel_type"),
+        "fuelConsumption": saved.get("estimated_consumption_l_per_100km") or ledger.get("estimated_consumption_l_per_100km"),
+        "fuelTankCapacity": saved.get("fuel_tank_capacity_l") or ledger.get("fuel_tank_capacity_l"),
+        "fuelFallbackPrice": saved.get("fallback_fuel_price") or ledger.get("fallback_fuel_price"),
+        "fuelWarningThreshold": saved.get("low_fuel_threshold_percent") or ledger.get("low_fuel_threshold_percent"),
+        "vehiclePlate": saved.get("vehicle_plate") if "vehicle_plate" in saved else "",
+        "vehicleInfo": saved.get("vehicle_info") if isinstance(saved.get("vehicle_info"), dict) else {},
+        "vehicleLookupSource": saved.get("vehicle_lookup_source") if "vehicle_lookup_source" in saved else "",
+        "vehicleLookupAt": saved.get("vehicle_lookup_at") if "vehicle_lookup_at" in saved else "",
+        "updatedAt": saved.get("updated_at") or ledger.get("updated_at"),
+    }
+    persisted = {
+        "vehiclePlate": bool(settings.get("vehiclePlate")),
+        "vehicleInfo": bool(settings.get("vehicleInfo")),
+        "fuelType": bool(settings.get("fuelType")),
+        "fuelTankCapacity": bool(settings.get("fuelTankCapacity")),
+        "fuelConsumption": bool(settings.get("fuelConsumption")),
+    }
     return {
         "ledgerId": ledger_id,
-        "settings": {
-            "currency": saved.get("currency") or ledger.get("currency"),
-            "fuelType": saved.get("fuel_type") or ledger.get("fuel_type"),
-            "fuelConsumption": saved.get("estimated_consumption_l_per_100km") or ledger.get("estimated_consumption_l_per_100km"),
-            "fuelTankCapacity": saved.get("fuel_tank_capacity_l") or ledger.get("fuel_tank_capacity_l"),
-            "fuelFallbackPrice": saved.get("fallback_fuel_price") or ledger.get("fallback_fuel_price"),
-            "fuelWarningThreshold": saved.get("low_fuel_threshold_percent") or ledger.get("low_fuel_threshold_percent"),
-            "vehiclePlate": saved.get("vehicle_plate") if "vehicle_plate" in saved else ledger.get("vehicle_plate"),
-            "vehicleInfo": saved.get("vehicle_info") if "vehicle_info" in saved else ledger.get("vehicle_info"),
-            "vehicleLookupSource": saved.get("vehicle_lookup_source") if "vehicle_lookup_source" in saved else ledger.get("vehicle_lookup_source"),
-            "vehicleLookupAt": saved.get("vehicle_lookup_at") if "vehicle_lookup_at" in saved else ledger.get("vehicle_lookup_at"),
-            "updatedAt": saved.get("updated_at") or ledger.get("updated_at"),
-        },
+        "settings": settings,
+        "persisted": persisted,
+        "verified": True,
         "members": member_result,
         "memberCount": len(member_result) if isinstance(member_result, list) else 0,
     }
@@ -2657,6 +2686,9 @@ class Handler(SimpleHTTPRequestHandler):
             result = upsert_settings_as_service(ledger, members)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except SettingsSchemaMissingError as error:
+            self.send_json({"ok": False, "code": "SETTINGS_SCHEMA_MISSING", "message": str(error)}, status=409)
             return
         except urllib.error.HTTPError as error:
             body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)

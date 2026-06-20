@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.241",
+    version: "2026.06.18.242",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T13:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v341",
+    updatedAt: "2026-06-20T13:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v342",
     releaseNotes: Object.freeze([
+      "Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.",
       "Workspace/car settings now save through a dedicated Render /api/settings/save route that verifies Supabase JWKS auth plus workspace-admin permission, persists ledger fuel and sanitized vehicle fields server-side, and avoids the old broad JSON-to-table reconciliation path for Save settings.",
       "Render backend auth now verifies Supabase ECC/P-256 access tokens locally through the project JWKS/public keys with rotation-aware caching, keeping the Supabase Auth network check as an explicit emergency fallback instead of the normal path.",
       "Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.",
