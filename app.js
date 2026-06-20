@@ -1219,8 +1219,9 @@ function dataIoOperationGroup(operation = {}) {
   const route = String(entry.route || "").toLowerCase();
   const rpc = String(entry.rpc || "").toLowerCase();
   if (source.startsWith("admin-tool:") || source.startsWith("admin-") || /retention|security-health|admin-report|admin-test-data|normalized-test-data|json-mirror-backup/.test(source)) return "Admin actions";
-  if (/vehicle-lookup|settings-save|trip-save|fuel-save|trips-delete|fuel-delete|bookings-delete|booking|payment|settlement|state-load|write-context/.test(source) || route === "render-api") return "Sync/load/write actions";
+  if (/vehicle-lookup|settings-save|trip-save|fuel-save|trips-delete|fuel-delete|bookings-delete|booking|payment|settlement/.test(source)) return "Member actions";
   if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
+  if (/state-load|write-context/.test(source) || route === "render-api") return "Sync/load/write actions";
   return "Background diagnostics";
 }
 
@@ -4156,8 +4157,8 @@ function buildSupabaseLoadReport() {
     },
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
-    dataIoDiagnostics: latestDataIoDiagnostics(10),
-    dataIoOperations: latestDataIoOperations(10),
+    dataIoDiagnostics: latestDataIoDiagnostics(30),
+    dataIoOperations: latestDataIoOperations(30),
     latestDataIoDiagnostic: lastDataIoDiagnostic,
     latestDataIoOperation: latestDataIoOperation(),
     normalizedTableStatus,

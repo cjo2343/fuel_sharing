@@ -19,7 +19,8 @@ assert.match(server, /is_configured_app_owner\(user\)/, "owner activity endpoint
 assert.match(server, /record_owner_activity_as_service\(ledger\.get\("id"\), user, action="settings-save"/, "settings save should record server-owned activity");
 assert.match(server, /record_owner_activity_as_service\(rpc_payload\.get\("target_ledger_id"\), user, action="trip-upsert"/, "trip saves should record server-owned activity");
 assert.match(server, /record_owner_activity_as_service\(rpc_payload\.get\("target_ledger_id"\), user, action="fuel-upsert"/, "fuel saves should record server-owned activity");
-assert.match(server, /record_owner_activity_as_service\(ledger_id, user, action="vehicle-lookup"/, "vehicle lookups should record server-owned activity");
+assert.match(server, /def record_lookup_activity\(/, "vehicle lookups should use the guaranteed owner-activity recorder");
+assert.match(server, /record_owner_activity_as_service\(\s*ledger_id,\s*user,[\s\S]*action="vehicle-lookup"/, "vehicle lookups should record server-owned activity");
 assert.match(server, /safe_owner_activity_metadata/, "owner activity should use redacted metadata");
 
 assert.match(app, /const renderOwnerActivityUrl = "\/api\/owner\/activity"/, "frontend should know the owner activity endpoint");

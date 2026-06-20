@@ -33,10 +33,11 @@ assert.match(app, /resultCode: "ENTRY_DELETED"/, 'entry soft-delete should expos
 assert.match(app, /trip_deleted/, 'trip deletes should remain persistently audited');
 assert.match(app, /fuel_deleted/, 'fuel deletes should remain persistently audited');
 
-assert.match(app, /vehicle-lookup\|settings-save\|trip-save\|fuel-save\|trips-delete\|fuel-delete\|bookings-delete/, 'business actions should group under sync/load/write Data I/O instead of member onboarding');
+assert.match(app, /vehicle-lookup\|settings-save\|trip-save\|fuel-save\|trips-delete\|fuel-delete\|bookings-delete[\s\S]*return "Member actions"/, 'business actions should group under visible Member actions');
+assert.match(app, /state-load\|write-context[\s\S]*return "Sync\/load\/write actions"/, 'infrastructure load/context activity should stay under sync/load/write diagnostics');
 assert.match(auditLog, /vehicle_lookup_completed: "Vehicle lookup completed"/, 'audit labels should include vehicle lookup');
 assert.match(auditLog, /settings_saved: "Settings saved"/, 'audit labels should include settings saves');
-assert.match(buildInfo, /Vehicle lookup and group settings saves now use local-only staging plus explicit Data I\/O finish rows/, 'release notes should mention visible settings/vehicle Data I/O follow-up');
+assert.match(buildInfo, /Member-facing vehicle lookup, settings, trip, fuel, booking, payment, and settlement actions now group under Member actions/, 'release notes should mention visible member Data I/O follow-up');
 assert.match(app, /function normalizeVehicleText/, 'vehicle lookup summary should have a helper for hiding provider placeholders');
 assert.match(app, /unknown\|ukendt\|ingen\|ingen norm/, 'vehicle lookup summary should hide unknown/Ingen placeholder values');
 assert.match(pkg, /test-business-action-dataio-audit\.mjs/, 'validate script should run the business-action Data I/O/audit guard');
