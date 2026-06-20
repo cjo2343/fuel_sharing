@@ -2557,6 +2557,12 @@ function setActiveView(view) {
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
 
+window.setInterval(() => {
+  if (activeView === "admin" && canUseGlobalAdminTools()) {
+    refreshOwnerActivity({ silent: true }).catch(() => {});
+  }
+}, 15000);
+
 function renderSectionNavigation() {
   if (activeView === "admin" && !canManageSettings()) activeView = "log";
   if (activeView === "account" && !currentSession) activeView = "log";
@@ -4172,7 +4178,8 @@ function formatOwnerActivityRow(row = {}) {
 
 function renderOwnerActivityCard() {
   const status = ownerActivityStatus || {};
-  const rows = Array.isArray(status.rows) ? status.rows.slice(0, 8) : [];
+  const allRows = Array.isArray(status.rows) ? status.rows : [];
+  const rows = allRows.slice(0, 20);
   const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
   const title = status.loading ? "Loading" : status.checked ? (status.ok ? `${rows.length} recent` : "Needs review") : "Not loaded";
   const detail = status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
@@ -4222,7 +4229,7 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
   try {
     const { result } = await callRenderJson(renderOwnerActivityUrl, {
       method: "POST",
-      body: { limit: 80 },
+      body: { limit: 120 },
       timeoutMs: 10000,
       timeoutLabel: "Owner activity load"
     });
@@ -7900,49 +7907,33 @@ async function lookupVehicleByPlateFromUi() {
   }
   const ledgerId = getActiveLedgerId();
   const operationId = createDataIoOperationId("vehicle-lookup", "lookup");
-  const traceMeta = { source: "vehicle-lookup", route: "render-api", endpoint: renderVehicleLookupUrl, operation: "lookup", operationId, ledgerId, staleAfterMs: vehicleLookupTimeoutMs, detail: `Lookup vehicle ${plate}` };
-  let controller = null;
-  let timeoutId = 0;
+  const workspaceContext = buildDataIoWorkspaceContext();
+  const traceMeta = {
+    source: "vehicle-lookup",
+    route: "render-api",
+    endpoint: renderVehicleLookupUrl,
+    operation: "lookup",
+    operationId,
+    ledgerId,
+    selectedWorkspaceId: workspaceContext.selectedWorkspaceId,
+    selectedWorkspaceLabel: workspaceContext.selectedWorkspaceLabel,
+    loadedWorkspaceId: workspaceContext.loadedWorkspaceId,
+    loadedWorkspaceLabel: workspaceContext.loadedWorkspaceLabel,
+    workspaceMismatch: workspaceContext.workspaceMismatch,
+    staleAfterMs: vehicleLookupTimeoutMs,
+    detail: `Lookup vehicle ${plate}`
+  };
   if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = true;
   if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Looking up vehicle through Render...";
+  if (els.vehicleLookupSummary) els.vehicleLookupSummary.textContent = `Looking up ${plate}…`;
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_STARTED" });
   try {
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Vehicle lookup", vehicleLookupTimeoutMs));
-      }, vehicleLookupTimeoutMs);
-    });
-    const fetchPromise = fetch(renderVehicleLookupUrl, {
+    const { result } = await callRenderJson(renderVehicleLookupUrl, {
       method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ ledgerId, plate })
+      body: { ledgerId, plate },
+      timeoutMs: vehicleLookupTimeoutMs,
+      timeoutLabel: "Vehicle lookup"
     });
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-    if (!response.ok) {
-      const error = new Error(result?.message || result?.error || text || `Vehicle lookup failed (${response.status})`);
-      error.status = response.status;
-      error.code = result?.code || response.status;
-      throw error;
-    }
-    if (result?.code === "VEHICLE_LOOKUP_NOT_CONFIGURED") {
-      recordDataIoDiagnostic("skipped", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_NOT_CONFIGURED", detail: result.message || "Vehicle lookup API is not configured on Render." });
-      if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = result.message || "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings.";
-      return false;
-    }
-    if (!result?.ok) {
-      const error = new Error(result?.message || result?.error || text || "Vehicle lookup failed");
-      error.status = response.status;
-      error.code = result?.code || response.status;
-      throw error;
-    }
     applyVehicleLookupToSettings(result.vehicle || {});
     const lookedUpVehicleInfo = normalizeVehicleInfo(state.vehicleInfo);
     addAuditEntry({
@@ -7968,23 +7959,26 @@ async function lookupVehicleByPlateFromUi() {
     if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Vehicle lookup found data. Review the suggested fuel settings, then Save settings.";
     return true;
   } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || /timed out/i.test(String(error?.message || error || ""));
-    const code = String(error?.code || error?.status || "");
-    const notConfigured = /not configured|VEHICLE_LOOKUP_NOT_CONFIGURED/.test(String(error?.message || error || code));
-    const providerUnavailable = /VEHICLE_LOOKUP_PROVIDER_ERROR|VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE|502|503/.test(String(error?.message || error || code));
-    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, ok: false, error, resultCode: timedOut ? "VEHICLE_LOOKUP_TIMEOUT" : notConfigured ? "VEHICLE_LOOKUP_NOT_CONFIGURED" : providerUnavailable ? "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE" : "VEHICLE_LOOKUP_ERROR", errorCode: code, detail: timedOut ? "Vehicle lookup timed out." : String(error?.message || error || "Vehicle lookup failed.") });
+    const payload = error?.payload || {};
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || /timed out|timeout/i.test(String(error?.code || error?.resultCode || error?.message || error || ""));
+    const code = String(payload?.code || error?.code || error?.status || "");
+    const notConfigured = /not configured|VEHICLE_LOOKUP_NOT_CONFIGURED/.test(String(payload?.message || error?.message || error || code));
+    const providerUnavailable = /VEHICLE_LOOKUP_PROVIDER_ERROR|VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE|502|503/.test(String(payload?.message || error?.message || error || code));
+    const resultCode = timedOut ? "VEHICLE_LOOKUP_TIMEOUT" : notConfigured ? "VEHICLE_LOOKUP_NOT_CONFIGURED" : providerUnavailable ? "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE" : "VEHICLE_LOOKUP_ERROR";
+    recordDataIoDiagnostic(timedOut ? "timeout" : notConfigured ? "skipped" : "error", { ...traceMeta, ok: false, error, resultCode, errorCode: code, detail: timedOut ? `Vehicle lookup for ${plate} timed out.` : String(payload?.message || error?.message || error || "Vehicle lookup failed.") });
     const message = notConfigured
       ? "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings."
       : timedOut
-        ? "Vehicle lookup timed out. Keep using manual fuel settings or try again."
+        ? `Vehicle lookup for ${plate} timed out. Keep using manual fuel settings or try again.`
         : providerUnavailable
           ? "Vehicle lookup provider is unavailable right now. Keep using manual fuel settings or try again later."
-          : `Vehicle lookup failed: ${String(error?.message || error || "Unknown error")}`;
+          : `Vehicle lookup failed: ${String(payload?.message || error?.message || error || "Unknown error")}`;
     if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = message;
+    if (els.vehicleLookupSummary) els.vehicleLookupSummary.textContent = "";
     return false;
   } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
-    if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canManageSettings() || !currentSession;
+    if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canManageSettings() || !currentSession || !isActiveWorkspaceDataConfirmed();
+    refreshOwnerActivity({ force: true, silent: true }).catch(() => {});
     renderSupabaseLoadMonitor();
   }
 }

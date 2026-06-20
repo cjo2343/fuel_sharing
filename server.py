@@ -3587,6 +3587,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before looking up a vehicle")
             return
         started_at = time.time()
+        ledger_id = ""
+        plate = ""
         try:
             payload = read_request_body(self)
             ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
@@ -3629,9 +3631,13 @@ class Handler(SimpleHTTPRequestHandler):
             record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup provider unavailable for {plate}.", metadata={"plate": plate})
             self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", "message": str(error)}).encode("utf-8"))
         except PermissionError as error:
+            if ledger_id:
+                record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_FORBIDDEN", status_code=403, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup forbidden for {plate or 'unknown plate'}.", metadata={"plate": plate})
             self.send_error(403, str(error))
         except Exception as error:
-            self.send_error(500, str(error))
+            if ledger_id:
+                record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_ERROR", status_code=500, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup failed for {plate or 'unknown plate'}.", metadata={"plate": plate})
+            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_ERROR", "message": str(error)}, status=500)
 
     def run_reminders(self):
         auth_error = reminder_job_auth_error(self)
