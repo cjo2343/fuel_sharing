@@ -105,6 +105,70 @@ function setActiveLedgerId(ledgerId, { persist = true } = {}) {
   return activeLedgerId;
 }
 
+function makeWorkspaceScopedStorageKey(ledgerId = getActiveLedgerId()) {
+  const safeLedgerId = String(ledgerId || getConfiguredLedgerId()).trim().replace(/[^a-z0-9_-]+/gi, "-") || getConfiguredLedgerId();
+  return `${storageKey}:${safeLedgerId}`;
+}
+
+function markActiveWorkspaceLoading(reason = "workspace-load") {
+  activeWorkspaceLoadInProgress = true;
+  activeWorkspaceLoadLedgerId = getActiveLedgerId();
+  activeWorkspaceLoadStartedAt = Date.now();
+  recordSupabaseLoadEvent("workspace-load-start", `${reason}: ${activeWorkspaceLoadLedgerId}`);
+}
+
+function markActiveWorkspaceConfirmed(reason = "workspace-load") {
+  activeWorkspaceLoadInProgress = false;
+  activeWorkspaceLoadLedgerId = "";
+  activeWorkspaceLoadStartedAt = 0;
+  lastConfirmedWorkspaceLedgerId = getActiveLedgerId();
+  lastConfirmedWorkspaceLabel = getCurrentWorkspaceLabel();
+  recordSupabaseLoadEvent("workspace-load-confirmed", `${reason}: ${lastConfirmedWorkspaceLabel}`);
+}
+
+function markActiveWorkspaceLoadFailed(reason = "workspace-load") {
+  activeWorkspaceLoadInProgress = false;
+  activeWorkspaceLoadLedgerId = "";
+  activeWorkspaceLoadStartedAt = 0;
+  recordSupabaseLoadEvent("workspace-load-delayed", `${reason}: ${getCurrentWorkspaceLabel()}`);
+}
+
+function isActiveWorkspaceDataConfirmed() {
+  if (!supabaseClient) return true;
+  if (!currentSession) return false;
+  return !activeWorkspaceLoadInProgress && String(lastConfirmedWorkspaceLedgerId || "") === String(getActiveLedgerId() || "");
+}
+
+function workspaceActionBlockedMessage(action = "change this workspace") {
+  return `Wait for ${getCurrentWorkspaceLabel()} to finish loading before you ${action}.`;
+}
+
+function assertActiveWorkspaceDataConfirmed(action = "change this workspace") {
+  if (isActiveWorkspaceDataConfirmed()) return true;
+  const message = workspaceActionBlockedMessage(action);
+  showUserError(message);
+  showAppMessage(message, "warning", { timeoutMs: 4500 });
+  return false;
+}
+
+function makeWorkspaceLoadingState() {
+  return normalizeState({
+    ...structuredClone(defaults),
+    members: [],
+    memberProfiles: {},
+    trips: [],
+    fuel: [],
+    bookings: [],
+    paymentStatuses: {},
+    auditLog: [],
+    closedPeriods: [],
+    currentPeriodId: "",
+    vehiclePlate: "",
+    vehicleInfo: null,
+    updatedAt: new Date().toISOString()
+  });
+}
+
 function reconcileActiveLedgerSelection() {
   if (!isLedgerLinkedToCurrentUser(activeLedgerId)) {
     setActiveLedgerId(getConfiguredLedgerId(), { persist: true });
@@ -232,11 +296,14 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   const traceMeta = { source: "workspace-switch", route: "member-action", operation: "switch", operationId, detail: `Switch workspace to ${targetLedgerId}` };
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCH_STARTED" });
   setActiveLedgerId(targetLedgerId, { persist: true });
+  markActiveWorkspaceLoading(source);
+  state = makeWorkspaceLoadingState();
   await refreshAuthBoundMemberProfile();
   workspaceInviteStatus.loaded = false;
   workspaceInviteStatus.invites = [];
-  normalizedTableStatus = { checked: false, ok: false, message: "Workspace changed; reload normalized tables." };
-  setSyncStatus("Syncing", { source });
+  normalizedTableStatus = { checked: false, ok: false, message: `Loading isolated workspace data for ${getCurrentWorkspaceLabel()}. Editing is locked until this workspace is confirmed.` };
+  setSyncStatus("Switching workspace", { source });
+  showAppMessage(`Loading workspace ${getCurrentWorkspaceLabel()}…`, "info", { timeoutMs: 3500 });
   render();
   unsubscribeFromLedgerEvents();
   unsubscribeFromSupabaseState();
@@ -248,10 +315,13 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     "Workspace switch sync is delayed. You can keep using local data and try Sync now."
   );
   if (loaded) {
-    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCHED", detail: `Switched workspace to ${getCurrentWorkspaceLabel()}` });
-    showAppMessage(`Switched workspace to ${getCurrentWorkspaceLabel()}.`);
+    markActiveWorkspaceConfirmed(source);
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCHED", detail: `Switched workspace to ${getCurrentWorkspaceLabel()} and confirmed its data.` });
+    showAppMessage(`Switched to ${getCurrentWorkspaceLabel()}. Workspace data is loaded and safe to edit.`, "success", { timeoutMs: 4500 });
   } else {
-    recordDataIoDiagnostic("timeout", { ...traceMeta, ok: false, resultCode: "WORKSPACE_SWITCH_LOAD_DELAYED", detail: "Workspace switch completed but state load is delayed." });
+    markActiveWorkspaceLoadFailed(source);
+    recordDataIoDiagnostic("timeout", { ...traceMeta, ok: false, resultCode: "WORKSPACE_SWITCH_LOAD_DELAYED", detail: "Workspace switch completed but state load is delayed; editing remains locked." });
+    showUserError(`Workspace ${getCurrentWorkspaceLabel()} is selected, but its data has not loaded yet. Try Sync now before editing.`);
   }
 }
 
@@ -478,6 +548,12 @@ let visibleSavingFailsafeTimer = null;
 let startupHydrationActive = false;
 let startupHydrationStartedAt = 0;
 let startupHydrationReason = "";
+let activeWorkspaceLoadInProgress = false;
+let activeWorkspaceLoadLedgerId = "";
+let activeWorkspaceLoadStartedAt = 0;
+let lastConfirmedWorkspaceLedgerId = "";
+let lastConfirmedWorkspaceLabel = "";
+
 const foregroundOperationStaleMs = 20000;
 const foregroundOperations = new Map();
 let foregroundOperationCounter = 0;
@@ -862,8 +938,9 @@ function recordDataIoDiagnostic(phase, meta = {}) {
     resultCode,
     statusCode: resultCode,
     errorCode: summarizedError?.code || "",
-    ledgerId: supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : "",
+    ledgerId: meta.ledgerId || (supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : ""),
     activeLedgerId,
+    workspaceLabel: getCurrentWorkspaceLabel(),
     hasSession: Boolean(currentSession),
     pendingLocalChanges,
     error: summarizedError,
@@ -2360,6 +2437,7 @@ els.settingsForm.addEventListener("submit", async (event) => {
     showUserError("Only an admin can change group settings.");
     return;
   }
+  if (!assertActiveWorkspaceDataConfirmed("save settings")) return;
 
   const parsed = parseMemberSettings(els.members.value);
   const members = parsed.map((member) => member.name);
@@ -4154,7 +4232,7 @@ function renderSupabaseLoadMonitor() {
               const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
               const code = operation.finish?.resultCode || operation.finish?.code || operation.latest?.resultCode || operation.latest?.code || operation.start?.resultCode || operation.start?.code || "";
               const target = entry.endpoint || entry.rpc || entry.table || entry.operation || "";
-              return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${target ? `→ ${escapeHtml(target)}` : ""}${code ? ` · code ${escapeHtml(code)}` : ""}</small>${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
+              return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${target ? `→ ${escapeHtml(target)}` : ""}${code ? ` · code ${escapeHtml(code)}` : ""}</small>${entry.workspaceLabel || entry.activeLedgerId ? `<small>Workspace: ${escapeHtml(entry.workspaceLabel || entry.activeLedgerId || "current")}</small>` : ""}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
             }).join("")}
           </div>
         </details>
@@ -6788,10 +6866,17 @@ function getCurrentWorkspaceLabel() {
   return getCurrentWorkspaceContext().label;
 }
 
+// Guardrail text: Use the workspace selector to reload this app around another linked workspace.
 function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
   const context = getCurrentWorkspaceContext();
+  const workspaceConfirmed = isActiveWorkspaceDataConfirmed();
+  const workspaceStatusText = activeWorkspaceLoadInProgress
+    ? `Loading ${context.label}…`
+    : workspaceConfirmed
+      ? `Current workspace · ${context.label}`
+      : `Workspace not confirmed · ${context.label}`;
   if (els.topbarWorkspaceScope) {
-    els.topbarWorkspaceScope.textContent = `Current workspace · ${context.label}`;
+    els.topbarWorkspaceScope.textContent = workspaceStatusText;
   }
   if (!els.workspaceScopeSummary) return;
   const tripCount = Number(Array.isArray(state.trips) ? state.trips.length : 0);
@@ -6816,9 +6901,9 @@ function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
         <small>${bookingCount} booking${bookingCount === 1 ? "" : "s"} · ${formatNumber(ledger?.totalKm || 0)} km logged.</small>
       </article>
       <article>
-        <span>Workspace switching</span>
-        <strong>${context.switchingEnabled ? "Enabled" : "One workspace available"}</strong>
-        <small>${context.switchingEnabled ? "Use the workspace selector to reload this app around another linked workspace." : "More linked workspaces will appear in the selector when available."}</small>
+        <span>Workspace status</span>
+        <strong>${activeWorkspaceLoadInProgress ? "Loading…" : workspaceConfirmed ? "Loaded and isolated" : "Not confirmed"}</strong>
+        <small>${activeWorkspaceLoadInProgress ? "Editing is temporarily locked while this workspace loads." : workspaceConfirmed ? "Actions are scoped to this workspace only." : "Use Sync now before editing so old workspace data cannot bleed into this one."}</small>
       </article>
     </div>
   `;
@@ -7523,6 +7608,7 @@ async function lookupVehicleByPlateFromUi() {
     showUserError("Only an admin can lookup and apply vehicle settings.");
     return false;
   }
+  if (!assertActiveWorkspaceDataConfirmed("lookup vehicle information")) return false;
   if (!currentSession?.access_token) {
     showUserError("Sign in before looking up a vehicle.");
     return false;
@@ -7625,9 +7711,16 @@ async function lookupVehicleByPlateFromUi() {
 
 function renderSettings() {
   const canManage = canManageSettings();
+  const workspaceConfirmed = isActiveWorkspaceDataConfirmed();
+  const canEditSettings = canManage && workspaceConfirmed;
 
   if (els.settingsPanel) {
     els.settingsPanel.classList.toggle("hidden", !canManage);
+  }
+  if (canManage && !workspaceConfirmed && els.vehicleLookupStatus) {
+    els.vehicleLookupStatus.textContent = activeWorkspaceLoadInProgress
+      ? `Loading ${getCurrentWorkspaceLabel()} before settings can be edited…`
+      : `Workspace data for ${getCurrentWorkspaceLabel()} is not confirmed yet. Use Sync now before editing.`;
   }
 
   const isEditingSettings = Boolean(els.settingsForm && els.settingsForm.contains(document.activeElement));
@@ -7659,22 +7752,22 @@ function renderSettings() {
       .join("\n");
   }
 
-  els.currency.disabled = !canManage;
-  if (els.fuelType) els.fuelType.disabled = !canManage;
-  if (els.fuelConsumption) els.fuelConsumption.disabled = !canManage;
-  if (els.fuelTankCapacity) els.fuelTankCapacity.disabled = !canManage;
-  if (els.fuelFallbackPrice) els.fuelFallbackPrice.disabled = !canManage;
-  if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.disabled = !canManage;
-  if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.disabled = !canManage;
-  if (els.fuelWarningThreshold) els.fuelWarningThreshold.disabled = !canManage;
-  if (els.vehiclePlate) els.vehiclePlate.disabled = !canManage;
-  if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canManage || !currentSession;
-  if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.disabled = !canManage;
-  if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.disabled = !canManage;
-  if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.disabled = !canManage;
-  if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.disabled = !canManage;
-  els.members.disabled = !canManage;
-  els.settingsForm.querySelector("button").disabled = !canManage;
+  els.currency.disabled = !canEditSettings;
+  if (els.fuelType) els.fuelType.disabled = !canEditSettings;
+  if (els.fuelConsumption) els.fuelConsumption.disabled = !canEditSettings;
+  if (els.fuelTankCapacity) els.fuelTankCapacity.disabled = !canEditSettings;
+  if (els.fuelFallbackPrice) els.fuelFallbackPrice.disabled = !canEditSettings;
+  if (els.fuelPriceWarningMin) els.fuelPriceWarningMin.disabled = !canEditSettings;
+  if (els.fuelPriceWarningMax) els.fuelPriceWarningMax.disabled = !canEditSettings;
+  if (els.fuelWarningThreshold) els.fuelWarningThreshold.disabled = !canEditSettings;
+  if (els.vehiclePlate) els.vehiclePlate.disabled = !canEditSettings;
+  if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canEditSettings || !currentSession;
+  if (els.paymentRemindersEnabled) els.paymentRemindersEnabled.disabled = !canEditSettings;
+  if (els.paymentReminderAfterDays) els.paymentReminderAfterDays.disabled = !canEditSettings;
+  if (els.paymentReminderRepeatDays) els.paymentReminderRepeatDays.disabled = !canEditSettings;
+  if (els.paymentReminderMaxCount) els.paymentReminderMaxCount.disabled = !canEditSettings;
+  els.members.disabled = !canEditSettings;
+  els.settingsForm.querySelector("button").disabled = !canEditSettings;
 }
 
 function getActiveSettlementRequestLock() {
@@ -14992,7 +15085,7 @@ function normalizeEmail(value) {
 }
 
 async function loadState() {
-  return await dataStore.loadLocalState({ storageKey, defaults, normalizeState });
+  return await dataStore.loadLocalState({ storageKey: makeWorkspaceScopedStorageKey(), defaults, normalizeState });
 }
 
 function saveState(options = {}) {
@@ -15000,7 +15093,7 @@ function saveState(options = {}) {
   recordSupabaseLoadEvent("local-save", queueRemote ? "saveState queued a local change" : `${reason}; local state saved without queued browser full-state write`);
   state.updatedAt = new Date().toISOString();
   dataStore.saveLocalState({
-    storageKey,
+    storageKey: makeWorkspaceScopedStorageKey(),
     state,
     afterSave: () => {
       if (!queueRemote) {
@@ -15014,7 +15107,7 @@ function saveState(options = {}) {
 }
 
 function writeLocalState() {
-  dataStore.writeLocalState({ storageKey, state });
+  dataStore.writeLocalState({ storageKey: makeWorkspaceScopedStorageKey(), state });
 }
 
 function stateUpdatedMs(candidate) {
@@ -17947,6 +18040,7 @@ async function tryRenderAdminDiagnosticsStateLoad(reason, loadToken, jsonFallbac
     clearSyncDelay(`admin-render-load-success:${reason}`);
     recordSupabaseLoadEvent("render-admin-diagnostics-load", reason);
     recordSyncDiagnostic("admin-render-load-success", "Admin diagnostics refreshed from Render state load.", { reason, route: "render-api", endpoint: renderStateLoadUrl });
+    markActiveWorkspaceConfirmed(reason);
     setSyncStatus("Tables");
     return true;
   } catch (error) {
@@ -17991,6 +18085,7 @@ async function loadSupabaseState(options = {}) {
   supabaseLoadStartedAt = now;
   const loadToken = ++supabaseLoadToken;
   lastSupabaseLoadAt = now;
+  markActiveWorkspaceLoading(reason);
 
   try {
     clearRecoverableSyncDelayAfterHealthySync(`load-start:${reason}`);
@@ -18074,9 +18169,11 @@ async function loadSupabaseState(options = {}) {
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
     clearSyncDelay(`load-success:${reason}`);
     recordSyncDiagnostic("load-success", loadedFromTables ? "Loaded from normalized tables." : "Loaded from JSON mirror fallback.", { reason, loadedFromTables });
+    markActiveWorkspaceConfirmed(reason);
     setSyncStatus(loadedFromTables ? "Tables" : "Cloud");
     return true;
   } catch (error) {
+    markActiveWorkspaceLoadFailed(reason);
     lastSyncError = error.message || "Could not load cloud data.";
     lastCloudRetryAt = new Date().toISOString();
     recordSyncDiagnostic("load-error", lastSyncError, { reason, error });
@@ -18204,7 +18301,7 @@ async function saveSupabaseState(options = {}) {
 
 async function maybeSaveJsonMirrorBackup(options = {}) {
   const { minIntervalMs = jsonMirrorBackupIntervalMs, reason = "scheduled JSON mirror backup" } = options || {};
-  const lastSaved = Number(localStorage.getItem(`${storageKey}:jsonMirrorSavedAt`) || 0);
+  const lastSaved = Number(localStorage.getItem(`${makeWorkspaceScopedStorageKey()}:jsonMirrorSavedAt`) || 0);
   if (Date.now() - lastSaved < minIntervalMs) {
     recordSupabaseLoadEvent("json-mirror-skip", `${reason}; interval not reached`);
     return false;
@@ -18294,7 +18391,7 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
   if (renderResult.ok) {
     lastRenderJsonMirrorBackupAt = Date.now();
     lastJsonMirrorSaveAt = savedAt;
-    localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
+    localStorage.setItem(`${makeWorkspaceScopedStorageKey()}:jsonMirrorSavedAt`, String(Date.now()));
     lastCloudSaveAt = savedAt;
     lastCloudSyncAt = savedAt;
     return true;
@@ -18328,7 +18425,7 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
     detail: "Saved through direct Supabase JSON mirror fallback."
   });
   lastJsonMirrorSaveAt = savedAt;
-  localStorage.setItem(`${storageKey}:jsonMirrorSavedAt`, String(Date.now()));
+  localStorage.setItem(`${makeWorkspaceScopedStorageKey()}:jsonMirrorSavedAt`, String(Date.now()));
   lastCloudSaveAt = savedAt;
   lastCloudSyncAt = savedAt;
   return true;
