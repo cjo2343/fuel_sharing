@@ -21,9 +21,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.234`
-- Service-worker cache: `fuel-ledger-v334`
-- Updated at: `2026-06-20T10:20:00.000Z`
+- Version: `2026.06.18.235`
+- Service-worker cache: `fuel-ledger-v335`
+- Updated at: `2026-06-20T10:35:00.000Z`
 - Top release note: Vehicle lookup, settings saves, trip saves, fuel saves, and entry deletes now leave clearer Data I/O result-code breadcrumbs, while vehicle lookups and group settings also add safe audit-history entries without storing provider secrets or VIN data.
 ## Invite beta readiness: member action Data I/O
 

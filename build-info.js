@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.234",
+    version: "2026.06.18.235",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T10:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v334",
+    updatedAt: "2026-06-20T10:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v335",
     releaseNotes: Object.freeze([
       "Vehicle lookup, settings saves, trip saves, fuel saves, and entry deletes now leave clearer Data I/O result-code breadcrumbs, while vehicle lookups and group settings also add safe audit-history entries without storing provider secrets or VIN data.",
       "Vehicle lookup now preserves more sanitized Nummerplade Tjek vehicle details including first registration, engine, emissions, Euro norm, and inspection metadata while keeping VIN/raw equipment out of the browser payload.",
