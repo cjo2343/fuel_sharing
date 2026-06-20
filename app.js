@@ -1006,8 +1006,8 @@ function dataIoOperationGroup(operation = {}) {
   const route = String(entry.route || "").toLowerCase();
   const rpc = String(entry.rpc || "").toLowerCase();
   if (source.startsWith("admin-tool:") || source.startsWith("admin-") || /retention|security-health|admin-report|admin-test-data|normalized-test-data|json-mirror-backup/.test(source)) return "Admin actions";
-  if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.startsWith("vehicle-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
-  if (/state-load|write-context|trip-save|fuel-save|booking|payment|settlement/.test(source) || route === "render-api") return "Sync/load/write actions";
+  if (/vehicle-lookup|settings-save|trip-save|fuel-save|trips-delete|fuel-delete|bookings-delete|booking|payment|settlement|state-load|write-context/.test(source) || route === "render-api") return "Sync/load/write actions";
+  if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
   return "Background diagnostics";
 }
 
@@ -2388,6 +2388,19 @@ els.settingsForm.addEventListener("submit", async (event) => {
       }
     ])
   );
+  addAuditEntry({
+    type: "settings_saved",
+    entityType: "settings",
+    entityId: getActiveLedgerId(),
+    summary: `Group settings saved · ${state.currency} · ${state.fuelType || defaults.fuelType}`,
+    detail: `Fuel ${formatNumber(state.fuelConsumption)} L/100 km · tank ${formatNumber(state.fuelTankCapacity)} L · ${state.members.length} active member${state.members.length === 1 ? "" : "s"}`,
+    metadata: {
+      fuelType: state.fuelType,
+      fuelConsumption: state.fuelConsumption,
+      fuelTankCapacity: state.fuelTankCapacity,
+      memberCount: state.members.length
+    }
+  });
   state.trips = state.trips.filter((trip) => state.members.includes(trip.driver));
   state.trips = state.trips.map((trip) => ({
     ...trip,
@@ -2396,15 +2409,32 @@ els.settingsForm.addEventListener("submit", async (event) => {
   state.fuel = state.fuel.filter((fuel) => state.members.includes(fuel.payer));
 
   markNormalizedReconciliationDirty("group settings changed");
-  saveState();
-  if (supabaseClient) {
-    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
-    await saveSupabaseState({ reason: "group-settings" });
-  } else {
-    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
-    await saveRemoteState();
+  const settingsTraceMeta = {
+    source: "settings-save",
+    route: supabaseClient ? "supabase-state" : "remote-state",
+    operation: "save",
+    operationId: createDataIoOperationId("settings-save", "save"),
+    ledgerId: getActiveLedgerId(),
+    resultCode: "SETTINGS_SAVE_STARTED",
+    detail: "Save group settings"
+  };
+  recordDataIoDiagnostic("start", { ...settingsTraceMeta, ok: true });
+  try {
+    saveState();
+    if (supabaseClient) {
+      if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+      await saveSupabaseState({ reason: "group-settings" });
+    } else {
+      if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+      await saveRemoteState();
+    }
+    recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED" });
+    render();
+  } catch (error) {
+    recordDataIoDiagnostic("error", { ...settingsTraceMeta, ok: false, error, resultCode: "SETTINGS_SAVE_ERROR" });
+    showUserError(`Could not save group settings: ${error.message || error}`);
+    throw error;
   }
-  render();
 });
 
 if (els.vehicleLookupButton) {
@@ -7476,6 +7506,24 @@ async function lookupVehicleByPlateFromUi() {
       throw error;
     }
     applyVehicleLookupToSettings(result.vehicle || {});
+    const lookedUpVehicleInfo = normalizeVehicleInfo(state.vehicleInfo);
+    addAuditEntry({
+      type: "vehicle_lookup_completed",
+      entityType: "vehicle",
+      entityId: plate,
+      summary: `${plate} · ${lookedUpVehicleInfo?.make || "Vehicle"} ${lookedUpVehicleInfo?.model || ""}`.trim(),
+      detail: [
+        lookedUpVehicleInfo?.source ? `Provider: ${lookedUpVehicleInfo.source}` : "",
+        lookedUpVehicleInfo?.fuelType ? `Fuel: ${lookedUpVehicleInfo.fuelType}` : "",
+        lookedUpVehicleInfo?.consumptionLPer100Km ? `Consumption: ${lookedUpVehicleInfo.consumptionLPer100Km} L/100 km` : "",
+        lookedUpVehicleInfo?.firstRegDate ? `First registration: ${lookedUpVehicleInfo.firstRegDate}` : ""
+      ].filter(Boolean).join(" · "),
+      metadata: {
+        plate,
+        provider: lookedUpVehicleInfo?.source || "vehicle-lookup",
+        hasConsumption: Boolean(lookedUpVehicleInfo?.consumptionLPer100Km)
+      }
+    });
     saveState();
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_OK", detail: result.message || "Vehicle lookup completed" });
     if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Vehicle lookup found data. Review the suggested fuel settings, then Save settings.";
@@ -15776,7 +15824,7 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
   };
 
   try {
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "TRIP_SAVE_STARTED" });
     controller = new AbortController();
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = window.setTimeout(() => {
@@ -15808,14 +15856,14 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-trip-save", "upsert via Render backend API");
-      finishTripRenderDiagnostic("success", { ok: true });
+      finishTripRenderDiagnostic("success", { ok: true, resultCode: "TRIP_SAVED" });
       return { ok: true, data: result.result, backend: "render-api" };
     }
 
     const message = result?.message || result?.error || text || `Render trip save failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    finishTripRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
+    finishTripRenderDiagnostic("error", { error, detail: `HTTP ${response.status}`, resultCode: "TRIP_SAVE_ERROR" });
     return {
       ok: false,
       error,
@@ -15825,7 +15873,7 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs);
-    finishTripRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
+    finishTripRenderDiagnostic(timedOut ? "timeout" : "exception", { error, resultCode: timedOut ? "TRIP_SAVE_TIMEOUT" : "TRIP_SAVE_ERROR" });
     console.warn("Render trip save API failed", error);
     return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
   } finally {
@@ -15897,7 +15945,7 @@ async function saveFuelPaymentViaRender(context, payload) {
   };
 
   try {
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "FUEL_SAVE_STARTED" });
     controller = new AbortController();
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = window.setTimeout(() => {
@@ -15928,14 +15976,14 @@ async function saveFuelPaymentViaRender(context, payload) {
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-fuel-save", "upsert via Render backend API");
-      finishFuelRenderDiagnostic("success", { ok: true });
+      finishFuelRenderDiagnostic("success", { ok: true, resultCode: "FUEL_SAVED" });
       return { ok: true, data: result.result, backend: "render-api" };
     }
 
     const message = result?.message || result?.error || text || `Render fuel save failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    finishFuelRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
+    finishFuelRenderDiagnostic("error", { error, detail: `HTTP ${response.status}`, resultCode: "FUEL_SAVE_ERROR" });
     return {
       ok: false,
       error,
@@ -15945,7 +15993,7 @@ async function saveFuelPaymentViaRender(context, payload) {
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render fuel save API", fuelSaveActionTimeoutMs);
-    finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
+    finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception", { error, resultCode: timedOut ? "FUEL_SAVE_TIMEOUT" : "FUEL_SAVE_ERROR" });
     console.warn("Render fuel save API failed", error);
     return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
   } finally {
@@ -16585,11 +16633,27 @@ async function saveSettlementRequestToNormalizedTableFirst(settlement, nextStatu
 
 async function softDeleteNormalizedEntryFirst(type, id) {
   if (!supabaseClient || !currentSession) return true;
+  const deleteSource = `${type || "entry"}-delete`;
+  const deleteTraceMeta = {
+    source: deleteSource,
+    route: "normalized-write",
+    operation: "soft-delete",
+    operationId: createDataIoOperationId(deleteSource, "soft-delete"),
+    resultCode: "ENTRY_DELETE_STARTED",
+    detail: `Soft-delete ${type || "entry"} ${String(id || "").slice(0, 12)}`
+  };
+  recordDataIoDiagnostic("start", { ...deleteTraceMeta, ok: true });
   try {
-    const context = await getNormalizedWriteContext({ source: `${type || "entry"}-delete` });
-    if (!context) return true;
+    const context = await getNormalizedWriteContext({ source: deleteSource });
+    if (!context) {
+      recordDataIoDiagnostic("skipped", { ...deleteTraceMeta, ok: true, resultCode: "ENTRY_DELETE_SKIPPED", detail: "No normalized write context available." });
+      return true;
+    }
     const table = type === "trips" ? "trips" : type === "fuel" ? "fuel_payments" : type === "bookings" ? "car_bookings" : null;
-    if (!table) return true;
+    if (!table) {
+      recordDataIoDiagnostic("skipped", { ...deleteTraceMeta, ok: true, resultCode: "ENTRY_DELETE_SKIPPED", detail: "Unknown entry type." });
+      return true;
+    }
     if (type === "bookings") {
       const rpcResult = await softDeleteBookingRpc(context, id);
       if (!rpcResult.ok) {
@@ -16615,8 +16679,10 @@ async function softDeleteNormalizedEntryFirst(type, id) {
       ok: true,
       message: "Table-primary delete saved to normalized tables. JSON will be updated as backup."
     };
+    recordDataIoDiagnostic("success", { ...deleteTraceMeta, ok: true, resultCode: "ENTRY_DELETED", table });
     return true;
   } catch (error) {
+    recordDataIoDiagnostic("error", { ...deleteTraceMeta, ok: false, error, resultCode: "ENTRY_DELETE_ERROR" });
     console.warn("Table-primary delete failed", error);
     if (type === "bookings" && isMissingBookingTableError(error)) {
       normalizedTableStatus = {

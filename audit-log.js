@@ -49,6 +49,8 @@
       fuel_created: "Fuel log created",
       fuel_updated: "Fuel log updated",
       fuel_deleted: "Fuel log deleted",
+      vehicle_lookup_completed: "Vehicle lookup completed",
+      settings_saved: "Settings saved",
       payment_requested: "Payment requested",
       payment_marked_paid: "Payment marked paid",
       payment_reopened: "Payment reopened",

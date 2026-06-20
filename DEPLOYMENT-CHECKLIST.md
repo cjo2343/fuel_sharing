@@ -23,8 +23,8 @@ These values are checked by `npm run release:check`. When a runtime release chan
 
 - Version: `2026.06.18.234`
 - Service-worker cache: `fuel-ledger-v334`
-- Updated at: `2026-06-20T10:05:00.000Z`
-- Top release note: Vehicle lookup now preserves more sanitized Nummerplade Tjek vehicle details including first registration, engine, emissions, Euro norm, and inspection metadata while keeping VIN/raw equipment out of the browser payload.
+- Updated at: `2026-06-20T10:20:00.000Z`
+- Top release note: Vehicle lookup, settings saves, trip saves, fuel saves, and entry deletes now leave clearer Data I/O result-code breadcrumbs, while vehicle lookups and group settings also add safe audit-history entries without storing provider secrets or VIN data.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

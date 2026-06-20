@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.234",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T10:05:00.000Z",
+    updatedAt: "2026-06-20T10:20:00.000Z",
     expectedServiceWorkerCache: "fuel-ledger-v334",
     releaseNotes: Object.freeze([
+      "Vehicle lookup, settings saves, trip saves, fuel saves, and entry deletes now leave clearer Data I/O result-code breadcrumbs, while vehicle lookups and group settings also add safe audit-history entries without storing provider secrets or VIN data.",
       "Vehicle lookup now preserves more sanitized Nummerplade Tjek vehicle details including first registration, engine, emissions, Euro norm, and inspection metadata while keeping VIN/raw equipment out of the browser payload.",
       "Vehicle lookup now fails softly when the Render provider is missing or unavailable: /api/vehicle/lookup returns stable lookup result codes instead of browser-visible 5xx responses, and the UI keeps manual fuel settings as the fallback.",
       "Workspace-admin scope is now separated from global app-admin tools: admins of secondary/private workspaces can manage only their workspace settings, members, and invites, while Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.",
