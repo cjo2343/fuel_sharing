@@ -14857,18 +14857,30 @@ function isPrimaryConfiguredWorkspace() {
   return String(getActiveLedgerId() || "") === String(getConfiguredLedgerId() || "");
 }
 
+const configuredAppOwnerEmails = Object.freeze(["chrjohn94@gmail.com"]);
+
+function getConfiguredAppOwnerEmails() {
+  return configuredAppOwnerEmails
+    .map((email) => normalizeEmail(email))
+    .filter(Boolean);
+}
+
 function getPrimaryAppOwnerEmail() {
   const firstMember = normalizeMembers(state.members)[0] || "";
   const profile = firstMember ? optionalRecordValue(state.memberProfiles, firstMember) || {} : {};
-  return normalizeEmail(profile.email || "");
+  const primaryMemberEmail = normalizeEmail(profile.email || "");
+  return primaryMemberEmail || getConfiguredAppOwnerEmails()[0] || "";
 }
 
 function isSignedInPrimaryAppOwner() {
   if (!supabaseClient) return true;
   if (!currentSession || !isPrimaryConfiguredWorkspace()) return false;
-  const ownerEmail = getPrimaryAppOwnerEmail();
   const signedInEmail = getLoggedInEmail();
-  return Boolean(ownerEmail && signedInEmail && ownerEmail === signedInEmail);
+  const ownerEmails = new Set([
+    getPrimaryAppOwnerEmail(),
+    ...getConfiguredAppOwnerEmails()
+  ].map((email) => normalizeEmail(email)).filter(Boolean));
+  return Boolean(signedInEmail && ownerEmails.has(signedInEmail));
 }
 
 function canUseGlobalAdminTools() {

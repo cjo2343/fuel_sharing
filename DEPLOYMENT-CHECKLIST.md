@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.246`
-- Service-worker cache: `fuel-ledger-v346`
-- Updated at: `2026-06-20T14:15:00.000Z`
-- Top release note: Member management now uses a backend-owned Render /api/members/manage route for listing, adding, editing, deactivating, and reactivating workspace members, while workspace admins stay scoped to their own workspace and technical Data I/O remains app-owner-only.
+- Version: `2026.06.18.247`
+- Service-worker cache: `fuel-ledger-v347`
+- Updated at: `2026-06-20T14:20:00.000Z`
+- Top release note: Owner-only diagnostics now recognize the configured app-owner email chrjohn94@gmail.com, so the app owner keeps Data I/O/global admin tools while ordinary workspace admins remain limited to workspace settings, members, and invites.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

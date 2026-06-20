@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.246",
+    version: "2026.06.18.247",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T14:15:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v346",
+    updatedAt: "2026-06-20T14:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v347",
     releaseNotes: Object.freeze([
+      "Owner-only diagnostics now recognize the configured app-owner email chrjohn94@gmail.com, so the app owner keeps Data I/O/global admin tools while ordinary workspace admins remain limited to workspace settings, members, and invites.",
       "Member management now uses a backend-owned Render /api/members/manage route for listing, adding, editing, deactivating, and reactivating workspace members, while workspace admins stay scoped to their own workspace and technical Data I/O remains app-owner-only.",
       "Data I/O, Render admin health, Security Health, load reports, and advanced diagnostics are now treated as app-owner-only tools; workspace admins keep workspace settings, members, and invites without seeing technical backend diagnostics.",
       "After a verified backend-owned settings save, the app now shows a clear user-facing confirmation such as Settings saved / Vehicle info saved instead of only recording the result in Admin Data I/O.",
