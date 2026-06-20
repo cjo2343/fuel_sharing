@@ -1047,6 +1047,7 @@ function dataIoResultCodeFor(phase, ok, meta = {}) {
 function recordDataIoDiagnostic(phase, meta = {}) {
   const summarizedError = summarizeSupabaseError(meta.error);
   const resultCode = dataIoResultCodeFor(phase, meta.ok === true, meta);
+  const workspaceContext = buildDataIoWorkspaceContext(meta);
   const diagnostic = {
     at: new Date().toISOString(),
     phase: String(phase || "data-io"),
@@ -1063,9 +1064,14 @@ function recordDataIoDiagnostic(phase, meta = {}) {
     resultCode,
     statusCode: resultCode,
     errorCode: summarizedError?.code || "",
-    ledgerId: meta.ledgerId || (supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : ""),
+    ledgerId: meta.ledgerId || workspaceContext.loadedWorkspaceId || (supabaseHelpers?.getLedgerId ? supabaseHelpers.getLedgerId(supabaseConfig) : ""),
     activeLedgerId,
-    workspaceLabel: getCurrentWorkspaceLabel(),
+    selectedWorkspaceId: workspaceContext.selectedWorkspaceId,
+    selectedWorkspaceLabel: workspaceContext.selectedWorkspaceLabel,
+    loadedWorkspaceId: workspaceContext.loadedWorkspaceId,
+    loadedWorkspaceLabel: workspaceContext.loadedWorkspaceLabel,
+    workspaceMismatch: workspaceContext.workspaceMismatch,
+    workspaceLabel: workspaceContext.workspaceLabel,
     hasSession: Boolean(currentSession),
     pendingLocalChanges,
     error: summarizedError,
@@ -4198,8 +4204,21 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
   if (!silent) setDataToolsMessage(ownerActivityStatus.message);
   renderSupabaseLoadMonitor();
   const operationId = createDataIoOperationId("owner-activity");
-  const traceMeta = { source: "owner-activity", route: "render-api", endpoint: renderOwnerActivityUrl, operation: "load", operationId, ledgerId: getActiveLedgerId(), staleAfterMs: dataIoOperationStaleMs };
-  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Load owner activity" });
+  const ownerActivityWorkspaceContext = buildDataIoWorkspaceContext();
+  const traceMeta = {
+    source: "owner-activity",
+    route: "render-api",
+    endpoint: renderOwnerActivityUrl,
+    operation: "load",
+    operationId,
+    ledgerId: ownerActivityWorkspaceContext.loadedWorkspaceId,
+    selectedWorkspaceId: ownerActivityWorkspaceContext.selectedWorkspaceId,
+    selectedWorkspaceLabel: ownerActivityWorkspaceContext.selectedWorkspaceLabel,
+    loadedWorkspaceId: ownerActivityWorkspaceContext.loadedWorkspaceId,
+    loadedWorkspaceLabel: ownerActivityWorkspaceContext.loadedWorkspaceLabel,
+    staleAfterMs: dataIoOperationStaleMs
+  };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: ownerActivityWorkspaceContext.workspaceMismatch ? "Load owner activity (workspace selector differs from loaded workspace)" : "Load owner activity" });
   try {
     const { result } = await callRenderJson(renderOwnerActivityUrl, {
       method: "POST",
@@ -4212,7 +4231,7 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
       checked: true,
       ok: true,
       loading: false,
-      message: `Loaded ${rows.length} server-owned activity row${rows.length === 1 ? "" : "s"}.`,
+      message: rows.length ? `Loaded ${rows.length} server-owned activity row${rows.length === 1 ? "" : "s"}.` : "No server-owned owner activity rows yet.",
       rows,
       checkedAt: new Date().toISOString()
     };
@@ -7089,8 +7108,42 @@ function getCurrentWorkspaceContext() {
   };
 }
 
+function getSelectedWorkspaceIdFromUi() {
+  const value = String(els?.activeWorkspace?.value || "").trim();
+  return value || getActiveLedgerId();
+}
+
+function getSelectedWorkspaceLabelFromUi() {
+  const select = els?.activeWorkspace;
+  const value = getSelectedWorkspaceIdFromUi();
+  const selectedOption = select && select.selectedOptions && select.selectedOptions.length ? select.selectedOptions[0] : null;
+  if (selectedOption && selectedOption.textContent) {
+    return String(selectedOption.textContent || "").trim();
+  }
+  const match = getWorkspaceLedgerOptions().find((ledger) => String(ledger.ledger_id || "") === String(value || ""));
+  return match ? getWorkspaceOptionLabel(match) : (value || getCurrentWorkspaceContext().label);
+}
+
 function getCurrentWorkspaceLabel() {
   return getCurrentWorkspaceContext().label;
+}
+
+function buildDataIoWorkspaceContext(meta = {}) {
+  const loadedWorkspaceId = String(meta.loadedWorkspaceId || getActiveLedgerId() || "").trim();
+  const selectedWorkspaceId = String(meta.selectedWorkspaceId || getSelectedWorkspaceIdFromUi() || loadedWorkspaceId || "").trim();
+  const loadedWorkspaceLabel = String(meta.loadedWorkspaceLabel || getCurrentWorkspaceLabel() || loadedWorkspaceId || "Current workspace").trim();
+  const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getSelectedWorkspaceLabelFromUi() || selectedWorkspaceId || loadedWorkspaceLabel).trim();
+  const workspaceMismatch = Boolean(selectedWorkspaceId && loadedWorkspaceId && selectedWorkspaceId !== loadedWorkspaceId);
+  return {
+    selectedWorkspaceId,
+    selectedWorkspaceLabel,
+    loadedWorkspaceId,
+    loadedWorkspaceLabel,
+    workspaceMismatch,
+    workspaceLabel: meta.workspaceLabel || (workspaceMismatch
+      ? `${selectedWorkspaceLabel} · loaded ${loadedWorkspaceLabel}`
+      : loadedWorkspaceLabel)
+  };
 }
 
 // Guardrail text: Use the workspace selector to reload this app around another linked workspace.
@@ -15747,20 +15800,23 @@ async function callRenderJson(endpoint, options = {}) {
   const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
   let timeoutId = 0;
   try {
-    const requestPromise = fetch(endpoint, {
-      method,
-      signal: controller ? controller.signal : undefined,
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
-    });
+    const requestAndReadPromise = (async () => {
+      const response = await fetch(endpoint, {
+        method,
+        signal: controller ? controller.signal : undefined,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      });
+      const text = await response.text();
+      return { response, text };
+    })();
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = window.setTimeout(() => {
         if (controller) controller.abort();
         reject(createRenderApiTimeoutError(timeoutLabel, timeoutMs));
       }, timeoutMs);
     });
-    const response = await Promise.race([requestPromise, timeoutPromise]);
-    const text = await response.text();
+    const { response, text } = await Promise.race([requestAndReadPromise, timeoutPromise]);
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
     if (!response.ok || !result?.ok) {

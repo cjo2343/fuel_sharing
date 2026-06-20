@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.252`
-- Service-worker cache: `fuel-ledger-v352`
-- Updated at: `2026-06-20T15:10:00.000Z`
-- Top release note: Owner activity is now server-owned: Render records safe cross-user/cross-workspace activity rows for state loads, vehicle lookup, settings saves, member management, trips, fuel, bookings, and payment status actions, and the app owner can view recent activity from Admin without relying on browser-local Data I/O.
+- Version: `2026.06.18.253`
+- Service-worker cache: `fuel-ledger-v353`
+- Updated at: `2026-06-20T15:20:00.000Z`
+- Top release note: Owner activity now fails closed instead of hanging: the shared Render helper times out the full response body, Owner activity shows a clear empty/error state, and Data I/O records selected-vs-loaded workspace IDs when the selector and loaded workspace differ.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
