@@ -9,9 +9,9 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:217|218|219|220|221|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236)"/, 'runtime version must be bumped for browser write fallback lockdown');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336)"/, 'build-info must point at v317 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336)"/, 'service worker must use v317 cache');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:217|218|219|220|221|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237)"/, 'runtime version must be bumped for browser write fallback lockdown');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337)"/, 'build-info must point at v317 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337)"/, 'service worker must use v317 cache');
 assert.match(buildInfo, /Normal trip, fuel, booking, payment-status, and ledger-directory writes now fail closed through Render/, 'release note should describe fallback lockdown');
 
 assert.match(app, /function failClosedBrowserWriteFallback\(/, 'app should centralize browser write fallback blocking');

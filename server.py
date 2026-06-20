@@ -97,16 +97,11 @@ def ledger_api_secret():
 
 
 def ledger_api_auth_required():
-    # Local development and Playwright use the JSON API without a secret by default.
-    # Hosted deployments should set FUEL_LEDGER_API_SECRET; Render also enables
-    # protection automatically so a missing secret fails closed instead of exposing
-    # the JSON ledger.
-    return bool(
-        ledger_api_secret()
-        or env_flag("FUEL_LEDGER_REQUIRE_API_AUTH")
-        or env_value("RENDER")
-        or env_value("RENDER_SERVICE_ID")
-    )
+    # JSON fallback/write APIs fail closed unless local tooling explicitly opts
+    # out. Hosted deployments should set FUEL_LEDGER_API_SECRET.
+    if ledger_api_secret() or env_flag("FUEL_LEDGER_REQUIRE_API_AUTH"):
+        return True
+    return not env_flag("FUEL_LEDGER_ALLOW_UNAUTHENTICATED_LOCAL_API")
 
 
 def bearer_token(header_value):
@@ -2873,6 +2868,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not user or not user.get("email"):
             self.send_error(401, "Sign in before looking up a vehicle")
             return
+        token = get_bearer_token(self)
         try:
             payload = read_request_body(self)
             ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
@@ -2885,9 +2881,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if not check_backend_rate_limit(self, "vehicle-lookup", user=user, ledger_id=ledger_id):
                 return
-            # Any active workspace member may ask Render to lookup the configured
-            # vehicle data, but the app UI only applies it to settings for admins.
-            get_state_load_context_as_service(ledger_id, user)
+            # Vehicle lookup uses a configured provider credential and returns
+            # vehicle metadata, so enforce workspace-admin scope server-side.
+            assert_user_can_admin_ledger(ledger_id, user, token)
             result, status = fetch_vehicle_lookup(plate)
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")

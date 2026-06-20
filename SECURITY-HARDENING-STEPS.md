@@ -48,7 +48,7 @@ order by is_active desc, role, name;
 
 ## Production JSON API guard
 
-Hosted deployments must configure `FUEL_LEDGER_API_SECRET`. Render automatically enables protection for `/api/state` and `/api/payment-action`; if the secret is missing, those endpoints fail closed with `503 Service Unavailable`. Local development and Playwright remain open by default unless `FUEL_LEDGER_REQUIRE_API_AUTH=1` is set.
+Hosted deployments must configure `FUEL_LEDGER_API_SECRET`. `/api/state` and `/api/payment-action` fail closed with `503 Service Unavailable` when auth is required but the secret is missing. Local development and Playwright must explicitly set `FUEL_LEDGER_ALLOW_UNAUTHENTICATED_LOCAL_API=1` to exercise the JSON fallback API without a secret; `FUEL_LEDGER_REQUIRE_API_AUTH=1` forces protection even for local runs.
 
 For maintenance calls, send either:
 
