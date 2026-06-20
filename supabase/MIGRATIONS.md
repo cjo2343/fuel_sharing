@@ -91,3 +91,5 @@ Adds server-side onboarding abuse monitoring/rate-limit storage and enforces thr
 - `034_invite_rate_limit_actor_email_ambiguity_fix.sql` renames the onboarding rate-limit RPC local actor email variable so invite creation no longer fails with an ambiguous `actor_email` column reference, and moves Security Health migration expectations to 034.
 
 - `035_sql_ambiguity_guardrail.sql` hardens SQL naming after the invite `actor_email` ambiguity: the payment-status RPC now uses `safe_actor_email`, Security Health expects migration 035, and release validation includes `tools/test-sql-ambiguity-guard.mjs` to block future high-risk PL/pgSQL local variable names that collide with common table columns.
+
+- 039_list_my_ledgers_dedup.sql - de-duplicates workspace selector rows returned by list_my_ledgers, preferring admin role when duplicate active member rows exist for the same signed-in email/workspace.

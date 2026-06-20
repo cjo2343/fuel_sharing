@@ -685,7 +685,7 @@ function testWorkspaceInviteRefreshFailSafeExists() {
   assert.match(app, /Promise\.race\(\[/);
   assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\.rpc\("list_my_ledgers"\)/);
   assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\s*\.from\("ledger_invites"\)/);
-  assert.match(app, /workspaceInviteStatus\.loaded = true;\s*workspaceInviteStatus\.invites = \[\];/);
+  assert.match(app, /workspaceInviteStatus\.loaded = Boolean\(getWorkspaceLedgerOptions\(\)\.length\);\s*workspaceInviteStatus\.invites = \[\];/);
   assert.match(app, /els\.refreshWorkspaceInvites\.disabled = false/);
   console.log("ok - testWorkspaceInviteRefreshFailSafeExists");
 }

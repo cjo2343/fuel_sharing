@@ -15,9 +15,9 @@ assert.match(app, /recordDataIoDiagnostic\("skip", \{ \.\.\.makeAdminToolDiagnos
 assert.match(app, /showUserWarning\("That admin action is already running\. Wait for it to finish before running it again\."\)/, "duplicate clicks should show a calm user-facing warning.");
 assert.match(noiseTest, /data-io:admin-tool:security-health:skip/, "headline-noise tests should cover duplicate admin-tool skip rows.");
 assert.match(packageJson, /test-admin-tool-dedup-guard\.mjs/, "validate script should include the admin tool dedupe guard.");
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:219|220|221|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249)"/, "runtime version should be bumped for admin tool dedupe runtime changes.");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:319|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349)"/, "build-info should expect the bumped service-worker cache.");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:319|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349)"/, "service worker cache should be bumped with runtime changes.");
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:219|220|221|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249|250)"/, "runtime version should be bumped for admin tool dedupe runtime changes.");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:319|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350)"/, "build-info should expect the bumped service-worker cache.");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:319|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350)"/, "service worker cache should be bumped with runtime changes.");
 assert.match(buildInfo, /Admin and Test Lab tools now skip duplicate in-flight clicks/, "release note should describe the admin tool duplicate-run guard.");
 
 console.log("Admin tool duplicate-run guard check passed.");

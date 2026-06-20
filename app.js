@@ -86,14 +86,55 @@ function getActiveLedgerId() {
   return activeLedgerId || getConfiguredLedgerId();
 }
 
+function normalizeWorkspaceRole(role) {
+  return String(role || "member").trim().toLowerCase() === "admin" ? "admin" : "member";
+}
+
+function workspaceRoleRank(role) {
+  return normalizeWorkspaceRole(role) === "admin" ? 2 : 1;
+}
+
+function normalizeWorkspaceLedgerRow(ledger = {}) {
+  const ledgerId = String(ledger.ledger_id || ledger.id || ledger.slug || "").trim();
+  if (!ledgerId) return null;
+  const slug = String(ledger.slug || ledger.ledger_slug || ledgerId).trim();
+  const name = String(ledger.name || ledger.ledger_name || slug || ledgerId).trim();
+  return {
+    ...ledger,
+    ledger_id: ledgerId,
+    slug,
+    name,
+    role: normalizeWorkspaceRole(ledger.role),
+    member_id: ledger.member_id || ledger.id || ""
+  };
+}
+
+function normalizeWorkspaceLedgerList(ledgers = []) {
+  const byId = new Map();
+  (Array.isArray(ledgers) ? ledgers : []).forEach((rawLedger) => {
+    const ledger = normalizeWorkspaceLedgerRow(rawLedger);
+    if (!ledger) return;
+    const existing = byId.get(ledger.ledger_id);
+    if (!existing || workspaceRoleRank(ledger.role) > workspaceRoleRank(existing.role)) {
+      byId.set(ledger.ledger_id, ledger);
+    }
+  });
+  return Array.from(byId.values()).sort((a, b) => {
+    const aPrimary = a.ledger_id === getConfiguredLedgerId() ? 0 : 1;
+    const bPrimary = b.ledger_id === getConfiguredLedgerId() ? 0 : 1;
+    if (aPrimary !== bPrimary) return aPrimary - bPrimary;
+    return String(a.name || a.slug || a.ledger_id).localeCompare(String(b.name || b.slug || b.ledger_id));
+  });
+}
+
 function getWorkspaceLedgerOptions() {
-  return Array.isArray(workspaceInviteStatus.ledgers) ? workspaceInviteStatus.ledgers : [];
+  return normalizeWorkspaceLedgerList(workspaceInviteStatus.ledgers);
 }
 
 function isLedgerLinkedToCurrentUser(ledgerId) {
   const normalized = String(ledgerId || "").trim();
   if (!normalized) return false;
-  if (normalized === getConfiguredLedgerId()) return true;
+  if (!supabaseClient || !currentSession) return normalized === getConfiguredLedgerId();
   return getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === normalized);
 }
 
@@ -170,15 +211,36 @@ function makeWorkspaceLoadingState() {
 }
 
 function reconcileActiveLedgerSelection() {
-  if (!isLedgerLinkedToCurrentUser(activeLedgerId)) {
-    setActiveLedgerId(getConfiguredLedgerId(), { persist: true });
-  } else {
+  if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading)) {
+    setActiveLedgerId(activeLedgerId, { persist: true });
+    return false;
+  }
+  const ledgers = getWorkspaceLedgerOptions();
+  if (supabaseClient && currentSession && ledgers.length) {
+    const currentMatch = ledgers.find((ledger) => String(ledger.ledger_id || "") === String(activeLedgerId || ""));
+    if (!currentMatch) {
+      setActiveLedgerId(ledgers[0].ledger_id, { persist: true });
+      return true;
+    }
+    setActiveLedgerId(currentMatch.ledger_id, { persist: true });
+    return false;
+  }
+  if (!supabaseClient || !currentSession) {
+    if (!isLedgerLinkedToCurrentUser(activeLedgerId)) {
+      setActiveLedgerId(getConfiguredLedgerId(), { persist: true });
+      return true;
+    }
     setActiveLedgerId(activeLedgerId, { persist: true });
   }
+  return false;
 }
 
 function getWorkspaceOptionLabel(ledger) {
-  return String(ledger?.name || ledger?.slug || ledger?.ledger_id || "Current workspace").trim();
+  const name = String(ledger?.name || "").trim();
+  const slug = String(ledger?.slug || ledger?.ledger_id || "").trim();
+  if (!name && !slug) return "Current workspace";
+  if (!name || name === slug) return slug || name;
+  return `${name} (${slug})`;
 }
 
 function getLinkedWorkspaceForActiveLedger() {
@@ -262,23 +324,29 @@ function renderActiveWorkspaceSelector() {
   if (!els.activeWorkspace) return;
   const ledgers = getWorkspaceLedgerOptions();
   const current = getActiveLedgerId();
-  const knownLedgers = ledgers.length
-    ? ledgers
-    : [{ ledger_id: current, name: current === getConfiguredLedgerId() ? "Fuel Ledger" : current, role: canManageSettings() ? "admin" : "member" }];
-  const hasCurrent = knownLedgers.some((ledger) => String(ledger.ledger_id || "") === current);
-  const options = hasCurrent ? knownLedgers : [{ ledger_id: current, name: current }, ...knownLedgers];
-  els.activeWorkspace.innerHTML = options.map((ledger) => {
+  const currentKnown = ledgers.some((ledger) => String(ledger.ledger_id || "") === current);
+  const loading = Boolean(workspaceInviteStatus.loading || (supabaseClient && currentSession && !workspaceInviteStatus.loaded));
+  const options = ledgers.length
+    ? (currentKnown ? ledgers : [{ ledger_id: current, name: loading ? `Loading ${current}` : `Unconfirmed ${current}`, slug: current, role: "member" }, ...ledgers])
+    : [{ ledger_id: current, name: loading ? `Loading ${current}` : `Unconfirmed ${current}`, slug: current, role: "member" }];
+  els.activeWorkspace.innerHTML = options.map((rawLedger) => {
+    const ledger = normalizeWorkspaceLedgerRow(rawLedger) || rawLedger;
     const id = String(ledger.ledger_id || "");
     const label = getWorkspaceOptionLabel(ledger);
     const role = ledger.role ? ` · ${ledger.role}` : "";
     return `<option value="${escapeHtml(id)}" ${id === current ? "selected" : ""}>${escapeHtml(label + role)}</option>`;
   }).join("");
-  els.activeWorkspace.disabled = !supabaseClient || !currentSession || options.length <= 1;
+  els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || options.length <= 1;
 }
 
 async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   const targetLedgerId = String(ledgerId || "").trim();
   if (!targetLedgerId || targetLedgerId === getActiveLedgerId()) return;
+  if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading)) {
+    showUserError("Workspace list is still loading. Wait for it to finish before switching workspace.");
+    renderActiveWorkspaceSelector();
+    return;
+  }
   if (!isLedgerLinkedToCurrentUser(targetLedgerId)) {
     recordDataIoDiagnostic("blocked", {
       source: "workspace-switch",
@@ -6848,17 +6916,18 @@ function renderAuditLog() {
 function getCurrentWorkspaceContext() {
   const ledgerId = getActiveLedgerId();
   const linkedLedgers = getWorkspaceLedgerOptions();
-  const linked = linkedLedgers.find((ledger) => ledger.ledger_id === ledgerId) || null;
-  const label = String(linked?.name || linked?.slug || (ledgerId === getConfiguredLedgerId() ? "Fuel Ledger" : ledgerId) || "current workspace").trim();
+  const linked = linkedLedgers.find((ledger) => String(ledger.ledger_id || "") === String(ledgerId || "")) || null;
+  const label = linked ? getWorkspaceOptionLabel(linked) : String(ledgerId || "current workspace").trim();
   const slug = String(linked?.slug || ledgerId || "").trim();
-  const role = String(linked?.role || (canManageSettings() ? "admin" : "member")).trim();
+  const role = normalizeWorkspaceRole(linked?.role || "member");
   return {
     ledgerId,
     label: label || "Current workspace",
     slug,
     role,
     inviteRequired: linked?.invite_required !== false,
-    switchingEnabled: linkedLedgers.length > 1
+    switchingEnabled: linkedLedgers.length > 1,
+    confirmed: Boolean(linked)
   };
 }
 
@@ -13263,7 +13332,7 @@ async function refreshLinkedWorkspacesAfterInvite() {
   if (!supabaseClient || !currentSession) return [];
   const { data, error } = await supabaseClient.rpc("list_my_ledgers");
   if (error) throw error;
-  workspaceInviteStatus.ledgers = Array.isArray(data) ? data : [];
+  workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(data);
   workspaceInviteStatus.loaded = true;
   reconcileActiveLedgerSelection();
   renderActiveWorkspaceSelector();
@@ -13645,7 +13714,7 @@ async function reconcileWorkspaceCreateAfterTimeout({ name, slug, traceMeta }) {
       return ledgerId === slug.toLowerCase() || ledgerSlug === slug.toLowerCase() || ledgerName === name.trim().toLowerCase();
     });
     if (match) {
-      workspaceInviteStatus.ledgers = ledgers;
+      workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
       workspaceInviteStatus.loaded = true;
       const newLedgerId = match.ledger_id || match.id || slug;
       recordDataIoDiagnostic("success", {
@@ -13809,7 +13878,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
       "Workspace list refresh"
     );
     if (ledgersError) throw ledgersError;
-    workspaceInviteStatus.ledgers = Array.isArray(ledgers) ? ledgers : [];
+    workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
     reconcileActiveLedgerSelection();
     const ledgerId = getActiveLedgerId();
     if (canManageSettings()) {
@@ -13832,7 +13901,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   } catch (error) {
     const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
     workspaceInviteStatus.error = describeWorkspaceRefreshError(error);
-    workspaceInviteStatus.loaded = true;
+    workspaceInviteStatus.loaded = Boolean(getWorkspaceLedgerOptions().length);
     workspaceInviteStatus.invites = [];
     recordDataIoDiagnostic(timedOut ? "timeout" : "error", {
       ...traceMeta,

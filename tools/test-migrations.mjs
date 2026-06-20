@@ -48,6 +48,7 @@ const expected = [
   "036_invite_profile_setup.sql",
   "037_invite_email_preflight.sql",
   "038_vehicle_settings_columns.sql",
+  "039_list_my_ledgers_dedup.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -176,6 +177,9 @@ for (const marker of [
   "036_invite_profile_setup",
   "037_invite_email_preflight",
   "038_vehicle_settings_columns",
+  "039_list_my_ledgers_dedup",
+  "with ranked_members as",
+  "bool_or(lm.role = 'admin')",
   "vehicle_plate",
   "vehicle_info",
   "create or replace function public.update_own_ledger_member_profile",
