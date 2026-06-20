@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.250",
+    version: "2026.06.18.251",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T14:50:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v350",
+    updatedAt: "2026-06-20T15:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v351",
     releaseNotes: Object.freeze([
+      "Workspace identity hardening now cleans duplicate active workspace memberships, enforces one active email membership per workspace, collapses duplicate signed-in member rows without maybeSingle errors, and refuses to treat unconfirmed workspace selector entries as real admin/member roles.",
       "Workspace selector and membership loading now de-duplicate list_my_ledgers rows, prefer admin over duplicate member rows for the same workspace, never reset a signed-in user to the default Fuel Ledger during a timed-out workspace refresh, and disable switching until the authoritative workspace list has loaded.",
       "Workspace switching now uses isolated per-workspace local state, locks edits until the selected workspace is loaded from Render, shows a clear workspace-loading/confirmed status, and labels Data I/O rows with the workspace they belong to.",
       "Render API calls now use a shared frontend helper for fresh Supabase tokens, Authorization headers, timeouts, JSON parsing, and settings-save request handling instead of hand-rolled/stale token fetch code.",

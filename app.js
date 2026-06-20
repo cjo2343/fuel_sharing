@@ -94,32 +94,68 @@ function workspaceRoleRank(role) {
   return normalizeWorkspaceRole(role) === "admin" ? 2 : 1;
 }
 
+function normalizeWorkspaceIdentifier(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getWorkspaceLedgerIdentityKey(ledger = {}) {
+  const directLedgerId = String(ledger.ledger_id || ledger.ledgerId || ledger.workspace_id || ledger.workspaceId || "").trim();
+  const slug = String(ledger.slug || ledger.ledger_slug || ledger.workspace_slug || "").trim();
+  const name = String(ledger.name || ledger.ledger_name || ledger.workspace_name || "").trim();
+  const fallbackId = String(ledger.id || "").trim();
+  if (directLedgerId) return directLedgerId;
+  if (slug) return slug;
+  if (fallbackId && (name || slug || ledger.role || ledger.member_id)) return fallbackId;
+  return "";
+}
+
 function normalizeWorkspaceLedgerRow(ledger = {}) {
-  const ledgerId = String(ledger.ledger_id || ledger.id || ledger.slug || "").trim();
+  const ledgerId = getWorkspaceLedgerIdentityKey(ledger);
   if (!ledgerId) return null;
-  const slug = String(ledger.slug || ledger.ledger_slug || ledgerId).trim();
-  const name = String(ledger.name || ledger.ledger_name || slug || ledgerId).trim();
+  const slug = String(ledger.slug || ledger.ledger_slug || ledger.workspace_slug || ledgerId).trim();
+  const name = String(ledger.name || ledger.ledger_name || ledger.workspace_name || slug || ledgerId).trim();
+  const memberId = String(ledger.member_id || ledger.memberId || ledger.ledger_member_id || "").trim();
   return {
     ...ledger,
     ledger_id: ledgerId,
     slug,
     name,
     role: normalizeWorkspaceRole(ledger.role),
-    member_id: ledger.member_id || ledger.id || ""
+    member_id: memberId
+  };
+}
+
+function mergeWorkspaceLedgerRows(existing, candidate) {
+  if (!existing) return candidate;
+  const existingRank = workspaceRoleRank(existing.role);
+  const candidateRank = workspaceRoleRank(candidate.role);
+  const winner = candidateRank > existingRank ? candidate : existing;
+  const loser = winner === candidate ? existing : candidate;
+  return {
+    ...loser,
+    ...winner,
+    ledger_id: winner.ledger_id || loser.ledger_id,
+    slug: winner.slug || loser.slug,
+    name: winner.name || loser.name,
+    role: candidateRank > existingRank ? candidate.role : existing.role,
+    member_id: winner.member_id || loser.member_id || ""
   };
 }
 
 function normalizeWorkspaceLedgerList(ledgers = []) {
-  const byId = new Map();
+  const byKey = new Map();
   (Array.isArray(ledgers) ? ledgers : []).forEach((rawLedger) => {
     const ledger = normalizeWorkspaceLedgerRow(rawLedger);
     if (!ledger) return;
-    const existing = byId.get(ledger.ledger_id);
-    if (!existing || workspaceRoleRank(ledger.role) > workspaceRoleRank(existing.role)) {
-      byId.set(ledger.ledger_id, ledger);
-    }
+    const identityParts = [ledger.ledger_id, ledger.slug, ledger.name].map(normalizeWorkspaceIdentifier).filter(Boolean);
+    const key = identityParts.find((part) => byKey.has(part)) || normalizeWorkspaceIdentifier(ledger.ledger_id || ledger.slug || ledger.name);
+    if (!key) return;
+    const merged = mergeWorkspaceLedgerRows(byKey.get(key), ledger);
+    const mergedKeys = [merged.ledger_id, merged.slug, merged.name].map(normalizeWorkspaceIdentifier).filter(Boolean);
+    mergedKeys.forEach((mergedKey) => byKey.set(mergedKey, merged));
+    byKey.set(key, merged);
   });
-  return Array.from(byId.values()).sort((a, b) => {
+  return Array.from(new Set(Array.from(byKey.values()))).sort((a, b) => {
     const aPrimary = a.ledger_id === getConfiguredLedgerId() ? 0 : 1;
     const bPrimary = b.ledger_id === getConfiguredLedgerId() ? 0 : 1;
     if (aPrimary !== bPrimary) return aPrimary - bPrimary;
@@ -297,20 +333,27 @@ async function refreshAuthBoundMemberProfile() {
   try {
     const { data, error } = await supabaseClient
       .from("ledger_members")
-      .select("id,name,email,role,is_active,mobilepay_phone")
+      .select("id,name,email,role,is_active,mobilepay_phone,created_at")
       .eq("ledger_id", ledgerId)
       .eq("is_active", true)
       .ilike("email", email)
-      .maybeSingle();
+      .order("role", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(10);
     if (error) throw error;
     authBoundMemberProfileLoaded = true;
-    if (!data) return null;
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) return null;
+    const dataRow = rows.find((row) => normalizeWorkspaceRole(row.role) === "admin") || rows[0];
+    if (rows.length > 1) {
+      recordSupabaseLoadEvent("workspace-member-duplicate-collapsed", `${ledgerId}: ${rows.length} active rows for signed-in email`);
+    }
     authBoundMemberProfileLedgerId = ledgerId;
     authBoundMemberProfile = {
-      name: data.name || inferAuthBoundMemberName(email),
+      name: dataRow.name || inferAuthBoundMemberName(email),
       email,
-      role: data.role === "admin" ? "admin" : "member",
-      mobilepayPhone: normalizePhone(data.mobilepay_phone || ""),
+      role: dataRow.role === "admin" ? "admin" : "member",
+      mobilepayPhone: normalizePhone(dataRow.mobilepay_phone || ""),
       authBound: true
     };
     return authBoundMemberProfile;
@@ -326,17 +369,30 @@ function renderActiveWorkspaceSelector() {
   const current = getActiveLedgerId();
   const currentKnown = ledgers.some((ledger) => String(ledger.ledger_id || "") === current);
   const loading = Boolean(workspaceInviteStatus.loading || (supabaseClient && currentSession && !workspaceInviteStatus.loaded));
-  const options = ledgers.length
-    ? (currentKnown ? ledgers : [{ ledger_id: current, name: loading ? `Loading ${current}` : `Unconfirmed ${current}`, slug: current, role: "member" }, ...ledgers])
-    : [{ ledger_id: current, name: loading ? `Loading ${current}` : `Unconfirmed ${current}`, slug: current, role: "member" }];
-  els.activeWorkspace.innerHTML = options.map((rawLedger) => {
+  let options = [];
+  if (ledgers.length) {
+    options = currentKnown ? ledgers : [{ ledger_id: current, name: loading ? `Loading ${current}` : `Unconfirmed ${current}`, slug: current, role: "member", unconfirmed: true }, ...ledgers];
+  } else {
+    options = [{ ledger_id: current, name: loading ? `Loading ${current}` : `Unconfirmed ${current}`, slug: current, role: "member", unconfirmed: true }];
+  }
+  const seenOptionKeys = new Set();
+  const safeOptions = [];
+  options.forEach((rawLedger) => {
     const ledger = normalizeWorkspaceLedgerRow(rawLedger) || rawLedger;
     const id = String(ledger.ledger_id || "");
     const label = getWorkspaceOptionLabel(ledger);
+    const optionKey = normalizeWorkspaceIdentifier(id || label);
+    if (!optionKey || seenOptionKeys.has(optionKey)) return;
+    seenOptionKeys.add(optionKey);
+    safeOptions.push({ ...ledger, ledger_id: id, label });
+  });
+  els.activeWorkspace.innerHTML = safeOptions.map((ledger) => {
+    const id = String(ledger.ledger_id || "");
     const role = ledger.role ? ` · ${ledger.role}` : "";
-    return `<option value="${escapeHtml(id)}" ${id === current ? "selected" : ""}>${escapeHtml(label + role)}</option>`;
+    const suffix = ledger.unconfirmed ? " · loading" : role;
+    return `<option value="${escapeHtml(id)}" ${id === current ? "selected" : ""}>${escapeHtml(ledger.label + suffix)}</option>`;
   }).join("");
-  els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || options.length <= 1;
+  els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || safeOptions.length <= 1;
 }
 
 async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
@@ -6919,7 +6975,8 @@ function getCurrentWorkspaceContext() {
   const linked = linkedLedgers.find((ledger) => String(ledger.ledger_id || "") === String(ledgerId || "")) || null;
   const label = linked ? getWorkspaceOptionLabel(linked) : String(ledgerId || "current workspace").trim();
   const slug = String(linked?.slug || ledgerId || "").trim();
-  const role = normalizeWorkspaceRole(linked?.role || "member");
+  const confirmed = Boolean(linked);
+  const role = confirmed ? normalizeWorkspaceRole(linked?.role || "member") : "unknown";
   return {
     ledgerId,
     label: label || "Current workspace",
@@ -6927,7 +6984,7 @@ function getCurrentWorkspaceContext() {
     role,
     inviteRequired: linked?.invite_required !== false,
     switchingEnabled: linkedLedgers.length > 1,
-    confirmed: Boolean(linked)
+    confirmed
   };
 }
 

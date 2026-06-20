@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.250`
-- Service-worker cache: `fuel-ledger-v350`
-- Updated at: `2026-06-20T14:50:00.000Z`
-- Top release note: Workspace selector and membership loading now de-duplicate list_my_ledgers rows, prefer admin over duplicate member rows for the same workspace, never reset a signed-in user to the default Fuel Ledger during a timed-out workspace refresh, and disable switching until the authoritative workspace list has loaded.
+- Version: `2026.06.18.251`
+- Service-worker cache: `fuel-ledger-v351`
+- Updated at: `2026-06-20T15:00:00.000Z`
+- Top release note: Workspace identity hardening now cleans duplicate active workspace memberships, enforces one active email membership per workspace, collapses duplicate signed-in member rows without maybeSingle errors, and refuses to treat unconfirmed workspace selector entries as real admin/member roles.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

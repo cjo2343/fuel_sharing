@@ -49,6 +49,7 @@ const expected = [
   "037_invite_email_preflight.sql",
   "038_vehicle_settings_columns.sql",
   "039_list_my_ledgers_dedup.sql",
+  "040_workspace_identity_hardening.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -178,6 +179,8 @@ for (const marker of [
   "037_invite_email_preflight",
   "038_vehicle_settings_columns",
   "039_list_my_ledgers_dedup",
+  "040_workspace_identity_hardening",
+  "ledger_members_one_active_email_per_workspace_idx",
   "with ranked_members as",
   "bool_or(lm.role = 'admin')",
   "vehicle_plate",

@@ -9,11 +9,11 @@ function mustInclude(source, text, label = text) {
 }
 
 mustInclude(app, 'function normalizeWorkspaceLedgerList', 'workspace ledger list normalizer');
-mustInclude(app, 'workspaceRoleRank(ledger.role) > workspaceRoleRank(existing.role)', 'duplicate workspace rows prefer admin role');
+mustInclude(app, 'function mergeWorkspaceLedgerRows', 'duplicate workspace rows are merged through strongest-role helper');
 mustInclude(app, 'return normalized === getConfiguredLedgerId();', 'default ledger is only implicitly linked outside signed-in workspace mode');
 mustInclude(app, 'if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading))', 'workspace switch waits for authoritative workspace list');
 mustInclude(app, 'workspaceInviteStatus.loaded = Boolean(getWorkspaceLedgerOptions().length);', 'workspace refresh timeout preserves loaded=false when no authoritative list exists');
-mustInclude(app, 'els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || options.length <= 1;', 'workspace selector disabled while membership list is loading');
+mustInclude(app, 'els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || safeOptions.length <= 1;', 'workspace selector disabled while membership list is loading');
 
 mustInclude(migration, 'with ranked_members as', 'list_my_ledgers ranked duplicate cleanup');
 mustInclude(migration, "bool_or(lm.role = 'admin')", 'list_my_ledgers chooses admin if duplicate rows exist');
