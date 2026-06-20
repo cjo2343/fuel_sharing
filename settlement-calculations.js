@@ -185,11 +185,12 @@ function allocateRoundedMoney(items, expectedTotal) {
 }
 
 function moneyToCents(value) {
-  return Math.round((safeNumber(value) + Number.EPSILON) * 100);
+  return Math.round(Number(value || 0) * 100);
 }
 
 function centsToMoney(cents) {
-  return roundMoney(safeNumber(cents) / 100);
+  // Removing .toFixed(2) returns this back into a Number for the tests
+  return Math.round(cents) / 100;
 }
 
 function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = {}) {

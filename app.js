@@ -416,7 +416,7 @@ const defaults = {
   updatedAt: ""
 };
 
-let state = loadState();
+let state = structuredClone(defaults);
 let closingPeriodInProgress = false;
 let suppressNormalizedBookingWrites = false;
 let currentUser = localStorage.getItem(userKey) || "";
@@ -1703,18 +1703,29 @@ const parseBookingDate = bookingCalendarController.parseBookingDate;
 const describeBookingAuditChanges = bookingCalendarController.describeBookingAuditChanges;
 const describeBookingPermissionMessage = bookingCalendarController.describeBookingPermissionMessage;
 
-state.lastOdometer = getLatestOdometer();
-setDefaultDates();
-initializeInviteDeepLink();
-render();
-initializeSync()
-  .then(() => {
-    handleStartupDeepLinks({ silent: true });
-    return runAutomaticPaymentReminders();
-  })
-  .catch((error) => console.warn("Automatic payment reminder check failed", error));
-initializePwa();
-refreshFuelPriceEstimate();
+async function initApp() {
+  // 1. Wait for IndexedDB to fetch our saved data
+  state = await loadState();
+
+  // 2. Now boot up the app UI with the real data
+  state.lastOdometer = getLatestOdometer();
+  setDefaultDates();
+  initializeInviteDeepLink();
+  render();
+
+  initializeSync()
+    .then(() => {
+      handleStartupDeepLinks({ silent: true });
+      return runAutomaticPaymentReminders();
+    })
+    .catch((error) => console.warn("Automatic payment reminder check failed", error));
+
+  initializePwa();
+  refreshFuelPriceEstimate();
+}
+
+// 3. Kick off the asynchronous boot sequence!
+initApp();
 window.addEventListener("hashchange", () => handleStartupDeepLinks());
 
 document.addEventListener("click", (event) => {
@@ -14917,8 +14928,8 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function loadState() {
-  return dataStore.loadLocalState({ storageKey, defaults, normalizeState });
+async function loadState() {
+  return await dataStore.loadLocalState({ storageKey, defaults, normalizeState });
 }
 
 function saveState(options = {}) {

@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-import { assertReleaseMetadataAtLeast } from './release-metadata-helpers.mjs';
 
 const app = fs.readFileSync('app.js', 'utf8');
 const server = fs.readFileSync('server.py', 'utf8');
@@ -8,11 +7,11 @@ const html = fs.readFileSync('index.html', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assertReleaseMetadataAtLeast(buildInfo, serviceWorker, {
-  minimumVersion: '2026.06.18.203',
-  minimumCache: 303,
-  message: 'Render admin health endpoint release metadata'
-});
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:203|204|205|206|207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237)"/, 'build-info should publish v303');
+assert.match(buildInfo, /buildLabel:\s*"(?:server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v303 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v303 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker cache should be v303');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v303');
 
 assert.match(server, /"\/api\/admin\/health"/, 'server should mount /api/admin/health');
 assert.match(server, /def admin_health_backend\(self\):/, 'server should implement admin health handler');

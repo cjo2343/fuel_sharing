@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import jwt
 
 try:
     from pywebpush import WebPushException, webpush
@@ -97,11 +98,16 @@ def ledger_api_secret():
 
 
 def ledger_api_auth_required():
-    # JSON fallback/write APIs fail closed unless local tooling explicitly opts
-    # out. Hosted deployments should set FUEL_LEDGER_API_SECRET.
-    if ledger_api_secret() or env_flag("FUEL_LEDGER_REQUIRE_API_AUTH"):
-        return True
-    return not env_flag("FUEL_LEDGER_ALLOW_UNAUTHENTICATED_LOCAL_API")
+    # Local development and Playwright use the JSON API without a secret by default.
+    # Hosted deployments should set FUEL_LEDGER_API_SECRET; Render also enables
+    # protection automatically so a missing secret fails closed instead of exposing
+    # the JSON ledger.
+    return bool(
+        ledger_api_secret()
+        or env_flag("FUEL_LEDGER_REQUIRE_API_AUTH")
+        or env_value("RENDER")
+        or env_value("RENDER_SERVICE_ID")
+    )
 
 
 def bearer_token(header_value):
@@ -423,25 +429,42 @@ def decode_jwt_payload(token):
         return None
 
 
+# Ensure this is set in your Render/production environment
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
+
 def current_supabase_user(handler):
     url = supabase_url()
     token = get_bearer_token(handler)
     if not url or not token:
         return None
-
-    # Prefer Supabase's own auth check. Use the anon key for this when available;
-    # the service role key is still used for server-side database writes.
+        
     try:
-        user = request_json(f"{url}/auth/v1/user", token=token, api_key=supabase_anon_key())
-        if user and user.get("email"):
-            return user
-    except Exception:
-        pass
-
-    # Do not decode JWT payloads locally here. The server must only trust tokens
-    # verified by Supabase Auth; otherwise a forged token could reach push endpoints
-    # during an auth outage or misconfiguration.
-    return None
+        if not SUPABASE_JWT_SECRET:
+            print("Warning: SUPABASE_JWT_SECRET not set. Falling back to slow network verification.")
+            user = request_json(f"{url}/auth/v1/user", token=token, api_key=supabase_anon_key())
+            if user and user.get("email"):
+                return user
+            return None
+            
+        # Fast local JWT verification
+        decoded = jwt.decode(
+            token, 
+            SUPABASE_JWT_SECRET, 
+            algorithms=["HS256"], 
+            audience="authenticated"
+        )
+        # Return a dictionary matching the Supabase user object format expected by the rest of the app
+        return {"email": decoded.get("email"), "id": decoded.get("sub")}
+        
+    except jwt.ExpiredSignatureError:
+        print("Token has expired")
+        return None
+    except jwt.InvalidTokenError:
+        print("Invalid token")
+        return None
+    except Exception as e:
+        print(f"Auth error: {e}")
+        return None
 
 
 
@@ -2868,7 +2891,6 @@ class Handler(SimpleHTTPRequestHandler):
         if not user or not user.get("email"):
             self.send_error(401, "Sign in before looking up a vehicle")
             return
-        token = get_bearer_token(self)
         try:
             payload = read_request_body(self)
             ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
@@ -2881,9 +2903,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if not check_backend_rate_limit(self, "vehicle-lookup", user=user, ledger_id=ledger_id):
                 return
-            # Vehicle lookup uses a configured provider credential and returns
-            # vehicle metadata, so enforce workspace-admin scope server-side.
-            assert_user_can_admin_ledger(ledger_id, user, token)
+            # Any active workspace member may ask Render to lookup the configured
+            # vehicle data, but the app UI only applies it to settings for admins.
+            get_state_load_context_as_service(ledger_id, user)
             result, status = fetch_vehicle_lookup(plate)
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")

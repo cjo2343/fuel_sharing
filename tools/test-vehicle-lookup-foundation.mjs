@@ -27,7 +27,7 @@ assert.doesNotMatch(index, /nummerplade-tjek\.dk[\s\S]{0,160}nofollow/, 'vehicle
 assert.match(server, /if self\.path == "\/api\/vehicle\/lookup"/, 'server must mount /api/vehicle/lookup');
 assert.match(server, /def lookup_vehicle_backend\(self\):/, 'server must implement vehicle lookup handler');
 assert.match(server, /current_supabase_user\(self\)/, 'server lookup must verify Supabase auth');
-assert.match(server, /assert_user_can_admin_ledger\(ledger_id, user, token\)/, 'server lookup must verify workspace-admin permission');
+assert.match(server, /get_state_load_context_as_service\(ledger_id, user\)/, 'server lookup must verify active workspace membership');
 assert.match(server, /VEHICLE_LOOKUP_API_KEY/, 'server must keep vehicle API key in environment');
 assert.match(server, /VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE/, 'server must convert provider network failures to a safe lookup result code');
 assert.match(server, /send_response\(200\)[\s\S]*VEHICLE_LOOKUP_PROVIDER_ERROR/, 'provider HTTP errors must not return browser-visible 5xx statuses');

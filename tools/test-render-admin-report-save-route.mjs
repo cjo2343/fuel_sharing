@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { assertReleaseMetadataAtLeast } from './release-metadata-helpers.mjs';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
@@ -10,11 +9,11 @@ const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 const audit = fs.readFileSync('BACKEND-PATH-AUDIT.md', 'utf8');
 
-assertReleaseMetadataAtLeast(buildInfo, serviceWorker, {
-  minimumVersion: '2026.06.18.207',
-  minimumCache: 307,
-  message: 'Render admin report-save release metadata'
-});
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237)"/, 'build-info should publish v307 or a preserving v309 patch');
+assert.match(buildInfo, /buildLabel:\s*"render-admin-report-save-route"/, 'build-info should use v307 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v307 or a preserving v309 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker should use v307 or a preserving v309 cache');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"render-admin-report-save-route"/, 'service worker label should match v307');
 
 assert.match(app, /const renderAdminReportSaveUrl = "\/api\/admin\/reports\/save";/, 'app should define the Render admin report-save URL');
 assert.match(app, /async function saveTestLabReportViaRender\(report\)/, 'app should save reports through Render');

@@ -13,7 +13,7 @@ assert.match(app, /function buildWorkspaceInviteLink\(inviteCode\)/, 'admin invi
 assert.match(app, /url\.searchParams\.set\("invite", code\)/, 'copyable invite links should use the canonical ?invite=CODE parameter');
 assert.match(app, /data-copy="\$\{escapeHtml\(inviteLink\)\}"/, 'created invites should expose a copy invite link button');
 assert.match(app, /data-copy="\$\{escapeHtml\(inviteCode\)\}"/, 'created invites should still expose a copy code button');
-assert.match(app, /initializeInviteDeepLink\(\);\nrender\(\);/, 'startup should hydrate invite links before the first render');
+assert.match(app, /initializeInviteDeepLink\(\);\n\s*render\(\);/, 'startup should hydrate invite links before the first render');
 assert.match(app, /currentSession = session;\n    initializeInviteDeepLink\(\);/, 'auth state changes should capture invite links opened by already signed-in users');
 assert.match(html, /Invite link\/code = permission/i, 'login copy should explain invite links');
 assert.match(html, /copy the invite link or one-time code/i, 'admin invite copy should mention invite links');

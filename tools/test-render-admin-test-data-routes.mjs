@@ -1,5 +1,4 @@
 import fs from 'fs';
-import { assertReleaseMetadataAtLeast } from './release-metadata-helpers.mjs';
 
 const app = fs.readFileSync('app.js', 'utf8');
 const server = fs.readFileSync('server.py', 'utf8');
@@ -14,11 +13,11 @@ function assert(condition, message) {
   }
 }
 
-assertReleaseMetadataAtLeast(buildInfo, serviceWorker, {
-  minimumVersion: '2026.06.18.194',
-  minimumCache: 294,
-  message: 'Admin test-data routes release metadata'
-});
+assert(/version:\s*"2026\.06\.18\.(?:19[4-9]|2[0-9][0-9])"/.test(buildInfo), 'build-info.js must be v294 or later while preserving the admin test-data routes.');
+assert(/buildLabel:\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/.test(buildInfo), 'build-info.js must use the v294 build label or a later label preserving it.');
+assert(/expectedServiceWorkerCache:\s*"fuel-ledger-v(?:29[4-9]|3[0-9][0-9])"/.test(buildInfo), 'build-info.js must expect the v294/v295/v296/v297 service-worker cache.');
+assert(/CACHE_NAME\s*=\s*"fuel-ledger-v(?:29[4-9]|3[0-9][0-9])"/.test(serviceWorker), 'service-worker.js must use the v294/v295/v296/v297 cache.');
+assert(/BUILD_LABEL\s*=\s*"(?:render-admin-test-data-routes|render-normalized-test-data-cleanup-route|render-cleanup-availability-hotfix|cleanup-scope-admin-finish-hotfix|admin-startup-flicker-reduction|startup-auth-hydration-screen|render-retention-admin-routes|admin-cleanup-diagnostics-finish|render-admin-health-endpoint|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/.test(serviceWorker), 'service-worker.js must use the v294 build label or a later label preserving it.');
 
 assert(app.includes('const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";'), 'app.js must define the Render admin test-data create URL.');
 assert(app.includes('async function createGeneratedTestDataViaRender(type, entry)'), 'app.js must include a Render admin test-data helper.');

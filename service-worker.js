@@ -1,12 +1,13 @@
 const CACHE_NAME = "fuel-ledger-v337";
 const BUILD_LABEL = "render-admin-report-save-route";
-const BUILD_UPDATED_AT = "2026-06-20T11:20:00.000Z";
+const BUILD_UPDATED_AT = "2026-06-20T12:30:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
   "/styles.css",
   "/vendor/supabase-js-2.43.4/supabase.js",
   "/vendor/supabase-js-2.43.4/26.supabase.js",
+  "/vendor/localforage-1.10.0/localforage.min.js",
   "/supabase-config.js",
   "/utils.js",
   "/supabase-helpers.js",

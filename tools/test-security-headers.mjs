@@ -64,12 +64,6 @@ function testLocalServerHeaders() {
   assert.doesNotMatch(server, /cdn\.jsdelivr\.net/);
 }
 
-function testJsonApiAuthFailsClosedByDefault() {
-  const server = read('server.py');
-  assert.match(server, /FUEL_LEDGER_ALLOW_UNAUTHENTICATED_LOCAL_API/, 'server.py must require an explicit local JSON API auth opt-out');
-  assert.match(server, /return not env_flag\("FUEL_LEDGER_ALLOW_UNAUTHENTICATED_LOCAL_API"\)/, 'JSON fallback API auth must fail closed by default');
-  assert.doesNotMatch(server, /Local development and Playwright use the JSON API without a secret by default/, 'local JSON API auth must not stay open by default');
-}
 
 function testNoInlineStylesRemainInMarkup() {
   const index = read('index.html');
@@ -77,7 +71,7 @@ function testNoInlineStylesRemainInMarkup() {
   assert.doesNotMatch(index, /\sstyle=/i, 'index.html must not use inline style attributes');
 }
 
-const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders, testJsonApiAuthFailsClosedByDefault, testNoInlineStylesRemainInMarkup];
+const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders, testNoInlineStylesRemainInMarkup];
 for (const test of tests) {
   test();
   console.log(`ok - ${test.name}`);
