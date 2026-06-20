@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.237",
+    version: "2026.06.18.238",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T12:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v337",
+    updatedAt: "2026-06-20T12:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v338",
     releaseNotes: Object.freeze([
+      "Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.",
       "IndexedDB local state storage now uses a vendored localForage-compatible runtime asset instead of a CDN script, keeping offline startup inside the service-worker cache and CSP/runtime guardrails.",
       "Vehicle lookup and group settings saves now use local-only staging plus explicit Data I/O finish rows, so Admin shows vehicle-lookup/settings-save operations and Save settings does not leave a stale unsynced-change banner after the backend save completes.",
       "Vehicle lookup summaries now hide placeholder values such as unknown Euro norm/status and show cleaner fuel labels such as Petrol 95 while keeping useful engine, emissions, color, body, and registration facts.",

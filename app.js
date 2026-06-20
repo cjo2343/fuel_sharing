@@ -3933,12 +3933,12 @@ function buildSupabaseLoadReport() {
 
 async function checkRenderAdminHealth({ silent = false } = {}) {
   if (!canUseGlobalAdminTools()) return renderAdminHealthStatus;
-  if (!currentSession?.access_token || typeof fetch !== "function") {
+  if (typeof fetch !== "function") {
     renderAdminHealthStatus = {
       checked: true,
       ok: false,
       loading: false,
-      message: "Sign in before checking Render admin health.",
+      message: "Render admin health requires browser fetch support.",
       checks: []
     };
     if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
@@ -3953,6 +3953,28 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
   let controller = null;
   let timeoutId = 0;
   try {
+    const accessToken = await getFreshRenderAccessToken();
+    if (!accessToken) {
+      renderAdminHealthStatus = {
+        checked: true,
+        ok: false,
+        loading: false,
+        mode: "session",
+        checkedAt: new Date().toISOString(),
+        ledgerId,
+        message: "Sign in before checking Render admin health.",
+        checks: []
+      };
+      recordDataIoDiagnostic("skip", {
+        ...traceMeta,
+        ok: true,
+        code: "AUTH_SESSION_NOT_READY",
+        detail: "Skipped Render admin health until Supabase session is ready."
+      });
+      if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
+      return renderAdminHealthStatus;
+    }
+
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Render admin health" });
     controller = new AbortController();
     const timeoutPromise = new Promise((_, reject) => {
@@ -3966,7 +3988,7 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
+        "Authorization": `Bearer ${accessToken}`
       },
       body: JSON.stringify({ ledgerId })
     });
@@ -3975,6 +3997,26 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
     if (!response.ok || !result) {
+      if (isRenderAuthRejected(response, result, text)) {
+        renderAdminHealthStatus = {
+          checked: true,
+          ok: false,
+          loading: false,
+          mode: "session",
+          checkedAt: new Date().toISOString(),
+          ledgerId,
+          message: "Render did not accept the current sign-in yet. Refresh or sign in again before running Render admin health.",
+          checks: []
+        };
+        recordDataIoDiagnostic("skip", {
+          ...traceMeta,
+          ok: true,
+          code: "RENDER_AUTH_NOT_READY",
+          detail: "Render admin health skipped because the backend did not accept the current session."
+        });
+        if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
+        return renderAdminHealthStatus;
+      }
       const error = new Error(result?.error || result?.message || text || `Render admin health failed (${response.status})`);
       error.status = response.status;
       throw error;
@@ -15319,6 +15361,24 @@ async function hasFreshSupabaseSession() {
   return true;
 }
 
+async function getFreshRenderAccessToken() {
+  if (!supabaseClient) return "";
+  const session = await supabaseHelpers.getFreshSession(supabaseClient);
+  if (!session?.access_token) {
+    currentSession = null;
+    updateAuthUi();
+    return "";
+  }
+  currentSession = session;
+  return session.access_token;
+}
+
+function isRenderAuthRejected(response, result, text) {
+  if (response?.status === 401 || response?.status === 403) return true;
+  const message = String(result?.message || result?.error || text || "");
+  return /sign in before|unauthori[sz]ed|no permission/i.test(message);
+}
+
 async function ensureOpenSettlementPeriod(ledgerId) {
   return supabaseHelpers.ensureOpenSettlementPeriod(supabaseClient, ledgerId);
 }
@@ -15375,11 +15435,22 @@ async function getNormalizedWriteContext(options = {}) {
 async function getRenderNormalizedStateRows(ledgerId) {
   const operationId = createDataIoOperationId("state-load");
   const traceMeta = { source: "state-load", route: "render-api", endpoint: renderStateLoadUrl, operation: "load", operationId };
-  if (!currentSession?.access_token || !ledgerId) return null;
+  if (!ledgerId || typeof fetch !== "function") return null;
 
   let controller = null;
   let timeoutId = 0;
   try {
+    const accessToken = await getFreshRenderAccessToken();
+    if (!accessToken) {
+      recordDataIoDiagnostic("skip", {
+        ...traceMeta,
+        ok: true,
+        code: "AUTH_SESSION_NOT_READY",
+        detail: "Skipped Render state load until Supabase session is ready; using browser normalized table load."
+      });
+      return null;
+    }
+
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
     controller = new AbortController();
     const timeoutPromise = new Promise((_, reject) => {
@@ -15393,7 +15464,7 @@ async function getRenderNormalizedStateRows(ledgerId) {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
+        "Authorization": `Bearer ${accessToken}`
       },
       body: JSON.stringify({ ledgerId })
     });
@@ -15415,6 +15486,15 @@ async function getRenderNormalizedStateRows(ledgerId) {
     const message = result?.message || result?.error || text || `Render state load failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
+    if (isRenderAuthRejected(response, result, text)) {
+      recordDataIoDiagnostic("skip", {
+        ...traceMeta,
+        ok: true,
+        code: "RENDER_AUTH_NOT_READY",
+        detail: "Render state load did not accept the current session yet; using browser normalized table load."
+      });
+      return null;
+    }
     recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; falling back to browser normalized table load.` });
     return null;
   } catch (error) {

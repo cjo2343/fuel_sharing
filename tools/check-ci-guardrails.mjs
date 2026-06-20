@@ -58,6 +58,8 @@ for (const marker of [
   "name: Fast validation",
   "cache: npm",
   "npm ci",
+  "Install Python dependencies",
+  "python3 -m pip install -r requirements.txt",
   "npm run validate",
   "node tools/check-release-readiness.mjs",
   "name: Playwright smoke tests",

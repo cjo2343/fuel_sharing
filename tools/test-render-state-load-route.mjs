@@ -13,6 +13,9 @@ function assert(condition, message) {
 
 assert(app.includes('const renderStateLoadUrl = "/api/state/load";'), "app should define the Render state-load URL");
 assert(app.includes("async function getRenderNormalizedStateRows"), "app should have a Render state-load helper");
+assert(app.includes("async function getFreshRenderAccessToken"), "app should refresh the Supabase session before Render calls");
+assert(app.includes("isRenderAuthRejected(response, result, text)"), "Render state load should detect auth-not-ready responses");
+assert(app.includes("RENDER_AUTH_NOT_READY"), "Render auth rejection should be recorded as a quiet fallback skip");
 assert(app.includes('source: "state-load", route: "render-api", endpoint: renderStateLoadUrl'), "Render state-load helper should emit Data I/O diagnostics");
 assert(app.includes('recordSupabaseLoadEvent("render-state-load"'), "Render state-load success should be visible in the load monitor");
 assert(app.includes("const renderStateRows = await getRenderNormalizedStateRows(ledgerId);"), "normalized table load should try Render before browser table reads");
