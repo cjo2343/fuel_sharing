@@ -157,6 +157,34 @@ class SettingsSchemaMissingError(RuntimeError):
 
 SETTINGS_SAVE_SUPABASE_TIMEOUT = 5
 SETTINGS_MEMBER_SYNC_TIMEOUT = 4
+OWNER_ACTIVITY_DEFAULT_LIMIT = 80
+OWNER_ACTIVITY_MAX_LIMIT = 250
+
+
+def configured_app_owner_emails():
+    raw = env_value("FUEL_LEDGER_APP_OWNER_EMAILS") or env_value("APP_OWNER_EMAILS") or "chrjohn94@gmail.com"
+    return {part.strip().lower() for part in re.split(r"[,;\s]+", raw) if part.strip()}
+
+
+def is_configured_app_owner(user):
+    email = str((user or {}).get("email") or "").strip().lower()
+    return bool(email and email in configured_app_owner_emails())
+
+
+def safe_int(value, default=0, minimum=None, maximum=None):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = int(default)
+    if minimum is not None:
+        parsed = max(int(minimum), parsed)
+    if maximum is not None:
+        parsed = min(int(maximum), parsed)
+    return parsed
+
+
+def utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 
 def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=None, timeout=20):
@@ -173,6 +201,116 @@ def request_json(url, method="GET", body=None, token=None, prefer=None, api_key=
     with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read().decode("utf-8")
         return json.loads(raw) if raw else None
+
+
+
+
+def clamp_text(value, maximum=500):
+    text = str(value or "")
+    return text[:maximum]
+
+
+def safe_owner_activity_metadata(value):
+    if not isinstance(value, dict):
+        return {}
+    blocked = {"authorization", "cookie", "token", "access_token", "refresh_token", "password", "secret", "apikey", "api_key", "vin"}
+    cleaned = {}
+    for key, raw in value.items():
+        safe_key = str(key or "")[:80]
+        if not safe_key or safe_key.lower() in blocked or any(part in safe_key.lower() for part in ("secret", "token", "password", "cookie", "authorization", "apikey")):
+            continue
+        if isinstance(raw, (str, int, float, bool)) or raw is None:
+            cleaned[safe_key] = raw if not isinstance(raw, str) else raw[:240]
+        elif isinstance(raw, (list, tuple)):
+            cleaned[safe_key] = [str(item)[:120] for item in raw[:20]]
+        elif isinstance(raw, dict):
+            cleaned[safe_key] = {str(k)[:60]: str(v)[:120] for k, v in list(raw.items())[:20] if str(k).lower() not in blocked}
+        else:
+            cleaned[safe_key] = str(raw)[:240]
+    return cleaned
+
+
+def owner_activity_context_for(ledger_id, user, context=None):
+    ctx = context if isinstance(context, dict) else None
+    if ctx is None and ledger_id and user:
+        try:
+            ctx = get_state_load_context_as_service(ledger_id, user)
+        except Exception:
+            ctx = {}
+    ledger_label = str(ledger_id or "")
+    try:
+        rows = request_json(
+            f"{supabase_url()}/rest/v1/ledgers?select=id,slug,name&limit=1&id=eq.{quote_postgrest_value(ledger_id)}",
+            api_key=supabase_key(),
+            timeout=4,
+        ) or []
+        if rows:
+            ledger = rows[0]
+            name = str(ledger.get("name") or ledger.get("id") or ledger_id or "").strip()
+            slug = str(ledger.get("slug") or ledger.get("id") or "").strip()
+            ledger_label = f"{name} ({slug})" if slug and slug != name else name
+    except Exception:
+        pass
+    return {
+        "actor_member_id": str((ctx or {}).get("currentMemberId") or "") or None,
+        "actor_role": str((ctx or {}).get("role") or "member"),
+        "workspace_label": ledger_label,
+    }
+
+
+def record_owner_activity_as_service(ledger_id, user, *, action, route, ok=True, result_code="OK", status_code=200, duration_ms=None, summary="", metadata=None, context=None):
+    if not supabase_url() or not env_value("SUPABASE_SERVICE_ROLE_KEY"):
+        return None
+    ledger_id = str(ledger_id or "").strip()
+    if not ledger_id:
+        return None
+    try:
+        ctx = owner_activity_context_for(ledger_id, user, context=context)
+        body = {
+            "ledger_id": ledger_id,
+            "workspace_label": ctx.get("workspace_label") or ledger_id,
+            "actor_user_id": str((user or {}).get("id") or "") or None,
+            "actor_email": str((user or {}).get("email") or "").strip().lower() or None,
+            "actor_member_id": ctx.get("actor_member_id"),
+            "actor_role": ctx.get("actor_role") or "member",
+            "route": clamp_text(route, 120),
+            "action": clamp_text(action, 120),
+            "result_code": clamp_text(result_code or ("OK" if ok else "ERROR"), 80),
+            "status_code": safe_int(status_code, 200 if ok else 500, minimum=0, maximum=599),
+            "duration_ms": safe_int(duration_ms, 0, minimum=0, maximum=24 * 60 * 60 * 1000) if duration_ms is not None else None,
+            "ok": bool(ok),
+            "summary": clamp_text(summary, 500),
+            "metadata": safe_owner_activity_metadata(metadata or {}),
+        }
+        return request_json(
+            f"{supabase_url()}/rest/v1/owner_activity_log",
+            method="POST",
+            body=body,
+            prefer="return=representation",
+            api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+            timeout=4,
+        )
+    except Exception as error:
+        print(f"Owner activity log write skipped: {error}")
+        return None
+
+
+def list_owner_activity_as_service(payload=None):
+    payload = payload if isinstance(payload, dict) else {}
+    limit = safe_int(payload.get("limit"), OWNER_ACTIVITY_DEFAULT_LIMIT, minimum=1, maximum=OWNER_ACTIVITY_MAX_LIMIT)
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    action = str(payload.get("action") or "").strip()
+    status = str(payload.get("status") or "").strip().lower()
+    query = f"{supabase_url()}/rest/v1/owner_activity_log?select=id,created_at,ledger_id,workspace_label,actor_email,actor_member_id,actor_role,route,action,result_code,status_code,duration_ms,ok,summary,metadata&order=created_at.desc&limit={limit}"
+    if ledger_id:
+        query += f"&ledger_id=eq.{quote_postgrest_value(ledger_id)}"
+    if action:
+        query += f"&action=eq.{quote_postgrest_value(action)}"
+    if status in ("ok", "success"):
+        query += "&ok=eq.true"
+    elif status in ("error", "failed", "fail"):
+        query += "&ok=eq.false"
+    return request_json(query, api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"), timeout=6) or []
 
 
 def fetch_fuel_price(path):
@@ -1253,6 +1391,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("paymentStatusAction", "/api/payments/status-action", "Render payment-status action route"),
         ("settingsSave", "/api/settings/save", "Render workspace settings save route"),
         ("memberManagement", "/api/members/manage", "Render workspace member-management route"),
+        ("ownerActivity", "/api/owner/activity", "Render app-owner activity route"),
         ("vehicleLookup", "/api/vehicle/lookup", "Render vehicle lookup proxy route"),
     ]
     return [
@@ -2672,6 +2811,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/admin/security-health":
             self.security_health_backend()
             return
+        if self.path == "/api/owner/activity":
+            self.owner_activity_backend()
+            return
         if self.path == "/api/admin/retention/preview":
             self.preview_retention_cleanup_backend()
             return
@@ -2730,6 +2872,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before loading state")
             return
         token = get_bearer_token(self)
+        started_at = time.time()
         try:
             payload = read_request_body(self)
             ledger_id = build_write_context_backend_payload(payload, user)
@@ -2749,6 +2892,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500, str(error))
             return
 
+        record_owner_activity_as_service(ledger_id, user, action="state-load", route="/api/state/load", ok=True, result_code="OK", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace state loaded through Render.", metadata={"rows": {"members": len(state_rows.get("members") or []), "trips": len(state_rows.get("trips") or []), "fuel": len(state_rows.get("fuel") or []), "bookings": len(state_rows.get("bookings") or [])}}, context=state_rows.get("context"))
         self.send_json({"ok": True, "stateRows": state_rows, "backend": "render", "userEmail": user.get("email")})
 
 
@@ -2759,12 +2903,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before saving settings."}, status=401)
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             ledger, members = build_settings_save_payload(payload, user)
             if not check_backend_rate_limit(self, "settings-save", user=user, ledger_id=ledger["id"]):
                 return
-            assert_user_can_admin_ledger(ledger["id"], user, token)
+            context = assert_user_can_admin_ledger(ledger["id"], user, token)
             result = upsert_settings_as_service(ledger, members)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
@@ -2786,6 +2932,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "SETTINGS_SAVE_ERROR", "message": str(error)}, status=500)
             return
 
+        record_owner_activity_as_service(ledger.get("id"), user, action="settings-save", route="/api/settings/save", ok=True, result_code="SETTINGS_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace settings saved through Render.", metadata={"vehiclePlate": result.get("settings", {}).get("vehiclePlate") or "", "persisted": result.get("persisted") or {}}, context=context)
         self.send_json({"ok": True, "result": result, "settings": result.get("settings"), "backend": "render", "userEmail": user.get("email")})
 
 
@@ -2795,6 +2942,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before managing members."}, status=401)
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             if not isinstance(payload, dict):
@@ -2807,18 +2956,21 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if action == "list":
                 members = list_members_as_user(ledger_id, user, token)
+                record_owner_activity_as_service(ledger_id, user, action="members-list", route="/api/members/manage", ok=True, result_code="MEMBERS_LOADED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace member list loaded through Render.", metadata={"memberCount": len(members)})
                 self.send_json({"ok": True, "code": "MEMBERS_LOADED", "ledgerId": ledger_id, "members": members, "backend": "render", "userEmail": user.get("email")})
                 return
             if action == "upsert":
                 member = normalize_backend_member_payload(payload.get("member"))
                 result = upsert_member_as_user(ledger_id, member, user, token)
                 members = list_members_as_user(ledger_id, user, token)
+                record_owner_activity_as_service(ledger_id, user, action="member-upsert", route="/api/members/manage", ok=True, result_code="MEMBER_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace member saved through Render.", metadata={"memberRole": result.get("role") if isinstance(result, dict) else "", "memberEmail": result.get("email") if isinstance(result, dict) else ""})
                 self.send_json({"ok": True, "code": "MEMBER_SAVED", "ledgerId": ledger_id, "member": result, "members": members, "backend": "render", "userEmail": user.get("email")})
                 return
             if action == "set-active":
                 member_id = str(payload.get("memberId") or payload.get("member_id") or "").strip()
                 result = set_member_active_as_user(ledger_id, member_id, payload.get("isActive", payload.get("is_active", False)), user, token)
                 members = list_members_as_user(ledger_id, user, token)
+                record_owner_activity_as_service(ledger_id, user, action="member-set-active", route="/api/members/manage", ok=True, result_code="MEMBER_ACCESS_UPDATED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace member active status changed through Render.", metadata={"targetMemberId": member_id, "isActive": bool(payload.get("isActive", payload.get("is_active", False)))})
                 self.send_json({"ok": True, "code": "MEMBER_ACCESS_UPDATED", "ledgerId": ledger_id, "member": result, "members": members, "backend": "render", "userEmail": user.get("email")})
                 return
             raise ValueError("Unsupported member management action")
@@ -3101,6 +3253,30 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_json({"ok": True, "cleanup": cleanup, "backend": "render", "ledgerId": ledger_id, "userEmail": user.get("email")})
 
+    def owner_activity_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before viewing owner activity."}, status=401)
+            return
+        if not is_configured_app_owner(user):
+            self.send_json({"ok": False, "code": "OWNER_ONLY", "message": "Only the configured app owner can view cross-workspace activity."}, status=403)
+            return
+        try:
+            payload = read_request_body(self)
+            rows = list_owner_activity_as_service(payload)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_json({"ok": False, "code": "OWNER_ACTIVITY_ERROR", "message": body}, status=error.code)
+            return
+        except Exception as error:
+            self.send_json({"ok": False, "code": "OWNER_ACTIVITY_ERROR", "message": str(error)}, status=500)
+            return
+        self.send_json({"ok": True, "activity": rows, "backend": "render", "userEmail": user.get("email")})
+
+
     def get_write_context_backend(self):
         user = current_supabase_user(self)
         if not user or not user.get("email"):
@@ -3134,6 +3310,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before updating payment status")
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             rpc_payload = build_payment_status_rpc_payload(payload)
@@ -3155,6 +3333,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500, str(error))
             return
 
+        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="payment-status-action", route="/api/payments/status-action", ok=True, result_code="PAYMENT_STATUS_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Payment Status Action completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def upsert_trip_backend(self):
@@ -3163,6 +3342,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before saving a trip")
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             rpc_payload = build_trip_upsert_rpc_payload(payload)
@@ -3184,6 +3365,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500, str(error))
             return
 
+        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="trip-upsert", route="/api/trips/upsert", ok=True, result_code="TRIP_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Trip Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def upsert_fuel_backend(self):
@@ -3192,6 +3374,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before saving fuel")
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             rpc_payload = build_fuel_upsert_rpc_payload(payload)
@@ -3213,6 +3397,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500, str(error))
             return
 
+        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="fuel-upsert", route="/api/fuel/upsert", ok=True, result_code="FUEL_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Fuel Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def upsert_booking_backend(self):
@@ -3221,6 +3406,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before saving a booking")
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             rpc_payload = build_booking_upsert_rpc_payload(payload)
@@ -3242,6 +3429,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500, str(error))
             return
 
+        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-upsert", route="/api/bookings/upsert", ok=True, result_code="BOOKING_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Booking Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def delete_booking_backend(self):
@@ -3250,6 +3438,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(401, "Sign in before deleting a booking")
             return
         token = get_bearer_token(self)
+        started_at = time.time()
+        context = None
         try:
             payload = read_request_body(self)
             rpc_payload = build_booking_delete_rpc_payload(payload)
@@ -3272,6 +3462,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500, str(error))
             return
 
+        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-delete", route="/api/bookings/delete", ok=True, result_code="BOOKING_DELETED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Booking Delete completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
 
     def save_push_subscription(self):
@@ -3395,6 +3586,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not user or not user.get("email"):
             self.send_error(401, "Sign in before looking up a vehicle")
             return
+        started_at = time.time()
         try:
             payload = read_request_body(self)
             ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
@@ -3411,6 +3603,7 @@ class Handler(SimpleHTTPRequestHandler):
             # vehicle data, but the app UI only applies it to settings for admins.
             get_state_load_context_as_service(ledger_id, user)
             result, status = fetch_vehicle_lookup(plate)
+            record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=bool(result.get("ok")), result_code=result.get("code") or ("OK" if result.get("ok") else "VEHICLE_LOOKUP_FAILED"), status_code=status, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup for {plate}.", metadata={"plate": plate, "providerStatus": status})
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
@@ -3427,11 +3620,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
+            record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_PROVIDER_ERROR", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup provider error for {plate}.", metadata={"plate": plate})
             self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_ERROR", "message": detail or str(error)}).encode("utf-8"))
         except urllib.error.URLError as error:
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
+            record_owner_activity_as_service(ledger_id, user, action="vehicle-lookup", route="/api/vehicle/lookup", ok=False, result_code="VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary=f"Vehicle lookup provider unavailable for {plate}.", metadata={"plate": plate})
             self.wfile.write(json.dumps({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", "message": str(error)}).encode("utf-8"))
         except PermissionError as error:
             self.send_error(403, str(error))

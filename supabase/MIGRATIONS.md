@@ -94,4 +94,4 @@ Adds server-side onboarding abuse monitoring/rate-limit storage and enforces thr
 
 - 039_list_my_ledgers_dedup.sql - de-duplicates workspace selector rows returned by list_my_ledgers, preferring admin role when duplicate active member rows exist for the same signed-in email/workspace.
 
-- `040_workspace_identity_hardening.sql` safely deactivates duplicate active `ledger_members` rows for the same email/workspace, keeps the strongest role, adds a partial unique index to prevent recurrence, and refreshes `list_my_ledgers()` so workspace identity remains one row per workspace.
+- `041_owner_activity_log.sql` adds a server-owned owner-only activity table populated by Render backend routes, so the app owner can inspect safe cross-user/cross-workspace activity without relying on browser-local Data I/O.

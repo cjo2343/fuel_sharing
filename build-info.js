@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.251",
+    version: "2026.06.18.252",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T15:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v351",
+    updatedAt: "2026-06-20T15:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v352",
     releaseNotes: Object.freeze([
+      "Owner activity is now server-owned: Render records safe cross-user/cross-workspace activity rows for state loads, vehicle lookup, settings saves, member management, trips, fuel, bookings, and payment status actions, and the app owner can view recent activity from Admin without relying on browser-local Data I/O.",
       "Workspace identity hardening now cleans duplicate active workspace memberships, enforces one active email membership per workspace, collapses duplicate signed-in member rows without maybeSingle errors, and refuses to treat unconfirmed workspace selector entries as real admin/member roles.",
       "Workspace selector and membership loading now de-duplicate list_my_ledgers rows, prefer admin over duplicate member rows for the same workspace, never reset a signed-in user to the default Fuel Ledger during a timed-out workspace refresh, and disable switching until the authoritative workspace list has loaded.",
       "Workspace switching now uses isolated per-workspace local state, locks edits until the selected workspace is loaded from Render, shows a clear workspace-loading/confirmed status, and labels Data I/O rows with the workspace they belong to.",

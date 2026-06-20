@@ -50,6 +50,7 @@ const expected = [
   "038_vehicle_settings_columns.sql",
   "039_list_my_ledgers_dedup.sql",
   "040_workspace_identity_hardening.sql",
+  "041_owner_activity_log.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -180,6 +181,9 @@ for (const marker of [
   "038_vehicle_settings_columns",
   "039_list_my_ledgers_dedup",
   "040_workspace_identity_hardening",
+  "041_owner_activity_log",
+  "create table if not exists public.owner_activity_log",
+  "owner_activity_log_ledger_created_at_idx",
   "ledger_members_one_active_email_per_workspace_idx",
   "with ranked_members as",
   "bool_or(lm.role = 'admin')",

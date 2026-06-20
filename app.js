@@ -35,6 +35,7 @@ const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
 const renderAdminHealthUrl = "/api/admin/health";
 const renderAdminReportSaveUrl = "/api/admin/reports/save";
 const renderAdminSecurityHealthUrl = "/api/admin/security-health";
+const renderOwnerActivityUrl = "/api/owner/activity";
 const renderVehicleLookupUrl = "/api/vehicle/lookup";
 const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
@@ -1587,6 +1588,16 @@ let renderAdminHealthStatus = {
   message: "Render admin health has not been checked yet.",
   checks: []
 };
+let ownerActivityStatus = {
+  checked: false,
+  ok: false,
+  loading: false,
+  message: "Owner activity has not been loaded yet.",
+  rows: [],
+  checkedAt: ""
+};
+let ownerActivityFetchInFlight = false;
+let lastOwnerActivityFetchAt = 0;
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -2533,7 +2544,10 @@ function setActiveView(view) {
   activeView = requestedView === "admin" && !canManageSettings() ? "log" : requestedView === "account" && !currentSession ? "log" : requestedView;
   localStorage.setItem(viewStorageKey, activeView);
   render();
-  if (activeView === "admin") scheduleWorkspaceInviteRefresh("admin-tab-open");
+  if (activeView === "admin") {
+    scheduleWorkspaceInviteRefresh("admin-tab-open");
+    refreshOwnerActivity({ silent: true });
+  }
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
 
@@ -3209,6 +3223,7 @@ els.refreshBuildInfo?.addEventListener("click", () => {
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   if (!requireGlobalAdminToolsPermission("Refresh load monitor")) return;
   renderSupabaseLoadMonitor();
+  refreshOwnerActivity({ force: true, silent: true });
   renderAdminGuardrailOverview();
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
@@ -4137,6 +4152,91 @@ function buildSupabaseLoadReport() {
   };
 }
 
+function formatOwnerActivityRow(row = {}) {
+  const time = row.created_at ? new Date(row.created_at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--";
+  const workspace = row.workspace_label || row.ledger_id || "unknown workspace";
+  const actor = row.actor_email || "unknown user";
+  const status = row.ok === true ? "OK" : "Issue";
+  const action = row.action || row.route || "activity";
+  const code = row.result_code ? ` · ${row.result_code}` : "";
+  const duration = Number.isFinite(Number(row.duration_ms)) && Number(row.duration_ms) > 0 ? ` · ${formatDurationMs(Number(row.duration_ms))}` : "";
+  const summary = row.summary || row.route || "";
+  return `<article class="admin-operation-row ${row.ok === true ? "ok" : "failed"}"><div><strong>${escapeHtml(action)}</strong><small>${escapeHtml(actor)} · ${escapeHtml(workspace)}${code}</small>${summary ? `<small>${escapeHtml(summary)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(time)}${escapeHtml(duration)}</small></article>`;
+}
+
+function renderOwnerActivityCard() {
+  const status = ownerActivityStatus || {};
+  const rows = Array.isArray(status.rows) ? status.rows.slice(0, 8) : [];
+  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Loading" : status.checked ? (status.ok ? `${rows.length} recent` : "Needs review") : "Not loaded";
+  const detail = status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
+  return `
+    <article class="admin-metric-card ${cardClass}">
+      <span>Owner activity</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>Server-side · all workspaces</small>
+      <p>${escapeHtml(detail)}</p>
+    </article>
+    ${rows.length ? `
+      <details class="admin-diagnostics-section" open>
+        <summary>Owner activity · server-side</summary>
+        <div class="admin-operation-list">
+          ${rows.map(formatOwnerActivityRow).join("")}
+        </div>
+      </details>
+    ` : ""}
+  `;
+}
+
+async function refreshOwnerActivity({ force = false, silent = true } = {}) {
+  if (!canUseGlobalAdminTools()) return ownerActivityStatus;
+  const now = Date.now();
+  if (ownerActivityFetchInFlight) return ownerActivityStatus;
+  if (!force && ownerActivityStatus.checked && now - lastOwnerActivityFetchAt < 30000) return ownerActivityStatus;
+  ownerActivityFetchInFlight = true;
+  ownerActivityStatus = { ...ownerActivityStatus, loading: true, message: "Loading server-owned owner activity..." };
+  if (!silent) setDataToolsMessage(ownerActivityStatus.message);
+  renderSupabaseLoadMonitor();
+  const operationId = createDataIoOperationId("owner-activity");
+  const traceMeta = { source: "owner-activity", route: "render-api", endpoint: renderOwnerActivityUrl, operation: "load", operationId, ledgerId: getActiveLedgerId(), staleAfterMs: dataIoOperationStaleMs };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Load owner activity" });
+  try {
+    const { result } = await callRenderJson(renderOwnerActivityUrl, {
+      method: "POST",
+      body: { limit: 80 },
+      timeoutMs: 10000,
+      timeoutLabel: "Owner activity load"
+    });
+    const rows = Array.isArray(result.activity) ? result.activity : [];
+    ownerActivityStatus = {
+      checked: true,
+      ok: true,
+      loading: false,
+      message: `Loaded ${rows.length} server-owned activity row${rows.length === 1 ? "" : "s"}.`,
+      rows,
+      checkedAt: new Date().toISOString()
+    };
+    lastOwnerActivityFetchAt = Date.now();
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, detail: ownerActivityStatus.message, resultCode: "OWNER_ACTIVITY_LOADED" });
+    if (!silent) setDataToolsMessage(ownerActivityStatus.message);
+  } catch (error) {
+    ownerActivityStatus = {
+      checked: true,
+      ok: false,
+      loading: false,
+      message: `Owner activity failed: ${error.message || error}`,
+      rows: ownerActivityStatus.rows || [],
+      checkedAt: new Date().toISOString()
+    };
+    recordDataIoDiagnostic(/timeout/i.test(error?.code || error?.name || error?.message || "") ? "timeout" : "error", { ...traceMeta, error, detail: "Owner activity load failed" });
+    if (!silent) setDataToolsMessage(ownerActivityStatus.message);
+  } finally {
+    ownerActivityFetchInFlight = false;
+    renderSupabaseLoadMonitor();
+  }
+  return ownerActivityStatus;
+}
+
 async function checkRenderAdminHealth({ silent = false } = {}) {
   if (!canUseGlobalAdminTools()) return renderAdminHealthStatus;
   if (typeof fetch !== "function") {
@@ -4331,6 +4431,7 @@ function renderSupabaseLoadMonitor() {
         <p>Latest data I/O operations are grouped by action type so start/finish pairs are readable.</p>
       </article>
       ${renderRenderAdminHealthCard()}
+      ${canUseGlobalAdminTools() ? renderOwnerActivityCard() : ""}
       <article class="admin-metric-card ${activeForeground.length ? "warning" : "ok"}">
         <span>Foreground save</span>
         <strong>${activeForeground.length ? "Active" : "Idle"}</strong>
