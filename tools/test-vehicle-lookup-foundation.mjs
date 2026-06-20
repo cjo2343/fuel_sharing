@@ -35,6 +35,11 @@ assert.match(server, /sanitize_vehicle_lookup_response/, 'server must sanitize p
 assert.doesNotMatch(app, /VEHICLE_LOOKUP_API_KEY/, 'browser app must not reference vehicle API keys');
 assert.match(env, /VEHICLE_LOOKUP_API_URL=/, 'env example must document vehicle lookup URL');
 assert.match(env, /VEHICLE_LOOKUP_API_KEY=/, 'env example must document vehicle lookup key without value');
+assert.match(server, /environment\.fuel_usage/, 'server must map Nummerplade Tjek km/l fuel usage');
+assert.match(server, /environment\.co2_emission/, 'server must map Nummerplade Tjek CO2 emissions');
+assert.match(env, /VEHICLE_LOOKUP_API_URL=https:\/\/nummerplade-tjek\.dk\/api\/v1\/vehicles\/\{plate\}/, 'env example must default to Nummerplade Tjek endpoint');
+assert.match(env, /VEHICLE_LOOKUP_API_KEY_HEADER=X-API-Key/, 'env example must use Nummerplade Tjek API-key header');
+assert.match(env, /VEHICLE_LOOKUP_API_KEY_PREFIX=\n/, 'env example must not prefix Nummerplade Tjek API keys');
 
 assert.match(server, /"ledger": ledger/, 'Render state-load must return the active ledger row so workspace settings do not inherit another workspace');
 assert.match(app, /const renderLedger = renderStateRows && renderStateRows\.ledger/, 'normalized load must prefer the active Render ledger row for workspace settings');

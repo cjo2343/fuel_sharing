@@ -1332,20 +1332,21 @@ def sanitize_vehicle_lookup_response(raw, plate, source_label):
         vehicle_nested_get(data, "consumptionLPer100Km", "consumption_l_per_100km", "fuel.consumptionLPer100Km", "technical.consumption_l_per_100km", "technical.fuel_consumption_combined"),
         vehicle_nested_get(data, "consumption", "fuelConsumption", "fuel_consumption"),
     )
-    # Some APIs expose km/l. Convert to L/100 km when that is clearly the field.
-    km_per_l = parse_vehicle_float(vehicle_nested_get(data, "kmPerLiter", "km_per_liter", "fuel.kmPerLiter"))
+    # Nummerplade Tjek exposes fuel usage as km/l in data.environment.fuel_usage.
+    # Convert it to the app's L/100 km setting before it reaches the browser.
+    km_per_l = parse_vehicle_float(vehicle_nested_get(data, "kmPerLiter", "km_per_liter", "fuel.kmPerLiter", "environment.fuel_usage"))
     if not consumption and km_per_l:
         consumption = round(100 / km_per_l, 2)
     vehicle = {
-        "plate": normalize_vehicle_plate(vehicle_nested_get(data, "plate", "registrationNumber", "numberPlate", "regno") or plate),
+        "plate": normalize_vehicle_plate(vehicle_nested_get(data, "plate", "registrationNumber", "numberPlate", "regno", "vehicle.registration_number") or plate),
         "make": str(vehicle_nested_get(data, "make", "brand", "manufacturer", "vehicle.make") or "")[:80],
         "model": str(vehicle_nested_get(data, "model", "vehicle.model") or "")[:120],
-        "variant": str(vehicle_nested_get(data, "variant", "version", "modelVariant") or "")[:120],
-        "fuelType": normalize_vehicle_fuel(vehicle_nested_get(data, "fuelType", "fuel_type", "fuel", "technical.fuel_type")),
+        "variant": str(vehicle_nested_get(data, "variant", "version", "modelVariant", "vehicle.variant") or "")[:120],
+        "fuelType": normalize_vehicle_fuel(vehicle_nested_get(data, "fuelType", "fuel_type", "fuel", "technical.fuel_type", "vehicle.fuel_type")),
         "consumptionLPer100Km": consumption,
         "tankCapacityL": parse_vehicle_float(vehicle_nested_get(data, "tankCapacityL", "tank_capacity_l", "fuel.tankCapacityL", "technical.tank_capacity_l")),
-        "co2GPerKm": parse_vehicle_float(vehicle_nested_get(data, "co2GPerKm", "co2_g_per_km", "co2", "emissions.co2")),
-        "year": str(vehicle_nested_get(data, "year", "modelYear", "model_year") or "")[:20],
+        "co2GPerKm": parse_vehicle_float(vehicle_nested_get(data, "co2GPerKm", "co2_g_per_km", "co2", "emissions.co2", "environment.co2_emission")),
+        "year": str(vehicle_nested_get(data, "year", "modelYear", "model_year", "vehicle.model_year") or "")[:20],
         "source": source_label,
         "checkedAt": datetime.now(timezone.utc).isoformat(),
     }
