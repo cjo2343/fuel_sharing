@@ -25,8 +25,9 @@ assert(app.includes("participantResult = { data: renderStateRows.tripParticipant
 
 assert(server.includes('if self.path == "/api/state/load":'), "server should route /api/state/load");
 assert(server.includes("def load_state_backend"), "server should implement load_state_backend");
-assert(server.includes("def verify_supabase_user_via_network"), "server auth should have a Supabase network verification fallback");
-assert(server.includes("Local JWT verification failed; falling back to Supabase auth user check"), "server should not turn local JWT config mismatches into startup 401s");
+assert(server.includes("def verify_supabase_user_via_jwks"), "server auth should verify Supabase asymmetric JWTs through JWKS/public keys");
+assert(server.includes("def supabase_jwks_url"), "server auth should know the Supabase JWKS URL");
+assert(server.includes("SUPABASE_JWKS_CACHE"), "server auth should cache Supabase public keys for stable Render auth");
 assert(server.includes("def get_normalized_state_rows_as_user"), "server should fetch normalized state rows as the signed-in user");
 assert(server.includes("get_write_context_as_user(ledger_id, user, user_token)"), "server state load should verify active ledger membership through write context");
 assert(server.includes('"tripParticipants": trip_participants'), "server state load should return trip participants");

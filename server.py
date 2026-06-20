@@ -429,10 +429,121 @@ def decode_jwt_payload(token):
         return None
 
 
-# Ensure this is set in your Render/production environment
+# Legacy HS256 projects may still set this in Render. New Supabase projects can
+# sign access tokens with asymmetric keys such as ECC/P-256; those must be
+# verified through the public JWKS endpoint instead of a shared JWT secret.
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
+SUPABASE_JWKS_CACHE = {"fetched_at": 0, "keys": []}
+SUPABASE_JWKS_CACHE_TTL_SECONDS = 300
+
+
+def expected_supabase_issuer():
+    url = (supabase_url() or "").rstrip("/")
+    return f"{url}/auth/v1" if url else None
+
+
+def supabase_jwks_url():
+    configured = env_value("SUPABASE_JWKS_URL")
+    if configured:
+        return configured
+    url = (supabase_url() or "").rstrip("/")
+    return f"{url}/auth/v1/.well-known/jwks.json" if url else ""
+
+
+def fetch_supabase_jwks(force=False):
+    now = time.time()
+    cached_keys = SUPABASE_JWKS_CACHE.get("keys") or []
+    fetched_at = float(SUPABASE_JWKS_CACHE.get("fetched_at") or 0)
+    if cached_keys and not force and now - fetched_at < SUPABASE_JWKS_CACHE_TTL_SECONDS:
+        return cached_keys
+
+    url = supabase_jwks_url()
+    if not url:
+        return []
+    request = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=8) as response:
+        raw = response.read().decode("utf-8")
+    data = json.loads(raw) if raw else {}
+    keys = data.get("keys") if isinstance(data, dict) else []
+    if not isinstance(keys, list):
+        keys = []
+    SUPABASE_JWKS_CACHE["keys"] = keys
+    SUPABASE_JWKS_CACHE["fetched_at"] = now
+    return keys
+
+
+def jwk_for_token(token):
+    header = jwt.get_unverified_header(token)
+    kid = header.get("kid")
+    alg = header.get("alg")
+    if not kid or not alg:
+        return None, header
+    keys = fetch_supabase_jwks(force=False)
+    key = next((item for item in keys if item.get("kid") == kid), None)
+    if key:
+        return key, header
+    # A missing kid can mean Supabase rotated signing keys. Refresh once before
+    # rejecting so long-lived Render workers pick up new public keys safely.
+    keys = fetch_supabase_jwks(force=True)
+    key = next((item for item in keys if item.get("kid") == kid), None)
+    return key, header
+
+
+def verified_user_from_claims(claims):
+    if not isinstance(claims, dict):
+        return None
+    email = claims.get("email") or claims.get("user_metadata", {}).get("email")
+    subject = claims.get("sub")
+    if not email or not subject:
+        return None
+    return {"email": email, "id": subject}
+
+
+def verify_supabase_user_via_jwks(token):
+    if not token:
+        return None
+    key_data, header = jwk_for_token(token)
+    if not key_data:
+        print("Supabase JWKS verification failed: signing key not found for token kid")
+        return None
+    alg = header.get("alg") or key_data.get("alg")
+    # Supabase asymmetric projects commonly use ES256/ECC P-256. Keep this list
+    # explicit so an attacker cannot downgrade us to an unexpected algorithm.
+    allowed_algs = ["ES256", "RS256"]
+    if alg not in allowed_algs:
+        print(f"Supabase JWKS verification rejected unsupported alg: {alg}")
+        return None
+    public_key = jwt.PyJWK.from_dict(key_data).key
+    decode_kwargs = {"algorithms": [alg], "audience": "authenticated"}
+    issuer = expected_supabase_issuer()
+    if issuer:
+        decode_kwargs["issuer"] = issuer
+    claims = jwt.decode(token, public_key, **decode_kwargs)
+    return verified_user_from_claims(claims)
+
+
+def verify_supabase_user_via_legacy_secret(token):
+    if not SUPABASE_JWT_SECRET or not token:
+        return None
+    header = jwt.get_unverified_header(token)
+    if header.get("alg") != "HS256":
+        return None
+    claims = jwt.decode(
+        token,
+        SUPABASE_JWT_SECRET,
+        algorithms=["HS256"],
+        audience="authenticated",
+    )
+    return verified_user_from_claims(claims)
+
 
 def verify_supabase_user_via_network(token):
+    # Emergency compatibility escape hatch only. The stable Render auth path is
+    # local verification through Supabase JWKS/public keys. Enable this during an
+    # incident with SUPABASE_AUTH_NETWORK_FALLBACK=1 if Supabase changes JWKS
+    # behavior before the backend has been patched.
+    if not env_flag("SUPABASE_AUTH_NETWORK_FALLBACK"):
+        return None
     url = supabase_url()
     if not url or not token:
         return None
@@ -441,7 +552,7 @@ def verify_supabase_user_via_network(token):
         if user and user.get("email"):
             return user
     except Exception as error:
-        print(f"Supabase user verification failed: {error}")
+        print(f"Supabase emergency network user verification failed: {error}")
     return None
 
 
@@ -450,33 +561,30 @@ def current_supabase_user(handler):
     if not token:
         return None
 
-    # Render backend routes are called with the browser's Supabase access token.
-    # Local JWT validation is a fast path, but it must never be the only path: a
-    # rotated/misconfigured SUPABASE_JWT_SECRET, audience mismatch, or different
-    # signing setup would otherwise make every valid browser session look logged
-    # out and cause noisy 401s for /api/state/load and /api/admin/health.
-    if SUPABASE_JWT_SECRET:
-        try:
-            decoded = jwt.decode(
-                token,
-                SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                audience="authenticated"
-            )
-            email = decoded.get("email")
-            if email:
-                return {"email": email, "id": decoded.get("sub")}
-        except jwt.ExpiredSignatureError:
-            print("Token has expired")
-            return None
-        except jwt.InvalidTokenError as error:
-            print(f"Local JWT verification failed; falling back to Supabase auth user check: {error}")
-        except Exception as error:
-            print(f"Local JWT verification error; falling back to Supabase auth user check: {error}")
-    else:
-        print("Warning: SUPABASE_JWT_SECRET not set. Falling back to Supabase auth user verification.")
+    try:
+        # ECC/P-256 and other asymmetric Supabase access tokens are verified
+        # locally with Supabase public JWKS keys. This avoids 401s caused by
+        # trying to validate ES256 tokens with the old SUPABASE_JWT_SECRET flow.
+        user = verify_supabase_user_via_jwks(token)
+        if user:
+            return user
 
-    return verify_supabase_user_via_network(token)
+        # Keep legacy HS256 support for older Supabase projects, but do not use
+        # the shared secret for ES256/ECC tokens.
+        user = verify_supabase_user_via_legacy_secret(token)
+        if user:
+            return user
+
+        return verify_supabase_user_via_network(token)
+    except jwt.ExpiredSignatureError:
+        print("Supabase access token has expired")
+        return None
+    except jwt.InvalidTokenError as error:
+        print(f"Supabase JWT verification failed: {error}")
+        return verify_supabase_user_via_network(token)
+    except Exception as error:
+        print(f"Supabase auth verification error: {error}")
+        return verify_supabase_user_via_network(token)
 
 
 

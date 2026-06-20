@@ -1,8 +1,17 @@
 import os
+import time
 import unittest
 from unittest.mock import patch
 
+import jwt
+from cryptography.hazmat.primitives.asymmetric import ec
+
 import server
+
+
+def json_from_jwk(value):
+    import json
+    return json.loads(value)
 
 
 class FakeHeaders(dict):
@@ -52,26 +61,68 @@ class LedgerApiAuthTests(unittest.TestCase):
 
 
 class RenderSupabaseUserAuthTests(unittest.TestCase):
-    def test_current_supabase_user_falls_back_to_network_when_local_jwt_secret_rejects_valid_token(self):
-        handler = FakeHandler({"Authorization": "Bearer browser-session-token"})
-        with patch.object(server, "SUPABASE_JWT_SECRET", "misconfigured-secret"), \
-             patch.object(server.jwt, "decode", side_effect=server.jwt.InvalidTokenError("bad signature")), \
+    def make_es256_token_and_jwk(self, email="driver@example.com", subject="user-1", exp_offset=300):
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        public_jwk = json_from_jwk(jwt.algorithms.ECAlgorithm.to_jwk(private_key.public_key()))
+        public_jwk.update({"kid": "test-ec-key", "alg": "ES256", "use": "sig"})
+        token = jwt.encode(
+            {
+                "aud": "authenticated",
+                "iss": "https://example.supabase.co/auth/v1",
+                "sub": subject,
+                "email": email,
+                "exp": int(time.time()) + exp_offset,
+                "iat": int(time.time()),
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": "test-ec-key", "typ": "JWT"},
+        )
+        return token, public_jwk
+
+    def test_current_supabase_user_verifies_ecc_token_with_jwks_public_key(self):
+        token, jwk = self.make_es256_token_and_jwk()
+        handler = FakeHandler({"Authorization": f"Bearer {token}"})
+        with patch.object(server, "SUPABASE_JWT_SECRET", "legacy-secret-that-must-not-be-used"), \
              patch.object(server, "supabase_url", return_value="https://example.supabase.co"), \
-             patch.object(server, "supabase_anon_key", return_value="anon-key"), \
-             patch.object(server, "request_json", return_value={"email": "driver@example.com", "id": "user-1"}) as request_json:
+             patch.object(server, "fetch_supabase_jwks", return_value=[jwk]), \
+             patch.object(server, "request_json") as request_json:
             user = server.current_supabase_user(handler)
 
         self.assertEqual(user["email"], "driver@example.com")
-        request_json.assert_called_once()
+        self.assertEqual(user["id"], "user-1")
+        request_json.assert_not_called()
 
-    def test_current_supabase_user_keeps_expired_tokens_rejected(self):
-        handler = FakeHandler({"Authorization": "Bearer expired-token"})
-        with patch.object(server, "SUPABASE_JWT_SECRET", "configured-secret"), \
-             patch.object(server.jwt, "decode", side_effect=server.jwt.ExpiredSignatureError("expired")), \
+    def test_current_supabase_user_rejects_expired_jwks_token_without_network_fallback(self):
+        token, jwk = self.make_es256_token_and_jwk(exp_offset=-10)
+        handler = FakeHandler({"Authorization": f"Bearer {token}"})
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(server, "supabase_url", return_value="https://example.supabase.co"), \
+             patch.object(server, "fetch_supabase_jwks", return_value=[jwk]), \
              patch.object(server, "request_json") as request_json:
             user = server.current_supabase_user(handler)
 
         self.assertIsNone(user)
+        request_json.assert_not_called()
+
+    def test_current_supabase_user_keeps_legacy_hs256_support(self):
+        token = jwt.encode(
+            {
+                "aud": "authenticated",
+                "sub": "legacy-user",
+                "email": "legacy@example.com",
+                "exp": int(time.time()) + 300,
+            },
+            "legacy-secret",
+            algorithm="HS256",
+        )
+        handler = FakeHandler({"Authorization": f"Bearer {token}"})
+        with patch.object(server, "SUPABASE_JWT_SECRET", "legacy-secret"), \
+             patch.object(server, "fetch_supabase_jwks", return_value=[]), \
+             patch.object(server, "request_json") as request_json:
+            user = server.current_supabase_user(handler)
+
+        self.assertEqual(user["email"], "legacy@example.com")
         request_json.assert_not_called()
 
 class RenderPaymentActionPayloadTests(unittest.TestCase):
