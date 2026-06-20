@@ -21,10 +21,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.243`
-- Service-worker cache: `fuel-ledger-v343`
-- Updated at: `2026-06-20T13:45:00.000Z`
-- Top release note: Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.
+- Version: `2026.06.18.244`
+- Service-worker cache: `fuel-ledger-v344`
+- Updated at: `2026-06-20T13:55:00.000Z`
 - Top release note: Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.
 ## Invite beta readiness: member action Data I/O
 

@@ -2448,6 +2448,7 @@ els.settingsForm.addEventListener("submit", async (event) => {
     }
     const persistedSummary = settingsSaveResult?.persisted ? formatSettingsPersistedSummary(settingsSaveResult.persisted) : "legacy remote state saved";
     recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED", detail: `Saved group settings through backend-owned settings route · ${persistedSummary}` });
+    showUserMessage(formatSettingsSavedConfirmation(settingsSaveResult), "success", { timeoutMs: 4200 });
     renderSupabaseLoadMonitor();
     render();
   } catch (error) {
@@ -15432,6 +15433,23 @@ function formatSettingsPersistedSummary(persisted = {}) {
   parts.push(`plate=${persisted.vehiclePlate ? "yes" : "no"}`);
   parts.push(`vehicleInfo=${persisted.vehicleInfo ? "yes" : "no"}`);
   return parts.join(", ");
+}
+
+function formatSettingsSavedConfirmation(result = {}) {
+  const saved = result?.settings || {};
+  const persisted = result?.persisted || {};
+  const plate = normalizeVehiclePlateInput(saved.vehiclePlate || saved.vehicleInfo?.plate || "");
+  const vehicleLabel = saved.vehicleInfo?.summary || [saved.vehicleInfo?.make, saved.vehicleInfo?.model].filter(Boolean).join(" ").trim();
+  if (persisted.vehicleInfo && plate && vehicleLabel) {
+    return `Settings saved. Vehicle info for ${plate} (${vehicleLabel}) is saved.`;
+  }
+  if (persisted.vehicleInfo && plate) {
+    return `Settings saved. Vehicle info for ${plate} is saved.`;
+  }
+  if (persisted.vehiclePlate && plate) {
+    return `Settings saved. Vehicle plate ${plate} is saved.`;
+  }
+  return "Settings saved.";
 }
 
 function assertSettingsSaveVerified(result, payload) {

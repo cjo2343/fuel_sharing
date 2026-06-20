@@ -12,6 +12,8 @@ assert.doesNotMatch(app, /await saveSupabaseState\(\{ reason: "group-settings" \
 assert.doesNotMatch(app, /markNormalizedReconciliationDirty\("group settings changed"\)/, "settings save must not trigger broad JSON-to-table reconciliation");
 assert.match(app, /assertSettingsSaveVerified\(result, payload\)/, "frontend should require backend verification before accepting a settings save");
 assert.match(app, /formatSettingsPersistedSummary\(settingsSaveResult\.persisted\)/, "settings save diagnostics should summarize which settings were persisted");
+assert.match(app, /formatSettingsSavedConfirmation\(settingsSaveResult\)/, "settings save should show a user-facing confirmation after verified backend save");
+assert.match(app, /Vehicle info for \$\{plate\}/, "settings save confirmation should mention saved vehicle info when available");
 assert.match(app, /vehiclePlate: normalizeVehiclePlateInput\(ledger\.vehicle_plate/, "normalized table load should hydrate saved vehicle plate from ledgers");
 assert.match(app, /vehicleInfo: normalizeVehicleInfo\(ledger\.vehicle_info/, "normalized table load should hydrate saved vehicle info from ledgers");
 
