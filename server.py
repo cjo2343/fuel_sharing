@@ -432,39 +432,51 @@ def decode_jwt_payload(token):
 # Ensure this is set in your Render/production environment
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
 
-def current_supabase_user(handler):
+def verify_supabase_user_via_network(token):
     url = supabase_url()
-    token = get_bearer_token(handler)
     if not url or not token:
         return None
-        
     try:
-        if not SUPABASE_JWT_SECRET:
-            print("Warning: SUPABASE_JWT_SECRET not set. Falling back to slow network verification.")
-            user = request_json(f"{url}/auth/v1/user", token=token, api_key=supabase_anon_key())
-            if user and user.get("email"):
-                return user
+        user = request_json(f"{url}/auth/v1/user", token=token, api_key=supabase_anon_key())
+        if user and user.get("email"):
+            return user
+    except Exception as error:
+        print(f"Supabase user verification failed: {error}")
+    return None
+
+
+def current_supabase_user(handler):
+    token = get_bearer_token(handler)
+    if not token:
+        return None
+
+    # Render backend routes are called with the browser's Supabase access token.
+    # Local JWT validation is a fast path, but it must never be the only path: a
+    # rotated/misconfigured SUPABASE_JWT_SECRET, audience mismatch, or different
+    # signing setup would otherwise make every valid browser session look logged
+    # out and cause noisy 401s for /api/state/load and /api/admin/health.
+    if SUPABASE_JWT_SECRET:
+        try:
+            decoded = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                audience="authenticated"
+            )
+            email = decoded.get("email")
+            if email:
+                return {"email": email, "id": decoded.get("sub")}
+        except jwt.ExpiredSignatureError:
+            print("Token has expired")
             return None
-            
-        # Fast local JWT verification
-        decoded = jwt.decode(
-            token, 
-            SUPABASE_JWT_SECRET, 
-            algorithms=["HS256"], 
-            audience="authenticated"
-        )
-        # Return a dictionary matching the Supabase user object format expected by the rest of the app
-        return {"email": decoded.get("email"), "id": decoded.get("sub")}
-        
-    except jwt.ExpiredSignatureError:
-        print("Token has expired")
-        return None
-    except jwt.InvalidTokenError:
-        print("Invalid token")
-        return None
-    except Exception as e:
-        print(f"Auth error: {e}")
-        return None
+        except jwt.InvalidTokenError as error:
+            print(f"Local JWT verification failed; falling back to Supabase auth user check: {error}")
+        except Exception as error:
+            print(f"Local JWT verification error; falling back to Supabase auth user check: {error}")
+    else:
+        print("Warning: SUPABASE_JWT_SECRET not set. Falling back to Supabase auth user verification.")
+
+    return verify_supabase_user_via_network(token)
 
 
 

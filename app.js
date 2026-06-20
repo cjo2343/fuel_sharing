@@ -3963,7 +3963,8 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
         checkedAt: new Date().toISOString(),
         ledgerId,
         message: "Sign in before checking Render admin health.",
-        checks: []
+        checks: [],
+        skipped: true
       };
       recordDataIoDiagnostic("skip", {
         ...traceMeta,
@@ -4006,7 +4007,8 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
           checkedAt: new Date().toISOString(),
           ledgerId,
           message: "Render did not accept the current sign-in yet. Refresh or sign in again before running Render admin health.",
-          checks: []
+          checks: [],
+          skipped: true
         };
         recordDataIoDiagnostic("skip", {
           ...traceMeta,
@@ -15374,9 +15376,9 @@ async function getFreshRenderAccessToken() {
 }
 
 function isRenderAuthRejected(response, result, text) {
-  if (response?.status === 401 || response?.status === 403) return true;
+  if (response?.status === 401) return true;
   const message = String(result?.message || result?.error || text || "");
-  return /sign in before|unauthori[sz]ed|no permission/i.test(message);
+  return /sign in before|auth session not ready|missing bearer token/i.test(message);
 }
 
 async function ensureOpenSettlementPeriod(ledgerId) {

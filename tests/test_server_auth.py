@@ -50,6 +50,30 @@ class LedgerApiAuthTests(unittest.TestCase):
             self.assertTrue(server.authorize_ledger_api(handler))
             self.assertIsNone(handler.error)
 
+
+class RenderSupabaseUserAuthTests(unittest.TestCase):
+    def test_current_supabase_user_falls_back_to_network_when_local_jwt_secret_rejects_valid_token(self):
+        handler = FakeHandler({"Authorization": "Bearer browser-session-token"})
+        with patch.object(server, "SUPABASE_JWT_SECRET", "misconfigured-secret"), \
+             patch.object(server.jwt, "decode", side_effect=server.jwt.InvalidTokenError("bad signature")), \
+             patch.object(server, "supabase_url", return_value="https://example.supabase.co"), \
+             patch.object(server, "supabase_anon_key", return_value="anon-key"), \
+             patch.object(server, "request_json", return_value={"email": "driver@example.com", "id": "user-1"}) as request_json:
+            user = server.current_supabase_user(handler)
+
+        self.assertEqual(user["email"], "driver@example.com")
+        request_json.assert_called_once()
+
+    def test_current_supabase_user_keeps_expired_tokens_rejected(self):
+        handler = FakeHandler({"Authorization": "Bearer expired-token"})
+        with patch.object(server, "SUPABASE_JWT_SECRET", "configured-secret"), \
+             patch.object(server.jwt, "decode", side_effect=server.jwt.ExpiredSignatureError("expired")), \
+             patch.object(server, "request_json") as request_json:
+            user = server.current_supabase_user(handler)
+
+        self.assertIsNone(user)
+        request_json.assert_not_called()
+
 class RenderPaymentActionPayloadTests(unittest.TestCase):
     def test_build_payment_status_rpc_payload_from_frontend_contract(self):
         payload = server.build_payment_status_rpc_payload({
