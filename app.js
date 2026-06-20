@@ -2806,7 +2806,7 @@ function updateAdvancedAdminToolsUi() {
   if (els.advancedAdminToolsPanel) els.advancedAdminToolsPanel.classList.toggle("hidden", !canUseGlobalTools || !advancedAdminToolsUnlocked);
   if (els.advancedAdminToolsStatus) {
     els.advancedAdminToolsStatus.textContent = !canUseGlobalTools
-      ? "Global admin/test tools are hidden outside the primary app-admin workspace."
+      ? "Owner diagnostics are hidden from normal users and workspace admins."
       : advancedAdminToolsUnlocked
         ? "Advanced admin/test tools unlocked for this tab for 15 minutes. Use only for generated-data or stress diagnostics."
         : "Advanced admin/test tools are locked.";
@@ -14854,15 +14854,31 @@ function isPrimaryConfiguredWorkspace() {
   return String(getActiveLedgerId() || "") === String(getConfiguredLedgerId() || "");
 }
 
+function getPrimaryAppOwnerEmail() {
+  const firstMember = normalizeMembers(state.members)[0] || "";
+  const profile = firstMember ? optionalRecordValue(state.memberProfiles, firstMember) || {} : {};
+  return normalizeEmail(profile.email || "");
+}
+
+function isSignedInPrimaryAppOwner() {
+  if (!supabaseClient) return true;
+  if (!currentSession || !isPrimaryConfiguredWorkspace()) return false;
+  const ownerEmail = getPrimaryAppOwnerEmail();
+  const signedInEmail = getLoggedInEmail();
+  return Boolean(ownerEmail && signedInEmail && ownerEmail === signedInEmail);
+}
+
 function canUseGlobalAdminTools() {
   if (!canManageSettings()) return false;
   if (!supabaseClient) return true;
-  return isPrimaryConfiguredWorkspace();
+  return isSignedInPrimaryAppOwner();
 }
 
 function requireGlobalAdminToolsPermission(actionLabel = "admin tools") {
   if (canUseGlobalAdminTools()) return true;
-  const message = `This action is restricted to the primary Fuel Ledger app admin workspace. Workspace admins can manage only their own workspace settings, members, and invites.`;
+  const ownerEmail = getPrimaryAppOwnerEmail();
+  const ownerHint = ownerEmail ? ` Only the app owner (${ownerEmail}) can use owner diagnostics.` : " Configure the primary app owner email on the first member before using owner diagnostics.";
+  const message = `This action is restricted to the Fuel Ledger app owner. Workspace admins can manage only their own workspace settings, members, and invites.${ownerHint}`;
   showUserError(message);
   if (typeof setDataToolsMessage === "function") setDataToolsMessage(`${actionLabel}: ${message}`);
   return false;

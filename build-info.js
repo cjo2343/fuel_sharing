@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.244",
+    version: "2026.06.18.245",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T13:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v344",
+    updatedAt: "2026-06-20T14:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v345",
     releaseNotes: Object.freeze([
+      "Data I/O, Render admin health, Security Health, load reports, and advanced diagnostics are now treated as app-owner-only tools; workspace admins keep workspace settings, members, and invites without seeing technical backend diagnostics.",
       "After a verified backend-owned settings save, the app now shows a clear user-facing confirmation such as Settings saved / Vehicle info saved instead of only recording the result in Admin Data I/O.",
       "Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.",
       "Workspace/car settings now save through a dedicated Render /api/settings/save route that verifies Supabase JWKS auth plus workspace-admin permission, persists ledger fuel and sanitized vehicle fields server-side, and avoids the old broad JSON-to-table reconciliation path for Save settings.",

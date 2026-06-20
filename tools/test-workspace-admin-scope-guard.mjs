@@ -5,7 +5,7 @@ const app = readFileSync('app.js', 'utf8');
 const html = readFileSync('index.html', 'utf8');
 const pkg = readFileSync('package.json', 'utf8');
 
-assert.match(app, /function canUseGlobalAdminTools\(\) \{[\s\S]*?isPrimaryConfiguredWorkspace\(\)/, 'app must separate global admin tools from workspace admin role');
+assert.match(app, /function canUseGlobalAdminTools\(\) \{[\s\S]*?isSignedInPrimaryAppOwner\(\)/, 'global Data I/O tools must require the signed-in primary app owner');
 assert.match(app, /function requireGlobalAdminToolsPermission\(/, 'global admin tools must have an explicit permission guard');
 assert.match(app, /dataToolsPanel\) els\.dataToolsPanel\.classList\.toggle\("hidden", !canUseGlobalAdminTools\(\)\)/, 'global Data tools panel must be hidden outside primary app-admin scope');
 assert.match(app, /systemHealthPanel\) els\.systemHealthPanel\.classList\.toggle\("hidden", !canUseGlobalAdminTools\(\)\)/, 'system health panel must be hidden outside global admin scope');
@@ -14,7 +14,8 @@ assert.match(app, /memberManagementPanel\) els\.memberManagementPanel\.classList
 assert.match(app, /if \(!requireGlobalAdminToolsPermission\("Run live Security Health"\)\) return;/, 'Security Health must require global app-admin scope');
 assert.match(app, /if \(!requireGlobalAdminToolsPermission\("Check Render admin health"\)\) return;/, 'Render admin health button must require global app-admin scope');
 assert.match(app, /if \(!requireGlobalAdminToolsPermission\("Export backup"\)\) return;/, 'backup export must require global app-admin scope');
-assert.match(app, /Global admin\/test tools are hidden outside the primary app-admin workspace/, 'advanced tool copy must explain global scope');
+assert.match(app, /Owner diagnostics are hidden from normal users and workspace admins/, 'advanced tool copy must explain owner-only diagnostic scope');
+assert.match(app, /function isSignedInPrimaryAppOwner\(\) \{[\s\S]*?getPrimaryAppOwnerEmail\(\)[\s\S]*?getLoggedInEmail\(\)/, 'owner diagnostics must compare the signed-in email with the primary app owner email');
 
 assert.match(html, /Workspace admin - manage this workspace/, 'role option must say workspace admin, not global app admin');
 assert.doesNotMatch(html, /Admin - manage app/, 'old global-admin role label must not be shown for workspace roles');

@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.244`
-- Service-worker cache: `fuel-ledger-v344`
-- Updated at: `2026-06-20T13:55:00.000Z`
-- Top release note: Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.
+- Version: `2026.06.18.245`
+- Service-worker cache: `fuel-ledger-v345`
+- Updated at: `2026-06-20T14:05:00.000Z`
+- Top release note: Data I/O, Render admin health, Security Health, load reports, and advanced diagnostics are now treated as app-owner-only tools; workspace admins keep workspace settings, members, and invites without seeing technical backend diagnostics.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
