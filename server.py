@@ -1143,7 +1143,7 @@ def save_supabase_reminder_state(state):
 
 
 
-def call_supabase_rpc_as_user(function_name, body=None, user_token=None):
+def call_supabase_rpc_as_user(function_name, body=None, user_token=None, timeout=20):
     if not supabase_url() or not supabase_anon_key():
         raise RuntimeError("Supabase server environment variables are missing")
     if not user_token:
@@ -1154,6 +1154,7 @@ def call_supabase_rpc_as_user(function_name, body=None, user_token=None):
         body=body or {},
         token=user_token,
         api_key=supabase_anon_key(),
+        timeout=timeout,
     )
 
 
@@ -1251,6 +1252,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("bookingDelete", "/api/bookings/delete", "Render booking delete route"),
         ("paymentStatusAction", "/api/payments/status-action", "Render payment-status action route"),
         ("settingsSave", "/api/settings/save", "Render workspace settings save route"),
+        ("memberManagement", "/api/members/manage", "Render workspace member-management route"),
         ("vehicleLookup", "/api/vehicle/lookup", "Render vehicle lookup proxy route"),
     ]
     return [
@@ -1978,6 +1980,62 @@ def upsert_settings_as_service(ledger, members):
         "memberWarning": member_warning,
     }
 
+
+def normalize_backend_member_payload(raw):
+    if not isinstance(raw, dict):
+        raise ValueError("Member payload must be an object")
+    name = str(raw.get("name") or "").strip()
+    if not name:
+        raise ValueError("Member name is required")
+    role = "admin" if str(raw.get("role") or "").strip().lower() == "admin" else "member"
+    email = str(raw.get("email") or "").strip().lower() or None
+    phone = str(raw.get("mobilepayPhone") or raw.get("mobilepay_phone") or "").strip() or None
+    member_id = str(raw.get("id") or raw.get("memberId") or raw.get("member_id") or "").strip() or None
+    return {
+        "id": member_id,
+        "name": name,
+        "email": email,
+        "mobilepay_phone": phone,
+        "role": role,
+        "is_active": bool(raw.get("isActive", raw.get("is_active", True))),
+    }
+
+
+def list_members_as_user(ledger_id, user, user_token):
+    assert_user_can_admin_ledger(ledger_id, user, user_token)
+    ledger_q = urllib.parse.quote(str(ledger_id), safe="")
+    return request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,ledger_id,name,email,role,is_active,mobilepay_phone,created_at,updated_at&ledger_id=eq.{ledger_q}&order=is_active.desc,name.asc",
+        token=user_token,
+        api_key=supabase_anon_key(),
+        timeout=5,
+    ) or []
+
+
+def upsert_member_as_user(ledger_id, member, user, user_token):
+    assert_user_can_admin_ledger(ledger_id, user, user_token)
+    return call_supabase_rpc_as_user("upsert_ledger_member_admin", {
+        "target_ledger_id": ledger_id,
+        "target_member_id": member.get("id") or None,
+        "member_name": member.get("name"),
+        "member_email": member.get("email") or None,
+        "member_mobilepay_phone": member.get("mobilepay_phone") or None,
+        "member_role": member.get("role"),
+        "member_is_active": member.get("is_active") is not False,
+    }, user_token=user_token, timeout=6)
+
+
+def set_member_active_as_user(ledger_id, member_id, is_active, user, user_token):
+    if not member_id:
+        raise ValueError("Missing memberId")
+    assert_user_can_admin_ledger(ledger_id, user, user_token)
+    return call_supabase_rpc_as_user("set_ledger_member_active_admin", {
+        "target_ledger_id": ledger_id,
+        "target_member_id": member_id,
+        "member_is_active": bool(is_active),
+    }, user_token=user_token, timeout=6)
+
+
 def build_ledger_directory_sync_payload(payload, user):
     if not isinstance(payload, dict):
         raise ValueError("Ledger directory sync payload must be an object")
@@ -2590,6 +2648,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/settings/save":
             self.save_settings_backend()
             return
+        if self.path == "/api/members/manage":
+            self.manage_members_backend()
+            return
         if self.path == "/api/ledgers/sync":
             self.sync_ledger_directory_backend()
             return
@@ -2726,6 +2787,57 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "result": result, "settings": result.get("settings"), "backend": "render", "userEmail": user.get("email")})
+
+
+    def manage_members_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before managing members."}, status=401)
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            if not isinstance(payload, dict):
+                raise ValueError("Member management payload must be an object")
+            ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+            action = str(payload.get("action") or "list").strip().lower()
+            if not ledger_id:
+                raise ValueError("Missing ledgerId")
+            if not check_backend_rate_limit(self, "admin", user=user, ledger_id=ledger_id):
+                return
+            if action == "list":
+                members = list_members_as_user(ledger_id, user, token)
+                self.send_json({"ok": True, "code": "MEMBERS_LOADED", "ledgerId": ledger_id, "members": members, "backend": "render", "userEmail": user.get("email")})
+                return
+            if action == "upsert":
+                member = normalize_backend_member_payload(payload.get("member"))
+                result = upsert_member_as_user(ledger_id, member, user, token)
+                members = list_members_as_user(ledger_id, user, token)
+                self.send_json({"ok": True, "code": "MEMBER_SAVED", "ledgerId": ledger_id, "member": result, "members": members, "backend": "render", "userEmail": user.get("email")})
+                return
+            if action == "set-active":
+                member_id = str(payload.get("memberId") or payload.get("member_id") or "").strip()
+                result = set_member_active_as_user(ledger_id, member_id, payload.get("isActive", payload.get("is_active", False)), user, token)
+                members = list_members_as_user(ledger_id, user, token)
+                self.send_json({"ok": True, "code": "MEMBER_ACCESS_UPDATED", "ledgerId": ledger_id, "member": result, "members": members, "backend": "render", "userEmail": user.get("email")})
+                return
+            raise ValueError("Unsupported member management action")
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_json({"ok": False, "code": "SUPABASE_ERROR", "message": body}, status=error.code)
+            return
+        except (TimeoutError, socket.timeout, urllib.error.URLError) as error:
+            self.send_json({"ok": False, "code": "MEMBER_MANAGEMENT_TIMEOUT", "message": f"Member management timed out while talking to Supabase: {error}"}, status=504)
+            return
+        except PermissionError as error:
+            self.send_json({"ok": False, "code": "FORBIDDEN", "message": str(error)}, status=403)
+            return
+        except Exception as error:
+            self.send_json({"ok": False, "code": "MEMBER_MANAGEMENT_ERROR", "message": str(error)}, status=500)
+            return
 
 
     def sync_ledger_directory_backend(self):

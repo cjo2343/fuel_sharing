@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const app = readFileSync("app.js", "utf8");
 const adminTools = readFileSync("admin-tools.js", "utf8");
+const server = readFileSync("server.py", "utf8");
 
 function bodyOfFunction(source, functionName) {
   const start = source.indexOf(`async function ${functionName}(`);
@@ -29,8 +30,10 @@ function testMemberManagementFailsClosedWhenRpcMissing() {
     assert.match(source, /Apply the latest Supabase schema/);
     assert.doesNotMatch(source, /\.from\("ledger_members"\)\s*\.(insert|update|upsert|delete)/s);
   }
-  assert.match(app, /upsert_ledger_member_admin/);
-  assert.match(app, /set_ledger_member_active_admin/);
+  assert.match(server, /upsert_ledger_member_admin/);
+  assert.match(server, /set_ledger_member_active_admin/);
+  assert.match(app, /callMemberManagementRoute\("upsert"/);
+  assert.match(app, /callMemberManagementRoute\("set-active"/);
 }
 
 function testGeneratedTestRowPurgeFailsClosedWhenRpcMissing() {

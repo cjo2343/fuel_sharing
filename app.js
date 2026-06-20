@@ -25,6 +25,7 @@ const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
 const renderSettingsSaveUrl = "/api/settings/save";
+const renderMemberManagementUrl = "/api/members/manage";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
 const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
 const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
@@ -12895,28 +12896,48 @@ function renderManagedMemberRow(member, activeAdminCount, currentEmail) {
   `;
 }
 
+async function callMemberManagementRoute(action, payload = {}) {
+  if (typeof fetch !== "function") throw new Error("Render member management requires browser fetch support.");
+  const accessToken = await getFreshRenderAccessToken();
+  if (!accessToken) throw new Error("Sign in before managing members.");
+  const ledgerId = getActiveLedgerId();
+  const response = await fetch(renderMemberManagementUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({ ledgerId, action, ...payload })
+  });
+  const text = await response.text();
+  let result = null;
+  try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+  if (!response.ok || !result?.ok) {
+    const message = result?.message || result?.error || text || `Render member management failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.code = result?.code || response.status;
+    throw error;
+  }
+  return result;
+}
+
 async function refreshMemberManagement() {
   if (!supabaseClient || !currentSession) return;
   memberManagementStatus.loading = true;
   memberManagementStatus.error = "";
   renderMemberManagementPanel();
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const { data, error } = await supabaseClient
-    .from("ledger_members")
-    .select("id,ledger_id,name,email,role,is_active,mobilepay_phone,created_at,updated_at")
-    .eq("ledger_id", ledgerId)
-    .order("is_active", { ascending: false })
-    .order("name", { ascending: true });
-  memberManagementStatus.loading = false;
-  if (error) {
+  try {
+    const result = await callMemberManagementRoute("list");
+    memberManagementStatus.rows = Array.isArray(result.members) ? result.members : [];
+    memberManagementStatus.loaded = true;
+  } catch (error) {
     memberManagementStatus.error = error.message || String(error);
     memberManagementStatus.loaded = true;
+  } finally {
+    memberManagementStatus.loading = false;
     renderMemberManagementPanel();
-    return;
   }
-  memberManagementStatus.rows = data || [];
-  memberManagementStatus.loaded = true;
-  renderMemberManagementPanel();
 }
 
 function getManagedMemberPayloadFromRow(row) {
@@ -12949,36 +12970,21 @@ function protectAgainstAdminLockout(payload, existingMember, nextActive = existi
   return true;
 }
 
-function isMissingMemberManagementRpcError(error) {
-  const code = String(error?.code || "");
-  const message = String(error?.message || error || "");
-  return code === "PGRST202" || /upsert_ledger_member_admin|set_ledger_member_active_admin/i.test(message) && /not found|schema cache|could not find|does not exist/i.test(message);
-}
-
 async function upsertManagedMemberRpc(payload) {
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const { data, error } = await supabaseClient.rpc("upsert_ledger_member_admin", {
-    target_ledger_id: ledgerId,
-    target_member_id: payload.id || null,
-    member_name: payload.name,
-    member_email: payload.email || null,
-    member_mobilepay_phone: payload.mobilepay_phone || null,
-    member_role: payload.role,
-    member_is_active: payload.is_active !== false
-  });
-  if (!error) return { ok: true, data };
-  return { ok: false, error, shouldFallback: isMissingMemberManagementRpcError(error) };
+  const result = await callMemberManagementRoute("upsert", { member: {
+    id: payload.id || null,
+    name: payload.name,
+    email: payload.email || null,
+    mobilepayPhone: payload.mobilepay_phone || null,
+    role: payload.role,
+    isActive: payload.is_active !== false
+  }});
+  return { ok: true, data: result.member || result.result };
 }
 
 async function setManagedMemberActiveRpc(memberId, isActive) {
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const { data, error } = await supabaseClient.rpc("set_ledger_member_active_admin", {
-    target_ledger_id: ledgerId,
-    target_member_id: memberId,
-    member_is_active: Boolean(isActive)
-  });
-  if (!error) return { ok: true, data };
-  return { ok: false, error, shouldFallback: isMissingMemberManagementRpcError(error) };
+  const result = await callMemberManagementRoute("set-active", { memberId, isActive: Boolean(isActive) });
+  return { ok: true, data: result.member || result.result };
 }
 
 async function saveManagedMember(row) {
@@ -12991,12 +12997,11 @@ async function saveManagedMember(row) {
   if (!protectAgainstAdminLockout(payload, existing, existing?.is_active !== false)) return;
   if (!confirmManagedMemberRoleChange(existing, payload.role)) return;
 
-  const result = await upsertManagedMemberRpc({ ...payload, is_active: existing?.is_active !== false });
-  if (!result.ok) {
-    const detail = result.shouldFallback
-      ? "Required member-management RPC is missing. Apply the latest Supabase schema before editing members in production."
-      : (result.error?.message || result.error);
-    showUserError(`Could not save member: ${detail}`);
+  let result;
+  try {
+    result = await upsertManagedMemberRpc({ ...payload, is_active: existing?.is_active !== false });
+  } catch (error) {
+    showUserError(`Could not save member: ${error.message || error}. Apply the latest Supabase schema if the member-management RPC is missing.`);
     return;
   }
   await afterMemberManagementChange(`${payload.name} saved as ${memberRoleLabel(payload.role)}.`);
@@ -13008,12 +13013,11 @@ async function setManagedMemberActive(row, isActive) {
   if (!isActive && !confirmUserAction(`Deactivate ${describeManagedMember(existing)}? They will no longer be able to access the app.`)) return;
   if (!protectAgainstAdminLockout(payload, existing, isActive)) return;
 
-  const result = await setManagedMemberActiveRpc(payload.id, isActive);
-  if (!result.ok) {
-    const detail = result.shouldFallback
-      ? "Required member-activation RPC is missing. Apply the latest Supabase schema before changing member access in production."
-      : (result.error?.message || result.error);
-    showUserError(`Could not update member: ${detail}`);
+  let result;
+  try {
+    result = await setManagedMemberActiveRpc(payload.id, isActive);
+  } catch (error) {
+    showUserError(`Could not update member: ${error.message || error}. Apply the latest Supabase schema if the member-activation RPC is missing.`);
     return;
   }
   await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
@@ -13033,19 +13037,18 @@ async function addManagedMember() {
     return;
   }
 
-  const result = await upsertManagedMemberRpc({
-    id: null,
-    name,
-    email,
-    mobilepay_phone: mobilepayPhone || null,
-    role,
-    is_active: true
-  });
-  if (!result.ok) {
-    const detail = result.shouldFallback
-      ? "Required member-management RPC is missing. Apply the latest Supabase schema before adding members in production."
-      : (result.error?.message || result.error);
-    showUserError(`Could not add member: ${detail}`);
+  let result;
+  try {
+    result = await upsertManagedMemberRpc({
+      id: null,
+      name,
+      email,
+      mobilepay_phone: mobilepayPhone || null,
+      role,
+      is_active: true
+    });
+  } catch (error) {
+    showUserError(`Could not add member: ${error.message || error}. Apply the latest Supabase schema if the member-management RPC is missing.`);
     return;
   }
   if (els.newMemberName) els.newMemberName.value = "";

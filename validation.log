@@ -1,0 +1,531 @@
+
+> validate
+> node tools/run-validations.mjs # python3 -m unittest tests.test_server_auth python3 -m py_compile server.py python3 -m json.tool ledger-data.json > /dev/null node tools/test-settlement-calculations.mjs node tools/test-backup-validation.mjs node tools/test-render-state-load-route.mjs node tools/test-permission-helpers.mjs node tools/test-ui-messages.mjs node tools/test-sync-status-helpers.mjs node tools/test-fuel-price-helpers.mjs node tools/test-sync-delay-recovery.mjs node tools/test-location-privacy-helpers.mjs node tools/test-ledger-model.mjs node tools/test-supabase-schema-hardening.mjs node tools/test-migrations.mjs node tools/test-sql-ambiguity-guard.mjs node tools/test-period-closing-helpers.mjs node tools/test-stress-test-helpers.mjs node tools/test-security-health-helpers.mjs node tools/test-admin-rpc-fail-closed.mjs node tools/test-admin-diagnostics-timeout.mjs node tools/test-normalized-context-timeout.mjs node tools/test-render-migration-path.mjs node tools/test-render-context-start-hotfix.mjs node tools/test-render-write-context-route.mjs node tools/test-booking-render-no-rpc-fanout.mjs node tools/test-security-health-cloud-save.mjs node tools/test-advanced-stress-ledger-slug.mjs node tools/test-render-state-load-route.mjs node tools/test-member-state-load-service-scope.mjs node tools/test-render-admin-diagnostics-load.mjs node tools/test-render-ledger-directory-sync.mjs node tools/test-render-json-mirror-backup.mjs node tools/test-disable-browser-full-state-after-render-backup.mjs node tools/test-admin-tool-dataio-status.mjs node tools/test-finish-admin-cleanup-and-stress-status.mjs node tools/test-normalized-test-data-cleanup.mjs node tools/test-render-admin-test-data-routes.mjs node tools/test-render-normalized-test-data-cleanup-route.mjs node tools/test-render-cleanup-availability-hotfix.mjs node tools/test-cleanup-scope-admin-finish-hotfix.mjs node tools/test-admin-startup-flicker-reduction.mjs node tools/test-startup-auth-hydration-screen.mjs node tools/test-render-retention-admin-routes.mjs node tools/test-admin-cleanup-diagnostics-finish.mjs node tools/test-render-admin-health-endpoint.mjs node tools/test-server-route-rate-limits.mjs node tools/test-save-report-timeout-feedback.mjs node tools/test-security-health-admin-timeout.mjs node tools/test-supabase-activity-headline-noise.mjs node tools/test-render-security-health-route.mjs node tools/test-retention-privacy-cleanup.mjs node tools/test-admin-test-lab-protections.mjs node tools/test-admin-tool-dedup-guard.mjs node tools/test-invite-link-onboarding.mjs node tools/test-invite-identity-onboarding.mjs node tools/test-invite-email-preflight.mjs node tools/test-account-tab-service-worker-update.mjs node tools/test-member-action-dataio-overview.mjs node tools/test-workspace-create-dataio-timeout.mjs node tools/test-vehicle-lookup-foundation.mjs node tools/test-business-action-dataio-audit.mjs node tools/test-workspace-admin-scope-guard.mjs node tools/test-data-io-result-codes.mjs node tools/test-json-mirror-ordinary-write-reduction.mjs node tools/test-backend-path-simplification-audit.mjs node tools/test-remove-proven-browser-fallbacks-pass-1.mjs node tools/test-render-admin-report-save-route.mjs node tools/test-render-owned-write-fallback-lockdown.mjs node tools/test-debug-report-redaction-hardening.mjs node tools/test-security-headers.mjs node tools/test-booking-status-helpers.mjs node tools/test-runtime-module-contract.mjs node tools/check-app-references.mjs node tools/check-build-info.mjs node tools/check-tracked-artifacts.mjs node tools/check-runtime-assets.mjs node tools/test-release-readiness-guardrails.mjs node tools/check-ci-guardrails.mjs node --check utils.js node --check supabase-helpers.js node --check data-store.js node --check settlement-calculations.js node --check ui-messages.js node --check sync-status-helpers.js node --check fuel-price-helpers.js node --check location-privacy-helpers.js node --check ledger-model.js node --check period-closing-helpers.js node --check stress-test-helpers.js node --check security-health-helpers.js node --check audit-log.js node --check notifications.js node --check admin-tools.js node --check permission-helpers.js node --check build-info.js node --check booking-calendar.js node --check trip-actions.js node --check trip-rendering.js node --check fuel-rendering.js node --check planner-booking-bridge.js node --check app.js node --check service-worker.js node --check tools/test-permission-helpers.mjs node --check tools/test-ledger-model.mjs node --check tools/test-period-closing-helpers.mjs node --check tools/test-booking-status-helpers.mjs node --check tools/check-app-references.mjs node --check tools/test-admin-rpc-fail-closed.mjs node --check tools/test-admin-diagnostics-timeout.mjs node --check tools/test-normalized-context-timeout.mjs node --check tools/test-render-migration-path.mjs node --check tools/test-render-context-start-hotfix.mjs node --check tools/test-render-write-context-route.mjs node --check tools/test-booking-render-no-rpc-fanout.mjs node --check tools/test-security-health-cloud-save.mjs node --check tools/test-advanced-stress-ledger-slug.mjs node --check tools/test-render-state-load-route.mjs node --check tools/test-member-state-load-service-scope.mjs node --check tools/test-render-admin-diagnostics-load.mjs node --check tools/test-render-ledger-directory-sync.mjs node --check tools/test-render-json-mirror-backup.mjs node --check tools/test-disable-browser-full-state-after-render-backup.mjs node --check tools/test-admin-tool-dataio-status.mjs node --check tools/test-finish-admin-cleanup-and-stress-status.mjs node --check tools/test-normalized-test-data-cleanup.mjs node --check tools/test-render-admin-test-data-routes.mjs node --check tools/test-render-normalized-test-data-cleanup-route.mjs node --check tools/test-render-cleanup-availability-hotfix.mjs node --check tools/test-cleanup-scope-admin-finish-hotfix.mjs node --check tools/test-admin-startup-flicker-reduction.mjs node --check tools/test-startup-auth-hydration-screen.mjs node --check tools/test-render-retention-admin-routes.mjs node --check tools/test-admin-cleanup-diagnostics-finish.mjs node --check tools/test-render-admin-health-endpoint.mjs node --check tools/test-server-route-rate-limits.mjs node --check tools/test-save-report-timeout-feedback.mjs node --check tools/test-supabase-activity-headline-noise.mjs node --check tools/test-render-security-health-route.mjs node --check tools/test-retention-privacy-cleanup.mjs node --check tools/test-admin-test-lab-protections.mjs node --check tools/test-admin-tool-dedup-guard.mjs node --check tools/test-invite-link-onboarding.mjs node --check tools/test-invite-identity-onboarding.mjs node --check tools/test-invite-email-preflight.mjs node --check tools/test-account-tab-service-worker-update.mjs node --check tools/test-member-action-dataio-overview.mjs node --check tools/test-workspace-create-dataio-timeout.mjs node --check tools/test-business-action-dataio-audit.mjs node --check tools/test-workspace-admin-scope-guard.mjs node --check tools/test-data-io-result-codes.mjs node --check tools/test-json-mirror-ordinary-write-reduction.mjs node --check tools/test-backend-path-simplification-audit.mjs node --check tools/test-remove-proven-browser-fallbacks-pass-1.mjs node --check tools/test-render-admin-report-save-route.mjs node --check tools/test-render-owned-write-fallback-lockdown.mjs node --check tools/test-debug-report-redaction-hardening.mjs node --check tools/check-tracked-artifacts.mjs node --check tools/test-sync-delay-recovery.mjs node --check tools/check-build-info.mjs node --check tools/check-runtime-assets.mjs node --check tools/test-runtime-module-contract.mjs node --check tools/test-release-readiness-guardrails.mjs node --check tools/check-ci-guardrails.mjs
+
+🚀 Starting validation suite...
+
+⏳ Running: python3 -m unittest tests.test_server_auth
+................/opt/pyvenv/lib/python3.13/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 13 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+/opt/pyvenv/lib/python3.13/site-packages/jwt/api_jwt.py:368: InsecureKeyLengthWarning: The HMAC key is 13 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  decoded = self.decode_complete(
+.....
+----------------------------------------------------------------------
+Ran 21 tests in 0.013s
+
+OK
+Supabase JWKS verification failed: signing key not found for token kid
+Supabase access token has expired
+
+⏳ Running: python3 -m py_compile server.py
+
+⏳ Running: python3 -m json.tool ledger-data.json > /dev/null
+
+⏳ Running: node tools/test-settlement-calculations.mjs
+ok - testSharedTripCreatesSingleSettlement
+ok - testParticipantDeduplicationAndUnknownParticipantFiltering
+ok - testStringFuelAmountsAndUnknownPayersAreSafe
+ok - testNegativeTripDistanceDoesNotReduceBalances
+ok - testHistoricalStatsTolerateMissingClosedPeriods
+ok - testMalformedTripAndFuelArraysAreSafe
+ok - testReceiptMetricsIgnoreUnknownFuelPayers
+ok - testTripCostRoundingBalancesToTotalPaid
+ok - testAllocateRoundedMoneyHandlesMalformedInputs
+ok - testPaymentStatusTransitionsBlockUnsafeJumps
+ok - testSettlementProgressIsSafeAndRounded
+
+⏳ Running: node tools/test-backup-validation.mjs
+ok - testValidBackupWrapperIsAccepted
+ok - testMissingMembersIsRejected
+ok - testMalformedCollectionsAreRejected
+ok - testInvalidTripAndFuelValuesAreRejected
+ok - testUnknownPeopleAreWarningsNotErrors
+ok - testRemoteSaveQueueSerializesAsyncSaves
+
+⏳ Running: node tools/test-render-state-load-route.mjs
+Render state load route guard check passed.
+
+⏳ Running: node tools/test-permission-helpers.mjs
+ok - testEntryOwnerAndAdminPermissions
+ok - testSettlementPaymentPermissions
+ok - testUnknownAndBootstrapPermissionsAreSafe
+ok - testLastAdminAndSelfProtectionSummary
+
+⏳ Running: node tools/test-ui-messages.mjs
+ok - testMessageTypesAreNormalized
+ok - testUserErrorsRenderToast
+ok - testConfirmationUsesNativeConfirmBehindSingleHelper
+
+⏳ Running: node tools/test-sync-status-helpers.mjs
+ok - testQueuedStatusShowsPendingLocalChanges
+ok - testLocalStatusShowsSaveFailureAndPendingCount
+ok - testLoginStatusWarnsAboutUnsyncedLocalChanges
+ok - testSavedStatusesClearPendingLanguage
+
+⏳ Running: node tools/test-fuel-price-helpers.mjs
+ok - testWarningRangeNormalizesInvalidSettings
+ok - testHistoricalSuggestionUsesLatestValidReceipt
+ok - testCorrectionUsesSuggestedPriceForAmount
+ok - testValidationReturnsCorrectionForOutOfRangePrice
+
+⏳ Running: node tools/test-sync-delay-recovery.mjs
+
+⏳ Running: node tools/test-location-privacy-helpers.mjs
+ok - testDefaultModeSavesStationOnly
+ok - testNoCoordinatesSavesOnlyStationNameOutsideHelper
+ok - testFullModeCanSaveUserAndStationCoordinates
+ok - testInferModeFromExistingFuel
+
+⏳ Running: node tools/test-ledger-model.mjs
+ok - testModelHelpersExposeExpectedKeys
+ok - testStateSummaryIsSafeForMalformedState
+ok - testCoreShapeValidationAcceptsValidLedger
+ok - testCoreShapeValidationRejectsBadShapes
+
+⏳ Running: node tools/test-supabase-schema-hardening.mjs
+ok - testSettlementRequestTransitionGuardExists
+ok - testSettlementRequestPartyGuardsExist
+ok - testSettlementRequestSameLedgerGuardExists
+ok - testSettlementRequestTriggerIsInstalled
+ok - testSettlementRequestTransactionRpcExists
+ok - testPeriodCloseRpcExists
+ok - testTripTransactionRpcExists
+ok - testBookingTransactionRpcsExist
+ok - testFuelPaymentRpcExists
+ok - testAdminReconciliationSafetyGateExists
+ok - testAdminToolsGuardrailRpcsExist
+ok - testAdminTestLabProtectionsExist
+ok - testDiagnosticPrivacyRedactionExists
+ok - testJsonWriteReductionGuardrailsExist
+ok - testLocalTripSubmitFlushesServerState
+ok - testBookingPlannedParticipantsSurviveTripSubmit
+ok - testSupabaseLoadTimeoutGuardExists
+ok - testRealtimePerformanceGuardrailsExist
+ok - testDestructiveActionBackupsExist
+ok - testAdminDiagnosticsUxExists
+ok - testReleaseAboutPanelExists
+ok - testSyncHealthBannerExists
+ok - testTestLabReportStoreExists
+ok - testRetentionPrivacyCleanupCoversCloudReports
+ok - testBootstrapLockExists
+ok - testSchemaMigrationTrackingExists
+ok - testSchemaDriftHealthcheckExists
+ok - testWorkspaceFoundationExists
+ok - testInviteOnboardingFoundationExists
+ok - testWorkspaceInviteUxLayoutExists
+ok - testCurrentWorkspaceUxScopeExists
+ok - testAuthBoundWorkspaceIdentityExists
+ok - testWorkspaceSyncCompletionGuardExists
+ok - testWorkspaceInviteRefreshFailSafeExists
+ok - testWorkspaceInviteAutoRefreshExists
+ok - testPrivateWorkspaceCreationUiExists
+ok - testOnboardingAbuseRateLimitFoundationExists
+ok - testSettlementPaymentSaveSkipsLedgerUpsert
+ok - testDataIoFlightRecorderExists
+ok - testFuelLedgerHealthcheckExists
+
+⏳ Running: node tools/test-migrations.mjs
+ok - migration files are present, ordered, and cover critical schema markers
+
+⏳ Running: node tools/test-sql-ambiguity-guard.mjs
+ok - SQL ambiguity guard blocks high-risk PL/pgSQL variable/column name collisions
+
+⏳ Running: node tools/test-period-closing-helpers.mjs
+ok - testFingerprintIsStableForEntryOrder
+ok - testReadinessBlocksUnsafePeriodClose
+ok - testReadinessAllowsRequestedButUnpaidPayments
+ok - testDuplicateSnapshotsAreBlocked
+ok - testBusyCloseIsBlocked
+
+⏳ Running: node tools/test-stress-test-helpers.mjs
+ok - testGeneratedSummaryAndDetection
+ok - testInvariantChecksPassForBalancedLedger
+ok - testInvariantChecksCatchBadData
+ok - testReportRenderingEscapesHtml
+ok - testReportIncludesSyncMetadata
+ok - testRuntimePwaUnavailableCacheMetadataIsNotHardFailure
+ok - testScenarioMatrixCoversExpandedLogic
+ok - testFuelCapacityChecksCatchBadFuelData
+ok - testFuelCapacityChecksReportChronologicalOdometerBackwardsClearly
+ok - testReportRendersEntryInspectActions
+ok - testFullTankCapacityGapIsWarningNotHardFailure
+
+⏳ Running: node tools/test-security-health-helpers.mjs
+ok - testMissingRpcErrorDetection
+ok - testRpcProbeNormalization
+ok - testLocalSecurityChecks
+ok - testSupabaseSecurityScenarioChecks
+
+⏳ Running: node tools/test-admin-rpc-fail-closed.mjs
+ok - testMemberManagementFailsClosedWhenRpcMissing
+ok - testGeneratedTestRowPurgeFailsClosedWhenRpcMissing
+
+⏳ Running: node tools/test-admin-diagnostics-timeout.mjs
+
+⏳ Running: node tools/test-normalized-context-timeout.mjs
+Normalized context timeout guard check passed.
+
+⏳ Running: node tools/test-render-migration-path.mjs
+Render migration path check passed.
+
+⏳ Running: node tools/test-render-context-start-hotfix.mjs
+Render context start hotfix check passed.
+
+⏳ Running: node tools/test-render-write-context-route.mjs
+Render write context route guard check passed.
+
+⏳ Running: node tools/test-booking-render-no-rpc-fanout.mjs
+Booking Render no-RPC fanout guard check passed.
+
+⏳ Running: node tools/test-security-health-cloud-save.mjs
+Security Health probe and cloud-save guard check passed.
+
+⏳ Running: node tools/test-advanced-stress-ledger-slug.mjs
+Advanced stress ledger slug guard check passed.
+
+⏳ Running: node tools/test-render-state-load-route.mjs
+Render state load route guard check passed.
+
+⏳ Running: node tools/test-member-state-load-service-scope.mjs
+member state-load service-scope guard passed
+
+⏳ Running: node tools/test-render-admin-diagnostics-load.mjs
+Render admin diagnostics load guard check passed.
+
+⏳ Running: node tools/test-render-ledger-directory-sync.mjs
+Render ledger directory sync guard check passed.
+
+⏳ Running: node tools/test-render-json-mirror-backup.mjs
+Render JSON mirror backup guard check passed.
+
+⏳ Running: node tools/test-disable-browser-full-state-after-render-backup.mjs
+Disable browser full-state after Render backup guard check passed.
+
+⏳ Running: node tools/test-admin-tool-dataio-status.mjs
+Admin tool Data I/O status guard check passed.
+
+⏳ Running: node tools/test-finish-admin-cleanup-and-stress-status.mjs
+Admin cleanup/stress finish status guard check passed.
+
+⏳ Running: node tools/test-normalized-test-data-cleanup.mjs
+Normalized Test Lab cleanup guard check passed.
+
+⏳ Running: node tools/test-render-admin-test-data-routes.mjs
+Render admin test-data route guard check passed.
+
+⏳ Running: node tools/test-render-normalized-test-data-cleanup-route.mjs
+Render normalized Test Lab cleanup route guard check passed.
+
+⏳ Running: node tools/test-render-cleanup-availability-hotfix.mjs
+Render cleanup availability hotfix guard check passed.
+
+⏳ Running: node tools/test-cleanup-scope-admin-finish-hotfix.mjs
+Cleanup scope and admin finish hotfix guard check passed.
+
+⏳ Running: node tools/test-admin-startup-flicker-reduction.mjs
+Admin startup/admin flicker reduction guard check passed.
+
+⏳ Running: node tools/test-startup-auth-hydration-screen.mjs
+Startup auth hydration screen guard check passed.
+
+⏳ Running: node tools/test-render-retention-admin-routes.mjs
+Render retention admin routes guard check passed.
+
+⏳ Running: node tools/test-admin-cleanup-diagnostics-finish.mjs
+Admin cleanup diagnostics finish guard check passed.
+
+⏳ Running: node tools/test-render-admin-health-endpoint.mjs
+Render admin health endpoint guard check passed.
+
+⏳ Running: node tools/test-server-route-rate-limits.mjs
+Server route rate limits guard check passed.
+
+⏳ Running: node tools/test-save-report-timeout-feedback.mjs
+Save report timeout feedback guard check passed.
+
+⏳ Running: node tools/test-security-health-admin-timeout.mjs
+Security Health admin timeout guard check passed.
+
+⏳ Running: node tools/test-supabase-activity-headline-noise.mjs
+Supabase activity headline noise checks passed.
+
+⏳ Running: node tools/test-render-security-health-route.mjs
+Render security health route test passed.
+
+⏳ Running: node tools/test-retention-privacy-cleanup.mjs
+Retention privacy cleanup guard checks passed.
+
+⏳ Running: node tools/test-admin-test-lab-protections.mjs
+Admin/Test Lab protection guard check passed.
+
+⏳ Running: node tools/test-admin-tool-dedup-guard.mjs
+Admin tool duplicate-run guard check passed.
+
+⏳ Running: node tools/test-invite-link-onboarding.mjs
+Invite link onboarding guardrails passed.
+
+⏳ Running: node tools/test-invite-identity-onboarding.mjs
+Invite identity onboarding guardrails passed.
+
+⏳ Running: node tools/test-invite-email-preflight.mjs
+ok - invite email preflight blocks restricted invite mismatch before OTP
+
+⏳ Running: node tools/test-account-tab-service-worker-update.mjs
+Account tab and service-worker update guardrails passed.
+
+⏳ Running: node tools/test-member-action-dataio-overview.mjs
+Member action Data I/O overview guardrails passed.
+
+⏳ Running: node tools/test-workspace-create-dataio-timeout.mjs
+Workspace creation Data I/O timeout guardrails passed.
+
+⏳ Running: node tools/test-vehicle-lookup-foundation.mjs
+Vehicle lookup foundation guard passed.
+
+⏳ Running: node tools/test-render-settings-save-route.mjs
+Render settings-save route guardrails passed.
+
+⏳ Running: node tools/test-render-member-management-route.mjs
+
+⏳ Running: node tools/test-business-action-dataio-audit.mjs
+Business action Data I/O and audit guardrails passed.
+
+⏳ Running: node tools/test-workspace-admin-scope-guard.mjs
+Workspace admin scope guardrails passed.
+
+⏳ Running: node tools/test-owner-only-data-io.mjs
+Owner-only Data I/O guardrail passed.
+
+⏳ Running: node tools/test-data-io-result-codes.mjs
+Data I/O result code guardrails passed.
+
+⏳ Running: node tools/test-json-mirror-ordinary-write-reduction.mjs
+JSON mirror ordinary write reduction guard check passed.
+
+⏳ Running: node tools/test-backend-path-simplification-audit.mjs
+Backend path simplification audit guard check passed.
+
+⏳ Running: node tools/test-remove-proven-browser-fallbacks-pass-1.mjs
+Remove proven browser fallbacks pass 1 guard check passed.
+
+⏳ Running: node tools/test-render-admin-report-save-route.mjs
+Render admin report-save route guard check passed.
+
+⏳ Running: node tools/test-render-owned-write-fallback-lockdown.mjs
+Render-owned write fallback lockdown guard passed.
+
+⏳ Running: node tools/test-debug-report-redaction-hardening.mjs
+Debug/report redaction hardening guard passed.
+
+⏳ Running: node tools/test-security-headers.mjs
+ok - testVercelHeaders
+ok - testStaticHeadersFile
+ok - testLocalServerHeaders
+ok - testNoInlineStylesRemainInMarkup
+
+⏳ Running: node tools/test-booking-status-helpers.mjs
+ok - testCompletedBookingNeedsTrip
+ok - testLoggedBookingHidesLogAction
+ok - testMultiDayLoggedBookingRequiresFuel
+ok - testFuelLinkedStatus
+ok - testUpcomingAndActiveStatusesExplainTripTiming
+ok - testCompletedBookingExplainsWhereToLog
+
+⏳ Running: node tools/test-runtime-module-contract.mjs
+Runtime module contract helpers expose expected globals and Safari-safe syntax guards passed.
+
+⏳ Running: node tools/check-app-references.mjs
+check-app-references: no obvious undefined function calls found.
+
+⏳ Running: node tools/check-build-info.mjs
+Skipping build metadata freshness check because this directory is not a Git checkout.
+Build metadata check passed.
+
+⏳ Running: node tools/check-tracked-artifacts.mjs
+Skipping tracked-artifact check because this directory is not a Git checkout.
+Tracked-artifact check passed.
+
+⏳ Running: node tools/check-runtime-assets.mjs
+Runtime asset parity check passed.
+
+⏳ Running: node tools/test-release-readiness-guardrails.mjs
+Release readiness guardrail tests passed.
+
+⏳ Running: node tools/check-ci-guardrails.mjs
+CI guardrail check passed.
+
+⏳ Running: node --check utils.js
+
+⏳ Running: node --check supabase-helpers.js
+
+⏳ Running: node --check data-store.js
+
+⏳ Running: node --check settlement-calculations.js
+
+⏳ Running: node --check ui-messages.js
+
+⏳ Running: node --check sync-status-helpers.js
+
+⏳ Running: node --check fuel-price-helpers.js
+
+⏳ Running: node --check location-privacy-helpers.js
+
+⏳ Running: node --check ledger-model.js
+
+⏳ Running: node --check period-closing-helpers.js
+
+⏳ Running: node --check stress-test-helpers.js
+
+⏳ Running: node --check security-health-helpers.js
+
+⏳ Running: node --check audit-log.js
+
+⏳ Running: node --check notifications.js
+
+⏳ Running: node --check admin-tools.js
+
+⏳ Running: node --check permission-helpers.js
+
+⏳ Running: node --check build-info.js
+
+⏳ Running: node --check booking-calendar.js
+
+⏳ Running: node --check trip-actions.js
+
+⏳ Running: node --check trip-rendering.js
+
+⏳ Running: node --check fuel-rendering.js
+
+⏳ Running: node --check planner-booking-bridge.js
+
+⏳ Running: node --check app.js
+
+⏳ Running: node --check service-worker.js
+
+⏳ Running: node --check tools/test-permission-helpers.mjs
+
+⏳ Running: node --check tools/test-ledger-model.mjs
+
+⏳ Running: node --check tools/test-period-closing-helpers.mjs
+
+⏳ Running: node --check tools/test-booking-status-helpers.mjs
+
+⏳ Running: node --check tools/check-app-references.mjs
+
+⏳ Running: node --check tools/test-admin-rpc-fail-closed.mjs
+
+⏳ Running: node --check tools/test-admin-diagnostics-timeout.mjs
+
+⏳ Running: node --check tools/test-normalized-context-timeout.mjs
+
+⏳ Running: node --check tools/test-render-migration-path.mjs
+
+⏳ Running: node --check tools/test-render-context-start-hotfix.mjs
+
+⏳ Running: node --check tools/test-render-write-context-route.mjs
+
+⏳ Running: node --check tools/test-booking-render-no-rpc-fanout.mjs
+
+⏳ Running: node --check tools/test-security-health-cloud-save.mjs
+
+⏳ Running: node --check tools/test-advanced-stress-ledger-slug.mjs
+
+⏳ Running: node --check tools/test-render-state-load-route.mjs
+
+⏳ Running: node --check tools/test-member-state-load-service-scope.mjs
+
+⏳ Running: node --check tools/test-render-admin-diagnostics-load.mjs
+
+⏳ Running: node --check tools/test-render-ledger-directory-sync.mjs
+
+⏳ Running: node --check tools/test-render-json-mirror-backup.mjs
+
+⏳ Running: node --check tools/test-disable-browser-full-state-after-render-backup.mjs
+
+⏳ Running: node --check tools/test-admin-tool-dataio-status.mjs
+
+⏳ Running: node --check tools/test-finish-admin-cleanup-and-stress-status.mjs
+
+⏳ Running: node --check tools/test-normalized-test-data-cleanup.mjs
+
+⏳ Running: node --check tools/test-render-admin-test-data-routes.mjs
+
+⏳ Running: node --check tools/test-render-normalized-test-data-cleanup-route.mjs
+
+⏳ Running: node --check tools/test-render-cleanup-availability-hotfix.mjs
+
+⏳ Running: node --check tools/test-cleanup-scope-admin-finish-hotfix.mjs
+
+⏳ Running: node --check tools/test-admin-startup-flicker-reduction.mjs
+
+⏳ Running: node --check tools/test-startup-auth-hydration-screen.mjs
+
+⏳ Running: node --check tools/test-render-retention-admin-routes.mjs
+
+⏳ Running: node --check tools/test-admin-cleanup-diagnostics-finish.mjs
+
+⏳ Running: node --check tools/test-render-admin-health-endpoint.mjs
+
+⏳ Running: node --check tools/test-server-route-rate-limits.mjs
+
+⏳ Running: node --check tools/test-save-report-timeout-feedback.mjs
+
+⏳ Running: node --check tools/test-supabase-activity-headline-noise.mjs
+
+⏳ Running: node --check tools/test-render-security-health-route.mjs
+
+⏳ Running: node --check tools/test-retention-privacy-cleanup.mjs
+
+⏳ Running: node --check tools/test-admin-test-lab-protections.mjs
+
+⏳ Running: node --check tools/test-admin-tool-dedup-guard.mjs
+
+⏳ Running: node --check tools/test-invite-link-onboarding.mjs
+
+⏳ Running: node --check tools/test-invite-identity-onboarding.mjs
+
+⏳ Running: node --check tools/test-invite-email-preflight.mjs
+
+⏳ Running: node --check tools/test-account-tab-service-worker-update.mjs
+
+⏳ Running: node --check tools/test-member-action-dataio-overview.mjs
+
+⏳ Running: node --check tools/test-workspace-create-dataio-timeout.mjs
+
+⏳ Running: node --check tools/test-render-member-management-route.mjs
+
+⏳ Running: node --check tools/test-business-action-dataio-audit.mjs
+
+⏳ Running: node --check tools/test-workspace-admin-scope-guard.mjs
+
+⏳ Running: node --check tools/test-owner-only-data-io.mjs
+
+⏳ Running: node --check tools/test-data-io-result-codes.mjs
+
+⏳ Running: node --check tools/test-json-mirror-ordinary-write-reduction.mjs
+
+⏳ Running: node --check tools/test-backend-path-simplification-audit.mjs
+
+⏳ Running: node --check tools/test-remove-proven-browser-fallbacks-pass-1.mjs
+
+⏳ Running: node --check tools/test-render-admin-report-save-route.mjs
+
+⏳ Running: node --check tools/test-render-owned-write-fallback-lockdown.mjs
+
+⏳ Running: node --check tools/test-debug-report-redaction-hardening.mjs
+
+⏳ Running: node --check tools/check-tracked-artifacts.mjs
+
+⏳ Running: node --check tools/test-sync-delay-recovery.mjs
+
+⏳ Running: node --check tools/check-build-info.mjs
+
+⏳ Running: node --check tools/check-runtime-assets.mjs
+
+⏳ Running: node --check tools/test-runtime-module-contract.mjs
+
+⏳ Running: node --check tools/test-release-readiness-guardrails.mjs
+
+⏳ Running: node --check tools/check-ci-guardrails.mjs
+
+✅ All validations passed successfully!
