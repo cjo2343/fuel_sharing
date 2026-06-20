@@ -23,8 +23,8 @@ These values are checked by `npm run release:check`. When a runtime release chan
 
 - Version: `2026.06.18.234`
 - Service-worker cache: `fuel-ledger-v334`
-- Updated at: `2026-06-19T14:25:00.000Z`
-- Top release note: Vehicle lookup now shows the required visible Nummerplade Tjek credit link beside the number-plate lookup controls, without nofollow, so the free API backlink requirement is tied to the feature.
+- Updated at: `2026-06-20T10:05:00.000Z`
+- Top release note: Vehicle lookup now preserves more sanitized Nummerplade Tjek vehicle details including first registration, engine, emissions, Euro norm, and inspection metadata while keeping VIN/raw equipment out of the browser payload.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

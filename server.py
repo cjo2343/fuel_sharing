@@ -1347,9 +1347,23 @@ def sanitize_vehicle_lookup_response(raw, plate, source_label):
         "tankCapacityL": parse_vehicle_float(vehicle_nested_get(data, "tankCapacityL", "tank_capacity_l", "fuel.tankCapacityL", "technical.tank_capacity_l")),
         "co2GPerKm": parse_vehicle_float(vehicle_nested_get(data, "co2GPerKm", "co2_g_per_km", "co2", "emissions.co2", "environment.co2_emission")),
         "year": str(vehicle_nested_get(data, "year", "modelYear", "model_year", "vehicle.model_year") or "")[:20],
+        "firstRegDate": str(vehicle_nested_get(data, "firstRegDate", "first_reg_date", "vehicle.first_reg_date") or "")[:32],
+        "color": str(vehicle_nested_get(data, "color", "vehicle.color") or "")[:40],
+        "chassisType": str(vehicle_nested_get(data, "chassisType", "chassis_type", "vehicle.chassis_type") or "")[:60],
+        "engineVolumeCc": parse_vehicle_float(vehicle_nested_get(data, "engineVolumeCc", "engine_volume", "engine.volume", "vehicle.engine_volume")),
+        "enginePowerKw": parse_vehicle_float(vehicle_nested_get(data, "enginePowerKw", "engine_power", "engine.power_kw", "vehicle.engine_power")),
+        "isHybrid": vehicle_nested_get(data, "isHybrid", "is_hybrid", "vehicle.is_hybrid"),
+        "euroNorm": str(vehicle_nested_get(data, "euroNorm", "euro_norm", "environment.euro_norm") or "")[:40],
+        "particleFilter": vehicle_nested_get(data, "particleFilter", "particle_filter", "environment.particle_filter"),
+        "drivingNoiseDb": parse_vehicle_float(vehicle_nested_get(data, "drivingNoiseDb", "driving_noise", "environment.driving_noise")),
+        "motDate": str(vehicle_nested_get(data, "motDate", "mot.date", "mot_info.date", "vehicle.mot_info.date") or "")[:32],
+        "motResult": str(vehicle_nested_get(data, "motResult", "mot.result", "mot_info.result", "vehicle.mot_info.result") or "")[:80],
+        "motMileageKm": parse_vehicle_float(vehicle_nested_get(data, "motMileageKm", "mot.mileage", "mot_info.mileage", "vehicle.mot_info.mileage", "vehicle.mileage")),
+        "nextInspectionDate": str(vehicle_nested_get(data, "nextInspectionDate", "mot.next_inspection_date", "mot_info.next_inspection_date", "vehicle.mot_info.next_inspection_date") or "")[:32],
         "source": source_label,
         "checkedAt": datetime.now(timezone.utc).isoformat(),
     }
+    # Keep VIN/raw equipment out of the browser payload by default; they are not needed for fuel sharing.
     return {key: value for key, value in vehicle.items() if value not in (None, "")}
 
 

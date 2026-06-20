@@ -37,6 +37,15 @@ assert.match(env, /VEHICLE_LOOKUP_API_URL=/, 'env example must document vehicle 
 assert.match(env, /VEHICLE_LOOKUP_API_KEY=/, 'env example must document vehicle lookup key without value');
 assert.match(server, /environment\.fuel_usage/, 'server must map Nummerplade Tjek km/l fuel usage');
 assert.match(server, /environment\.co2_emission/, 'server must map Nummerplade Tjek CO2 emissions');
+assert.match(server, /vehicle\.first_reg_date/, 'server must map Nummerplade Tjek first registration date');
+assert.match(server, /vehicle\.engine_volume/, 'server must map Nummerplade Tjek engine volume');
+assert.match(server, /vehicle\.engine_power/, 'server must map Nummerplade Tjek engine power');
+assert.match(server, /environment\.euro_norm/, 'server must map Nummerplade Tjek euro norm');
+assert.match(server, /vehicle\.mot_info\.next_inspection_date/, 'server must map Nummerplade Tjek MOT next inspection date');
+assert.match(app, /firstRegDate/, 'browser app must preserve sanitized first registration date');
+assert.match(app, /engineVolumeCc/, 'browser app must preserve sanitized engine volume');
+assert.match(app, /nextInspectionDate/, 'browser app must preserve sanitized inspection date');
+assert.match(server, /Keep VIN\/raw equipment out of the browser payload/, 'server must avoid sending VIN/raw equipment by default');
 assert.match(env, /VEHICLE_LOOKUP_API_URL=https:\/\/nummerplade-tjek\.dk\/api\/v1\/vehicles\/\{plate\}/, 'env example must default to Nummerplade Tjek endpoint');
 assert.match(env, /VEHICLE_LOOKUP_API_KEY_HEADER=X-API-Key/, 'env example must use Nummerplade Tjek API-key header');
 assert.match(env, /VEHICLE_LOOKUP_API_KEY_PREFIX=\n/, 'env example must not prefix Nummerplade Tjek API keys');

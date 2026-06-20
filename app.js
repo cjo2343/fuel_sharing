@@ -7331,6 +7331,10 @@ function normalizeVehicleInfo(info) {
   const consumption = Number(info.consumptionLPer100Km || info.consumption_l_per_100km || info.fuelConsumptionLPer100Km || 0);
   const tank = Number(info.tankCapacityL || info.tank_capacity_l || 0);
   const co2 = Number(info.co2GPerKm || info.co2_g_per_km || 0);
+  const engineVolume = Number(info.engineVolumeCc || info.engine_volume_cc || info.engineVolume || info.engine_volume || 0);
+  const enginePower = Number(info.enginePowerKw || info.engine_power_kw || info.enginePower || info.engine_power || 0);
+  const drivingNoise = Number(info.drivingNoiseDb || info.driving_noise_db || info.drivingNoise || info.driving_noise || 0);
+  const motMileage = Number(info.motMileageKm || info.mot_mileage_km || info.motMileage || info.mileage || 0);
   return {
     plate: normalizeVehiclePlateInput(info.plate || info.registrationNumber || info.numberPlate || ""),
     make: String(info.make || info.brand || "").trim().slice(0, 80),
@@ -7341,6 +7345,19 @@ function normalizeVehicleInfo(info) {
     tankCapacityL: Number.isFinite(tank) && tank > 0 ? round(tank) : "",
     co2GPerKm: Number.isFinite(co2) && co2 > 0 ? round(co2) : "",
     year: String(info.year || info.modelYear || info.model_year || "").trim().slice(0, 20),
+    firstRegDate: String(info.firstRegDate || info.first_reg_date || "").trim().slice(0, 32),
+    color: String(info.color || "").trim().slice(0, 40),
+    chassisType: String(info.chassisType || info.chassis_type || "").trim().slice(0, 60),
+    engineVolumeCc: Number.isFinite(engineVolume) && engineVolume > 0 ? Math.round(engineVolume) : "",
+    enginePowerKw: Number.isFinite(enginePower) && enginePower > 0 ? round(enginePower) : "",
+    isHybrid: info.isHybrid === true || info.is_hybrid === true,
+    euroNorm: String(info.euroNorm || info.euro_norm || "").trim().slice(0, 40),
+    particleFilter: info.particleFilter === true || info.particleFilter === 1 || info.particle_filter === true || info.particle_filter === 1,
+    drivingNoiseDb: Number.isFinite(drivingNoise) && drivingNoise > 0 ? round(drivingNoise) : "",
+    motDate: String(info.motDate || info.mot_date || "").trim().slice(0, 32),
+    motResult: String(info.motResult || info.mot_result || "").trim().slice(0, 80),
+    motMileageKm: Number.isFinite(motMileage) && motMileage > 0 ? Math.round(motMileage) : "",
+    nextInspectionDate: String(info.nextInspectionDate || info.next_inspection_date || "").trim().slice(0, 32),
     source: String(info.source || "vehicle-lookup").trim().slice(0, 120),
     checkedAt: String(info.checkedAt || info.checked_at || "").trim().slice(0, 80)
   };
@@ -7367,9 +7384,17 @@ function renderVehicleLookupSummary() {
   const parts = [info.make, info.model, info.variant, info.year].filter(Boolean).join(" ");
   const facts = [];
   if (info.fuelType) facts.push(`fuel ${info.fuelType}`);
+  if (info.isHybrid) facts.push("hybrid");
   if (info.consumptionLPer100Km) facts.push(`${info.consumptionLPer100Km} L/100 km`);
   if (info.tankCapacityL) facts.push(`${info.tankCapacityL} L tank`);
   if (info.co2GPerKm) facts.push(`${info.co2GPerKm} g CO₂/km`);
+  if (info.euroNorm) facts.push(info.euroNorm);
+  if (info.engineVolumeCc) facts.push(`${info.engineVolumeCc} cc`);
+  if (info.enginePowerKw) facts.push(`${info.enginePowerKw} kW`);
+  if (info.color) facts.push(info.color);
+  if (info.chassisType) facts.push(info.chassisType);
+  if (info.firstRegDate) facts.push(`first reg ${info.firstRegDate}`);
+  if (info.nextInspectionDate) facts.push(`next inspection ${info.nextInspectionDate}`);
   els.vehicleLookupSummary.textContent = `${info.plate || state.vehiclePlate || "Vehicle"}: ${parts || "vehicle details saved"}${facts.length ? ` · ${facts.join(" · ")}` : ""}.`;
 }
 
