@@ -2420,15 +2420,18 @@ els.settingsForm.addEventListener("submit", async (event) => {
   };
   recordDataIoDiagnostic("start", { ...settingsTraceMeta, ok: true });
   try {
-    saveState();
+    saveState({ queueRemote: false, reason: "group settings explicit save" });
     if (supabaseClient) {
       if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
       await saveSupabaseState({ reason: "group-settings" });
+      if (lastSyncError) throw new Error(lastSyncError);
     } else {
       if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
       await saveRemoteState();
+      if (lastSyncError) throw new Error(lastSyncError);
     }
     recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED" });
+    renderSupabaseLoadMonitor();
     render();
   } catch (error) {
     recordDataIoDiagnostic("error", { ...settingsTraceMeta, ok: false, error, resultCode: "SETTINGS_SAVE_ERROR" });
@@ -7356,6 +7359,13 @@ function normalizeVehiclePlateInput(value = "") {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
 }
 
+function normalizeVehicleText(value = "", { max = 80, allowUnknown = false } = {}) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (!allowUnknown && /^(unknown|ukendt|ingen|ingen norm|n\/a|na|null|undefined|-+)$/i.test(text)) return "";
+  return text.slice(0, max);
+}
+
 function normalizeVehicleInfo(info) {
   if (!info || typeof info !== "object") return null;
   const consumption = Number(info.consumptionLPer100Km || info.consumption_l_per_100km || info.fuelConsumptionLPer100Km || 0);
@@ -7367,28 +7377,28 @@ function normalizeVehicleInfo(info) {
   const motMileage = Number(info.motMileageKm || info.mot_mileage_km || info.motMileage || info.mileage || 0);
   return {
     plate: normalizeVehiclePlateInput(info.plate || info.registrationNumber || info.numberPlate || ""),
-    make: String(info.make || info.brand || "").trim().slice(0, 80),
-    model: String(info.model || "").trim().slice(0, 120),
-    variant: String(info.variant || info.version || "").trim().slice(0, 120),
+    make: normalizeVehicleText(info.make || info.brand || "", { max: 80 }),
+    model: normalizeVehicleText(info.model || "", { max: 120 }),
+    variant: normalizeVehicleText(info.variant || info.version || "", { max: 120 }),
     fuelType: normalizeVehicleFuelType(info.fuelType || info.fuel_type || info.fuel || ""),
     consumptionLPer100Km: Number.isFinite(consumption) && consumption > 0 ? round(consumption) : "",
     tankCapacityL: Number.isFinite(tank) && tank > 0 ? round(tank) : "",
     co2GPerKm: Number.isFinite(co2) && co2 > 0 ? round(co2) : "",
-    year: String(info.year || info.modelYear || info.model_year || "").trim().slice(0, 20),
-    firstRegDate: String(info.firstRegDate || info.first_reg_date || "").trim().slice(0, 32),
-    color: String(info.color || "").trim().slice(0, 40),
-    chassisType: String(info.chassisType || info.chassis_type || "").trim().slice(0, 60),
+    year: normalizeVehicleText(info.year || info.modelYear || info.model_year || "", { max: 20 }),
+    firstRegDate: normalizeVehicleText(info.firstRegDate || info.first_reg_date || "", { max: 32 }),
+    color: normalizeVehicleText(info.color || "", { max: 40 }),
+    chassisType: normalizeVehicleText(info.chassisType || info.chassis_type || "", { max: 60 }),
     engineVolumeCc: Number.isFinite(engineVolume) && engineVolume > 0 ? Math.round(engineVolume) : "",
     enginePowerKw: Number.isFinite(enginePower) && enginePower > 0 ? round(enginePower) : "",
     isHybrid: info.isHybrid === true || info.is_hybrid === true,
-    euroNorm: String(info.euroNorm || info.euro_norm || "").trim().slice(0, 40),
+    euroNorm: normalizeVehicleText(info.euroNorm || info.euro_norm || "", { max: 40 }),
     particleFilter: info.particleFilter === true || info.particleFilter === 1 || info.particle_filter === true || info.particle_filter === 1,
     drivingNoiseDb: Number.isFinite(drivingNoise) && drivingNoise > 0 ? round(drivingNoise) : "",
-    motDate: String(info.motDate || info.mot_date || "").trim().slice(0, 32),
-    motResult: String(info.motResult || info.mot_result || "").trim().slice(0, 80),
+    motDate: normalizeVehicleText(info.motDate || info.mot_date || "", { max: 32 }),
+    motResult: normalizeVehicleText(info.motResult || info.mot_result || "", { max: 80 }),
     motMileageKm: Number.isFinite(motMileage) && motMileage > 0 ? Math.round(motMileage) : "",
-    nextInspectionDate: String(info.nextInspectionDate || info.next_inspection_date || "").trim().slice(0, 32),
-    source: String(info.source || "vehicle-lookup").trim().slice(0, 120),
+    nextInspectionDate: normalizeVehicleText(info.nextInspectionDate || info.next_inspection_date || "", { max: 32 }),
+    source: normalizeVehicleText(info.source || "vehicle-lookup", { max: 120, allowUnknown: true }),
     checkedAt: String(info.checkedAt || info.checked_at || "").trim().slice(0, 80)
   };
 }
@@ -7402,6 +7412,21 @@ function normalizeVehicleFuelType(value = "") {
   return text.slice(0, 40);
 }
 
+function displayVehicleFuelType(value = "") {
+  const normalized = normalizeVehicleFuelType(value);
+  if (normalized === "95") return "Petrol 95";
+  if (normalized === "diesel") return "Diesel";
+  if (normalized === "electric") return "Electric";
+  if (normalized === "hybrid") return "Hybrid";
+  return normalizeVehicleText(value, { max: 40 });
+}
+
+function addVehicleFact(facts, value, formatter = null) {
+  const raw = typeof formatter === "function" ? formatter(value) : value;
+  const text = normalizeVehicleText(raw, { max: 120 });
+  if (text) facts.push(text);
+}
+
 function renderVehicleLookupSummary() {
   if (!els.vehicleLookupSummary) return;
   const info = normalizeVehicleInfo(state.vehicleInfo);
@@ -7411,18 +7436,18 @@ function renderVehicleLookupSummary() {
       : "Optional. Enter a plate and lookup can suggest fuel settings when the Render vehicle API is configured.";
     return;
   }
-  const parts = [info.make, info.model, info.variant, info.year].filter(Boolean).join(" ");
+  const parts = [info.make, info.model, info.variant, info.year].map((part) => normalizeVehicleText(part, { max: 120 })).filter(Boolean).join(" ");
   const facts = [];
-  if (info.fuelType) facts.push(`fuel ${info.fuelType}`);
-  if (info.isHybrid) facts.push("hybrid");
-  if (info.consumptionLPer100Km) facts.push(`${info.consumptionLPer100Km} L/100 km`);
-  if (info.tankCapacityL) facts.push(`${info.tankCapacityL} L tank`);
-  if (info.co2GPerKm) facts.push(`${info.co2GPerKm} g CO₂/km`);
-  if (info.euroNorm) facts.push(info.euroNorm);
-  if (info.engineVolumeCc) facts.push(`${info.engineVolumeCc} cc`);
-  if (info.enginePowerKw) facts.push(`${info.enginePowerKw} kW`);
-  if (info.color) facts.push(info.color);
-  if (info.chassisType) facts.push(info.chassisType);
+  addVehicleFact(facts, info.fuelType, displayVehicleFuelType);
+  if (info.isHybrid) facts.push("Hybrid");
+  if (info.consumptionLPer100Km) facts.push(`${formatNumber(info.consumptionLPer100Km)} L/100 km`);
+  if (info.tankCapacityL) facts.push(`${formatNumber(info.tankCapacityL)} L tank`);
+  if (info.co2GPerKm) facts.push(`${formatNumber(info.co2GPerKm)} g CO₂/km`);
+  addVehicleFact(facts, info.euroNorm);
+  if (info.engineVolumeCc) facts.push(`${formatNumber(info.engineVolumeCc)} cc`);
+  if (info.enginePowerKw) facts.push(`${formatNumber(info.enginePowerKw)} kW`);
+  addVehicleFact(facts, info.color);
+  addVehicleFact(facts, info.chassisType);
   if (info.firstRegDate) facts.push(`first reg ${info.firstRegDate}`);
   if (info.nextInspectionDate) facts.push(`next inspection ${info.nextInspectionDate}`);
   els.vehicleLookupSummary.textContent = `${info.plate || state.vehiclePlate || "Vehicle"}: ${parts || "vehicle details saved"}${facts.length ? ` · ${facts.join(" · ")}` : ""}.`;
@@ -7524,8 +7549,9 @@ async function lookupVehicleByPlateFromUi() {
         hasConsumption: Boolean(lookedUpVehicleInfo?.consumptionLPer100Km)
       }
     });
-    saveState();
+    saveState({ queueRemote: false, reason: "vehicle lookup local audit breadcrumb" });
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_OK", detail: result.message || "Vehicle lookup completed" });
+    renderSupabaseLoadMonitor();
     if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Vehicle lookup found data. Review the suggested fuel settings, then Save settings.";
     return true;
   } catch (error) {

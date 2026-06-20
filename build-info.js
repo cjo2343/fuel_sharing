@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.235",
+    version: "2026.06.18.236",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T10:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v335",
+    updatedAt: "2026-06-20T10:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v336",
     releaseNotes: Object.freeze([
+      "Vehicle lookup and group settings saves now use local-only staging plus explicit Data I/O finish rows, so Admin shows vehicle-lookup/settings-save operations and Save settings does not leave a stale unsynced-change banner after the backend save completes.",
+      "Vehicle lookup summaries now hide placeholder values such as unknown Euro norm/status and show cleaner fuel labels such as Petrol 95 while keeping useful engine, emissions, color, body, and registration facts.",
       "Vehicle lookup, settings saves, trip saves, fuel saves, and entry deletes now leave clearer Data I/O result-code breadcrumbs, while vehicle lookups and group settings also add safe audit-history entries without storing provider secrets or VIN data.",
       "Vehicle lookup now preserves more sanitized Nummerplade Tjek vehicle details including first registration, engine, emissions, Euro norm, and inspection metadata while keeping VIN/raw equipment out of the browser payload.",
       "Vehicle lookup now fails softly when the Render provider is missing or unavailable: /api/vehicle/lookup returns stable lookup result codes instead of browser-visible 5xx responses, and the UI keeps manual fuel settings as the fallback.",
