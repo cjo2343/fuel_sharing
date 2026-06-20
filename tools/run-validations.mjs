@@ -65,6 +65,7 @@ const scripts = [
   "node tools/test-member-action-dataio-overview.mjs",
   "node tools/test-workspace-create-dataio-timeout.mjs",
   "node tools/test-vehicle-lookup-foundation.mjs",
+  "node tools/test-render-settings-save-route.mjs",
   "node tools/test-business-action-dataio-audit.mjs",
   "node tools/test-workspace-admin-scope-guard.mjs",
   "node tools/test-data-io-result-codes.mjs",

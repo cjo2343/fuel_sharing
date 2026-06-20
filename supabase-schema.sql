@@ -21,6 +21,10 @@ create table if not exists public.ledgers (
   fallback_fuel_price numeric(10,2) not null default 14.50,
   low_fuel_threshold_percent numeric(6,2) not null default 70,
   high_fuel_threshold_percent numeric(6,2) not null default 140,
+  vehicle_plate text not null default '',
+  vehicle_info jsonb not null default '{}'::jsonb,
+  vehicle_lookup_source text not null default 'manual',
+  vehicle_lookup_at timestamptz,
   bootstrap_locked_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -31,6 +35,12 @@ alter table public.ledgers
 
 alter table public.ledgers
   add column if not exists bootstrap_locked_at timestamptz;
+
+alter table public.ledgers
+  add column if not exists vehicle_plate text not null default '',
+  add column if not exists vehicle_info jsonb not null default '{}'::jsonb,
+  add column if not exists vehicle_lookup_source text not null default 'manual',
+  add column if not exists vehicle_lookup_at timestamptz;
 
 create table if not exists public.ledger_members (
   id uuid primary key default gen_random_uuid(),
@@ -6238,7 +6248,9 @@ as $$
       ('033_onboarding_rate_limit_scope_key_alignment'),
       ('034_invite_rate_limit_actor_email_ambiguity_fix'),
       ('035_sql_ambiguity_guardrail'),
-      ('037_invite_email_preflight')
+      ('036_invite_profile_setup'),
+      ('037_invite_email_preflight'),
+      ('038_vehicle_settings_columns')
   ),
   migration_status as (
     select
@@ -6458,7 +6470,8 @@ $$;
 
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
-values ('037_invite_email_preflight', 'Adds a self-service invited-member profile setup RPC and updates Security Health expectations through migration 036.')
+values ('037_invite_email_preflight', 'Adds restricted invite email preflight RPCs.'),
+       ('038_vehicle_settings_columns', 'Stores sanitized vehicle settings on normalized ledger rows.')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
 
 
@@ -6630,7 +6643,8 @@ as $$
       ('034_invite_rate_limit_actor_email_ambiguity_fix'),
       ('035_sql_ambiguity_guardrail'),
       ('036_invite_profile_setup'),
-      ('037_invite_email_preflight')
+      ('037_invite_email_preflight'),
+      ('038_vehicle_settings_columns')
   ),
   migration_status as (
     select

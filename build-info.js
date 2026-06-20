@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.240",
+    version: "2026.06.18.241",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T13:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v340",
+    updatedAt: "2026-06-20T13:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v341",
     releaseNotes: Object.freeze([
+      "Workspace/car settings now save through a dedicated Render /api/settings/save route that verifies Supabase JWKS auth plus workspace-admin permission, persists ledger fuel and sanitized vehicle fields server-side, and avoids the old broad JSON-to-table reconciliation path for Save settings.",
       "Render backend auth now verifies Supabase ECC/P-256 access tokens locally through the project JWKS/public keys with rotation-aware caching, keeping the Supabase Auth network check as an explicit emergency fallback instead of the normal path.",
       "Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.",
       "IndexedDB local state storage now uses a vendored localForage-compatible runtime asset instead of a CDN script, keeping offline startup inside the service-worker cache and CSP/runtime guardrails.",

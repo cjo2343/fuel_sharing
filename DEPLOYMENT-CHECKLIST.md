@@ -21,9 +21,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.240`
-- Service-worker cache: `fuel-ledger-v340`
-- Updated at: `2026-06-20T13:05:00.000Z`
+- Version: `2026.06.18.241`
+- Service-worker cache: `fuel-ledger-v341`
+- Updated at: `2026-06-20T13:20:00.000Z`
 - Top release note: Render API calls now refresh and reuse a fresh Supabase access token before calling the backend, and auth-not-ready 401s during startup are treated as quiet fallback skips instead of scary backend failures.
 ## Invite beta readiness: member action Data I/O
 
@@ -601,3 +601,4 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 ## Release readiness metadata
 - Top release note: Render backend auth now verifies Supabase ECC/P-256 access tokens locally through the project JWKS/public keys with rotation-aware caching, keeping the Supabase Auth network check as an explicit emergency fallback instead of the normal path.
+- Top release note: Workspace/car settings now save through a dedicated Render /api/settings/save route that verifies Supabase JWKS auth plus workspace-admin permission, persists ledger fuel and sanitized vehicle fields server-side, and avoids the old broad JSON-to-table reconciliation path for Save settings.

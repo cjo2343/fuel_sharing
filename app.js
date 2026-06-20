@@ -24,6 +24,7 @@ const renderBookingUpsertUrl = "/api/bookings/upsert";
 const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
+const renderSettingsSaveUrl = "/api/settings/save";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
 const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
 const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
@@ -2365,6 +2366,8 @@ els.settingsForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const previousState = structuredClone(state);
+
   state.currency = els.currency.value.trim() || defaults.currency;
   state.fuelType = els.fuelType?.value || defaults.fuelType;
   state.fuelConsumption = Math.max(0.1, Number(els.fuelConsumption?.value) || defaults.fuelConsumption);
@@ -2419,10 +2422,10 @@ els.settingsForm.addEventListener("submit", async (event) => {
   }));
   state.fuel = state.fuel.filter((fuel) => state.members.includes(fuel.payer));
 
-  markNormalizedReconciliationDirty("group settings changed");
   const settingsTraceMeta = {
     source: "settings-save",
-    route: supabaseClient ? "supabase-state" : "remote-state",
+    route: supabaseClient ? "render-api" : "remote-state",
+    endpoint: supabaseClient ? renderSettingsSaveUrl : "",
     operation: "save",
     operationId: createDataIoOperationId("settings-save", "save"),
     ledgerId: getActiveLedgerId(),
@@ -2431,23 +2434,22 @@ els.settingsForm.addEventListener("submit", async (event) => {
   };
   recordDataIoDiagnostic("start", { ...settingsTraceMeta, ok: true });
   try {
-    saveState({ queueRemote: false, reason: "group settings explicit save" });
+    if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
     if (supabaseClient) {
-      if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
-      await saveSupabaseState({ reason: "group-settings" });
-      if (lastSyncError) throw new Error(lastSyncError);
+      await saveSettingsViaRender({ traceMeta: settingsTraceMeta });
     } else {
-      if (typeof queueRemoteSave.cancel === "function") queueRemoteSave.cancel();
+      saveState({ queueRemote: false, reason: "group settings explicit save" });
       await saveRemoteState();
       if (lastSyncError) throw new Error(lastSyncError);
     }
-    recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED" });
+    recordDataIoDiagnostic("success", { ...settingsTraceMeta, ok: true, resultCode: "SETTINGS_SAVED", detail: "Saved group settings through backend-owned settings route." });
     renderSupabaseLoadMonitor();
     render();
   } catch (error) {
+    state = previousState;
     recordDataIoDiagnostic("error", { ...settingsTraceMeta, ok: false, error, resultCode: "SETTINGS_SAVE_ERROR" });
     showUserError(`Could not save group settings: ${error.message || error}`);
-    throw error;
+    render();
   }
 });
 
@@ -15381,6 +15383,101 @@ function isRenderAuthRejected(response, result, text) {
   return /sign in before|auth session not ready|missing bearer token/i.test(message);
 }
 
+function buildSettingsSavePayload() {
+  const ledgerId = getActiveLedgerId();
+  const now = new Date().toISOString();
+  const members = getMemberNames().map((name) => {
+    const profile = getMemberProfile(name);
+    return {
+      name,
+      email: profile.email || "",
+      role: profile.role === "admin" ? "admin" : "member",
+      mobilepayPhone: normalizePhone(profile.mobilepayPhone || profile.mobilepay_phone || "")
+    };
+  });
+  return {
+    ledgerId,
+    settings: {
+      currency: state.currency || defaults.currency,
+      fuelType: state.fuelType || defaults.fuelType,
+      fuelConsumption: Number(state.fuelConsumption) || defaults.fuelConsumption,
+      fuelTankCapacity: getFuelTankCapacity(),
+      fuelFallbackPrice: Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice,
+      fuelWarningThreshold: Number(state.fuelWarningThreshold) || defaults.fuelWarningThreshold,
+      vehiclePlate: normalizeVehiclePlateInput(state.vehiclePlate || ""),
+      vehicleInfo: normalizeVehicleInfo(state.vehicleInfo),
+      vehicleLookupSource: state.vehicleLookupSource || (state.vehicleInfo ? "lookup" : "manual"),
+      vehicleLookupAt: state.vehicleLookupAt || "",
+      paymentRemindersEnabled: state.paymentRemindersEnabled !== false,
+      paymentReminderAfterDays: Number(state.paymentReminderAfterDays ?? defaults.paymentReminderAfterDays),
+      paymentReminderRepeatDays: Number(state.paymentReminderRepeatDays || defaults.paymentReminderRepeatDays),
+      paymentReminderMaxCount: Number(state.paymentReminderMaxCount ?? defaults.paymentReminderMaxCount),
+      updatedAt: now
+    },
+    members
+  };
+}
+
+function applySavedSettingsResult(result) {
+  const saved = result?.settings || {};
+  if (saved.currency) state.currency = saved.currency;
+  if (saved.fuelType) state.fuelType = saved.fuelType;
+  if (Number(saved.fuelConsumption) > 0) state.fuelConsumption = Number(saved.fuelConsumption);
+  if (Number(saved.fuelTankCapacity) > 0) state.fuelTankCapacity = Number(saved.fuelTankCapacity);
+  if (Number(saved.fuelFallbackPrice) > 0) state.fuelFallbackPrice = Number(saved.fuelFallbackPrice);
+  if (Number(saved.fuelWarningThreshold) > 0) state.fuelWarningThreshold = Number(saved.fuelWarningThreshold);
+  state.vehiclePlate = normalizeVehiclePlateInput(saved.vehiclePlate || state.vehiclePlate || "");
+  state.vehicleInfo = normalizeVehicleInfo(saved.vehicleInfo || state.vehicleInfo);
+  state.vehicleLookupSource = saved.vehicleLookupSource || state.vehicleLookupSource || (state.vehicleInfo ? "lookup" : "manual");
+  state.vehicleLookupAt = saved.vehicleLookupAt || state.vehicleLookupAt || "";
+  state.updatedAt = saved.updatedAt || new Date().toISOString();
+}
+
+async function saveSettingsViaRender({ traceMeta } = {}) {
+  if (typeof fetch !== "function") throw new Error("Render settings save requires browser fetch support.");
+  const accessToken = await getFreshRenderAccessToken();
+  if (!accessToken) throw new Error("Sign in before saving settings.");
+  const payload = buildSettingsSavePayload();
+  const controller = new AbortController();
+  let timeoutId = 0;
+  try {
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        controller.abort();
+        reject(paymentActionTimeoutError("Render settings save API", 15000));
+      }, 15000);
+    });
+    const response = await Promise.race([
+      fetch(renderSettingsSaveUrl, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(payload)
+      }),
+      timeoutPromise
+    ]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (!response.ok || !result?.ok) {
+      const message = result?.message || result?.error || text || `Render settings save failed (${response.status})`;
+      const error = new Error(message);
+      error.status = response.status;
+      throw error;
+    }
+    applySavedSettingsResult(result);
+    saveState({ queueRemote: false, reason: "backend settings save confirmed" });
+    return result;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function ensureOpenSettlementPeriod(ledgerId) {
   return supabaseHelpers.ensureOpenSettlementPeriod(supabaseClient, ledgerId);
 }
@@ -17459,6 +17556,10 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
     fuelTankCapacity: Number(ledger.fuel_tank_capacity_l) || defaults.fuelTankCapacity,
     fuelFallbackPrice: Number(ledger.fallback_fuel_price) || defaults.fuelFallbackPrice,
     fuelWarningThreshold: Number(ledger.low_fuel_threshold_percent) || defaults.fuelWarningThreshold,
+    vehiclePlate: normalizeVehiclePlateInput(ledger.vehicle_plate || jsonFallbackState.vehiclePlate || ""),
+    vehicleInfo: normalizeVehicleInfo(ledger.vehicle_info || jsonFallbackState.vehicleInfo),
+    vehicleLookupSource: ledger.vehicle_lookup_source || jsonFallbackState.vehicleLookupSource || (ledger.vehicle_info ? "lookup" : "manual"),
+    vehicleLookupAt: ledger.vehicle_lookup_at || jsonFallbackState.vehicleLookupAt || "",
     members: memberNames,
     memberProfiles,
     trips,

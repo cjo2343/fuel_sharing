@@ -320,6 +320,7 @@ RATE_LIMIT_POLICIES = {
     "state-load": {"limit": 90, "window": 60},
     "write-context": {"limit": 90, "window": 60},
     "write": {"limit": 60, "window": 60},
+    "settings-save": {"limit": 30, "window": 300},
     "vehicle-lookup": {"limit": 20, "window": 300},
     "admin": {"limit": 20, "window": 300},
     "admin-heavy": {"limit": 8, "window": 300},
@@ -1240,6 +1241,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("bookingUpsert", "/api/bookings/upsert", "Render booking save route"),
         ("bookingDelete", "/api/bookings/delete", "Render booking delete route"),
         ("paymentStatusAction", "/api/payments/status-action", "Render payment-status action route"),
+        ("settingsSave", "/api/settings/save", "Render workspace settings save route"),
         ("vehicleLookup", "/api/vehicle/lookup", "Render vehicle lookup proxy route"),
     ]
     return [
@@ -1695,11 +1697,7 @@ def ensure_open_settlement_period_as_service(ledger_id):
 def get_normalized_state_rows_as_user(ledger_id, user, user_token):
     context = get_state_load_context_as_service(ledger_id, user)
     ledger_q = quote_postgrest_value(ledger_id)
-    ledger_rows = request_json(
-        f"{supabase_url()}/rest/v1/ledgers?select=id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent&id=eq.{ledger_q}",
-        api_key=supabase_key(),
-    ) or []
-    ledger = ledger_rows[0] if isinstance(ledger_rows, list) and ledger_rows else {}
+    ledger = select_ledger_settings_as_service(ledger_id)
     members = request_json(
         f"{supabase_url()}/rest/v1/ledger_members?select=id,name,email,role,is_active,mobilepay_phone,created_at&ledger_id=eq.{ledger_q}&is_active=eq.true&order=created_at.asc",
         api_key=supabase_key(),
@@ -1745,6 +1743,190 @@ def get_normalized_state_rows_as_user(ledger_id, user, user_token):
     }
 
 
+
+
+def clamp_number(value, fallback, minimum=None, maximum=None):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = float(fallback)
+    if minimum is not None:
+        parsed = max(float(minimum), parsed)
+    if maximum is not None:
+        parsed = min(float(maximum), parsed)
+    return round(parsed, 2)
+
+
+def clean_settings_vehicle_info(value):
+    if not isinstance(value, dict):
+        return {}
+    allowed = {
+        "plate", "make", "model", "variant", "fuelType", "consumptionLPer100Km", "tankCapacityL",
+        "co2GPerKm", "year", "firstRegDate", "color", "chassisType", "engineVolumeCc",
+        "enginePowerKw", "isHybrid", "euroNorm", "particleFilter", "drivingNoiseDb",
+        "motDate", "motResult", "motMileageKm", "nextInspectionDate", "source", "checkedAt"
+    }
+    cleaned = {}
+    for key, raw in value.items():
+        if key not in allowed:
+            continue
+        if isinstance(raw, (int, float, bool)):
+            cleaned[key] = raw
+        else:
+            text = str(raw or "").strip()
+            if text:
+                cleaned[key] = text[:240]
+    return cleaned
+
+
+def select_ledger_settings_as_service(ledger_id):
+    ledger_q = quote_postgrest_value(ledger_id)
+    extended_select = "id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,vehicle_plate,vehicle_info,vehicle_lookup_source,vehicle_lookup_at"
+    base_select = "id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent"
+    try:
+        rows = request_json(
+            f"{supabase_url()}/rest/v1/ledgers?select={extended_select}&id=eq.{ledger_q}",
+            api_key=supabase_key(),
+        ) or []
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+        if error.code == 400 and any(column in raw for column in ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at")):
+            rows = request_json(
+                f"{supabase_url()}/rest/v1/ledgers?select={base_select}&id=eq.{ledger_q}",
+                api_key=supabase_key(),
+            ) or []
+        else:
+            raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+    return rows[0] if isinstance(rows, list) and rows else {}
+
+
+def build_settings_save_payload(payload, user):
+    if not isinstance(payload, dict):
+        raise ValueError("Settings save payload must be an object")
+    ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+    if not ledger_id:
+        raise ValueError("Settings save requires ledgerId")
+    allowed_ledger = build_write_context_backend_payload({"ledgerId": ledger_id}, user)
+    if allowed_ledger != ledger_id:
+        raise PermissionError("Cannot save settings for a different workspace")
+    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+    now = str(settings.get("updatedAt") or payload.get("updatedAt") or datetime.now(timezone.utc).isoformat()).strip()
+    vehicle_info = clean_settings_vehicle_info(settings.get("vehicleInfo"))
+    vehicle_plate = normalize_vehicle_plate(settings.get("vehiclePlate") or vehicle_info.get("plate") or "")
+    if vehicle_plate and vehicle_info and not vehicle_info.get("plate"):
+        vehicle_info["plate"] = vehicle_plate
+    if vehicle_info and not vehicle_info.get("checkedAt"):
+        vehicle_info["checkedAt"] = str(settings.get("vehicleLookupAt") or now)
+    ledger = {
+        "id": ledger_id,
+        "slug": str(settings.get("slug") or ledger_id).strip() or ledger_id,
+        "name": str(settings.get("name") or "Fuel Ledger").strip() or "Fuel Ledger",
+        "currency": str(settings.get("currency") or "DKK").strip()[:12] or "DKK",
+        "fuel_type": str(settings.get("fuelType") or "diesel").strip()[:40] or "diesel",
+        "estimated_consumption_l_per_100km": clamp_number(settings.get("fuelConsumption"), 5.3, 0.1, 100),
+        "fuel_tank_capacity_l": clamp_number(settings.get("fuelTankCapacity"), 55, 1, 1000),
+        "fallback_fuel_price": clamp_number(settings.get("fuelFallbackPrice"), 14.5, 0.1, 1000),
+        "low_fuel_threshold_percent": clamp_number(settings.get("fuelWarningThreshold"), 70, 1, 100),
+        "vehicle_plate": vehicle_plate,
+        "vehicle_info": vehicle_info,
+        "vehicle_lookup_source": str(settings.get("vehicleLookupSource") or ("lookup" if vehicle_info else "manual")).strip()[:120] or "manual",
+        "vehicle_lookup_at": str(settings.get("vehicleLookupAt") or vehicle_info.get("checkedAt") or "").strip() or None,
+        "updated_at": now,
+    }
+    members = payload.get("members") if isinstance(payload.get("members"), list) else []
+    cleaned_members = []
+    seen_names = set()
+    for raw in members:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name or name in seen_names:
+            continue
+        seen_names.add(name)
+        cleaned_members.append({
+            "ledger_id": ledger_id,
+            "name": name,
+            "email": str(raw.get("email") or "").strip().lower() or None,
+            "role": "admin" if str(raw.get("role") or "").strip().lower() == "admin" else "member",
+            "mobilepay_phone": str(raw.get("mobilepayPhone") or raw.get("mobilepay_phone") or "").strip()[:40] or None,
+            "is_active": True,
+            "updated_at": now,
+        })
+    if not cleaned_members:
+        raise ValueError("Settings save requires at least one active member")
+    return ledger, cleaned_members
+
+
+def upsert_settings_as_service(ledger, members):
+    ledger_id = str(ledger.get("id") or "").strip()
+    try:
+        ledger_result = request_json(
+            f"{supabase_url()}/rest/v1/ledgers?on_conflict=id&select=id,slug,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,vehicle_plate,vehicle_info,vehicle_lookup_source,vehicle_lookup_at,updated_at",
+            method="POST",
+            body=ledger,
+            prefer="resolution=merge-duplicates,return=representation",
+            api_key=supabase_key(),
+        ) or []
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+        optional_columns = ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at", "mobilepay_phone")
+        if error.code == 400 and any(column in raw for column in optional_columns):
+            fallback_ledger = dict(ledger)
+            for key in ("vehicle_plate", "vehicle_info", "vehicle_lookup_source", "vehicle_lookup_at"):
+                fallback_ledger.pop(key, None)
+            ledger_result = request_json(
+                f"{supabase_url()}/rest/v1/ledgers?on_conflict=id&select=id,slug,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,updated_at",
+                method="POST",
+                body=fallback_ledger,
+                prefer="resolution=merge-duplicates,return=representation",
+                api_key=supabase_key(),
+            ) or []
+        else:
+            raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+    try:
+        member_result = request_json(
+            f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role,email,mobilepay_phone",
+            method="POST",
+            body=members,
+            prefer="resolution=merge-duplicates,return=representation",
+            api_key=supabase_key(),
+        ) or []
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+        if error.code == 400 and "mobilepay_phone" in raw:
+            fallback_members = []
+            for member in members:
+                item = dict(member)
+                item.pop("mobilepay_phone", None)
+                fallback_members.append(item)
+            member_result = request_json(
+                f"{supabase_url()}/rest/v1/ledger_members?on_conflict=ledger_id,name&select=id,name,role,email",
+                method="POST",
+                body=fallback_members,
+                prefer="resolution=merge-duplicates,return=representation",
+                api_key=supabase_key(),
+            ) or []
+        else:
+            raise urllib.error.HTTPError(error.url, error.code, raw, error.headers, None)
+    saved = ledger_result[0] if isinstance(ledger_result, list) and ledger_result else ledger
+    return {
+        "ledgerId": ledger_id,
+        "settings": {
+            "currency": saved.get("currency") or ledger.get("currency"),
+            "fuelType": saved.get("fuel_type") or ledger.get("fuel_type"),
+            "fuelConsumption": saved.get("estimated_consumption_l_per_100km") or ledger.get("estimated_consumption_l_per_100km"),
+            "fuelTankCapacity": saved.get("fuel_tank_capacity_l") or ledger.get("fuel_tank_capacity_l"),
+            "fuelFallbackPrice": saved.get("fallback_fuel_price") or ledger.get("fallback_fuel_price"),
+            "fuelWarningThreshold": saved.get("low_fuel_threshold_percent") or ledger.get("low_fuel_threshold_percent"),
+            "vehiclePlate": saved.get("vehicle_plate") if "vehicle_plate" in saved else ledger.get("vehicle_plate"),
+            "vehicleInfo": saved.get("vehicle_info") if "vehicle_info" in saved else ledger.get("vehicle_info"),
+            "vehicleLookupSource": saved.get("vehicle_lookup_source") if "vehicle_lookup_source" in saved else ledger.get("vehicle_lookup_source"),
+            "vehicleLookupAt": saved.get("vehicle_lookup_at") if "vehicle_lookup_at" in saved else ledger.get("vehicle_lookup_at"),
+            "updatedAt": saved.get("updated_at") or ledger.get("updated_at"),
+        },
+        "members": member_result,
+        "memberCount": len(member_result) if isinstance(member_result, list) else 0,
+    }
 
 def build_ledger_directory_sync_payload(payload, user):
     if not isinstance(payload, dict):
@@ -2355,6 +2537,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/state/load":
             self.load_state_backend()
             return
+        if self.path == "/api/settings/save":
+            self.save_settings_backend()
+            return
         if self.path == "/api/ledgers/sync":
             self.sync_ledger_directory_backend()
             return
@@ -2454,6 +2639,37 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "stateRows": state_rows, "backend": "render", "userEmail": user.get("email")})
+
+
+
+    def save_settings_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before saving settings."}, status=401)
+            return
+        token = get_bearer_token(self)
+        try:
+            payload = read_request_body(self)
+            ledger, members = build_settings_save_payload(payload, user)
+            if not check_backend_rate_limit(self, "settings-save", user=user, ledger_id=ledger["id"]):
+                return
+            assert_user_can_admin_ledger(ledger["id"], user, token)
+            result = upsert_settings_as_service(ledger, members)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_json({"ok": False, "code": "SUPABASE_ERROR", "message": body}, status=error.code)
+            return
+        except PermissionError as error:
+            self.send_json({"ok": False, "code": "FORBIDDEN", "message": str(error)}, status=403)
+            return
+        except Exception as error:
+            self.send_json({"ok": False, "code": "SETTINGS_SAVE_ERROR", "message": str(error)}, status=500)
+            return
+
+        self.send_json({"ok": True, "result": result, "settings": result.get("settings"), "backend": "render", "userEmail": user.get("email")})
 
 
     def sync_ledger_directory_backend(self):
@@ -3076,9 +3292,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self.send_json(result)
 
-    def send_json(self, payload):
+    def send_json(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
