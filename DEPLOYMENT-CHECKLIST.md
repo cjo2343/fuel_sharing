@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.247`
-- Service-worker cache: `fuel-ledger-v347`
-- Updated at: `2026-06-20T14:20:00.000Z`
-- Top release note: Owner-only diagnostics now recognize the configured app-owner email chrjohn94@gmail.com, so the app owner keeps Data I/O/global admin tools while ordinary workspace admins remain limited to workspace settings, members, and invites.
+- Version: `2026.06.18.248`
+- Service-worker cache: `fuel-ledger-v348`
+- Updated at: `2026-06-20T14:30:00.000Z`
+- Top release note: Render API calls now use a shared frontend helper for fresh Supabase tokens, Authorization headers, timeouts, JSON parsing, and settings-save request handling instead of hand-rolled/stale token fetch code.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -602,3 +602,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 ## Release readiness metadata
 - Top release note: Render backend auth now verifies Supabase ECC/P-256 access tokens locally through the project JWKS/public keys with rotation-aware caching, keeping the Supabase Auth network check as an explicit emergency fallback instead of the normal path.
 - Top release note: `Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.`
+
+- Render API calls now use a shared frontend helper for fresh Supabase tokens, Authorization headers, timeouts, JSON parsing, and settings-save request handling instead of hand-rolled/stale token fetch code.

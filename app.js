@@ -3286,10 +3286,7 @@ async function createGeneratedTestDataViaRender(type, entry) {
     const fetchPromise = fetch(renderAdminTestDataCreateUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId, type, entry, currency: state.currency || "DKK" })
     });
 
@@ -3701,10 +3698,7 @@ async function cleanupGeneratedRowsFromNormalizedTablesViaRender(reason = "clean
     const fetchPromise = fetch(renderAdminTestDataCleanupUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId, reason })
     });
     response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -3997,10 +3991,7 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
     const fetchPromise = fetch(renderAdminHealthUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId })
     });
     const response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -4699,10 +4690,7 @@ async function callRetentionAdminRoute({ action, endpoint, operation }) {
     const fetchPromise = fetch(endpoint, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload)
     });
     const response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -5087,10 +5075,7 @@ async function saveTestLabReportViaRender(report) {
     const fetchPromise = fetch(renderAdminReportSaveUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId, report })
     });
     const response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -5278,10 +5263,7 @@ async function fetchRenderSecurityHealthChecks({ ledgerId, probeTimeoutMs = 1000
     const fetchPromise = fetch(renderAdminSecurityHealthUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId })
     });
     const response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -7569,7 +7551,7 @@ async function lookupVehicleByPlateFromUi() {
     const fetchPromise = fetch(renderVehicleLookupUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentSession.access_token}` },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId, plate })
     });
     const response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -12903,10 +12885,7 @@ async function callMemberManagementRoute(action, payload = {}) {
   const ledgerId = getActiveLedgerId();
   const response = await fetch(renderMemberManagementUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${accessToken}`
-    },
+    headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ ledgerId, action, ...payload })
   });
   const text = await response.text();
@@ -15415,6 +15394,73 @@ async function getFreshRenderAccessToken() {
   return session.access_token;
 }
 
+async function buildRenderRequestHeaders(extraHeaders = {}) {
+  const accessToken = await getFreshRenderAccessToken();
+  if (!accessToken) {
+    const error = new Error("Sign in before calling the Render backend.");
+    error.code = "AUTH_REQUIRED";
+    error.resultCode = "AUTH_REQUIRED";
+    throw error;
+  }
+  return {
+    ...extraHeaders,
+    "Authorization": `Bearer ${accessToken}`
+  };
+}
+
+function createRenderApiTimeoutError(label, timeoutMs) {
+  const error = paymentActionTimeoutError(label || "Render API", timeoutMs);
+  error.code = error.code || "RENDER_API_TIMEOUT";
+  error.resultCode = error.resultCode || error.code;
+  return error;
+}
+
+async function callRenderJson(endpoint, options = {}) {
+  if (typeof fetch !== "function") throw new Error("Render API calls require browser fetch support.");
+  const method = options.method || "POST";
+  const timeoutMs = Number(options.timeoutMs || 12000);
+  const timeoutLabel = options.timeoutLabel || `Render API ${endpoint}`;
+  const headers = await buildRenderRequestHeaders({
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  });
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  let timeoutId = 0;
+  try {
+    const requestPromise = fetch(endpoint, {
+      method,
+      signal: controller ? controller.signal : undefined,
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(createRenderApiTimeoutError(timeoutLabel, timeoutMs));
+      }, timeoutMs);
+    });
+    const response = await Promise.race([requestPromise, timeoutPromise]);
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (!response.ok || !result?.ok) {
+      const message = result?.message || result?.error || text || `Render API call failed (${response.status})`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.code = result?.code || response.status;
+      error.resultCode = result?.code || response.status;
+      error.payload = result;
+      throw error;
+    }
+    return { response, text, result };
+  } catch (error) {
+    if (error?.name === "AbortError") throw createRenderApiTimeoutError(timeoutLabel, timeoutMs);
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 function isRenderAuthRejected(response, result, text) {
   if (response?.status === 401) return true;
   const message = String(result?.message || result?.error || text || "");
@@ -15516,61 +15562,27 @@ function applySavedSettingsResult(result) {
 
 async function saveSettingsViaRender({ traceMeta } = {}) {
   if (typeof fetch !== "function") throw new Error("Render settings save requires browser fetch support.");
-  const accessToken = await getFreshRenderAccessToken();
-  if (!accessToken) throw new Error("Sign in before saving settings.");
   const payload = buildSettingsSavePayload();
-  const controller = new AbortController();
-  const timeoutMs = 12000;
-  let timeoutId = 0;
-  const timeoutError = () => {
-    const error = paymentActionTimeoutError("Render settings save API", timeoutMs);
-    error.code = "SETTINGS_SAVE_TIMEOUT";
-    error.resultCode = "SETTINGS_SAVE_TIMEOUT";
-    return error;
-  };
   try {
-    const requestPromise = (async () => {
-      const response = await fetch(renderSettingsSaveUrl, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${accessToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const text = await response.text();
-      let result = null;
-      try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-      if (!response.ok || !result?.ok) {
-        const message = result?.message || result?.error || text || `Render settings save failed (${response.status})`;
-        const error = new Error(message);
-        error.status = response.status;
-        error.code = result?.code || response.status;
-        error.resultCode = result?.code || response.status;
-        throw error;
-      }
-      const verifiedResult = result?.result && typeof result.result === "object"
-        ? { ...result.result, settings: result.settings || result.result.settings }
-        : result;
-      return verifiedResult;
-    })();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        controller.abort();
-        reject(timeoutError());
-      }, timeoutMs);
+    const { result: apiResult } = await callRenderJson(renderSettingsSaveUrl, {
+      method: "POST",
+      body: payload,
+      timeoutMs: 12000,
+      timeoutLabel: "Render settings save API"
     });
-    const result = await Promise.race([requestPromise, timeoutPromise]);
-    assertSettingsSaveVerified(result, payload);
-    applySavedSettingsResult(result);
+    const verifiedResult = apiResult?.result && typeof apiResult.result === "object"
+      ? { ...apiResult.result, settings: apiResult.settings || apiResult.result.settings }
+      : apiResult;
+    assertSettingsSaveVerified(verifiedResult, payload);
+    applySavedSettingsResult(verifiedResult);
     saveState({ queueRemote: false, reason: "backend settings save confirmed" });
-    return result;
+    return verifiedResult;
   } catch (error) {
-    if (error?.name === "AbortError") throw timeoutError();
+    if (error?.code === "RENDER_API_TIMEOUT") {
+      error.code = "SETTINGS_SAVE_TIMEOUT";
+      error.resultCode = "SETTINGS_SAVE_TIMEOUT";
+    }
     throw error;
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
   }
 }
 
@@ -15657,10 +15669,7 @@ async function getRenderNormalizedStateRows(ledgerId) {
     const fetchPromise = fetch(renderStateLoadUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId })
     });
 
@@ -15720,10 +15729,7 @@ async function getRenderWriteContext({ ledgerId, source = "normalized-write-cont
     const fetchPromise = fetch(renderWriteContextUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId })
     });
 
@@ -15897,10 +15903,7 @@ async function syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads, sourc
     const fetchPromise = fetch(renderLedgerDirectorySyncUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledger: ledgerPayload, members: memberPayloads })
     });
 
@@ -16147,10 +16150,7 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
     const fetchPromise = fetch(renderTripUpsertUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
         trip: payload,
@@ -16268,10 +16268,7 @@ async function saveFuelPaymentViaRender(context, payload) {
     const fetchPromise = fetch(renderFuelUpsertUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
         fuel: payload
@@ -16443,10 +16440,7 @@ async function saveBookingViaRender(context, payload) {
     const fetchPromise = fetch(renderBookingUpsertUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         context: { ledgerId: context.ledgerId },
         booking: payload
@@ -16546,10 +16540,7 @@ async function softDeleteBookingViaRender(context, legacyBookingId) {
     const fetchPromise = fetch(renderBookingDeleteUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         context: { ledgerId: context.ledgerId },
         legacyBookingId
@@ -16775,10 +16766,7 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
     const response = await fetch(renderPaymentStatusActionUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
         settlement: {
@@ -18244,10 +18232,7 @@ async function saveJsonMirrorBackupViaRender({ force = false, reason = "", saved
     const fetchPromise = fetch(renderJsonMirrorBackupUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${currentSession.access_token}`
-      },
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ledgerId, state, reason, force, updatedAt: savedAt })
     });
 

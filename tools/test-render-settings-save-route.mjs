@@ -24,7 +24,7 @@ assert.match(server, /upsert_settings_as_service\(ledger, members\)/, "settings 
 assert.match(server, /select_ledger_settings_as_service\(ledger_id, require_vehicle_columns=True\)/, "settings save should read back saved vehicle fields for verification");
 assert.match(server, /SETTINGS_SCHEMA_MISSING/, "settings save should fail clearly when vehicle settings columns are missing");
 
-assert.match(app, /const timeoutMs = 12000/, "frontend settings save should have a bounded end-to-end timeout");
+assert.match(app, /callRenderJson\(renderSettingsSaveUrl,[\s\S]*timeoutMs: 12000/, "frontend settings save should use shared Render JSON helper with a bounded timeout");
 assert.match(app, /response\.text\(\)/, "frontend settings save should parse the response body inside the timeout window");
 assert.match(app, /SETTINGS_SAVE_TIMEOUT/, "frontend settings save should record timeout failures explicitly");
 assert.match(app, /normalizedDiagnosticPhase === "success"/, "Data I/O labels should only use :ok for successful finishes, not start rows");
