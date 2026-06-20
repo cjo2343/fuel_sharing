@@ -2,31 +2,32 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+const buildInfo = readFileSync("build-info.js", "utf8");
+const serviceWorker = readFileSync("service-worker.js", "utf8");
+
+function serviceWorkerCoreAssets() {
+  const block = serviceWorker.match(/const\s+CORE_ASSETS\s*=\s*\[([\s\S]*?)\];/)?.[1] || "";
+  return [...block.matchAll(/["']\/([^"']*)["']/g)]
+    .map((match) => match[1].trim())
+    .filter((asset) => asset && !asset.endsWith("/"));
+}
+
+function indexScriptAssets() {
+  const indexHtml = readFileSync("index.html", "utf8");
+  return [...indexHtml.matchAll(/<script[^>]+src=["']([^"']+)["']/g)]
+    .map((match) => match[1].split("?")[0].replace(/^\//, ""))
+    .filter((asset) => asset && !asset.startsWith("http://") && !asset.startsWith("https://"));
+}
+
 const runtimeFiles = new Set([
-  "index.html",
-  "styles.css",
-  "utils.js",
-  "supabase-helpers.js",
-  "data-store.js",
-  "settlement-calculations.js",
-  "ui-messages.js",
-  "sync-status-helpers.js",
-  "fuel-price-helpers.js",
-  "location-privacy-helpers.js",
-  "audit-log.js",
-  "notifications.js",
-  "admin-tools.js",
-  "permission-helpers.js",
-  "booking-calendar.js",
-  "app.js",
+  ...serviceWorkerCoreAssets(),
+  ...indexScriptAssets(),
   "server.py",
   "service-worker.js",
   "build-info.js"
 ]);
 
 function readConstants() {
-  const buildInfo = readFileSync("build-info.js", "utf8");
-  const serviceWorker = readFileSync("service-worker.js", "utf8");
   const expectedCache = buildInfo.match(/expectedServiceWorkerCache:\s*"([^"]+)"/)?.[1];
   const buildLabel = buildInfo.match(/buildLabel:\s*"([^"]+)"/)?.[1];
   const updatedAt = buildInfo.match(/updatedAt:\s*"([^"]+)"/)?.[1];

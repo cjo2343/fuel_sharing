@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.236",
+    version: "2026.06.18.237",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T10:50:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v336",
+    updatedAt: "2026-06-20T11:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v337",
     releaseNotes: Object.freeze([
+      "JSON fallback APIs now fail closed unless local tooling explicitly opts out, vehicle lookup requires workspace-admin permission server-side, and build metadata freshness derives from the service-worker asset list so cached config/helper changes cannot miss a cache bump.",
       "Vehicle lookup and group settings saves now use local-only staging plus explicit Data I/O finish rows, so Admin shows vehicle-lookup/settings-save operations and Save settings does not leave a stale unsynced-change banner after the backend save completes.",
       "Vehicle lookup summaries now hide placeholder values such as unknown Euro norm/status and show cleaner fuel labels such as Petrol 95 while keeping useful engine, emissions, color, body, and registration facts.",
       "Vehicle lookup, settings saves, trip saves, fuel saves, and entry deletes now leave clearer Data I/O result-code breadcrumbs, while vehicle lookups and group settings also add safe audit-history entries without storing provider secrets or VIN data.",

@@ -20,8 +20,14 @@ class FakeHandler:
 
 
 class LedgerApiAuthTests(unittest.TestCase):
-    def test_local_json_api_is_open_by_default(self):
+    def test_json_api_requires_auth_by_default(self):
         with patch.dict(os.environ, {}, clear=True):
+            handler = FakeHandler()
+            self.assertFalse(server.authorize_ledger_api(handler))
+            self.assertEqual(handler.error[0], 503)
+
+    def test_local_json_api_can_explicitly_opt_out(self):
+        with patch.dict(os.environ, {"FUEL_LEDGER_ALLOW_UNAUTHENTICATED_LOCAL_API": "1"}, clear=True):
             handler = FakeHandler()
             self.assertTrue(server.authorize_ledger_api(handler))
             self.assertIsNone(handler.error)
