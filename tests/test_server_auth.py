@@ -80,6 +80,17 @@ class RenderSupabaseUserAuthTests(unittest.TestCase):
         )
         return token, public_jwk
 
+
+    def test_es256_jwk_coordinates_are_left_padded_for_pyjwt(self):
+        self.assertEqual(
+            server.normalize_base64url_uint("AQID", 4),
+            "AAECAw",
+        )
+        jwk = {"kty": "EC", "crv": "P-256", "alg": "ES256", "x": "AQID", "y": "BAUG"}
+        normalized = server.normalize_supabase_jwk_for_pyjwt(jwk, "ES256")
+        self.assertNotEqual(normalized, jwk)
+        self.assertEqual(len(normalized["x"] + "=" * (-len(normalized["x"]) % 4)) % 4, 0)
+
     def test_current_supabase_user_verifies_ecc_token_with_jwks_public_key(self):
         token, jwk = self.make_es256_token_and_jwk()
         handler = FakeHandler({"Authorization": f"Bearer {token}"})

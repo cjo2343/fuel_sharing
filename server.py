@@ -764,6 +764,38 @@ def verified_user_from_claims(claims):
     return {"email": email, "id": subject}
 
 
+def normalize_base64url_uint(value, byte_length):
+    text = str(value or "").strip()
+    if not text or byte_length <= 0:
+        return text
+    try:
+        raw = base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+    except Exception:
+        return text
+    if len(raw) >= byte_length:
+        return text
+    padded = raw.rjust(byte_length, b"\x00")
+    return base64.urlsafe_b64encode(padded).decode("ascii").rstrip("=")
+
+
+def normalize_supabase_jwk_for_pyjwt(key_data, alg=""):
+    if not isinstance(key_data, dict):
+        return key_data
+    crv = key_data.get("crv")
+    resolved_alg = alg or key_data.get("alg") or ""
+    # Some JWKS producers/libraries omit leading zero bytes from EC coordinates.
+    # cryptography expects fixed-width P-256 coordinates, so normalize before
+    # handing the key to PyJWT. This keeps local ES256 verification deterministic
+    # across PyJWT/cryptography versions and prevents intermittent pre-push test
+    # failures such as: "Coords should be 32 bytes for curve P-256".
+    if resolved_alg == "ES256" or crv == "P-256":
+        normalized = dict(key_data)
+        normalized["x"] = normalize_base64url_uint(normalized.get("x"), 32)
+        normalized["y"] = normalize_base64url_uint(normalized.get("y"), 32)
+        return normalized
+    return key_data
+
+
 def verify_supabase_user_via_jwks(token):
     if not token:
         return None
@@ -778,7 +810,7 @@ def verify_supabase_user_via_jwks(token):
     if alg not in allowed_algs:
         print(f"Supabase JWKS verification rejected unsupported alg: {alg}")
         return None
-    public_key = jwt.PyJWK.from_dict(key_data).key
+    public_key = jwt.PyJWK.from_dict(normalize_supabase_jwk_for_pyjwt(key_data, alg)).key
     decode_kwargs = {"algorithms": [alg], "audience": "authenticated"}
     issuer = expected_supabase_issuer()
     if issuer:
