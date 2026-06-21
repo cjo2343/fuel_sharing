@@ -9314,6 +9314,11 @@ function getVehicleLookupReadinessSnapshot() {
     statusPlate: String(dom.status?.dataset?.lookupPlate || ""),
     summaryPlate: String(dom.summary?.dataset?.lookupPlate || ""),
     savedVehiclePlate: savedInfo?.plate || "",
+    backendContextOk: Boolean(appBackendContextStatus?.ok),
+    backendContextDecision: String(appBackendContextStatus?.decision || ""),
+    backendActiveWorkspaceId: getBackendAppContextActiveWorkspaceId(),
+    backendCanLookupVehicle: getBackendAppContextPermission("canLookupVehicle"),
+    backendCanManageSettings: getBackendAppContextPermission("canManageSettings"),
     statusPhase: String(dom.status?.dataset?.lookupPhase || ""),
     summaryPhase: String(dom.summary?.dataset?.lookupPhase || ""),
     reason,
@@ -9400,11 +9405,37 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
   const automaticRetry = Boolean(options?.automaticRetry);
   const workspaceRetry = Number(options?.workspaceContextRetry || 0);
   const beforeContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: requestedWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(requestedWorkspaceId) });
-  const linkedBefore = getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === requestedWorkspaceId);
-  if (requestedWorkspaceId && String(getActiveLedgerId() || "") !== requestedWorkspaceId && linkedBefore) {
-    setActiveLedgerId(requestedWorkspaceId, { persist: true, updateUrl: true });
-  } else if (requestedWorkspaceId && String(getActiveLedgerId() || "") !== requestedWorkspaceId) {
-    setActiveLedgerId(requestedWorkspaceId, { persist: true, updateUrl: true });
+  const backendContext = await getRenderAppContext({ ledgerId: requestedWorkspaceId, reason: "vehicle-lookup", timeoutMs: 6000 });
+  const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
+  if (backendWorkspaceId && backendWorkspaceId !== String(getActiveLedgerId() || "")) {
+    setActiveLedgerId(backendWorkspaceId, { persist: true, updateUrl: true });
+  }
+  const backendCanLookup = getBackendAppContextPermission("canLookupVehicle");
+  if (backendCanLookup === false) {
+    const message = `${getWorkspaceLabelByLedgerId(backendWorkspaceId || requestedWorkspaceId)} is not confirmed by the backend as a workspace where this user can look up vehicles.`;
+    recordDataIoDiagnostic("blocked", {
+      source: "vehicle-lookup-backend-context",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "permission",
+      ok: false,
+      resultCode: "VEHICLE_LOOKUP_BACKEND_CONTEXT_DENIED",
+      statusCode: "VEHICLE_LOOKUP_BACKEND_CONTEXT_DENIED",
+      ledgerId: backendWorkspaceId || getLoadedWorkspaceId(),
+      selectedWorkspaceId: backendWorkspaceId || requestedWorkspaceId,
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      workspaceMismatch: String(backendWorkspaceId || requestedWorkspaceId || "") !== String(getLoadedWorkspaceId() || ""),
+      detail: message
+    });
+    setVehicleLookupStatus(message, { plate, phase: "blocked" });
+    return { ok: false, ledgerId: backendWorkspaceId || requestedWorkspaceId, context: beforeContext, reason: "backend_context_denied" };
+  }
+  const targetWorkspaceId = backendWorkspaceId || requestedWorkspaceId;
+  const linkedBefore = getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === targetWorkspaceId);
+  if (targetWorkspaceId && String(getActiveLedgerId() || "") !== targetWorkspaceId && linkedBefore) {
+    setActiveLedgerId(targetWorkspaceId, { persist: true, updateUrl: true });
+  } else if (targetWorkspaceId && String(getActiveLedgerId() || "") !== targetWorkspaceId) {
+    setActiveLedgerId(targetWorkspaceId, { persist: true, updateUrl: true });
   }
 
   const activeWorkspaceId = String(getActiveLedgerId() || "").trim();
@@ -15376,6 +15407,53 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), reason = "a
   }
 }
 
+
+function getBackendAppContext() {
+  return appBackendContextStatus?.context && typeof appBackendContextStatus.context === "object"
+    ? appBackendContextStatus.context
+    : null;
+}
+
+function getBackendAppContextActiveWorkspaceId() {
+  const context = getBackendAppContext();
+  return String(context?.activeWorkspace?.ledgerId || context?.activeWorkspace?.ledger_id || appBackendContextStatus?.activeWorkspaceId || "").trim();
+}
+
+function isBackendAppContextCurrentForActiveWorkspace() {
+  const backendWorkspaceId = getBackendAppContextActiveWorkspaceId();
+  return Boolean(appBackendContextStatus?.ok && backendWorkspaceId && backendWorkspaceId === String(getActiveLedgerId() || ""));
+}
+
+function getBackendAppContextPermission(name) {
+  const context = getBackendAppContext();
+  if (!isBackendAppContextCurrentForActiveWorkspace()) return null;
+  if (!context?.permissions || typeof context.permissions !== "object") return null;
+  if (!(name in context.permissions)) return null;
+  return Boolean(context.permissions[name]);
+}
+
+function getBackendActiveMemberProfile() {
+  const context = getBackendAppContext();
+  if (!isBackendAppContextCurrentForActiveWorkspace()) return null;
+  const member = context?.activeMember || {};
+  if (!member || typeof member !== "object" || !member.isActive) return null;
+  return {
+    name: member.name || inferAuthBoundMemberName(member.email || getLoggedInEmail()),
+    email: normalizeEmail(member.email || getLoggedInEmail() || ""),
+    role: normalizeWorkspaceRole(member.role || "member"),
+    mobilepayPhone: member.mobilepayPhone || "",
+    backendContext: true
+  };
+}
+
+async function refreshBackendAppContextForActiveWorkspace(reason = "active-workspace") {
+  return getRenderAppContext({
+    ledgerId: getActiveLedgerId(),
+    reason,
+    timeoutMs: reason === "vehicle-lookup" ? 6000 : 8000
+  });
+}
+
 async function refreshLinkedWorkspacesAfterInvite(preferredLedgerId = "") {
   if (!supabaseClient || !currentSession) return [];
   const preferred = String(preferredLedgerId || "").trim();
@@ -17114,6 +17192,8 @@ function getLoggedInEmail() {
 }
 
 function getCurrentMemberProfile() {
+  const backendProfile = getBackendActiveMemberProfile();
+  if (backendProfile) return backendProfile;
   const email = getLoggedInEmail();
   if (!email) return null;
 
@@ -17154,6 +17234,8 @@ function canUseAppAsMember() {
 function canManageSettings() {
   if (!supabaseClient) return true;
   if (!currentSession) return false;
+  const backendPermission = getBackendAppContextPermission("canManageSettings");
+  if (backendPermission !== null) return backendPermission;
   const profile = getCurrentMemberProfile();
   return Boolean(profile && !profile.pendingInvite && profile.role === "admin");
 }
@@ -17189,8 +17271,11 @@ function isSignedInPrimaryAppOwner() {
 }
 
 function canUseGlobalAdminTools() {
-  if (!canManageSettings()) return false;
   if (!supabaseClient) return true;
+  if (!currentSession) return false;
+  const backendOwnerPermission = getBackendAppContextPermission("canUseAppOwnerDiagnostics");
+  if (backendOwnerPermission !== null) return backendOwnerPermission;
+  if (!canManageSettings()) return false;
   return isSignedInPrimaryAppOwner();
 }
 

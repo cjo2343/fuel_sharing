@@ -2135,14 +2135,22 @@ def build_app_context_response(payload, user):
     workspaces = list_app_context_workspaces_as_service(user)
     active, reason = choose_app_context_workspace(workspaces, requested_ids, user)
     is_owner = is_configured_app_owner(user)
+    active_role = str((active or {}).get("role") or "").strip().lower()
+    active_member = {
+        "id": (active or {}).get("memberId") or (active or {}).get("member_id") or "",
+        "name": (active or {}).get("memberName") or "",
+        "email": user.get("email") or "",
+        "role": "admin" if active_role == "admin" else "member" if active else "",
+        "isActive": bool(active),
+    }
     permissions = {
         "isAppOwner": is_owner,
         "canUseAppOwnerDiagnostics": is_owner,
         "canViewAdminDiagnostics": is_owner,
         "canWrite": bool(active),
-        "canManageSettings": bool(active and active.get("role") == "admin"),
-        "canManageMembers": bool(active and active.get("role") == "admin"),
-        "canLookupVehicle": bool(active and active.get("role") == "admin"),
+        "canManageSettings": bool(active and active_role == "admin"),
+        "canManageMembers": bool(active and active_role == "admin"),
+        "canLookupVehicle": bool(active and active_role == "admin"),
     }
     return {
         "user": {
@@ -2151,6 +2159,7 @@ def build_app_context_response(payload, user):
             "isAppOwner": is_owner,
         },
         "activeWorkspace": active or {},
+        "activeMember": active_member,
         "linkedWorkspaces": workspaces,
         "permissions": permissions,
         "resolution": {
