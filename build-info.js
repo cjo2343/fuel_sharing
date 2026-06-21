@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T10:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v368",
+    updatedAt: "2026-06-21T10:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v369",
     releaseNotes: Object.freeze([
+      "Workspace refresh is now authoritative on Account open/manual refreshes, one-row workspace lists no longer get freshness-skipped, load reports export the visible selector and current-email membership probe, and vehicle lookup readiness remains visible so hidden test1 membership issues can be diagnosed.",
       "Workspace list deduplication now uses ledger id/slug instead of display name, so separate workspaces both named Fuel Ledger no longer collapse into one main-car row; load reports also export vehicle lookup readiness reasons.",
       "Workspace resolution is now exported in load reports and the resolver explains why it picked main-car or another workspace; non-owner users with one joined non-default workspace are preferred into that workspace instead of drifting to the default.",
       "Stability overhaul pass 1 makes workspace selection user-scoped, avoids recording Settings/vehicle lookup as failed during normal startup loading, clears stale Settings lock text after workspace load, and adds a visible Workspace session debug card.",

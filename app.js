@@ -162,6 +162,7 @@ function updateWorkspaceResolutionDebug(decision = "observed", detail = "", extr
     selectedWorkspaceId: getWorkspaceSessionSnapshot().selectedWorkspaceId,
     loadedWorkspaceId: getWorkspaceSessionSnapshot().loadedWorkspaceId,
     workspaceMismatch: getWorkspaceSessionSnapshot().workspaceMismatch,
+    visibleWorkspaceSelectorId: String(els?.activeWorkspace?.value || ""),
     linkedWorkspaceCount: linkedWorkspaces.length,
     linkedWorkspaces,
     rejectedWorkspaceId: String(extra.rejectedWorkspaceId || ""),
@@ -2215,8 +2216,18 @@ let workspaceInviteStatus = {
   loading: false,
   error: "",
   ledgers: [],
+  rawLedgers: [],
   invites: [],
   lastCreatedInvite: null
+};
+let workspaceMembershipProbeStatus = {
+  checked: false,
+  ok: false,
+  loading: false,
+  error: "",
+  reason: "not-checked",
+  signedInEmail: "",
+  rows: []
 };
 let workspaceInviteRefreshPromise = null;
 let workspaceInviteRefreshQueued = false;
@@ -4734,6 +4745,7 @@ function buildSupabaseLoadReport() {
     },
     workspaceSession: getWorkspaceSessionSnapshot(),
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
+    workspaceMembershipProbe: workspaceMembershipProbeStatus,
     vehicleLookupReadiness: getVehicleLookupReadinessSnapshot(),
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
@@ -14910,6 +14922,81 @@ function renderWorkspaceInvitesPanel() {
   }
 }
 
+async function refreshWorkspaceMembershipProbe(reason = "workspace-membership-probe") {
+  workspaceMembershipProbeStatus = {
+    checked: false,
+    ok: false,
+    loading: true,
+    error: "",
+    reason: String(reason || "workspace-membership-probe"),
+    signedInEmail: normalizeEmail(getLoggedInEmail() || ""),
+    rows: []
+  };
+  if (!supabaseClient || !currentSession) {
+    workspaceMembershipProbeStatus = {
+      ...workspaceMembershipProbeStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      error: "Not signed in; membership probe skipped."
+    };
+    return workspaceMembershipProbeStatus;
+  }
+  const signedInEmail = normalizeEmail(getLoggedInEmail() || "");
+  if (!signedInEmail) {
+    workspaceMembershipProbeStatus = {
+      ...workspaceMembershipProbeStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      error: "Signed-in email is not available; membership probe skipped."
+    };
+    return workspaceMembershipProbeStatus;
+  }
+  try {
+    const { data, error } = await withWorkspaceInviteRequestTimeout(
+      supabaseClient
+        .from("ledger_members")
+        .select("id,ledger_id,email,name,role,is_active,created_at,updated_at")
+        .ilike("email", signedInEmail)
+        .limit(50),
+      "Workspace membership probe"
+    );
+    if (error) throw error;
+    const rows = (Array.isArray(data) ? data : []).map((row) => ({
+      id: String(row.id || ""),
+      ledgerId: String(row.ledger_id || ""),
+      email: normalizeEmail(row.email || ""),
+      name: String(row.name || ""),
+      role: normalizeWorkspaceRole(row.role || "member"),
+      isActive: row.is_active !== false,
+      createdAt: row.created_at || "",
+      updatedAt: row.updated_at || ""
+    }));
+    workspaceMembershipProbeStatus = {
+      checked: true,
+      ok: true,
+      loading: false,
+      error: "",
+      reason: String(reason || "workspace-membership-probe"),
+      signedInEmail,
+      rows
+    };
+    return workspaceMembershipProbeStatus;
+  } catch (error) {
+    workspaceMembershipProbeStatus = {
+      checked: true,
+      ok: false,
+      loading: false,
+      error: describeWorkspaceRefreshError(error),
+      reason: String(reason || "workspace-membership-probe"),
+      signedInEmail,
+      rows: []
+    };
+    return workspaceMembershipProbeStatus;
+  }
+}
+
 function canRefreshWorkspaceInviteTools() {
   return Boolean(supabaseClient && currentSession);
 }
@@ -14917,9 +15004,9 @@ function canRefreshWorkspaceInviteTools() {
 function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
   if (!canRefreshWorkspaceInviteTools()) return null;
   const normalizedReason = String(reason || "workspace-invite-refresh");
-  const manual = /manual|after-create|invite|redeem|switch|refresh-button/i.test(normalizedReason);
+  const manual = /manual|after-create|invite|redeem|switch|refresh-button|account-tab-open|account-panel-render|startup-session|auth-session|initial-session/i.test(normalizedReason);
   const now = Date.now();
-  if (!manual && workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && now - Number(lastWorkspaceInviteRefreshAt || 0) < workspaceInviteRefreshFreshMs) {
+  if (!manual && workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && getWorkspaceLedgerOptions().length > 1 && now - Number(lastWorkspaceInviteRefreshAt || 0) < workspaceInviteRefreshFreshMs) {
     recordDataIoDiagnostic("skip", {
       source: "workspace-tools-refresh",
       route: "supabase-rpc",
@@ -14984,8 +15071,10 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
       "Workspace list refresh"
     );
     if (ledgersError) throw ledgersError;
+    workspaceInviteStatus.rawLedgers = Array.isArray(ledgers) ? ledgers : [];
     workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
     workspaceInviteStatus.loaded = true;
+    await refreshWorkspaceMembershipProbe(reason).catch((probeError) => console.warn("Workspace membership probe failed", probeError));
     reconcileActiveLedgerSelection({ allowWhileLoading: true, reason });
     const ledgerId = getActiveLedgerId();
     if (canManageSettings()) {

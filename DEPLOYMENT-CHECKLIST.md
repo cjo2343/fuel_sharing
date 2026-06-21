@@ -1,5 +1,6 @@
+- 2026-06-21 10:55 UTC: v369 Account workspace refresh is authoritative instead of freshness-skipped, one-row workspace lists are rechecked, and reports export visible selector plus signed-in-email membership probe rows so hidden test1 membership issues can be diagnosed.
 - 2026-06-21 10:45 UTC: v368 workspace list dedupe now keys by ledger id/slug, not display name, preventing main-car and test1 from collapsing when both are named Fuel Ledger; reports export vehicle lookup readiness.
-- 2026-06-21 10:35 UTC: v367 workspace resolution visibility exports URL/user memory/linked workspaces/decision details in load reports and prefers a non-owner user's single non-default workspace over the configured default.
+- 2026-06-21 10:35 UTC: v368 workspace resolution visibility exports URL/user memory/linked workspaces/decision details in load reports and prefers a non-owner user's single non-default workspace over the configured default.
 - 2026-06-21 10:20 UTC: v366 stability overhaul pass 1 scopes remembered workspace selection per signed-in user, avoids false Settings/vehicle lookup blocked failures during startup loading, clears stale lock text after workspace load, and adds a visible Workspace session debug card.
 - 2026-06-21 09:15 UTC: v362 filters Latest Data I/O diagnostics the same way as operation status, keeps optional owner/workspace panel failures inside their sections, disables Owner Activity refresh while loading, and suppresses duplicate owner-activity skip rows.
 - 2026-06-19: v233 separates workspace-admin scope from primary app-admin tools. Admins of secondary/private workspaces can manage only their workspace settings, members, and invites; global Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
@@ -26,9 +27,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v368`
-- Updated at: `2026-06-21T10:45:00.000Z`
-- Top release note: Workspace list deduplication now uses ledger id/slug instead of display name, so separate workspaces both named Fuel Ledger no longer collapse into one main-car row; load reports also export vehicle lookup readiness reasons.
+- Service-worker cache: `fuel-ledger-v369`
+- Updated at: `2026-06-21T10:55:00.000Z`
+- Top release note: Workspace refresh is now authoritative on Account open/manual refreshes, one-row workspace lists no longer get freshness-skipped, load reports export the visible selector and current-email membership probe, and vehicle lookup readiness remains visible so hidden test1 membership issues can be diagnosed.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
