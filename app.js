@@ -1838,8 +1838,14 @@ function isOptionalWorkspaceToolsOperation(operation = {}) {
   return source === "workspace-tools-refresh";
 }
 
+function isOptionalAdminHealthOperation(operation = {}) {
+  const entry = operation.latest || operation.start || operation.finish || {};
+  const source = String(entry.source || "").toLowerCase();
+  return source === "admin-render-health" || source === "admin-tool:render-admin-health";
+}
+
 function isOptionalAdminPanelOperation(operation = {}) {
-  return isOptionalOwnerActivityOperation(operation) || isOptionalWorkspaceToolsOperation(operation);
+  return isOptionalOwnerActivityOperation(operation) || isOptionalWorkspaceToolsOperation(operation) || isOptionalAdminHealthOperation(operation);
 }
 
 function isOptionalOwnerActivityDiagnostic(entry = {}) {
@@ -1850,8 +1856,13 @@ function isOptionalWorkspaceToolsDiagnostic(entry = {}) {
   return String(entry.source || "").toLowerCase() === "workspace-tools-refresh";
 }
 
+function isOptionalAdminHealthDiagnostic(entry = {}) {
+  const source = String(entry.source || "").toLowerCase();
+  return source === "admin-render-health" || source === "admin-tool:render-admin-health";
+}
+
 function isOptionalAdminPanelDiagnostic(entry = {}) {
-  return isOptionalOwnerActivityDiagnostic(entry) || isOptionalWorkspaceToolsDiagnostic(entry);
+  return isOptionalOwnerActivityDiagnostic(entry) || isOptionalWorkspaceToolsDiagnostic(entry) || isOptionalAdminHealthDiagnostic(entry);
 }
 
 function latestDataIoDiagnostic({ includeOptionalAdminAudit = false } = {}) {
@@ -2173,6 +2184,7 @@ let ownerGlobalDiagnosticsStatus = {
   error: ""
 };
 let lastOwnerGlobalDiagnosticsFetchAt = 0;
+let lastGoodOwnerGlobalDiagnosticsStatus = null;
 const ownerGlobalDiagnosticsFreshMs = 30000;
 let adminAutoRefreshTimer = null;
 let adminAutoRefreshInFlight = false;
@@ -2180,6 +2192,7 @@ let lastAdminAutoRefreshTickAt = 0;
 let lastAdminAutoHealthAt = 0;
 let lastAdminAutoGlobalAt = 0;
 let lastAdminAutoOwnerActivityAt = 0;
+let adminAutoRefreshNextTaskIndex = 0;
 const adminAutoRefreshIntervalMs = 15000;
 const adminAutoHealthFreshMs = 2 * 60 * 1000;
 const adminAutoGlobalFreshMs = 45 * 1000;
@@ -4787,7 +4800,7 @@ function buildSupabaseLoadReport() {
     workspaceSession: getWorkspaceSessionSnapshot(),
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
     workspaceMembershipProbe: workspaceMembershipProbeStatus,
-    appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsStatus,
+    appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsReportStatus(),
     vehicleLookupReadiness: getVehicleLookupReadinessSnapshot(),
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
@@ -5004,6 +5017,33 @@ function isAdminAutoRefreshActive() {
   return activeView === "admin" && canUseGlobalAdminTools() && Boolean(currentSession);
 }
 
+function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
+  const tasks = [];
+  if (!renderAdminHealthStatus.loading && (!renderAdminHealthStatus.checked || referenceTime - lastAdminAutoHealthAt > adminAutoHealthFreshMs)) {
+    tasks.push("health");
+  }
+  if (!ownerGlobalDiagnosticsStatus.loading && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
+    tasks.push("global");
+  }
+  if (!ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && referenceTime >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || referenceTime - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
+    tasks.push("owner-activity");
+  }
+  return tasks;
+}
+
+function chooseAdminAutoRefreshTask(tasks = []) {
+  if (!tasks.length) return "";
+  const order = ["health", "global", "owner-activity"];
+  for (let i = 0; i < order.length; i += 1) {
+    const candidate = order[(adminAutoRefreshNextTaskIndex + i) % order.length];
+    if (tasks.includes(candidate)) {
+      adminAutoRefreshNextTaskIndex = (order.indexOf(candidate) + 1) % order.length;
+      return candidate;
+    }
+  }
+  return tasks[0] || "";
+}
+
 function adminAutoRefreshStatusSummary() {
   if (!canUseGlobalAdminTools()) return { title: "Off", detail: "Global Admin tools are not available for this account.", level: "warning" };
   if (activeView !== "admin") return { title: "Idle", detail: "Open Admin to start calm automatic refreshes.", level: "ok" };
@@ -5066,17 +5106,16 @@ async function runAdminAutoRefreshTick(reason = "admin-auto-refresh") {
   renderSupabaseLoadMonitor();
   try {
     const now = Date.now();
-    if (!renderAdminHealthStatus.loading && (!renderAdminHealthStatus.checked || now - lastAdminAutoHealthAt > adminAutoHealthFreshMs)) {
+    const task = chooseAdminAutoRefreshTask(dueAdminAutoRefreshTasks(now));
+    if (task === "health") {
       lastAdminAutoHealthAt = now;
-      checkRenderAdminHealth({ silent: true }).catch((error) => console.warn("Auto Render health failed", error));
-    }
-    if (!ownerGlobalDiagnosticsStatus.loading && (!ownerGlobalDiagnosticsStatus.checked || now - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
+      await checkRenderAdminHealth({ silent: true });
+    } else if (task === "global") {
       lastAdminAutoGlobalAt = now;
-      refreshOwnerGlobalDiagnostics({ force: false, silent: true, reason }).catch((error) => console.warn("Auto owner global diagnostics failed", error));
-    }
-    if (!ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && now >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || now - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
+      await refreshOwnerGlobalDiagnostics({ force: false, silent: true, reason });
+    } else if (task === "owner-activity") {
       lastAdminAutoOwnerActivityAt = now;
-      refreshOwnerActivity({ force: false, silent: true, reason }).catch((error) => console.warn("Auto owner activity failed", error));
+      await refreshOwnerActivity({ force: false, silent: true, reason });
     }
   } finally {
     adminAutoRefreshInFlight = false;
@@ -5085,11 +5124,31 @@ async function runAdminAutoRefreshTick(reason = "admin-auto-refresh") {
   }
 }
 
-function renderOwnerGlobalDiagnosticsCard() {
+function ownerGlobalDiagnosticsReportStatus() {
   const status = ownerGlobalDiagnosticsStatus || {};
+  if ((status.loading || status.error) && lastGoodOwnerGlobalDiagnosticsStatus) {
+    return {
+      ...lastGoodOwnerGlobalDiagnosticsStatus,
+      checked: true,
+      ok: true,
+      loading: status.loading === true,
+      staleHealthy: true,
+      lastAttemptFailed: Boolean(status.error),
+      lastFailedAt: status.lastFailedAt || "",
+      message: status.loading
+        ? "Refreshing global diagnostics. Showing the last good app-owner snapshot while the optional refresh runs."
+        : `Latest global diagnostics refresh failed. Showing last good app-owner snapshot from ${formatAdminTimestamp(lastGoodOwnerGlobalDiagnosticsStatus.checkedAt || "")}.`,
+      error: status.error || ""
+    };
+  }
+  return status;
+}
+
+function renderOwnerGlobalDiagnosticsCard() {
+  const status = ownerGlobalDiagnosticsReportStatus();
   const summary = summarizeOwnerGlobalDiagnostics(status);
-  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Checking" : status.checked ? (status.ok ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Needs review") : "Not checked";
+  const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} last good` : status.checked ? (status.ok ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Needs review") : "Not checked";
   const detail = status.message || "Global app-owner diagnostics show all workspaces without requiring the app owner to be a member of each workspace.";
   const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No global workspaces returned.</li>`;
   const targetList = summary.targetMemberships.length ? summary.targetMemberships.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No target-user membership rows returned for ${escapeHtml(appOwnerDiagnosticsTargetEmail())}.</li>`;
@@ -5135,9 +5194,9 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
       timeoutLabel: "Owner global diagnostics",
       body: {
         targetEmail: appOwnerDiagnosticsTargetEmail(),
-        activityLimit: 20,
-        memberLimit: 300,
-        workspaceLimit: 80
+        activityLimit: 8,
+        memberLimit: 120,
+        workspaceLimit: 40
       }
     });
     const diagnostics = result?.diagnostics || {};
@@ -5150,6 +5209,7 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
       loading: false,
       scope: result?.scope || "app-owner-global",
       reason,
+      checkedAt: new Date().toISOString(),
       message: `Loaded ${workspaces.length} global workspace${workspaces.length === 1 ? "" : "s"}; ${targetMemberships.length} testman21 membership row${targetMemberships.length === 1 ? "" : "s"}; ${recentVehicleActivity.length} recent vehicle lookup row${recentVehicleActivity.length === 1 ? "" : "s"}.`,
       workspaceCount: Number(diagnostics.workspaceCount || workspaces.length || 0),
       workspaces,
@@ -5158,19 +5218,38 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
       inviteCount: Number(diagnostics.inviteCount || 0),
       recentVehicleActivity,
       recentActivity: Array.isArray(diagnostics.recentActivity) ? diagnostics.recentActivity : [],
-      error: ""
+      error: "",
+      staleHealthy: false,
+      lastAttemptFailed: false
     };
+    lastGoodOwnerGlobalDiagnosticsStatus = { ...ownerGlobalDiagnosticsStatus, loading: false };
     lastOwnerGlobalDiagnosticsFetchAt = Date.now();
     if (!silent) setDataToolsMessage(ownerGlobalDiagnosticsStatus.message);
   } catch (error) {
-    ownerGlobalDiagnosticsStatus = {
-      ...ownerGlobalDiagnosticsStatus,
-      checked: true,
-      ok: false,
-      loading: false,
-      error: error?.message || String(error || "Owner global diagnostics failed."),
-      message: `Owner global diagnostics failed: ${error?.message || error}`
-    };
+    const failedAt = new Date().toISOString();
+    const previousGood = lastGoodOwnerGlobalDiagnosticsStatus;
+    if (previousGood) {
+      ownerGlobalDiagnosticsStatus = {
+        ...previousGood,
+        checked: true,
+        ok: true,
+        loading: false,
+        staleHealthy: true,
+        lastAttemptFailed: true,
+        lastFailedAt: failedAt,
+        error: error?.message || String(error || "Owner global diagnostics failed."),
+        message: `Latest global diagnostics refresh failed. Showing last good app-owner snapshot from ${formatAdminTimestamp(previousGood.checkedAt || "")}.`
+      };
+    } else {
+      ownerGlobalDiagnosticsStatus = {
+        ...ownerGlobalDiagnosticsStatus,
+        checked: true,
+        ok: false,
+        loading: false,
+        error: error?.message || String(error || "Owner global diagnostics failed."),
+        message: `Owner global diagnostics failed: ${error?.message || error}`
+      };
+    }
     if (!silent) setDataToolsMessage(ownerGlobalDiagnosticsStatus.message);
   } finally {
     renderSupabaseLoadMonitor();
@@ -5440,19 +5519,21 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || /timed out|timeout/i.test(String(error?.message || error || ""));
     const previousHealthy = renderAdminHealthStatus && renderAdminHealthStatus.ok === true;
     const failedAt = new Date().toISOString();
-    if (timedOut && previousHealthy) {
+    if (timedOut) {
       const healthyAt = renderAdminHealthStatus.lastHealthyAt || renderAdminHealthStatus.checkedAt || "";
       renderAdminHealthStatus = {
         ...renderAdminHealthStatus,
         checked: true,
-        ok: true,
+        ok: previousHealthy,
         loading: false,
         mode: "render",
-        checkedAt: healthyAt || renderAdminHealthStatus.checkedAt || failedAt,
+        checkedAt: previousHealthy ? (healthyAt || renderAdminHealthStatus.checkedAt || failedAt) : failedAt,
         lastFailedAt: failedAt,
         lastAttemptFailed: true,
         staleHealthy: true,
-        message: `Latest admin health check timed out after 12s. Last healthy check was ${formatAdminTimestamp(healthyAt)}; core app loading remains healthy.`
+        message: previousHealthy
+          ? `Latest admin health check timed out after 12s. Last healthy check was ${formatAdminTimestamp(healthyAt)}; core app loading remains healthy.`
+          : "Render admin health is slow right now. Core workspace loading is checked separately and can still be healthy."
       };
     } else {
       renderAdminHealthStatus = {
@@ -5482,7 +5563,7 @@ function renderRenderAdminHealthCard() {
   const okCount = checks.filter((check) => check.ok === true).length;
   const issueCount = checks.filter((check) => check.ok === false).length;
   const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Checking" : status.staleHealthy ? "Last OK" : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
+  const title = status.loading ? "Checking" : status.staleHealthy ? (status.ok ? "Last OK" : "Slow") : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
   const detail = status.message || "Run the Render admin health check before dangerous admin work.";
   return `
     <article class="admin-metric-card ${cardClass}">
