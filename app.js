@@ -55,6 +55,7 @@ const supabaseHelpers = window.FuelSupabaseHelpers;
 const supabaseConfig = supabaseHelpers.getSupabaseConfig();
 const configuredLedgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 const activeWorkspaceStorageKey = "fuel-ledger-active-workspace-id";
+const activeWorkspaceStorageKeyPrefix = `${activeWorkspaceStorageKey}:user:`;
 let activeLedgerId = readActiveWorkspaceIdFromCurrentUrl() || localStorage.getItem(activeWorkspaceStorageKey) || configuredLedgerId;
 supabaseConfig.activeLedgerId = activeLedgerId;
 const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig);
@@ -99,6 +100,33 @@ function readActiveWorkspaceIdFromCurrentUrl() {
     console.warn("Could not read workspace from URL", error);
   }
   return "";
+}
+
+function getActiveWorkspaceStorageKeyForEmail(email = "") {
+  const normalized = normalizeEmail(email || "");
+  return normalized ? `${activeWorkspaceStorageKeyPrefix}${normalized}` : activeWorkspaceStorageKey;
+}
+
+function getCurrentUserWorkspaceStorageKey() {
+  return getActiveWorkspaceStorageKeyForEmail(getLoggedInEmail());
+}
+
+function readRememberedWorkspaceIdForCurrentUser() {
+  const fromUrl = readActiveWorkspaceIdFromCurrentUrl();
+  if (fromUrl) return fromUrl;
+  const scopedKey = getCurrentUserWorkspaceStorageKey();
+  const scoped = scopedKey ? normalizeWorkspaceUrlId(localStorage.getItem(scopedKey) || "") : "";
+  if (scoped) return scoped;
+  return normalizeWorkspaceUrlId(localStorage.getItem(activeWorkspaceStorageKey) || "");
+}
+
+function applyWorkspacePreferenceForCurrentUser(reason = "workspace-preference") {
+  const preferred = readRememberedWorkspaceIdForCurrentUser();
+  if (!preferred || preferred === getActiveLedgerId()) return false;
+  const previous = getActiveLedgerId();
+  setActiveLedgerId(preferred, { persist: true, updateUrl: true });
+  recordSupabaseLoadEvent("workspace-preference-applied", `${reason}: ${previous || "none"} -> ${preferred}`);
+  return true;
 }
 
 function writeActiveWorkspaceToCurrentUrl(ledgerId) {
@@ -259,7 +287,13 @@ function setActiveLedgerId(ledgerId, { persist = true, updateUrl = true } = {}) 
   const normalized = String(ledgerId || getConfiguredLedgerId()).trim() || getConfiguredLedgerId();
   activeLedgerId = normalized;
   supabaseConfig.activeLedgerId = normalized;
-  if (persist) localStorage.setItem(activeWorkspaceStorageKey, normalized);
+  if (persist) {
+    const scopedKey = getCurrentUserWorkspaceStorageKey();
+    localStorage.setItem(scopedKey, normalized);
+    if (scopedKey !== activeWorkspaceStorageKey) {
+      localStorage.removeItem(activeWorkspaceStorageKey);
+    }
+  }
   if (updateUrl) writeActiveWorkspaceToCurrentUrl(normalized);
   return activeLedgerId;
 }
@@ -378,6 +412,10 @@ function requestActiveWorkspaceReload(reason = "workspace-action-blocked") {
 function maybeRecordSettingsWorkspaceLocked() {
   if (!supabaseClient || !currentSession) return;
   if (isActiveWorkspaceDataConfirmed()) return;
+  // Startup/loading is not a failure. Only record a blocked row after a load has stopped
+  // without confirming the requested workspace, otherwise Settings looks broken while
+  // the normal first workspace load is still in progress.
+  if (activeWorkspaceLoadInProgress || supabaseLoadInFlight || startupHydrationActive) return;
   const selectedWorkspaceId = getActiveLedgerId();
   const session = getWorkspaceSessionSnapshot({
     selectedWorkspaceId,
@@ -7837,6 +7875,11 @@ function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
         <strong>${activeWorkspaceLoadInProgress ? "Loading…" : workspaceConfirmed ? "Loaded and isolated" : "Not confirmed"}</strong>
         <small>${activeWorkspaceLoadInProgress ? "Editing is temporarily locked while this workspace loads." : workspaceConfirmed ? "Actions are scoped to this workspace only." : "Use Sync now before editing so old workspace data cannot bleed into this one."}</small>
       </article>
+      <article>
+        <span>Workspace session</span>
+        <strong>${escapeHtml(getWorkspaceSessionSnapshot().loadStatus)}</strong>
+        <small>URL ${escapeHtml(readActiveWorkspaceIdFromCurrentUrl() || "none")} · selected ${escapeHtml(getWorkspaceSessionSnapshot().selectedWorkspaceId || "none")} · loaded ${escapeHtml(getWorkspaceSessionSnapshot().loadedWorkspaceId || "none")}</small>
+      </article>
     </div>
   `;
 }
@@ -7910,6 +7953,7 @@ async function initializeSupabase() {
   setSyncStatus("Login");
   const { data } = await supabaseClient.auth.getSession();
   currentSession = data.session;
+  if (currentSession) applyWorkspacePreferenceForCurrentUser("initial-session");
   if (currentSession?.user?.email) {
     localStorage.setItem(rememberedLoginEmailKey, currentSession.user.email);
     localStorage.removeItem(pendingLoginEmailKey);
@@ -7924,6 +7968,7 @@ async function initializeSupabase() {
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentSession = session;
+    if (session) applyWorkspacePreferenceForCurrentUser(`auth-${String(event || "session").toLowerCase()}`);
     initializeInviteDeepLink();
     if (session?.user?.email) {
       localStorage.setItem(rememberedLoginEmailKey, session.user.email);
@@ -8654,9 +8699,11 @@ function renderSettings() {
       selectedWorkspaceId: getActiveLedgerId(),
       selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(getActiveLedgerId())
     });
-    els.vehicleLookupStatus.textContent = activeWorkspaceLoadInProgress
+    els.vehicleLookupStatus.textContent = activeWorkspaceLoadInProgress || supabaseLoadInFlight || startupHydrationActive
       ? `Loading ${session.selectedWorkspaceLabel} before settings can be edited…`
-      : `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded. Loading ${session.selectedWorkspaceLabel} before settings can be edited…`;
+      : `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded. Use Sync now or switch workspace to retry.`;
+  } else if (canManage && workspaceConfirmed && els.vehicleLookupStatus && /Loading .*before settings|settings are locked|Vehicle lookup is blocked/i.test(String(els.vehicleLookupStatus.textContent || ""))) {
+    els.vehicleLookupStatus.textContent = "Workspace loaded. Enter a plate to look up vehicle details, or edit settings manually.";
   }
 
   const isEditingSettings = Boolean(els.settingsForm && els.settingsForm.contains(document.activeElement));
@@ -14205,6 +14252,10 @@ async function refreshLinkedWorkspacesAfterInvite(preferredLedgerId = "") {
   workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(data);
   workspaceInviteStatus.loaded = true;
   lastWorkspaceInviteRefreshAt = Date.now();
+  const rememberedForUser = readRememberedWorkspaceIdForCurrentUser();
+  if (!preferred && !rememberedForUser && workspaceInviteStatus.ledgers.length === 1) {
+    setActiveLedgerId(workspaceInviteStatus.ledgers[0].ledger_id, { persist: true });
+  }
   if (preferred && workspaceInviteStatus.ledgers.some((ledger) => String(ledger.ledger_id || "") === preferred)) {
     setActiveLedgerId(preferred, { persist: true });
   } else {

@@ -15,5 +15,12 @@ assert.match(app, /async function refreshLinkedWorkspacesAfterInvite\(preferredL
 assert.match(app, /const joinedLedgerId = String\(result\?\.ledger_id[\s\S]*if \(joinedLedgerId\) setActiveLedgerId\(joinedLedgerId/, 'invite redemption should select the joined workspace immediately.');
 assert.match(app, /const newLedgerId = result && result\.ledger_id[\s\S]*setActiveLedgerId\(newLedgerId, \{ persist: true \}\)[\s\S]*refreshLinkedWorkspacesAfterInvite\(newLedgerId\)/, 'workspace creation should select the created workspace before refreshing linked workspaces.');
 assert.doesNotMatch(app, /const preferred = ledgers\.find\(\(ledger\) => String\(ledger\.ledger_id \|\| ""\) === String\(getConfiguredLedgerId\(\)/, 'selection repair should not always prefer the configured primary workspace.');
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v365"/, 'build-info should point to v365 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v365"/, 'service worker cache should be bumped to v365.');
+
+assert.match(app, /const activeWorkspaceStorageKeyPrefix = `\$\{activeWorkspaceStorageKey\}:user:`/, 'remembered active workspace should be scoped per signed-in user.');
+assert.match(app, /function applyWorkspacePreferenceForCurrentUser\(reason = "workspace-preference"\)/, 'signed-in sessions should apply URL/user-scoped workspace preference before loading.');
+assert.match(app, /if \(currentSession\) applyWorkspacePreferenceForCurrentUser\("initial-session"\)/, 'initial session should apply user-scoped workspace preference before workspace refresh.');
+assert.match(app, /if \(activeWorkspaceLoadInProgress \|\| supabaseLoadInFlight \|\| startupHydrationActive\) return;/, 'settings lock diagnostics should not record false failures during normal startup loading.');
+assert.match(app, /Workspace session[\s\S]*URL \$\{escapeHtml\(readActiveWorkspaceIdFromCurrentUrl\(\) \|\| "none"\)\}/, 'workspace scope summary should expose a temporary workspace session debug card.');
+
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v366"/, 'build-info should point to v365 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v366"/, 'service worker cache should be bumped to v365.');

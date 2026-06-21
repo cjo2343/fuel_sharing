@@ -1,3 +1,4 @@
+- 2026-06-21 10:20 UTC: v366 stability overhaul pass 1 scopes remembered workspace selection per signed-in user, avoids false Settings/vehicle lookup blocked failures during startup loading, clears stale lock text after workspace load, and adds a visible Workspace session debug card.
 - 2026-06-21 09:15 UTC: v362 filters Latest Data I/O diagnostics the same way as operation status, keeps optional owner/workspace panel failures inside their sections, disables Owner Activity refresh while loading, and suppresses duplicate owner-activity skip rows.
 - 2026-06-19: v233 separates workspace-admin scope from primary app-admin tools. Admins of secondary/private workspaces can manage only their workspace settings, members, and invites; global Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
 - 2026-06-19 v229: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
@@ -23,9 +24,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v365`
-- Updated at: `2026-06-21T10:05:00.000Z`
-- Top release note: Workspace identity is now URL-backed and create/join/switch flows preserve the intended workspace through refreshes, so secondary workspaces such as test1 no longer drift back to main-car after list refresh or reload.
+- Service-worker cache: `fuel-ledger-v366`
+- Updated at: `2026-06-21T10:20:00.000Z`
+- Top release note: Stability overhaul pass 1 makes workspace selection user-scoped, avoids recording Settings/vehicle lookup as failed during normal startup loading, clears stale Settings lock text after workspace load, and adds a visible Workspace session debug card.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -608,5 +609,4 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - 2026-06-21 09:00 UTC — Optional admin panel noise patch: workspace/invite refresh and owner-audit refresh no longer auto-run on Admin open or dominate Latest Data I/O; skipped rows are counted separately from failures; runtime cache `fuel-ledger-v361`.
 
-- 2026-06-21 10:05 UTC — URL-backed workspace identity patch: workspace selection now reads/writes ?workspace=, create/join flows preserve the intended workspace through list refresh, invite links strip workspace URL state, and runtime cache is `fuel-ledger-v365`.
-- 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v365`.
+- 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v364`.

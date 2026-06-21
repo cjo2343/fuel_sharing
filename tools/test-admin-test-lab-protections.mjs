@@ -52,7 +52,7 @@ for (const [button, phrase] of [
 }
 
 assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249|250|251|252|253|254|255|256|257)"/, 'runtime version must be bumped for app.js changes.');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[456789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365)"/, 'build-info must expect the bumped service-worker cache.');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[456789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365)"/, 'service-worker cache must be bumped with runtime changes.');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[456789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365|366)"/, 'build-info must expect the bumped service-worker cache.');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[456789]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365|366)"/, 'service-worker cache must be bumped with runtime changes.');
 
 console.log('Admin/Test Lab protection guard check passed.');
