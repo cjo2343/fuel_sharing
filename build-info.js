@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.261",
-    buildLabel: "admin-panel-declutter-lane",
-    updatedAt: "2026-06-22T00:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v400",
+    version: "2026.06.18.262",
+    buildLabel: "multi-workspace-authority-lane",
+    updatedAt: "2026-06-22T01:15:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v401",
     releaseNotes: Object.freeze([
+      "Multi-workspace authority lane separates the active workspace from app-owner global audit: workspace switches only unlock after selected, backend, and loaded workspace all match, while app-owner Owner activity defaults to all workspaces through the owner-only Render route without changing the active workspace.",
       "Admin now opens with a calmer workspace-admin overview, keeps routine owner backups/exports separate, and collapses raw Data I/O, Test Lab, health checks, and repair tools into a Diagnostics Lab drawer so hotfix/debug UI no longer crowds normal admin work.",
       "Workspace switching now avoids joining an in-flight backend app-context request for a different workspace, so switching users/workspaces gets a fresh target-specific context and loads the selected workspace without requiring a browser refresh.",
     "Post-startup auth events now reuse the successful startup wake gate instead of running an immediate duplicate state load, and Admin diagnostics completes from fresh backend app context without leaving a stale loading state.",

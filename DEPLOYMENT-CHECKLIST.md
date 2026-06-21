@@ -32,10 +32,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.261`
-- Service-worker cache: `fuel-ledger-v400`
-- Updated at: `2026-06-22T00:55:00.000Z`
-- Top release note: Admin now opens with a calmer workspace-admin overview, keeps routine owner backups/exports separate, and collapses raw Data I/O, Test Lab, health checks, and repair tools into a Diagnostics Lab drawer so hotfix/debug UI no longer crowds normal admin work.
+- Version: `2026.06.18.262`
+- Service-worker cache: `fuel-ledger-v401`
+- Updated at: `2026-06-22T01:15:00.000Z`
+- Top release note: Multi-workspace authority lane separates the active workspace from app-owner global audit: workspace switches only unlock after selected, backend, and loaded workspace all match, while app-owner Owner activity defaults to all workspaces through the owner-only Render route without changing the active workspace.
 
 ## Invite beta readiness: member action Data I/O
 

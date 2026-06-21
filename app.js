@@ -946,6 +946,75 @@ function renderActiveWorkspaceSelector() {
   els.activeWorkspace.disabled = !supabaseClient || !currentSession || loadingWithoutUsableAlternatives || safeOptions.length <= 1;
 }
 
+function isWorkspaceSwitchCommitConfirmed(targetLedgerId) {
+  const target = String(targetLedgerId || "").trim();
+  if (!target) return false;
+  const activeId = String(getActiveLedgerId() || "").trim();
+  const loadedId = String(getLoadedWorkspaceId() || "").trim();
+  const backendId = String(getBackendAppContextActiveWorkspaceId() || "").trim();
+  return Boolean(activeId === target && loadedId === target && backendId === target && isActiveWorkspaceDataConfirmed());
+}
+
+async function retryWorkspaceSwitchCommit(targetLedgerId, source = "workspace-selector") {
+  const target = String(targetLedgerId || "").trim();
+  if (!target || !currentSession) return false;
+  recordDataIoDiagnostic("start", {
+    source: "workspace-switch-commit",
+    route: "render-api",
+    endpoint: renderAppContextUrl,
+    operation: "commit",
+    ok: true,
+    resultCode: "WORKSPACE_SWITCH_COMMIT_RETRY_STARTED",
+    selectedWorkspaceId: target,
+    loadedWorkspaceId: getLoadedWorkspaceId(),
+    detail: `Retrying workspace switch commit for ${target}; selected, backend, and loaded workspace must match before the UI is unlocked.`
+  });
+  setActiveLedgerId(target, { persist: true, updateUrl: true });
+  markActiveWorkspaceLoading(`workspace-switch-commit:${source}`);
+  const context = await hydrateAppSessionContext({
+    reason: `workspace-switch-commit:${source}`,
+    preferredWorkspaceId: target,
+    force: true,
+    timeoutMs: 8000,
+    source: "workspace-switch-commit"
+  });
+  const backendId = String(context?.activeWorkspace?.ledgerId || context?.activeWorkspace?.ledger_id || getBackendAppContextActiveWorkspaceId() || "").trim();
+  if (backendId !== target) {
+    recordDataIoDiagnostic("blocked", {
+      source: "workspace-switch-commit",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "commit",
+      ok: false,
+      resultCode: "WORKSPACE_SWITCH_COMMIT_BACKEND_MISMATCH",
+      selectedWorkspaceId: target,
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      detail: `Backend confirmed ${backendId || "no workspace"} instead of ${target}; switch remains locked.`
+    });
+    return false;
+  }
+  const loaded = await loadSupabaseStateWithTimeout(
+    { force: true, manual: true, reason: `workspace-switch-commit:${source}:${target}` },
+    supabaseStartupLoadTimeoutMs,
+    "Workspace switch commit is delayed. The app kept editing locked instead of requiring a browser refresh."
+  );
+  const confirmed = Boolean(loaded && isWorkspaceSwitchCommitConfirmed(target));
+  recordDataIoDiagnostic(confirmed ? "success" : "error", {
+    source: "workspace-switch-commit",
+    route: "render-api",
+    endpoint: renderStateLoadUrl,
+    operation: "commit",
+    ok: confirmed,
+    resultCode: confirmed ? "WORKSPACE_SWITCH_COMMIT_CONFIRMED" : "WORKSPACE_SWITCH_COMMIT_MISMATCH",
+    selectedWorkspaceId: target,
+    loadedWorkspaceId: getLoadedWorkspaceId(),
+    detail: confirmed
+      ? `Workspace switch commit confirmed for ${target}.`
+      : `Workspace switch commit still mismatched: active=${getActiveLedgerId()}, backend=${getBackendAppContextActiveWorkspaceId() || "unknown"}, loaded=${getLoadedWorkspaceId()}.`
+  });
+  return confirmed;
+}
+
 async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   const targetLedgerId = String(ledgerId || "").trim();
   const alreadySelected = targetLedgerId && targetLedgerId === getActiveLedgerId();
@@ -1047,12 +1116,15 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   unsubscribeFromSupabaseState();
   subscribeToLedgerEvents();
   subscribeToSupabaseState({ force: true });
-  const loaded = await loadSupabaseStateWithTimeout(
+  let loaded = await loadSupabaseStateWithTimeout(
     { force: true, manual: true, reason: `workspace-switch:${source}:${targetLedgerId}` },
     supabaseStartupLoadTimeoutMs,
     "Workspace switch sync is delayed. You can keep using local data and try Sync now."
   );
-  if (loaded) {
+  if (loaded && !isWorkspaceSwitchCommitConfirmed(targetLedgerId)) {
+    loaded = await retryWorkspaceSwitchCommit(targetLedgerId, source);
+  }
+  if (loaded && isWorkspaceSwitchCommitConfirmed(targetLedgerId)) {
     markActiveWorkspaceConfirmed(source);
     const confirmedSession = getWorkspaceSessionSnapshot();
     recordDataIoDiagnostic("success", {
@@ -2576,7 +2648,9 @@ const ownerActivityTimeoutCooldownMaxMs = 300000;
 const ownerActivityVisibleRowLimit = 6;
 let ownerActivityAutoPausedUntilManual = false;
 let ownerActivityInitialAdminLoadAttempted = false;
-let ownerActivityScope = localStorage.getItem("ownerActivityScope") === "all" ? "all" : "current";
+const ownerActivityScopeDefaultVersionKey = "ownerActivityScopeDefaultVersion";
+const ownerActivityScopeDefaultVersion = "multi-workspace-authority-v1";
+let ownerActivityScope = localStorage.getItem("ownerActivityScope") === "current" ? "current" : "all";
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -2970,6 +3044,7 @@ document.addEventListener("click", (event) => {
     if (!requireGlobalAdminToolsPermission("Change owner activity scope")) return;
     ownerActivityScope = scopeButton.dataset.ownerActivityScope === "all" ? "all" : "current";
     localStorage.setItem("ownerActivityScope", ownerActivityScope);
+    localStorage.setItem(ownerActivityScopeDefaultVersionKey, ownerActivityScopeDefaultVersion);
     refreshOwnerActivity({ force: true, silent: false, bypassCooldown: true, reason: `manual-scope-${ownerActivityScope}` }).catch((error) => {
       setDataToolsMessage(`Owner activity refresh failed: ${error?.message || error}`);
     });
@@ -5388,6 +5463,29 @@ function renderOwnerActivityScopeControls() {
   </div>`;
 }
 
+function ensureOwnerActivityScopeDefault(reason = "owner-activity") {
+  if (!canUseGlobalAdminTools()) return ownerActivityScope;
+  const defaultVersion = localStorage.getItem(ownerActivityScopeDefaultVersionKey) || "";
+  if (defaultVersion !== ownerActivityScopeDefaultVersion) {
+    ownerActivityScope = "all";
+    localStorage.setItem("ownerActivityScope", ownerActivityScope);
+    localStorage.setItem(ownerActivityScopeDefaultVersionKey, ownerActivityScopeDefaultVersion);
+    recordDataIoDiagnostic("skip", {
+      source: "owner-activity",
+      route: "render-api",
+      endpoint: renderOwnerActivityUrl,
+      operation: "scope-default",
+      ok: true,
+      resultCode: "OWNER_ACTIVITY_SCOPE_DEFAULT_ALL_WORKSPACES",
+      ledgerId: "all-workspaces",
+      selectedWorkspaceId: getActiveLedgerId(),
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      detail: `App-owner activity defaults to all workspaces (${reason}); active workspace stays scoped separately.`
+    });
+  }
+  return ownerActivityScope;
+}
+
 function renderOwnerActivityWorkspaceOverview(rows = []) {
   const groups = ownerActivityWorkspaceGroups(rows);
   if (!groups.length) return "";
@@ -5827,6 +5925,7 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
 }
 
 function renderOwnerActivityCard() {
+  ensureOwnerActivityScopeDefault("render-owner-activity-card");
   const status = ownerActivityStatus || {};
   const allRows = Array.isArray(status.rows) ? status.rows : [];
   const visibleRows = ownerActivityVisibleRows(allRows);
@@ -5870,6 +5969,7 @@ function renderOwnerActivityCard() {
 
 async function refreshOwnerActivity({ force = false, silent = true, bypassCooldown = false, reason = "background" } = {}) {
   if (!canUseGlobalAdminTools()) return ownerActivityStatus;
+  ensureOwnerActivityScopeDefault(reason);
   const now = Date.now();
   if (!force && ownerActivityAutoPausedUntilManual) {
     ownerActivityStatus = {
@@ -5937,7 +6037,7 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
     endpoint: renderOwnerActivityUrl,
     operation: "load",
     operationId,
-    ledgerId: ownerActivityWorkspaceContext.loadedWorkspaceId,
+    ledgerId: ownerActivityScope === "all" ? "all-workspaces" : ownerActivityWorkspaceContext.loadedWorkspaceId,
     selectedWorkspaceId: ownerActivityWorkspaceContext.selectedWorkspaceId,
     selectedWorkspaceLabel: ownerActivityWorkspaceContext.selectedWorkspaceLabel,
     loadedWorkspaceId: ownerActivityWorkspaceContext.loadedWorkspaceId,
@@ -5946,7 +6046,7 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
     staleAfterMs: dataIoOperationStaleMs
   };
   ownerActivityInFlightTraceMeta = traceMeta;
-  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: ownerActivityWorkspaceContext.workspaceMismatch ? "Load owner activity (workspace selector differs from loaded workspace)" : "Load owner activity" });
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: ownerActivityScope === "all" ? "OWNER_ACTIVITY_ALL_WORKSPACES_STARTED" : "OWNER_ACTIVITY_CURRENT_WORKSPACE_STARTED", detail: ownerActivityScope === "all" ? "Load app-owner activity across all workspaces; active workspace is not changed." : (ownerActivityWorkspaceContext.workspaceMismatch ? "Load owner activity (workspace selector differs from loaded workspace)" : "Load owner activity") });
   try {
     const { result } = await callRenderJson(renderOwnerActivityUrl, {
       method: "POST",
