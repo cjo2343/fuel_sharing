@@ -34,8 +34,8 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 ## Current release target
 - Version: `2026.06.18.257`
 - Service-worker cache: `fuel-ledger-v392`
-- Updated at: `2026-06-21T21:05:00.000Z`
-- Top release note: Backend app context pass 5 separates Admin/owner diagnostics from the normal app sync lane: Admin now shows backend context workspace/permission truth, optional owner/global routes do not auto-run, and load reports expose the separated admin diagnostics lane.
+- Updated at: `2026-06-21T22:15:00.000Z`
+- Top release note: Workspace context resolution now treats linked workspace slugs as aliases for canonical ledger IDs in both the frontend resolver and Render /api/app/context, preventing ?workspace=slug links or remembered slug values from drifting back to main-car.
 
 ## Invite beta readiness: member action Data I/O
 
