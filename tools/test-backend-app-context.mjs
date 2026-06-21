@@ -20,6 +20,6 @@ assert(app.includes("async function getRenderAppContext"), "frontend can load ba
 assert(app.includes("applyBackendAppContext"), "frontend applies backend app context");
 assert(app.includes('reason: "state-load"') && app.includes("backendWorkspaceId"), "state load asks backend context before loading rows");
 assert(app.includes("appBackendContext: appBackendContextStatus"), "load reports export backend app context status");
-assert(build.includes("fuel-ledger-v390") && sw.includes("fuel-ledger-v390"), "runtime cache bumped to v388");
+assert(build.includes("fuel-ledger-v391") && sw.includes("fuel-ledger-v391"), "runtime cache bumped to v388");
 
 console.log("Backend app context guardrail passed.");

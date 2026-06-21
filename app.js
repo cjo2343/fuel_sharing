@@ -2465,6 +2465,8 @@ let appBackendContextStatus = {
   activeWorkspaceId: "",
   decision: "not-checked"
 };
+const backendAppContextFreshMs = 45000;
+let backendAppContextSyncPromise = null;
 let workspaceMembershipProbeStatus = {
   checked: false,
   ok: false,
@@ -8743,9 +8745,8 @@ async function initializeSupabase() {
   if (currentSession) beginStartupHydration("initial-session");
   updateAuthUi();
   if (currentSession) {
-    await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Initial workspace list refresh failed", error));
+    await ensureBackendAppContextForSyncLane("initial-session").catch((error) => console.warn("Initial backend app context failed", error));
     await refreshAuthBoundMemberProfile();
-    scheduleWorkspaceInviteRefresh("startup-session");
   }
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
@@ -8760,9 +8761,8 @@ async function initializeSupabase() {
     if (session && !lastCloudSyncAt) beginStartupHydration(`auth-${String(event || "session").toLowerCase()}`);
     updateAuthUi();
     if (session) {
-      await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Auth workspace list refresh failed", error));
+      await ensureBackendAppContextForSyncLane(`auth-${String(event || "session").toLowerCase()}`).catch((error) => console.warn("Auth backend app context failed", error));
       await refreshAuthBoundMemberProfile();
-      scheduleWorkspaceInviteRefresh("auth-session");
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
       const authEvent = String(event || "auth-change").toLowerCase();
@@ -15458,6 +15458,34 @@ function isBackendAppContextCurrentForActiveWorkspace() {
   return Boolean(appBackendContextStatus?.ok && backendWorkspaceId && backendWorkspaceId === String(getActiveLedgerId() || ""));
 }
 
+function isBackendAppContextFreshForWorkspace(workspaceId = getActiveLedgerId()) {
+  const backendWorkspaceId = getBackendAppContextActiveWorkspaceId();
+  const checkedAtMs = Date.parse(appBackendContextStatus?.checkedAt || "");
+  return Boolean(
+    appBackendContextStatus?.ok
+    && backendWorkspaceId
+    && backendWorkspaceId === String(workspaceId || getActiveLedgerId() || "")
+    && checkedAtMs
+    && Date.now() - checkedAtMs < backendAppContextFreshMs
+  );
+}
+
+async function ensureBackendAppContextForSyncLane(reason = "sync") {
+  if (!currentSession) return null;
+  const activeWorkspaceId = getActiveLedgerId();
+  if (isBackendAppContextFreshForWorkspace(activeWorkspaceId)) return getBackendAppContext();
+  if (backendAppContextSyncPromise) return backendAppContextSyncPromise;
+  backendAppContextSyncPromise = getRenderAppContext({
+    ledgerId: activeWorkspaceId,
+    preferredWorkspaceId: activeWorkspaceId,
+    reason: `sync-lane:${String(reason || "sync")}`,
+    timeoutMs: 6000
+  }).finally(() => {
+    backendAppContextSyncPromise = null;
+  });
+  return backendAppContextSyncPromise;
+}
+
 function getBackendAppContextPermission(name) {
   const context = getBackendAppContext();
   if (!isBackendAppContextCurrentForActiveWorkspace()) return null;
@@ -20013,7 +20041,9 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   if (!(await hasFreshSupabaseSession())) return null;
 
   let ledgerId = getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig);
-  const backendContext = await getRenderAppContext({ ledgerId, preferredWorkspaceId: ledgerId, reason: "state-load" });
+  const backendContext = isBackendAppContextFreshForWorkspace(ledgerId)
+    ? getBackendAppContext()
+    : await getRenderAppContext({ ledgerId, preferredWorkspaceId: ledgerId, reason: "state-load" });
   const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
   if (backendWorkspaceId) ledgerId = backendWorkspaceId;
   const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
@@ -20544,6 +20574,10 @@ async function loadSupabaseState(options = {}) {
     setSyncStatus("Login");
     return false;
   }
+
+  await ensureBackendAppContextForSyncLane(reason).catch((error) => {
+    recordSyncDiagnostic("app-context-sync-lane-fallback", error?.message || "Backend app context was unavailable; continuing with existing workspace state.", { reason, error });
+  });
 
   const now = Date.now();
   if (shouldDeferBackgroundCloudLoad(reason, now)) {
