@@ -1328,6 +1328,9 @@ let appStartupGateState = {
   completedAt: 0
 };
 let appStartupGatePromise = null;
+let lastAppStartupGateReadyAt = 0;
+let lastAppStartupGateStateLoadReason = "";
+const postStartupGateAuthLoadSuppressMs = 10000;
 let activeWorkspaceLoadInProgress = false;
 let activeWorkspaceLoadLedgerId = "";
 let activeWorkspaceLoadStartedAt = 0;
@@ -1456,6 +1459,15 @@ function shouldDelayOptionalStartupLane(reason = "optional") {
   return appStartupGateState.loading || startupHydrationActive || !lastCloudSyncAt;
 }
 
+function shouldSuppressPostStartupGateAuthStateLoad(authEvent = "") {
+  if (!supabaseClient || !currentSession || !isAppStartupGateReady()) return false;
+  const normalizedEvent = String(authEvent || "").toLowerCase();
+  if (!/initial_session|signed_in|session_updated|token_refreshed/.test(normalizedEvent)) return false;
+  const ageMs = Date.now() - Number(lastAppStartupGateReadyAt || 0);
+  if (ageMs < 0 || ageMs > postStartupGateAuthLoadSuppressMs) return false;
+  return hasRecentHealthyCloudSync() || Boolean(lastCloudSyncAt || lastCloudSaveAt);
+}
+
 async function ensureAppStartupWakeGate(reason = "startup", { force = false } = {}) {
   if (!supabaseClient || !currentSession) return false;
   const normalizedReason = String(reason || "startup");
@@ -1509,6 +1521,14 @@ async function ensureAppStartupWakeGate(reason = "startup", { force = false } = 
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
       setAppStartupGatePhase("ready", `Startup gate ready for ${normalizedReason}.`, { reason: normalizedReason });
+      lastAppStartupGateReadyAt = Date.now();
+      lastAppStartupGateStateLoadReason = normalizedReason;
+      const gateUserKey = String(currentSession?.user?.id || currentSession?.user?.email || "");
+      if (gateUserKey) {
+        lastAuthCloudSyncUserKey = gateUserKey;
+        lastAuthCloudSyncAt = lastAppStartupGateReadyAt;
+        lastAuthCloudSyncEventAt = lastAppStartupGateReadyAt;
+      }
       finishStartupHydration(`startup-gate-ready:${normalizedReason}`);
       clearSyncDelay(`startup-gate-ready:${normalizedReason}`);
       updateAuthUi();
@@ -5545,6 +5565,25 @@ function startAdminAutoRefresh(reason = "admin") {
   renderSupabaseLoadMonitor();
 }
 
+function completeAdminDiagnosticsLaneFromContext(context, reason = "admin") {
+  const isOwner = Boolean(context?.permissions?.canUseAppOwnerDiagnostics);
+  adminDiagnosticsLaneStatus = {
+    ...adminDiagnosticsLaneStatus,
+    checked: true,
+    ok: Boolean(context),
+    loading: false,
+    lastReason: reason,
+    checkedAt: new Date().toISOString(),
+    message: context
+      ? (isOwner
+        ? "Admin is using backend app context. Owner/global diagnostics remain explicit actions and do not drive workspace sync."
+        : "Admin is using backend app context. This account can manage its workspace but cannot run app-owner global diagnostics.")
+      : "Backend app context was unavailable; Admin diagnostics are separated and did not run owner/global routes."
+  };
+  renderSupabaseLoadMonitor();
+  return context;
+}
+
 async function startAdminDiagnosticsLane(reason = "admin") {
   markOptionalAdminPanelsReadyForManualRefresh(reason);
   stopAdminAutoRefresh(`${reason}-separated`);
@@ -5561,6 +5600,19 @@ async function startAdminDiagnosticsLane(reason = "admin") {
     renderSupabaseLoadMonitor();
     return null;
   }
+  const activeContext = getBackendAppContext();
+  if (isBackendAppContextCurrentForActiveWorkspace() && activeContext) {
+    recordDataIoDiagnostic("skip", {
+      source: "admin-diagnostics",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "hydrate",
+      ok: true,
+      resultCode: "ADMIN_DIAGNOSTICS_CONTEXT_REUSED",
+      detail: `Reused fresh backend app context for Admin diagnostics (${reason}).`
+    });
+    return completeAdminDiagnosticsLaneFromContext(activeContext, reason);
+  }
   adminDiagnosticsLaneStatus = {
     ...adminDiagnosticsLaneStatus,
     checked: adminDiagnosticsLaneStatus.checked,
@@ -5571,22 +5623,7 @@ async function startAdminDiagnosticsLane(reason = "admin") {
   renderSupabaseLoadMonitor();
   try {
     const context = await hydrateAppSessionContext({ reason: `admin-diagnostics:${String(reason || "admin")}`, source: "admin-diagnostics", timeoutMs: 6000 });
-    const isOwner = Boolean(context?.permissions?.canUseAppOwnerDiagnostics);
-    adminDiagnosticsLaneStatus = {
-      ...adminDiagnosticsLaneStatus,
-      checked: true,
-      ok: Boolean(context),
-      loading: false,
-      lastReason: reason,
-      checkedAt: new Date().toISOString(),
-      message: context
-        ? (isOwner
-          ? "Admin is using backend app context. Owner/global diagnostics remain explicit actions and do not drive workspace sync."
-          : "Admin is using backend app context. This account can manage its workspace but cannot run app-owner global diagnostics.")
-        : "Backend app context was unavailable; Admin diagnostics are separated and did not run owner/global routes."
-    };
-    renderSupabaseLoadMonitor();
-    return context;
+    return completeAdminDiagnosticsLaneFromContext(context, reason);
   } catch (error) {
     adminDiagnosticsLaneStatus = {
       ...adminDiagnosticsLaneStatus,
@@ -9036,6 +9073,26 @@ async function initializeSupabase() {
       const authEvent = String(event || "auth-change").toLowerCase();
       if (!isAppStartupGateReady()) {
         await ensureAppStartupWakeGate(`auth-${authEvent}`, { force: !lastCloudSyncAt });
+        updateAuthUi();
+        render();
+        return;
+      }
+      if (shouldSuppressPostStartupGateAuthStateLoad(authEvent)) {
+        recordSupabaseLoadEvent("auth-sync-skip", `${authEvent} after startup gate`);
+        recordDataIoDiagnostic("skip", {
+          source: "auth-state-load",
+          route: "render-api",
+          endpoint: renderStateLoadUrl,
+          operation: "load",
+          ok: true,
+          resultCode: "AUTH_STATE_LOAD_SUPPRESSED_AFTER_STARTUP_GATE",
+          detail: `Skipped duplicate ${authEvent} state load after startup gate.`
+        });
+        await hydrateAppSessionContext({ reason: `auth-${authEvent}`, source: "auth" }).catch((error) => console.warn("Auth backend app context failed", error));
+        await refreshAuthBoundMemberProfile();
+        subscribeToLedgerEvents();
+        subscribeToSupabaseState();
+        finishStartupHydration(`auth-skip-post-gate:${authEvent}`);
         updateAuthUi();
         render();
         return;

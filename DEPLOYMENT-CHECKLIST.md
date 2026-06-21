@@ -33,9 +33,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 ## Current release target
 - Version: `2026.06.18.261`
-- Service-worker cache: `fuel-ledger-v397`
-- Updated at: `2026-06-21T23:45:00.000Z`
-- Top release note: Startup wake gate now serializes cold app launch: Render wake, backend app context, and workspace state load run as one ordered sequence before realtime, focus sync, or Account workspace tools refresh can start; the sync banner offers Retry loading workspace instead of requiring a browser refresh.
+- Service-worker cache: `fuel-ledger-v398`
+- Updated at: `2026-06-22T00:05:00.000Z`
+- Top release note: Post-startup auth events now reuse the successful startup wake gate instead of running an immediate duplicate state load, and Admin diagnostics completes from fresh backend app context without leaving a stale loading state.
 
 ## Invite beta readiness: member action Data I/O
 
