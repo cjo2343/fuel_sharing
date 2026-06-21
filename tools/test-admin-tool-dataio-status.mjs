@@ -39,7 +39,7 @@ for (const name of requiredTools) {
 }
 
 assert.match(buildInfo, /Admin tools that trigger cloud work now wrap their action in a Data I\/O operation row/, 'build-info release notes must keep the admin tool Data I/O status pass');
-assert.match(serviceWorker, /fuel-ledger-v(?:29[1-9]|3[0-9][0-9])/, 'service worker cache must be at least v291 for admin tool Data I/O runtime changes');
+assert.match(serviceWorker, /fuel-ledger-v(?:29[1-9]|[34][0-9][0-9])/, 'service worker cache must be at least v291 for admin tool Data I/O runtime changes');
 assert.match(pkg, /test-admin-tool-dataio-status\.mjs/, 'validate script must include the admin tool Data I/O status guard');
 assert.ok(app.includes('traceMemberActionOperation("workspace-tools-refresh"'), 'workspace invite refresh moved to member-action Data I/O so regular users can debug Account onboarding');
 assert.ok(app.includes('source: "workspace-create"'), 'workspace create moved to member-action Data I/O so regular users can debug Account onboarding');

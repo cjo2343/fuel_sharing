@@ -660,16 +660,49 @@
           <div id="aboutBuildInfoPanel" class="build-info-panel-content compact-build-info"></div>
         </section>
 
-        <section class="panel wide-panel data-tools-panel hidden" data-view="admin" aria-labelledby="dataToolsHeading">
+        <section class="panel wide-panel admin-home-panel" data-view="admin" aria-labelledby="adminHomeHeading">
           <div class="panel-header">
             <div>
               <p class="eyebrow">Admin</p>
-              <h2 id="dataToolsHeading">Global app data tools</h2>
+              <h2 id="adminHomeHeading">Workspace admin</h2>
             </div>
           </div>
-          <p class="section-note">Primary app-admin-only diagnostics and maintenance tools. Workspace admins manage their own workspace from Group settings, Member management, and Account invites.</p>
+          <p class="section-note">Use this page for day-to-day workspace administration. The default view stays focused on members, invites, workspace settings, and whether this workspace is usable. App-owner maintenance and raw troubleshooting are collapsed below so hotfix/debug UI does not crowd normal admin work.</p>
+          <div class="admin-home-grid" aria-label="Admin sections">
+            <article class="admin-home-card">
+              <strong>Workspace</strong>
+              <p>Manage members and invite people to the current workspace.</p>
+              <span class="entry-meta">Visible to workspace admins</span>
+            </article>
+            <article class="admin-home-card">
+              <strong>Owner tools</strong>
+              <p>Backups, exports, build status, and controlled maintenance for the app owner.</p>
+              <span class="entry-meta">Collapsed by default where possible</span>
+            </article>
+            <article class="admin-home-card muted-card">
+              <strong>Diagnostics Lab</strong>
+              <p>Raw Data I/O, health checks, Test Lab, and repair tools only when something is broken.</p>
+              <span class="entry-meta">Advanced troubleshooting</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel wide-panel data-tools-panel hidden" data-view="admin" aria-labelledby="dataToolsHeading" data-legacy-heading="Global app data tools">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">App owner</p>
+              <h2 id="dataToolsHeading">Owner tools &amp; Diagnostics Lab</h2>
+            </div>
+          </div>
+          <p class="section-note">Core workspace admin tasks stay above. These app-owner tools are grouped by purpose: routine owner actions first, raw diagnostics and hotfix/debug tools behind the Diagnostics Lab drawer. Primary app-admin-only diagnostics and maintenance tools remain app-owner scoped.</p>
           <div id="adminGuardrailOverview" class="admin-guardrail-overview" aria-live="polite"></div>
-          <div class="data-tools-grid">
+          <div class="admin-tools-sections">
+            <details class="admin-tools-group" data-admin-tools-group="owner-tools" open>
+              <summary>
+                <span>Owner tools</span>
+                <small>Backups and exports you may use during normal operations.</small>
+              </summary>
+              <div class="data-tools-grid owner-tools-grid">
             <article class="data-tool-card">
               <strong>Backup</strong>
               <p>Download the full ledger state as JSON. Use this before testing new features or cleaning data.</p>
@@ -689,6 +722,14 @@
                 <button id="downloadPeriodReport" class="subtle-button" type="button">Download period report</button>
               </div>
             </article>
+              </div>
+            </details>
+            <details class="admin-tools-group diagnostics-lab-group" data-admin-tools-group="diagnostics-lab">
+              <summary>
+                <span>Diagnostics Lab</span>
+                <small>Open only when investigating a problem, testing, or running maintenance.</small>
+              </summary>
+              <div class="data-tools-grid diagnostics-lab-grid">
             <article class="data-tool-card danger-zone">
               <strong>Clean test users</strong>
               <p>Remove users with “test” in the name when they have no trips, fuel payments, or archived history.</p>
@@ -765,8 +806,8 @@
               <div id="retentionCleanupSummary" class="section-note" aria-live="polite"></div>
             </article>
             <article class="data-tool-card supabase-load-monitor-card">
-              <strong>Supabase load monitor</strong>
-              <p>Shows recent app-side saves, reloads, health checks, and Supabase calls so CPU spikes can be traced back to app activity.</p>
+              <strong>Data I/O &amp; backend monitor</strong>
+              <p>Raw troubleshooting view for recent app-side saves, backend calls, health checks, and sync diagnostics. Keep this closed unless you are debugging.</p>
               <div class="button-row">
                 <button id="syncNowAdmin" class="subtle-button" type="button">Sync now</button>
                 <button id="refreshSupabaseLoadMonitor" class="subtle-button" type="button">Refresh load monitor</button>
@@ -777,6 +818,8 @@
               <p class="entry-meta">Live Realtime sync is off by default to protect Supabase CPU. The app syncs on load, save, manual refresh, and occasional tab focus instead.</p>
               <div id="supabaseLoadMonitor" class="section-note supabase-load-monitor" aria-live="polite"></div>
             </article>
+              </div>
+            </details>
           </div>
           <p id="dataToolsMessage" class="section-note"></p>
         </section>
@@ -789,7 +832,7 @@
             </div>
             <button id="refreshMembers" class="subtle-button" type="button">Refresh members</button>
           </div>
-          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL. Workspace admins can manage this workspace's members/settings/invites; global app diagnostics stay restricted to the primary app-admin workspace.</p>
+          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL. This is a normal workspace-admin task; global app diagnostics stay separated in Owner tools.</p>
 
           <form id="memberManagementForm" class="member-management-form">
             <label>
@@ -902,11 +945,11 @@
         <section class="panel wide-panel system-health-panel hidden" data-view="admin" aria-labelledby="systemHealthHeading">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Admin</p>
-              <h2 id="systemHealthHeading">System health</h2>
+              <p class="eyebrow">Workspace</p>
+              <h2 id="systemHealthHeading">Workspace health</h2>
             </div>
           </div>
-          <p class="section-note">Quick checks for data quality, saving, fuel logs, trips, and notification setup.</p>
+          <p class="section-note">A compact workspace-level status check. Detailed route traces and raw Data I/O live in Diagnostics Lab.</p>
           <div id="systemHealthSummary" class="system-health-summary"></div>
           <div id="systemHealthList" class="system-health-list"></div>
         </section>
@@ -915,7 +958,7 @@
         <section class="panel wide-panel build-info-panel" data-view="admin" aria-labelledby="buildInfoHeading">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Admin</p>
+              <p class="eyebrow">App owner</p>
               <h2 id="buildInfoHeading">Version & update status</h2>
             </div>
           </div>
@@ -926,12 +969,12 @@
         <section class="panel wide-panel database-diagnostics-panel hidden" data-view="admin" aria-labelledby="databaseDiagnosticsHeading">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Admin</p>
+              <p class="eyebrow">Diagnostics Lab</p>
               <h2 id="databaseDiagnosticsHeading">Database diagnostics</h2>
             </div>
             <div class="button-row compact-actions"><button id="saveJsonBackupNow" class="subtle-button" type="button">Save JSON backup</button><button id="cleanStaleRequests" class="subtle-button" type="button">Clean stale requests</button><button id="productionActivityReset" class="danger-button" type="button">Reset production activity</button><button id="refreshDatabaseDiagnostics" class="subtle-button" type="button">Refresh diagnostics</button></div>
           </div>
-          <p class="section-note">Detailed table counts and migration status. JSON is now a manual/safety backup, not saved on every table write. Use Reset production activity only when you are ready to delete all bookings, trips, fuel logs, periods, and settlement rows while keeping members/settings.</p>
+          <p class="section-note">Advanced table counts, migration status, and repair actions. JSON is now a manual/safety backup, not saved on every table write. Use Reset production activity only when you are ready to delete all bookings, trips, fuel logs, periods, and settlement rows while keeping members/settings.</p>
           <div id="databaseDiagnosticsList" class="database-diagnostics-list"></div>
         </section>
 

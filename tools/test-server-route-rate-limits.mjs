@@ -7,10 +7,10 @@ const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 
 assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:203|204|205|206|207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249|250|251|252|253|254|255|256|257|258|259|260|261)"/, 'build-info should publish v303');
-assert.match(buildInfo, /buildLabel:\s*"(?:workspace-switch-target-context-lane|startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v303 label');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v303 cache');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker cache should be v303');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:workspace-switch-target-context-lane|startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v303');
+assert.match(buildInfo, /buildLabel:\s*"(?:admin-panel-declutter-lane|workspace-switch-target-context-lane|startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'build-info should use v303 label');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v[34][0-9][0-9]"/, 'build-info should expect v303 cache');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v[34][0-9][0-9]"/, 'service worker cache should be v303');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:admin-panel-declutter-lane|workspace-switch-target-context-lane|startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|server-route-rate-limits|save-report-timeout-feedback|backend-path-simplification-audit|remove-proven-browser-fallbacks-pass-1|render-admin-report-save-route)"/, 'service worker label should match v303');
 
 assert.match(server, /RATE_LIMIT_POLICIES\s*=\s*\{/, 'server should define rate limit policies');
 assert.match(server, /def check_backend_rate_limit\(/, 'server should centralize backend rate-limit checks');

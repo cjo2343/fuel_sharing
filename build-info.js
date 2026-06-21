@@ -2,10 +2,11 @@
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
     version: "2026.06.18.261",
-    buildLabel: "workspace-switch-target-context-lane",
-    updatedAt: "2026-06-22T00:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v399",
+    buildLabel: "admin-panel-declutter-lane",
+    updatedAt: "2026-06-22T00:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v400",
     releaseNotes: Object.freeze([
+      "Admin now opens with a calmer workspace-admin overview, keeps routine owner backups/exports separate, and collapses raw Data I/O, Test Lab, health checks, and repair tools into a Diagnostics Lab drawer so hotfix/debug UI no longer crowds normal admin work.",
       "Workspace switching now avoids joining an in-flight backend app-context request for a different workspace, so switching users/workspaces gets a fresh target-specific context and loads the selected workspace without requiring a browser refresh.",
     "Post-startup auth events now reuse the successful startup wake gate instead of running an immediate duplicate state load, and Admin diagnostics completes from fresh backend app context without leaving a stale loading state.",
       "Startup wake gate now serializes cold app launch: Render wake, backend app context, and workspace state load run as one ordered sequence before realtime, focus sync, or Account workspace tools refresh can start; the sync banner offers Retry loading workspace instead of requiring a browser refresh.",
