@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T18:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v386",
+    updatedAt: "2026-06-21T19:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v387",
     releaseNotes: Object.freeze([
+      "Vehicle lookup status is now request-scoped: changing the plate clears stale saved messages, each lookup records requested/returned plate IDs, stale mismatched results are ignored, and the UI only shows saved details when they match the current plate.",
       "Idle Admin/background cleanup: service-worker/build-status messages are now best-effort and cannot throw uncaught closed-channel errors, favicon.ico is handled by the app shell, and optional owner/global diagnostics stay calm when idle instead of looking like core app failures.",
       "Vehicle lookup clicks are now impossible to lose silently: the button records VEHICLE_LOOKUP_CLICKED before any guard, stays clickable during workspace settling so the handler can recover context, delegated click binding survives Settings re-renders, and load reports include button binding/disabled/status state.",
       "Vehicle lookup is now workspace-context-first: before calling Render it confirms the URL/selected/loaded workspace and signed-in admin profile all match, reloads the requested workspace if needed, sends explicit workspace context with the lookup, and retries once without a browser refresh when secondary workspaces are still settling.",

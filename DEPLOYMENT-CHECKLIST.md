@@ -1,3 +1,4 @@
+- 2026-06-21 19:25 UTC: v387 Vehicle lookup status is request-scoped; plate changes clear stale saved messages, lookup diagnostics record requested/returned plates, and mismatched/stale results are ignored instead of showing the wrong vehicle.
 - 2026-06-21 15:35 UTC: v382 Service-worker status self-heals for signed-in/test-user sessions; build-info can query active workers before controller attach, retries handoff on resume/URL changes, and reloads once safely instead of leaving version status stuck on Checking.
 - 2026-06-21 15:25 UTC: v381 Admin background sync uses lightweight cached checks only; automatic Admin polling no longer calls full /api/admin/health, while /api/ping handles backend readiness and deep Render health stays explicit/passive.
 - 2026-06-21 15:10 UTC: v380 Idle recovery warms the Render backend before member actions, keeps Live Sync sessions gently connected while visible, and service-worker navigations with workspace query strings fall back to the app shell instead of 503 Offline.
@@ -32,11 +33,13 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Idle Admin/background cleanup keeps service-worker/build-status messaging best-effort, adds favicon.ico to the app shell, and keeps optional owner/global diagnostics calm when idle.
+- Vehicle lookup now recovers after idle/backend wake delays by retrying the Render lookup automatically before reporting a timeout.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v386`
-- Updated at: `2026-06-21T18:55:00.000Z`
-- Top release note: Idle Admin/background cleanup: service-worker/build-status messages are now best-effort and cannot throw uncaught closed-channel errors, favicon.ico is handled by the app shell, and optional owner/global diagnostics stay calm when idle instead of looking like core app failures.
+- Service-worker cache: `fuel-ledger-v387`
+- `fuel-ledger-v387` - Vehicle lookup status is request-scoped so stale saved vehicle messages cannot appear under a different plate.
+- `fuel-ledger-v387` - Lookup diagnostics include requested/returned plate IDs and stale mismatched results are ignored before applying settings.
+- Updated at: `2026-06-21T19:25:00.000Z`
+- Top release note: Vehicle lookup status is now request-scoped: changing the plate clears stale saved messages, each lookup records requested/returned plate IDs, stale mismatched results are ignored, and the UI only shows saved details when they match the current plate.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

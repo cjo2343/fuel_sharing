@@ -3496,6 +3496,53 @@ function markVehicleLookupButtonBound(button = document.querySelector("#vehicleL
   return true;
 }
 
+function getVehicleLookupInputPlate() {
+  const dom = getVehicleLookupDomSnapshot();
+  return normalizeVehiclePlateInput(dom.plateInput?.value || els.vehiclePlate?.value || state.vehiclePlate || "");
+}
+
+function setVehicleLookupStatus(message = "", options = {}) {
+  const dom = getVehicleLookupDomSnapshot();
+  if (!dom.status) return;
+  dom.status.textContent = message;
+  const plate = normalizeVehiclePlateInput(options.plate || getVehicleLookupInputPlate());
+  if (plate) dom.status.dataset.lookupPlate = plate;
+  if (options.phase) dom.status.dataset.lookupPhase = String(options.phase);
+}
+
+function setVehicleLookupSummary(message = "", options = {}) {
+  const dom = getVehicleLookupDomSnapshot();
+  if (!dom.summary) return;
+  dom.summary.textContent = message;
+  const plate = normalizeVehiclePlateInput(options.plate || getVehicleLookupInputPlate());
+  if (plate) dom.summary.dataset.lookupPlate = plate;
+  if (options.phase) dom.summary.dataset.lookupPhase = String(options.phase);
+}
+
+function getSavedVehicleInfoForCurrentInput() {
+  const info = normalizeVehicleInfo(state.vehicleInfo);
+  if (!info) return null;
+  const inputPlate = getVehicleLookupInputPlate();
+  if (inputPlate && info.plate && inputPlate !== info.plate) return null;
+  return info;
+}
+
+function clearVehicleLookupForPlateChange() {
+  const plate = getVehicleLookupInputPlate();
+  const info = normalizeVehicleInfo(state.vehicleInfo);
+  if (info?.plate && plate && info.plate !== plate) {
+    state.vehicleInfo = null;
+    state.vehicleLookupSource = "manual";
+    state.vehicleLookupAt = "";
+  }
+  if (els.vehicleLookupStatus) {
+    setVehicleLookupStatus(plate
+      ? `Ready to look up ${plate}.`
+      : "Enter a number plate to look up vehicle details.", { plate, phase: "idle" });
+  }
+  renderVehicleLookupSummary();
+}
+
 function handleVehicleLookupButtonClick(event = null) {
   if (event?.__fuelVehicleLookupHandled) return;
   if (event) {
@@ -3520,8 +3567,9 @@ function handleVehicleLookupButtonClick(event = null) {
     workspaceMismatch: context.workspaceMismatch,
     detail: `Lookup vehicle button clicked${plate ? ` for ${plate}` : ""}.`
   });
-  if (dom.status) dom.status.textContent = "Vehicle lookup click received. Checking workspace and backend…";
-  lookupVehicleByPlateFromUi({ trigger: "button-click" });
+  setVehicleLookupStatus("Vehicle lookup click received. Checking workspace and backend…", { plate, phase: "clicked" });
+  setVehicleLookupSummary(plate ? `Preparing lookup for ${plate}…` : "Preparing vehicle lookup…", { plate, phase: "clicked" });
+  lookupVehicleByPlateFromUi({ trigger: "button-click", requestedPlate: plate });
 }
 
 if (els.vehicleLookupButton) {
@@ -3535,6 +3583,11 @@ document.addEventListener("click", (event) => {
   markVehicleLookupButtonBound(target);
   handleVehicleLookupButtonClick(event);
 }, true);
+
+if (els.vehiclePlate) {
+  els.vehiclePlate.addEventListener("input", clearVehicleLookupForPlateChange);
+  els.vehiclePlate.addEventListener("change", clearVehicleLookupForPlateChange);
+}
 
 els.resetPeriod.addEventListener("click", async () => {
   if (!canManageSettings()) {
@@ -9230,7 +9283,8 @@ function getVehicleLookupReadinessSnapshot() {
   const currentSessionActive = Boolean(currentSession);
   const canManage = canManageSettings();
   const workspaceConfirmed = isActiveWorkspaceDataConfirmed();
-  const plate = String(state.vehiclePlate || dom.plateInput?.value || els.vehiclePlate?.value || "").trim();
+  const plate = getVehicleLookupInputPlate();
+  const savedInfo = normalizeVehicleInfo(state.vehicleInfo);
   let reason = "ready";
   if (!currentSessionActive) reason = "not_signed_in";
   else if (!canManage) reason = "not_workspace_admin";
@@ -9244,6 +9298,12 @@ function getVehicleLookupReadinessSnapshot() {
     buttonDisabled: Boolean(dom.button?.disabled),
     buttonBound: Boolean(dom.button?.dataset?.vehicleLookupBound === "true"),
     statusText: String(dom.status?.textContent || "").slice(0, 240),
+    summaryText: String(dom.summary?.textContent || "").slice(0, 240),
+    statusPlate: String(dom.status?.dataset?.lookupPlate || ""),
+    summaryPlate: String(dom.summary?.dataset?.lookupPlate || ""),
+    savedVehiclePlate: savedInfo?.plate || "",
+    statusPhase: String(dom.status?.dataset?.lookupPhase || ""),
+    summaryPhase: String(dom.summary?.dataset?.lookupPhase || ""),
     reason,
     hasSession: currentSessionActive,
     canManageSettings: canManage,
@@ -9258,11 +9318,12 @@ function getVehicleLookupReadinessSnapshot() {
 
 function renderVehicleLookupSummary() {
   if (!els.vehicleLookupSummary) return;
-  const info = normalizeVehicleInfo(state.vehicleInfo);
+  const info = getSavedVehicleInfoForCurrentInput();
   if (!info) {
-    els.vehicleLookupSummary.textContent = state.vehiclePlate
-      ? "No saved vehicle lookup yet. Manual fuel settings are used."
-      : "Optional. Enter a plate and lookup can suggest fuel settings when the Render vehicle API is configured.";
+    const plate = getVehicleLookupInputPlate();
+    setVehicleLookupSummary(plate
+      ? `No saved vehicle lookup for ${plate} yet. Manual fuel settings are used.`
+      : "Optional. Enter a plate and lookup can suggest fuel settings when the Render vehicle API is configured.", { plate, phase: "idle" });
     return;
   }
   const parts = [info.make, info.model, info.variant, info.year].map((part) => normalizeVehicleText(part, { max: 120 })).filter(Boolean).join(" ");
@@ -9279,14 +9340,35 @@ function renderVehicleLookupSummary() {
   addVehicleFact(facts, info.chassisType);
   if (info.firstRegDate) facts.push(`first reg ${info.firstRegDate}`);
   if (info.nextInspectionDate) facts.push(`next inspection ${info.nextInspectionDate}`);
-  els.vehicleLookupSummary.textContent = `${info.plate || state.vehiclePlate || "Vehicle"}: ${parts || "vehicle details saved"}${facts.length ? ` · ${facts.join(" · ")}` : ""}.`;
+  const displayPlate = info.plate || getVehicleLookupInputPlate() || "Vehicle";
+  setVehicleLookupSummary(`${displayPlate}: ${parts || "vehicle details saved"}${facts.length ? ` · ${facts.join(" · ")}` : ""}.`, { plate: displayPlate, phase: "saved" });
 }
 
-function applyVehicleLookupToSettings(vehicle) {
-  const info = normalizeVehicleInfo(vehicle);
+function applyVehicleLookupToSettings(vehicle, options = {}) {
+  const expectedPlate = normalizeVehiclePlateInput(options.expectedPlate || getVehicleLookupInputPlate());
+  const info = normalizeVehicleInfo({ ...(vehicle || {}), plate: vehicle?.plate || expectedPlate });
   if (!info) return false;
+  if (expectedPlate && info.plate && info.plate !== expectedPlate) {
+    recordDataIoDiagnostic("skipped", {
+      source: "vehicle-lookup",
+      route: "render-api",
+      endpoint: renderVehicleLookupUrl,
+      operation: "lookup",
+      operationId: options.operationId || "",
+      ok: false,
+      resultCode: "VEHICLE_LOOKUP_STALE_RESULT_IGNORED",
+      statusCode: "VEHICLE_LOOKUP_STALE_RESULT_IGNORED",
+      ledgerId: getLoadedWorkspaceId(),
+      requestedPlate: expectedPlate,
+      returnedPlate: info.plate,
+      detail: `Ignored vehicle lookup result for ${info.plate} because the current request is ${expectedPlate}.`
+    });
+    setVehicleLookupStatus(`Ignored stale vehicle lookup result for ${info.plate}; current plate is ${expectedPlate}.`, { plate: expectedPlate, phase: "stale" });
+    setVehicleLookupSummary(`No saved vehicle lookup for ${expectedPlate} yet. Manual fuel settings are used.`, { plate: expectedPlate, phase: "idle" });
+    return false;
+  }
   state.vehicleInfo = info;
-  state.vehiclePlate = info.plate || normalizeVehiclePlateInput(els.vehiclePlate?.value || state.vehiclePlate || "");
+  state.vehiclePlate = expectedPlate || info.plate || normalizeVehiclePlateInput(els.vehiclePlate?.value || state.vehiclePlate || "");
   state.vehicleLookupSource = info.source || "vehicle-lookup";
   state.vehicleLookupAt = info.checkedAt || new Date().toISOString();
   if (info.fuelType && info.fuelType !== "electric" && info.fuelType !== "hybrid") state.fuelType = info.fuelType;
@@ -9318,7 +9400,7 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
   const activeLinked = isLedgerLinkedToCurrentUser(activeWorkspaceId);
   if (!activeLinked && supabaseClient && currentSession) {
     try {
-      if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `Refreshing workspace membership before looking up ${plate}…`;
+      setVehicleLookupStatus(`Refreshing workspace membership before looking up ${plate}…`, { plate, phase: "workspace" });
       await refreshLinkedWorkspacesAfterInvite(activeWorkspaceId);
     } catch (error) {
       recordDataIoDiagnostic("error", {
@@ -9360,7 +9442,7 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
       workspaceMismatch: activeWorkspaceId !== getLoadedWorkspaceId(),
       detail: message
     });
-    if (dom.status) dom.status.textContent = message;
+    setVehicleLookupStatus(message, { plate, phase: "error" });
     showUserError(message);
     return { ok: false, ledgerId: activeWorkspaceId, context: beforeContext, reason: "not_linked" };
   }
@@ -9369,7 +9451,7 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
   if (needsWorkspaceLoad) {
     const operationId = createDataIoOperationId("vehicle-lookup-workspace-context", "load");
     const loadContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: activeWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(activeWorkspaceId) });
-    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `Loading ${loadContext.selectedWorkspaceLabel} before vehicle lookup…`;
+    setVehicleLookupStatus(`Loading ${loadContext.selectedWorkspaceLabel} before vehicle lookup…`, { plate, phase: "workspace" });
     recordDataIoDiagnostic("start", {
       source: "vehicle-lookup-workspace-context",
       route: "workspace-session",
@@ -9412,10 +9494,10 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
     });
     if (!confirmed) {
       if (!automaticRetry && workspaceRetry < 1) {
-        if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `${afterContext.selectedWorkspaceLabel} is still loading. The app will retry the vehicle lookup automatically.`;
+        setVehicleLookupStatus(`${afterContext.selectedWorkspaceLabel} is still loading. The app will retry the vehicle lookup automatically.`, { plate, phase: "retry" });
         window.setTimeout(() => lookupVehicleByPlateFromUi({ automaticRetry: true, workspaceContextRetry: workspaceRetry + 1 }), 1800);
       } else if (els.vehicleLookupStatus) {
-        els.vehicleLookupStatus.textContent = `${afterContext.selectedWorkspaceLabel} still is not confirmed. Vehicle lookup is paused to avoid using the wrong workspace.`;
+        setVehicleLookupStatus(`${afterContext.selectedWorkspaceLabel} still is not confirmed. Vehicle lookup is paused to avoid using the wrong workspace.`, { plate, phase: "blocked" });
       }
       return { ok: false, ledgerId: activeWorkspaceId, context: afterContext, reason: "not_confirmed" };
     }
@@ -9438,13 +9520,13 @@ async function lookupVehicleByPlateFromUi(options = {}) {
   const dom = getVehicleLookupDomSnapshot();
   markVehicleLookupButtonBound(dom.button);
   if (!currentSession?.access_token) {
-    if (dom.status) dom.status.textContent = "Sign in before looking up a vehicle.";
+    setVehicleLookupStatus("Sign in before looking up a vehicle.", { plate: getVehicleLookupInputPlate(), phase: "blocked" });
     showUserError("Sign in before looking up a vehicle.");
     return false;
   }
-  const plate = normalizeVehiclePlateInput(dom.plateInput?.value || els.vehiclePlate?.value || state.vehiclePlate || "");
+  const plate = normalizeVehiclePlateInput(options.requestedPlate || dom.plateInput?.value || els.vehiclePlate?.value || state.vehiclePlate || "");
   if (!plate || plate.length < 2) {
-    if (dom.status) dom.status.textContent = "Enter a number plate first.";
+    setVehicleLookupStatus("Enter a number plate first.", { plate, phase: "blocked" });
     recordDataIoDiagnostic("blocked", {
       source: "vehicle-lookup-click",
       route: "dom-event",
@@ -9479,7 +9561,7 @@ async function lookupVehicleByPlateFromUi(options = {}) {
     return false;
   }
   const ledgerId = workspaceReady.ledgerId || getActiveLedgerId();
-  if (dom.status) dom.status.textContent = "Checking backend connection before vehicle lookup...";
+  setVehicleLookupStatus("Checking backend connection before vehicle lookup…", { plate, phase: "backend" });
   const backendReady = await ensureRenderBackendReadyForUserAction({ reason: "vehicle-lookup", timeoutMs: renderBackendWakeTimeoutMs, retries: 2 });
   if (!backendReady?.ok) {
     const reason = backendReady?.message || "Render backend is not reachable yet.";
@@ -9498,11 +9580,11 @@ async function lookupVehicleByPlateFromUi(options = {}) {
       error: backendReady?.error || null
     });
     if (!automaticRetry) {
-      if (dom.status) dom.status.textContent = "The backend is waking up. The app will retry this vehicle lookup automatically.";
+      setVehicleLookupStatus("The backend is waking up. The app will retry this vehicle lookup automatically.", { plate, phase: "retry" });
       scheduleRenderBackendWake("vehicle-lookup-retry");
       window.setTimeout(() => lookupVehicleByPlateFromUi({ automaticRetry: true }), 2500);
     } else if (dom.status) {
-      dom.status.textContent = "The backend is still waking up. The app will keep the workspace ready and you can continue editing manual fuel settings.";
+      setVehicleLookupStatus("The backend is still waking up. The app will keep the workspace ready and you can continue editing manual fuel settings.", { plate, phase: "blocked" });
     }
     return false;
   }
@@ -9523,11 +9605,12 @@ async function lookupVehicleByPlateFromUi(options = {}) {
     loadedWorkspaceLabel: workspaceContext.loadedWorkspaceLabel,
     workspaceMismatch: workspaceContext.workspaceMismatch,
     staleAfterMs: vehicleLookupTimeoutMs,
+    requestedPlate: plate,
     detail: `Lookup vehicle ${plate} in ${workspaceContext.selectedWorkspaceLabel}`
   };
   if (dom.button) dom.button.disabled = true;
-  if (dom.status) dom.status.textContent = "Looking up vehicle through Render...";
-  if (dom.summary) dom.summary.textContent = `Looking up ${plate}…`;
+  setVehicleLookupStatus(`Looking up ${plate} through Render…`, { plate, phase: "lookup" });
+  setVehicleLookupSummary(`Looking up ${plate}…`, { plate, phase: "lookup" });
   let shouldRefreshOwnerActivityAfterLookup = true;
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_STARTED" });
   try {
@@ -9546,7 +9629,7 @@ async function lookupVehicleByPlateFromUi(options = {}) {
       attempts: vehicleLookupMaxAttempts,
       recoveryReason: "vehicle-lookup",
       onRetry: (attempt, attempts) => {
-        if (dom.status) dom.status.textContent = `Vehicle lookup is retrying automatically after reconnecting (${attempt}/${attempts})…`;
+        setVehicleLookupStatus(`Vehicle lookup is retrying automatically after reconnecting (${attempt}/${attempts}) for ${plate}…`, { plate, phase: "retry" });
         recordDataIoDiagnostic("start", { ...traceMeta, operationId: `${operationId}-retry-${attempt}`, ok: true, resultCode: "VEHICLE_LOOKUP_AUTO_RETRY", detail: `Retry vehicle lookup ${plate} after backend/session recovery` });
       }
     });
@@ -9557,7 +9640,11 @@ async function lookupVehicleByPlateFromUi(options = {}) {
       softError.payload = result;
       throw softError;
     }
-    applyVehicleLookupToSettings(result.vehicle || {});
+    const applied = applyVehicleLookupToSettings(result.vehicle || {}, { expectedPlate: plate, operationId });
+    if (!applied) {
+      recordDataIoDiagnostic("skipped", { ...traceMeta, ok: false, resultCode: "VEHICLE_LOOKUP_STALE_RESULT_IGNORED", requestedPlate: plate, returnedPlate: normalizeVehicleInfo(result.vehicle || {})?.plate || "", detail: `Vehicle lookup result did not match requested plate ${plate}.` });
+      return false;
+    }
     const lookedUpVehicleInfo = normalizeVehicleInfo(state.vehicleInfo);
     addAuditEntry({
       type: "vehicle_lookup_completed",
@@ -9577,9 +9664,9 @@ async function lookupVehicleByPlateFromUi(options = {}) {
       }
     });
     saveState({ queueRemote: false, reason: "vehicle lookup local audit breadcrumb" });
-    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_OK", detail: result.message || "Vehicle lookup completed" });
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_OK", requestedPlate: plate, returnedPlate: lookedUpVehicleInfo?.plate || "", detail: result.message || `Vehicle lookup for ${plate} completed` });
     renderSupabaseLoadMonitor();
-    if (dom.status) dom.status.textContent = "Vehicle lookup found data. Review the suggested fuel settings, then Save settings.";
+    setVehicleLookupStatus(`Vehicle lookup for ${plate} found data. Review the suggested fuel settings, then Save settings.`, { plate, phase: "success" });
     return true;
   } catch (error) {
     const payload = error?.payload || {};
@@ -9597,8 +9684,8 @@ async function lookupVehicleByPlateFromUi(options = {}) {
         : providerUnavailable
           ? "Vehicle lookup provider is unavailable right now. Keep using manual fuel settings or try again later."
           : `Vehicle lookup failed: ${String(payload?.message || error?.message || error || "Unknown error")}`;
-    if (dom.status) dom.status.textContent = message;
-    if (dom.summary) dom.summary.textContent = "";
+    setVehicleLookupStatus(message, { plate, phase: "error" });
+    setVehicleLookupSummary("", { plate, phase: "error" });
     return false;
   } finally {
     if (dom.button) dom.button.disabled = !canManageSettings() || !currentSession;
@@ -9623,11 +9710,11 @@ function renderSettings() {
       selectedWorkspaceId: getActiveLedgerId(),
       selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(getActiveLedgerId())
     });
-    els.vehicleLookupStatus.textContent = activeWorkspaceLoadInProgress || supabaseLoadInFlight || startupHydrationActive
+    setVehicleLookupStatus(activeWorkspaceLoadInProgress || supabaseLoadInFlight || startupHydrationActive
       ? `Loading ${session.selectedWorkspaceLabel} before settings can be edited…`
-      : `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded. Use Sync now or switch workspace to retry.`;
+      : `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded. Use Sync now or switch workspace to retry.`, { plate: getVehicleLookupInputPlate(), phase: "workspace" });
   } else if (canManage && workspaceConfirmed && els.vehicleLookupStatus && /Loading .*before settings|settings are locked|Vehicle lookup is blocked/i.test(String(els.vehicleLookupStatus.textContent || ""))) {
-    els.vehicleLookupStatus.textContent = "Workspace loaded. Enter a plate to look up vehicle details, or edit settings manually.";
+    setVehicleLookupStatus("Workspace loaded. Enter a plate to look up vehicle details, or edit settings manually.", { plate: getVehicleLookupInputPlate(), phase: "idle" });
   }
 
   const isEditingSettings = Boolean(els.settingsForm && els.settingsForm.contains(document.activeElement));
