@@ -6,13 +6,13 @@ const server = fs.readFileSync('server.py', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v377"/, 'build-info should point to v375 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v377"/, 'service worker cache should be bumped to v371.');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v378"/, 'build-info should point to v378 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v378"/, 'service worker cache should be bumped to v378.');
 
 assert.ok(app.includes('const renderOwnerGlobalDiagnosticsUrl = "/api/owner/global-diagnostics";'), 'frontend should define the app-owner global diagnostics endpoint.');
-assert.ok(app.includes('appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsStatus'), 'load reports should include app-owner global diagnostics.');
-assert.ok(app.includes('refreshOwnerGlobalDiagnostics({ force: true, silent: true, reason: "load-report-export" })'), 'exporting a load report should refresh global owner diagnostics first.');
-assert.ok(app.includes('targetEmail: appOwnerDiagnosticsTargetEmail()'), 'global diagnostics request should probe the target test user membership separately from the app-owner account.');
+assert.ok(app.includes('appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsReportStatus()'), 'load reports should include cached app-owner global diagnostics.');
+assert.ok(app.includes('Export immediately from the current cached diagnostics snapshot'), 'exporting a load report should not trigger slow global owner diagnostics.');
+assert.ok(!app.includes('targetEmail: appOwnerDiagnosticsTargetEmail()'), 'global diagnostics should not hardcode a target test user in the normal Admin view.');
 assert.ok(app.includes('renderOwnerGlobalDiagnosticsCard()'), 'Admin diagnostics should render an app-owner global scope card.');
 
 assert.ok(server.includes('"/api/owner/global-diagnostics"'), 'server should mount /api/owner/global-diagnostics.');

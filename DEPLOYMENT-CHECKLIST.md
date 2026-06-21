@@ -1,3 +1,4 @@
+- 2026-06-21 14:35 UTC: Admin optional diagnostics now back off instead of hammering slow Render health/global routes; reports export cached snapshots and global diagnostics no longer hardcode testman21.
 - 2026-06-21 11:25 UTC: v370 App-owner global diagnostics now use a dedicated Render owner route to list all workspaces, target-user memberships such as testman21 across test1/test2, and recent vehicle lookup owner-activity rows without requiring the app owner to be a member of every workspace.
 - 2026-06-21 10:55 UTC: v369 Account workspace refresh is authoritative instead of freshness-skipped, one-row workspace lists are rechecked, and reports export visible selector plus signed-in-email membership probe rows so hidden test1 membership issues can be diagnosed.
 - 2026-06-21 10:45 UTC: v368 workspace list dedupe now keys by ledger id/slug, not display name, preventing main-car and test1 from collapsing when both are named Fuel Ledger; reports export vehicle lookup readiness.
@@ -27,12 +28,12 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- App updates now run automatically without user update buttons.
+- Admin optional diagnostics now back off instead of hammering slow Render health/global routes; reports export cached snapshots and global diagnostics no longer hardcode testman21.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v377`
-- `fuel-ledger-v377` - Automatic app update lifecycle removes manual update buttons, polls service-worker/build status in the background, activates waiting caches, and safely reloads when foreground writes are finished.
-- Updated at: `2026-06-21T14:20:00.000Z`
-- Top release note: App updates now run without user update buttons: version status polls automatically, waiting service workers activate themselves, and safe reloads retry after foreground writes finish instead of asking the user to refresh.
+- Service-worker cache: `fuel-ledger-v378`
+- `fuel-ledger-v378` - Admin optional diagnostics now back off, reports export cached owner/global snapshots, and app-owner global diagnostics is generic instead of test-user-specific.
+- Updated at: `2026-06-21T14:35:00.000Z`
+- Top release note: Admin optional diagnostics now back off instead of hammering slow Render health/global routes: load reports use cached snapshots, hardcoded test-user cards are removed, and global diagnostics stay generic/last-good-first.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

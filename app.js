@@ -2332,7 +2332,7 @@ let ownerGlobalDiagnosticsStatus = {
 };
 let lastOwnerGlobalDiagnosticsFetchAt = 0;
 let lastGoodOwnerGlobalDiagnosticsStatus = null;
-const ownerGlobalDiagnosticsFreshMs = 30000;
+const ownerGlobalDiagnosticsFreshMs = 5 * 60 * 1000;
 let adminAutoRefreshTimer = null;
 let adminAutoRefreshInFlight = false;
 let lastAdminAutoRefreshTickAt = 0;
@@ -2340,10 +2340,11 @@ let lastAdminAutoHealthAt = 0;
 let lastAdminAutoGlobalAt = 0;
 let lastAdminAutoOwnerActivityAt = 0;
 let adminAutoRefreshNextTaskIndex = 0;
-const adminAutoRefreshIntervalMs = 15000;
-const adminAutoHealthFreshMs = 2 * 60 * 1000;
-const adminAutoGlobalFreshMs = 45 * 1000;
-const adminAutoOwnerActivityFreshMs = 90 * 1000;
+const adminAutoRefreshIntervalMs = 30000;
+const adminAutoHealthFreshMs = 10 * 60 * 1000;
+const adminAutoGlobalFreshMs = 5 * 60 * 1000;
+const adminAutoOwnerActivityFreshMs = 2 * 60 * 1000;
+const adminAutoOptionalFailureBackoffMs = 5 * 60 * 1000;
 let ownerActivityFetchInFlight = false;
 let ownerActivityFetchStartedAt = 0;
 let ownerActivityInFlightTraceMeta = null;
@@ -5124,29 +5125,35 @@ function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", 
 }
 
 
-function appOwnerDiagnosticsTargetEmail() {
-  return "testman21@chrjohn.dk";
-}
-
 function summarizeOwnerGlobalDiagnostics(status = ownerGlobalDiagnosticsStatus) {
   const workspaces = Array.isArray(status.workspaces) ? status.workspaces : [];
   const vehicleRows = Array.isArray(status.recentVehicleActivity) ? status.recentVehicleActivity : [];
-  const targetRows = Array.isArray(status.targetMemberships) ? status.targetMemberships : [];
+  const recentRows = Array.isArray(status.recentActivity) ? status.recentActivity : [];
   return {
     workspaceCount: Number(status.workspaceCount || workspaces.length || 0),
     memberRowCount: Number(status.memberRowCount || 0),
-    targetMembershipCount: targetRows.length,
     vehicleActivityCount: vehicleRows.length,
+    recentActivityCount: recentRows.length,
     workspaceLabels: workspaces.map((workspace) => workspace.label || workspace.slug || workspace.ledgerId || "unknown").slice(0, 12),
-    targetMemberships: targetRows.map((row) => `${row.workspaceLabel || row.ledgerId || "unknown"} · ${row.role || "member"}${row.isActive === false ? " · inactive" : ""}`).slice(0, 12),
     latestVehicleActivity: vehicleRows.slice(0, 5).map((row) => ({
       at: row.created_at || "",
       actor: row.actor_email || "unknown user",
       workspace: row.workspace_label || row.ledger_id || "unknown workspace",
       resultCode: row.result_code || "",
       ok: row.ok === true
+    })),
+    latestActivity: recentRows.slice(0, 5).map((row) => ({
+      actor: row.actor_email || "unknown user",
+      workspace: row.workspace_label || row.ledger_id || "unknown workspace",
+      action: row.action || row.route || "activity",
+      ok: row.ok === true
     }))
   };
+}
+
+function adminOptionalStatusFailedRecently(status = {}, referenceTime = Date.now()) {
+  const failedAt = Date.parse(status.lastFailedAt || "");
+  return Boolean(status.lastAttemptFailed && Number.isFinite(failedAt) && referenceTime - failedAt < adminAutoOptionalFailureBackoffMs);
 }
 
 function isAdminAutoRefreshActive() {
@@ -5155,13 +5162,16 @@ function isAdminAutoRefreshActive() {
 
 function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
   const tasks = [];
-  if (!renderAdminHealthStatus.loading && (!renderAdminHealthStatus.checked || referenceTime - lastAdminAutoHealthAt > adminAutoHealthFreshMs)) {
+  const healthFailedRecently = adminOptionalStatusFailedRecently(renderAdminHealthStatus, referenceTime);
+  const globalFailedRecently = adminOptionalStatusFailedRecently(ownerGlobalDiagnosticsStatus, referenceTime);
+  const ownerActivityFailedRecently = ownerActivityConsecutiveTimeouts > 0 && referenceTime < (ownerActivityCooldownUntil || 0);
+  if (!renderAdminHealthStatus.loading && !healthFailedRecently && (!renderAdminHealthStatus.checked || referenceTime - lastAdminAutoHealthAt > adminAutoHealthFreshMs)) {
     tasks.push("health");
   }
-  if (!ownerGlobalDiagnosticsStatus.loading && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
+  if (!ownerGlobalDiagnosticsStatus.loading && !globalFailedRecently && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
     tasks.push("global");
   }
-  if (!ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && referenceTime >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || referenceTime - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
+  if (!ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && !ownerActivityFailedRecently && referenceTime >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || referenceTime - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
     tasks.push("owner-activity");
   }
   return tasks;
@@ -5186,7 +5196,7 @@ function adminAutoRefreshStatusSummary() {
   if (!currentSession) return { title: "Waiting", detail: "Sign in before Admin can auto-refresh.", level: "warning" };
   if (adminAutoRefreshInFlight) return { title: "Refreshing", detail: "Updating Admin status now.", level: "warning" };
   const last = lastAdminAutoRefreshTickAt ? formatAdminTimestamp(new Date(lastAdminAutoRefreshTickAt).toISOString()) : "Not yet";
-  return { title: "On", detail: `Refreshes every ${Math.round(adminAutoRefreshIntervalMs / 1000)}s while Admin is open. Last run: ${last}.`, level: "ok" };
+  return { title: "On", detail: `Quiet background checks run at most every ${Math.round(adminAutoRefreshIntervalMs / 1000)}s while Admin is open. Slow optional checks back off automatically. Last run: ${last}.`, level: "ok" };
 }
 
 function renderAdminAutoRefreshCard() {
@@ -5283,25 +5293,26 @@ function ownerGlobalDiagnosticsReportStatus() {
 function renderOwnerGlobalDiagnosticsCard() {
   const status = ownerGlobalDiagnosticsReportStatus();
   const summary = summarizeOwnerGlobalDiagnostics(status);
-  const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} last good` : status.checked ? (status.ok ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Needs review") : "Not checked";
-  const detail = status.message || "Global app-owner diagnostics show all workspaces without requiring the app owner to be a member of each workspace.";
-  const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No global workspaces returned.</li>`;
-  const targetList = summary.targetMemberships.length ? summary.targetMemberships.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No target-user membership rows returned for ${escapeHtml(appOwnerDiagnosticsTargetEmail())}.</li>`;
-  const vehicleList = summary.latestVehicleActivity.length ? summary.latestVehicleActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}${row.resultCode ? ` · ${escapeHtml(row.resultCode)}` : ""}</li>`).join("") : `<li>No recent vehicle lookup owner-activity rows.</li>`;
+  const hasSnapshot = summary.workspaceCount > 0 || summary.memberRowCount > 0 || summary.vehicleActivityCount > 0 || summary.recentActivityCount > 0;
+  const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok || hasSnapshot ? "ok" : "warning") : "warning";
+  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : status.checked ? (summary.workspaceCount ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Quiet") : "Not checked";
+  const detail = status.message || "Global app-owner diagnostics are optional and cached; slow checks should not block workspace use.";
+  const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No cached global workspace snapshot yet.</li>`;
+  const vehicleList = summary.latestVehicleActivity.length ? summary.latestVehicleActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}${row.resultCode ? ` · ${escapeHtml(row.resultCode)}` : ""}</li>`).join("") : `<li>No cached recent vehicle lookup activity yet.</li>`;
+  const activityList = summary.latestActivity.length ? summary.latestActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)} · ${escapeHtml(row.action)}</li>`).join("") : `<li>No cached recent global activity yet.</li>`;
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>App-owner global scope</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>${summary.memberRowCount} member row${summary.memberRowCount === 1 ? "" : "s"} · ${summary.vehicleActivityCount} recent vehicle lookup row${summary.vehicleActivityCount === 1 ? "" : "s"}</small>
+      <small>${summary.memberRowCount} member row${summary.memberRowCount === 1 ? "" : "s"} · ${summary.vehicleActivityCount} vehicle lookup row${summary.vehicleActivityCount === 1 ? "" : "s"}</small>
       <p>${escapeHtml(detail)}</p>
     </article>
     <details class="admin-diagnostics-section">
       <summary>App-owner global diagnostics</summary>
       <div class="admin-diagnostics-dashboard">
-        <article class="admin-metric-card ok"><span>Global workspaces</span><strong>${summary.workspaceCount}</strong><small>Service-role owner route</small><ul class="test-lab-check-list readable-activity-list">${workspaceList}</ul></article>
-        <article class="admin-metric-card ${summary.targetMembershipCount ? "ok" : "warning"}"><span>testman21 memberships</span><strong>${summary.targetMembershipCount}</strong><small>Across all workspaces</small><ul class="test-lab-check-list readable-activity-list">${targetList}</ul></article>
+        <article class="admin-metric-card ${summary.workspaceCount ? "ok" : "warning"}"><span>Global workspaces</span><strong>${summary.workspaceCount}</strong><small>Cached owner snapshot</small><ul class="test-lab-check-list readable-activity-list">${workspaceList}</ul></article>
         <article class="admin-metric-card ${summary.vehicleActivityCount ? "ok" : "warning"}"><span>Recent vehicle lookups</span><strong>${summary.vehicleActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${vehicleList}</ul></article>
+        <article class="admin-metric-card ${summary.recentActivityCount ? "ok" : "warning"}"><span>Recent global activity</span><strong>${summary.recentActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${activityList}</ul></article>
       </div>
     </details>
   `;
@@ -5329,9 +5340,8 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
       timeoutMs: 12000,
       timeoutLabel: "Owner global diagnostics",
       body: {
-        targetEmail: appOwnerDiagnosticsTargetEmail(),
-        activityLimit: 8,
-        memberLimit: 120,
+        activityLimit: 5,
+        memberLimit: 80,
         workspaceLimit: 40
       }
     });
@@ -5346,7 +5356,7 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
       scope: result?.scope || "app-owner-global",
       reason,
       checkedAt: new Date().toISOString(),
-      message: `Loaded ${workspaces.length} global workspace${workspaces.length === 1 ? "" : "s"}; ${targetMemberships.length} testman21 membership row${targetMemberships.length === 1 ? "" : "s"}; ${recentVehicleActivity.length} recent vehicle lookup row${recentVehicleActivity.length === 1 ? "" : "s"}.`,
+      message: `Loaded ${workspaces.length} global workspace${workspaces.length === 1 ? "" : "s"}; ${Number(diagnostics.memberRowCount || 0)} member row${Number(diagnostics.memberRowCount || 0) === 1 ? "" : "s"}; ${recentVehicleActivity.length} recent vehicle lookup row${recentVehicleActivity.length === 1 ? "" : "s"}.`,
       workspaceCount: Number(diagnostics.workspaceCount || workspaces.length || 0),
       workspaces,
       memberRowCount: Number(diagnostics.memberRowCount || 0),
@@ -6204,9 +6214,8 @@ function renderAdminGuardrailOverview() {
 }
 
 async function downloadSupabaseLoadReport() {
-  if (canUseGlobalAdminTools()) {
-    await refreshOwnerGlobalDiagnostics({ force: true, silent: true, reason: "load-report-export" }).catch((error) => console.warn("Owner global diagnostics export refresh failed", error));
-  }
+  // Export immediately from the current cached diagnostics snapshot. The report button
+  // must not start slow optional owner/global scans or it makes Admin feel broken.
   const report = redactSensitiveDiagnostics(buildSupabaseLoadReport());
   const stamp = localDateString().replace(/[^0-9-]/g, "") || "today";
   downloadTextFile(`fuel-ledger-supabase-load-report-${stamp}.json`, JSON.stringify(report, null, 2), "application/json");

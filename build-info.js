@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T14:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v377",
+    updatedAt: "2026-06-21T14:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v378",
     releaseNotes: Object.freeze([
+      "Admin optional diagnostics now back off instead of hammering slow Render health/global routes: load reports use cached snapshots, hardcoded test-user cards are removed, and global diagnostics stay generic/last-good-first.",
       "App updates now run without user update buttons: version status polls automatically, waiting service workers activate themselves, and safe reloads retry after foreground writes finish instead of asking the user to refresh.",
       "Workspace live sync now completes workspace switches without page refresh: successful loads re-render after confirmation, delayed switches retry automatically, and same-user ledger events trigger lightweight auto-sync across tabs/devices.",
       "Workspace switching now stays usable while the workspace list is refreshing: cached linked workspaces remain selectable, stale loading flags are cleared, and Account keeps the cached workspace rows visible instead of freezing behind a loading message.",
