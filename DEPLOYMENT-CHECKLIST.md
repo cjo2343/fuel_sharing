@@ -22,9 +22,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v359`
-- Updated at: `2026-06-21T08:30:00.000Z`
-- Top release note: Owner activity is now summarized and manual-refreshable after timeouts: Admin shows grouped server-side activity instead of a long raw wall of rows, hides raw rows behind details, and pauses automatic owner-activity retries after timeout until the app owner asks for a refresh.
+- Service-worker cache: `fuel-ledger-v360`
+- Updated at: `2026-06-21T08:45:00.000Z`
+- Top release note: Owner activity now treats multi-user and multi-workspace activity as normal global audit data: the app-owner view defaults to current workspace, can switch to all workspaces, groups by workspace/user, and no longer auto-refreshes after normal member actions.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -604,12 +604,3 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Top release note: `Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.`
 
 - Render API calls now use a shared frontend helper for fresh Supabase tokens, Authorization headers, timeouts, JSON parsing, and settings-save request handling instead of hand-rolled/stale token fetch code.
-
-## 2026-06-21 startup/workspace diagnostics UX pass
-
-- Core workspace loading must unlock editing after `/api/state/load` confirms the selected workspace.
-- Workspace-list refreshes are coalesced so startup/auth/account/admin triggers do not create a noisy pile of duplicate Data I/O rows.
-- Workspace switching force-loads the selected workspace and records the switch under Workspace & invites.
-- A later Render admin-health timeout must not overwrite a recent healthy admin-health result as a core loading failure.
-- Vehicle lookup uses a longer client timeout and records provider timeout/config/result codes under Vehicle & settings.
-- Data I/O is grouped into readable sections: Core loading, Workspace & invites, Vehicle & settings, Trips/fuel/bookings/payments, Admin diagnostics, and Background noise.

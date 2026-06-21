@@ -15,7 +15,7 @@ assert(app.includes('ownerActivityInFlightTraceMeta'), 'owner activity keeps tra
 assert(app.includes('OWNER_ACTIVITY_REFRESH_IN_FLIGHT'), 'duplicate owner activity refreshes are explicitly skipped');
 assert(app.includes('OWNER_ACTIVITY_TIMEOUT'), 'stale owner activity refreshes record timeout finish rows');
 assert(app.includes('const requestAndReadPromise = (async () => {\n      const headers = await buildRenderRequestHeaders'), 'Render API timeout wraps token/header setup and fetch/body read');
-assert(app.includes('maybeRefreshOwnerActivityAfterMemberAction({ reason: "vehicle-lookup", success: true })'), 'vehicle lookup refreshes owner activity only through the cooldown-aware helper');
+assert(app.includes('maybeRefreshOwnerActivityAfterMemberAction({ reason: "vehicle-lookup", success: true })'), 'vehicle lookup uses the owner-activity helper without auto-refreshing the global audit log');
 assert(app.includes('shouldRefreshOwnerActivityAfterLookup = !timedOut && !providerUnavailable'), 'vehicle lookup should not cascade into owner activity when Render is already timing out or provider is unavailable');
 
 assert(server.includes('def get_member_context_as_service_fast'), 'server has fast member-only vehicle lookup authorization');

@@ -1273,6 +1273,21 @@ function dataIoOperationFriendlyName(operation = {}) {
   return map[source] || source.replace(/^admin-tool:/, "Admin: ").replace(/-/g, " ");
 }
 
+function ownerActivityFriendlyAction(action = "") {
+  const normalized = String(action || "activity").toLowerCase();
+  const map = {
+    "state-load": "Workspace opened",
+    "members-list": "Members viewed",
+    "vehicle-lookup": "Vehicle lookup",
+    "settings-save": "Settings saved",
+    "trip-upsert": "Trip saved",
+    "fuel-upsert": "Fuel saved",
+    "booking-upsert": "Booking saved",
+    "payment-status-action": "Payment updated"
+  };
+  return map[normalized] || String(action || "activity").replace(/-/g, " ");
+}
+
 function dataIoOperationTargetLabel(operation = {}) {
   const entry = operation.latest || operation.start || operation.finish || {};
   return entry.endpoint || entry.rpc || entry.table || entry.operation || "";
@@ -1396,8 +1411,14 @@ function latestDataIoOperations(limit = 6) {
     .slice(0, limit);
 }
 
-function latestDataIoOperation() {
-  return latestDataIoOperations(1)[0] || null;
+function isOptionalOwnerActivityOperation(operation = {}) {
+  const entry = operation.latest || operation.start || operation.finish || {};
+  return String(entry.source || "").toLowerCase() === "owner-activity";
+}
+
+function latestDataIoOperation({ includeOptionalAdminAudit = false } = {}) {
+  const operations = latestDataIoOperations(12);
+  return (includeOptionalAdminAudit ? operations : operations.filter((operation) => !isOptionalOwnerActivityOperation(operation)))[0] || null;
 }
 
 function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoOperationStaleMs) {
@@ -1701,11 +1722,12 @@ let lastOwnerActivityTimeoutAt = 0;
 let ownerActivityConsecutiveTimeouts = 0;
 let lastOwnerActivityCooldownDiagnosticAt = 0;
 const ownerActivityFreshMs = 30000;
-const ownerActivityBackgroundIntervalMs = 60000;
 const ownerActivityTimeoutCooldownBaseMs = 120000;
 const ownerActivityTimeoutCooldownMaxMs = 300000;
 const ownerActivityVisibleRowLimit = 6;
 let ownerActivityAutoPausedUntilManual = false;
+let ownerActivityInitialAdminLoadAttempted = false;
+let ownerActivityScope = localStorage.getItem("ownerActivityScope") === "all" ? "all" : "current";
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -2061,6 +2083,17 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const scopeButton = event.target.closest("[data-owner-activity-scope]");
+  if (scopeButton) {
+    event.preventDefault();
+    if (!requireGlobalAdminToolsPermission("Change owner activity scope")) return;
+    ownerActivityScope = scopeButton.dataset.ownerActivityScope === "all" ? "all" : "current";
+    localStorage.setItem("ownerActivityScope", ownerActivityScope);
+    refreshOwnerActivity({ force: true, silent: false, bypassCooldown: true, reason: `manual-scope-${ownerActivityScope}` }).catch((error) => {
+      setDataToolsMessage(`Owner activity refresh failed: ${error?.message || error}`);
+    });
+    return;
+  }
   const button = event.target.closest("[data-owner-activity-refresh]");
   if (!button) return;
   event.preventDefault();
@@ -2666,16 +2699,10 @@ function setActiveView(view) {
   render();
   if (activeView === "admin") {
     scheduleWorkspaceInviteRefresh("admin-tab-open");
-    refreshOwnerActivity({ silent: true, reason: "admin-tab-open" });
+    maybeLoadOwnerActivityOnAdminOpen();
   }
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
-
-window.setInterval(() => {
-  if (activeView === "admin" && canUseGlobalAdminTools()) {
-    refreshOwnerActivity({ silent: true, reason: "admin-background" }).catch(() => {});
-  }
-}, ownerActivityBackgroundIntervalMs);
 
 function renderSectionNavigation() {
   if (activeView === "admin" && !canManageSettings()) activeView = "log";
@@ -3349,9 +3376,6 @@ els.refreshBuildInfo?.addEventListener("click", () => {
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   if (!requireGlobalAdminToolsPermission("Refresh load monitor")) return;
   renderSupabaseLoadMonitor();
-  if (!ownerActivityAutoPausedUntilManual && Date.now() >= (ownerActivityCooldownUntil || 0)) {
-    refreshOwnerActivity({ silent: true, reason: "load-monitor-refresh" });
-  }
   renderAdminGuardrailOverview();
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
@@ -4289,7 +4313,7 @@ function summarizeOwnerActivityRows(rows = []) {
   rows.forEach((row) => {
     const key = normalizeOwnerActivityGroupKey(row);
     const existing = summaryByKey.get(key) || {
-      action: row.action || row.route || "activity",
+      action: ownerActivityFriendlyAction(row.action || row.route || "activity"),
       actor: row.actor_email || "unknown user",
       workspace: row.workspace_label || row.ledger_id || "unknown workspace",
       ok: 0,
@@ -4323,12 +4347,62 @@ function formatOwnerActivityRow(row = {}) {
   const workspace = row.workspace_label || row.ledger_id || "unknown workspace";
   const actor = row.actor_email || "unknown user";
   const status = row.ok === true ? "OK" : "Issue";
-  const action = row.action || row.route || "activity";
+  const action = ownerActivityFriendlyAction(row.action || row.route || "activity");
   const code = row.result_code ? ` · ${row.result_code}` : "";
   const duration = Number.isFinite(Number(row.duration_ms)) && Number(row.duration_ms) > 0 ? ` · ${formatDurationMs(Number(row.duration_ms))}` : "";
   const summary = row.summary || row.route || "";
   return `<article class="admin-operation-row compact ${row.ok === true ? "ok" : "failed"}"><div><strong>${escapeHtml(action)}</strong><small>${escapeHtml(actor)} · ${escapeHtml(workspace)}${code}</small>${summary ? `<small>${escapeHtml(summary)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(time)}${escapeHtml(duration)}</small></article>`;
 }
+
+function ownerActivityLoadedWorkspaceId() {
+  const context = buildDataIoWorkspaceContext();
+  return context.loadedWorkspaceId || getActiveLedgerId();
+}
+
+function ownerActivityVisibleRows(rows = []) {
+  if (ownerActivityScope === "all") return rows;
+  const currentWorkspaceId = ownerActivityLoadedWorkspaceId();
+  return rows.filter((row) => String(row.ledger_id || "") === String(currentWorkspaceId || ""));
+}
+
+function ownerActivityWorkspaceGroups(rows = []) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = row.ledger_id || row.workspace_label || "unknown";
+    const group = groups.get(key) || {
+      workspace: row.workspace_label || row.ledger_id || "unknown workspace",
+      ledgerId: row.ledger_id || "",
+      count: 0,
+      users: new Map(),
+      latestAt: row.created_at || ""
+    };
+    group.count += 1;
+    const actor = row.actor_email || "unknown user";
+    group.users.set(actor, (group.users.get(actor) || 0) + 1);
+    if (!group.latestAt || Date.parse(row.created_at || "") > Date.parse(group.latestAt || "")) group.latestAt = row.created_at || group.latestAt;
+    groups.set(key, group);
+  });
+  return Array.from(groups.values()).sort((a, b) => Date.parse(b.latestAt || "") - Date.parse(a.latestAt || ""));
+}
+
+function renderOwnerActivityScopeControls() {
+  const currentActive = ownerActivityScope !== "all";
+  const allActive = ownerActivityScope === "all";
+  return `<div class="segmented-control owner-activity-scope" role="group" aria-label="Owner activity scope">
+    <button type="button" class="secondary small-button ${currentActive ? "active" : ""}" data-owner-activity-scope="current">Current workspace</button>
+    <button type="button" class="secondary small-button ${allActive ? "active" : ""}" data-owner-activity-scope="all">All workspaces</button>
+  </div>`;
+}
+
+function renderOwnerActivityWorkspaceOverview(rows = []) {
+  const groups = ownerActivityWorkspaceGroups(rows);
+  if (!groups.length) return "";
+  return `<div class="owner-activity-workspace-grid">${groups.map((group) => {
+    const users = Array.from(group.users.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([actor, count]) => `${actor} ×${count}`).join(" · ");
+    return `<article class="admin-operation-row compact ok"><div><strong>${escapeHtml(group.workspace)}</strong><small>${escapeHtml(group.count)} event${group.count === 1 ? "" : "s"}${users ? ` · ${escapeHtml(users)}` : ""}</small></div><span>Workspace</span></article>`;
+  }).join("")}</div>`;
+}
+
 
 function formatOwnerActivityCooldownMessage(now = Date.now()) {
   const remainingMs = Math.max(0, ownerActivityCooldownUntil - now);
@@ -4376,43 +4450,51 @@ function clearOwnerActivityTimeoutCooldown() {
   ownerActivityAutoPausedUntilManual = false;
 }
 
+function maybeLoadOwnerActivityOnAdminOpen() {
+  if (!canUseGlobalAdminTools()) return Promise.resolve(ownerActivityStatus);
+  if (ownerActivityInitialAdminLoadAttempted || ownerActivityStatus.checked) return Promise.resolve(ownerActivityStatus);
+  ownerActivityInitialAdminLoadAttempted = true;
+  return refreshOwnerActivity({ silent: true, reason: "admin-tab-open" }).catch(() => ownerActivityStatus);
+}
+
 function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", success = true } = {}) {
   if (!success) return Promise.resolve(ownerActivityStatus);
-  if (ownerActivityAutoPausedUntilManual) {
-    recordOwnerActivityCooldownSkip(`${reason}-manual-pause`);
-    return Promise.resolve(ownerActivityStatus);
-  }
-  if (Date.now() < ownerActivityCooldownUntil) {
-    recordOwnerActivityCooldownSkip(reason);
-    return Promise.resolve(ownerActivityStatus);
-  }
-  return refreshOwnerActivity({ silent: true, reason }).catch(() => ownerActivityStatus);
+  // Owner Activity is a global app-owner audit log, not a per-action live status feed.
+  // Other users and other workspaces may be active at the same time; do not auto-refresh
+  // the audit log after normal member actions because that makes ordinary multi-user use
+  // look like current-workspace churn. The app owner can refresh it manually when needed.
+  recordOwnerActivityCooldownSkip(`${reason}-manual-audit`);
+  return Promise.resolve(ownerActivityStatus);
 }
 
 function renderOwnerActivityCard() {
   const status = ownerActivityStatus || {};
   const allRows = Array.isArray(status.rows) ? status.rows : [];
-  const summaryRows = summarizeOwnerActivityRows(allRows).slice(0, ownerActivityVisibleRowLimit);
-  const recentRows = allRows.slice(0, ownerActivityVisibleRowLimit);
-  const hiddenCount = Math.max(0, allRows.length - recentRows.length);
+  const visibleRows = ownerActivityVisibleRows(allRows);
+  const summaryRows = summarizeOwnerActivityRows(visibleRows).slice(0, ownerActivityVisibleRowLimit);
+  const recentRows = visibleRows.slice(0, ownerActivityVisibleRowLimit);
+  const hiddenCount = Math.max(0, visibleRows.length - recentRows.length);
   const coolingDown = Date.now() < (ownerActivityCooldownUntil || 0);
   const manuallyPaused = ownerActivityAutoPausedUntilManual || status.manualPaused;
   const cardClass = status.loading || coolingDown || manuallyPaused ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Loading" : manuallyPaused ? "Manual refresh" : coolingDown ? "Paused" : status.checked ? (status.ok ? `${allRows.length} recent` : "Needs review") : "Not loaded";
+  const title = status.loading ? "Loading" : manuallyPaused ? "Manual refresh" : coolingDown ? "Paused" : status.checked ? (status.ok ? `${visibleRows.length} shown` : "Needs review") : "Not loaded";
   const detail = manuallyPaused
-    ? "Owner activity auto-refresh is paused after a timeout. Use Refresh owner activity when you need this audit view; core ledger data is still loaded."
-    : coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
+    ? "Owner activity auto-refresh is paused. Use Refresh owner activity when you need this optional audit view; core ledger data is still loaded."
+    : coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Global app-owner audit across users and workspaces. This is not the current workspace state.";
   return `
     <article class="admin-metric-card ${cardClass}">
-      <span>Owner activity</span>
+      <span>Owner activity · global audit</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>Server-side audit · optional admin view</small>
+      <small>${ownerActivityScope === "all" ? "All workspaces" : "Current workspace only"} · optional admin view</small>
       <p>${escapeHtml(detail)}</p>
+      ${renderOwnerActivityScopeControls()}
       <button type="button" class="secondary small-button" data-owner-activity-refresh>Refresh owner activity</button>
     </article>
     ${summaryRows.length ? `
       <details class="admin-diagnostics-section owner-activity-section">
-        <summary>Owner activity summary <span class="entry-meta">${escapeHtml(summaryRows.length)} grouped · ${escapeHtml(allRows.length)} raw${hiddenCount ? ` · ${hiddenCount} hidden` : ""}</span></summary>
+        <summary>Owner activity summary <span class="entry-meta">${escapeHtml(summaryRows.length)} grouped · ${escapeHtml(visibleRows.length)} shown · ${escapeHtml(allRows.length)} total${hiddenCount ? ` · ${hiddenCount} hidden` : ""}</span></summary>
+        <p class="entry-meta">Rows from other workspaces are normal when viewing all workspaces. They do not change the currently loaded workspace.</p>
+        ${renderOwnerActivityWorkspaceOverview(visibleRows)}
         <div class="admin-operation-list compact-list">
           ${summaryRows.map(formatOwnerActivitySummaryRow).join("")}
         </div>
@@ -4524,7 +4606,7 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
   try {
     const { result } = await callRenderJson(renderOwnerActivityUrl, {
       method: "POST",
-      body: { limit: 120 },
+      body: ownerActivityScope === "all" ? { limit: 120 } : { limit: 120, ledgerId: ownerActivityLoadedWorkspaceId() },
       timeoutMs: 10000,
       timeoutLabel: "Owner activity load"
     });
@@ -4536,7 +4618,7 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
       loading: false,
       coolingDown: false,
       cooldownUntil: "",
-      message: rows.length ? `Loaded ${rows.length} server-owned activity row${rows.length === 1 ? "" : "s"}.` : "No server-owned owner activity rows yet.",
+      message: rows.length ? `Loaded ${rows.length} server-owned activity row${rows.length === 1 ? "" : "s"}${ownerActivityScope === "all" ? " across all workspaces" : " for the current workspace"}.` : `No server-owned owner activity rows yet${ownerActivityScope === "all" ? "" : " for the current workspace"}.`,
       rows,
       checkedAt: new Date().toISOString()
     };

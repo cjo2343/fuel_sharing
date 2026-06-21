@@ -26,7 +26,9 @@ assert.match(server, /safe_owner_activity_metadata/, "owner activity should use 
 assert.match(app, /const renderOwnerActivityUrl = "\/api\/owner\/activity"/, "frontend should know the owner activity endpoint");
 assert.match(app, /async function refreshOwnerActivity/, "frontend should load owner activity");
 assert.match(app, /function renderOwnerActivityCard/, "frontend should render owner activity in Admin diagnostics");
-assert.match(app, /Server-side · all workspaces/, "owner activity should be labeled as server-side and cross-workspace");
+assert.match(app, /Owner activity · global audit/, "owner activity should be labeled as a global audit view");
+assert.match(app, /Current workspace/, "owner activity should default to a current-workspace scoped view");
+assert.match(app, /All workspaces/, "owner activity should allow the app owner to inspect all workspaces deliberately");
 assert.match(app, /canUseGlobalAdminTools\(\) \? renderOwnerActivityCard\(\)/, "owner activity UI should be owner-only");
 
 console.log("ok - server-owned owner activity log is wired for backend actions and owner UI");
