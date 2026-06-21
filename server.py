@@ -1679,7 +1679,12 @@ def fetch_vehicle_lookup(plate):
         prefix = env_value("VEHICLE_LOOKUP_API_KEY_PREFIX", "Bearer ")
         headers[header_name] = f"{prefix}{api_key}" if prefix else api_key
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=8) as response:
+    try:
+        provider_timeout = float(env_value("VEHICLE_LOOKUP_TIMEOUT_SECONDS", "8") or 8)
+    except (TypeError, ValueError):
+        provider_timeout = 8
+    provider_timeout = max(2, min(provider_timeout, 15))
+    with urllib.request.urlopen(request, timeout=provider_timeout) as response:
         raw = response.read()
         if response.headers.get("Content-Encoding", "").lower() == "gzip":
             raw = gzip.decompress(raw)
@@ -3694,7 +3699,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             # Any active workspace member may ask Render to lookup vehicle data,
             # but this route should not wait on settlement/open-period setup.
-            context = get_member_context_as_service_fast(ledger_id, user, timeout=5)
+            context = get_member_context_as_service_fast(ledger_id, user, timeout=3)
             result, response_status = fetch_vehicle_lookup(plate)
             result_code = result.get("code") or ("VEHICLE_LOOKUP_OK" if result.get("ok") else "VEHICLE_LOOKUP_FAILED")
             record_lookup_activity(bool(result.get("ok")), result_code, response_status, f"Vehicle lookup for {plate}.", {"providerStatus": response_status})

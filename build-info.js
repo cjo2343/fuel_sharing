@@ -3,9 +3,11 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T01:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v357",
+    updatedAt: "2026-06-21T08:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v358",
     releaseNotes: Object.freeze([
+      "Startup loading now separates core workspace load from admin diagnostics, coalesces duplicate workspace-list refreshes, keeps recent healthy admin health when a later check times out, makes workspace switching force-load the selected workspace, and groups Data I/O into readable Core, Workspace, Vehicle/settings, App action, Admin, and Background sections.",
+      "Workspace membership refresh now repairs stale locally selected workspaces, so an unavailable workspace such as test1 no longer leaves settings locked behind Loading before settings can be edited.",
       "Owner Activity now backs off after Render timeouts, Admin background refreshes poll less aggressively, and vehicle lookup no longer cascades into extra owner-activity loads when Render is already slow.",
       "Render admin health now uses the shared full-timeout Render API helper, so token/header setup, fetch, and response-body reads all finish with matched Data I/O rows instead of leaving stale loading reports.",
       "Member-facing vehicle lookup, settings, trip, fuel, booking, payment, and settlement actions now group under Member actions in Data I/O, Supabase load reports export a deeper 30-row Data I/O window, and the owner-activity guard matches the helper-based vehicle lookup recorder.",

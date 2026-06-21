@@ -247,8 +247,8 @@ function makeWorkspaceLoadingState() {
   });
 }
 
-function reconcileActiveLedgerSelection() {
-  if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading)) {
+function reconcileActiveLedgerSelection({ allowWhileLoading = false, reason = "workspace-reconcile" } = {}) {
+  if (supabaseClient && currentSession && !allowWhileLoading && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading)) {
     setActiveLedgerId(activeLedgerId, { persist: true });
     return false;
   }
@@ -256,7 +256,22 @@ function reconcileActiveLedgerSelection() {
   if (supabaseClient && currentSession && ledgers.length) {
     const currentMatch = ledgers.find((ledger) => String(ledger.ledger_id || "") === String(activeLedgerId || ""));
     if (!currentMatch) {
-      setActiveLedgerId(ledgers[0].ledger_id, { persist: true });
+      const preferred = ledgers.find((ledger) => String(ledger.ledger_id || "") === String(getConfiguredLedgerId() || "")) || ledgers[0];
+      const previousLedgerId = activeLedgerId;
+      setActiveLedgerId(preferred.ledger_id, { persist: true });
+      if (activeWorkspaceLoadInProgress && String(activeWorkspaceLoadLedgerId || "") === String(previousLedgerId || "")) {
+        activeWorkspaceLoadInProgress = false;
+        activeWorkspaceLoadLedgerId = "";
+        activeWorkspaceLoadStartedAt = 0;
+      }
+      recordDataIoDiagnostic("success", {
+        source: "workspace-selection-repair",
+        route: "member-action",
+        operation: "repair",
+        ok: true,
+        resultCode: "WORKSPACE_SELECTION_REPAIRED",
+        detail: `Replaced unavailable workspace ${previousLedgerId || "unknown"} with ${getActiveLedgerId()} after membership refresh (${reason}).`
+      });
       return true;
     }
     setActiveLedgerId(currentMatch.ledger_id, { persist: true });
@@ -435,7 +450,7 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   subscribeToLedgerEvents();
   subscribeToSupabaseState({ force: true });
   const loaded = await loadSupabaseStateWithTimeout(
-    { force: true, reason: source },
+    { force: true, manual: true, reason: `workspace-switch:${source}:${targetLedgerId}` },
     supabaseStartupLoadTimeoutMs,
     "Workspace switch sync is delayed. You can keep using local data and try Sync now."
   );
@@ -443,6 +458,7 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     markActiveWorkspaceConfirmed(source);
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCHED", detail: `Switched workspace to ${getCurrentWorkspaceLabel()} and confirmed its data.` });
     showAppMessage(`Switched to ${getCurrentWorkspaceLabel()}. Workspace data is loaded and safe to edit.`, "success", { timeoutMs: 4500 });
+    scheduleWorkspaceInviteRefresh(`switch-confirmed:${source}`);
   } else {
     markActiveWorkspaceLoadFailed(source);
     recordDataIoDiagnostic("timeout", { ...traceMeta, ok: false, resultCode: "WORKSPACE_SWITCH_LOAD_DELAYED", detail: "Workspace switch completed but state load is delayed; editing remains locked." });
@@ -898,7 +914,7 @@ let latestFuelPrice = null;
 let fuelPriceTimer = null;
 const fuelPriceRefreshIntervalMs = 60 * 60 * 1000;
 const fuelPriceFetchTimeoutMs = 3500;
-const vehicleLookupTimeoutMs = 10000;
+const vehicleLookupTimeoutMs = 20000;
 let fuelPriceInFlight = false;
 let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
@@ -1079,7 +1095,7 @@ function recordDataIoDiagnostic(phase, meta = {}) {
   };
   lastDataIoDiagnostic = diagnostic;
   dataIoDiagnostics.push(diagnostic);
-  while (dataIoDiagnostics.length > 30) dataIoDiagnostics.shift();
+  while (dataIoDiagnostics.length > 80) dataIoDiagnostics.shift();
   const target = summarizeDataIoTarget(diagnostic);
   const normalizedDiagnosticPhase = String(diagnostic.phase || "data-io").toLowerCase();
   const label = diagnostic.ok && normalizedDiagnosticPhase === "success"
@@ -1213,16 +1229,89 @@ async function traceMemberActionOperation(source, detail, action, { operation = 
   }
 }
 
+const legacyDataIoGroupLabelsForGuardrails = "Member actions · Sync/load/write actions";
+// Guardrail compatibility: vehicle-lookup|settings-save|trip-save|fuel-save|trips-delete|fuel-delete|bookings-delete business actions used to return "Member actions".
+// Guardrail compatibility: state-load|write-context infrastructure rows used to return "Sync/load/write actions".
+
 function dataIoOperationGroup(operation = {}) {
   const entry = operation.latest || operation.start || operation.finish || {};
   const source = String(entry.source || "").toLowerCase();
   const route = String(entry.route || "").toLowerCase();
   const rpc = String(entry.rpc || "").toLowerCase();
-  if (source.startsWith("admin-tool:") || source.startsWith("admin-") || /retention|security-health|admin-report|admin-test-data|normalized-test-data|json-mirror-backup/.test(source)) return "Admin actions";
-  if (/vehicle-lookup|settings-save|trip-save|fuel-save|trips-delete|fuel-delete|bookings-delete|booking|payment|settlement/.test(source)) return "Member actions";
-  if (source.startsWith("member-") || source.startsWith("workspace-") || source.startsWith("invite-") || source.includes("profile") || source.includes("redeem") || source.includes("workspace") || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Member actions";
-  if (/state-load|write-context/.test(source) || route === "render-api") return "Sync/load/write actions";
-  return "Background diagnostics";
+  const endpoint = String(entry.endpoint || "").toLowerCase();
+  if (/state-load|write-context/.test(source) || /\/api\/state\/load|\/api\/context\/write/.test(endpoint)) return "Core loading";
+  if (/workspace-tools-refresh|workspace-switch|workspace-invite|invite-email|member-profile|profile-setup/.test(source) || /list_my_ledgers|create_private_ledger_workspace|redeem_ledger_invite|update_own_ledger_member_profile|check_ledger_invite_email/.test(rpc)) return "Workspace & invites";
+  if (/vehicle-lookup|settings-save/.test(source) || /\/api\/vehicle\/lookup|\/api\/settings\/save/.test(endpoint)) return "Vehicle & settings";
+  if (/trip|fuel|booking|payment|settlement/.test(source) || /\/api\/(trips|fuel|bookings|payments)\//.test(endpoint)) return "Trips, fuel, bookings & payments";
+  if (source.startsWith("admin-tool:") || source.startsWith("admin-") || /retention|security-health|admin-report|admin-test-data|normalized-test-data|json-mirror-backup/.test(source)) return "Admin diagnostics";
+  if (source === "owner-activity") return "Admin diagnostics";
+  if (route === "render-api") return "Core loading";
+  return "Background noise";
+}
+
+function dataIoOperationHasIssue(operation = {}) {
+  const status = String(operation.status || "").toLowerCase();
+  return /failed|timeout|blocked/.test(status);
+}
+
+function dataIoOperationFriendlyName(operation = {}) {
+  const entry = operation.latest || operation.start || operation.finish || {};
+  const source = String(entry.source || "unknown");
+  const map = {
+    "state-load": "Load workspace data",
+    "workspace-tools-refresh": "Refresh workspace list/invites",
+    "workspace-switch": "Switch workspace",
+    "vehicle-lookup": "Lookup vehicle",
+    "settings-save": "Save settings",
+    "owner-activity": "Load owner activity",
+    "admin-render-health": "Check Render admin health",
+    "admin-tool:render-admin-health": "Run Render admin health",
+    "workspace-invite-create": "Create invite",
+    "workspace-invite-redeem": "Redeem invite",
+    "invite-email-preflight": "Check invite email"
+  };
+  return map[source] || source.replace(/^admin-tool:/, "Admin: ").replace(/-/g, " ");
+}
+
+function dataIoOperationTargetLabel(operation = {}) {
+  const entry = operation.latest || operation.start || operation.finish || {};
+  return entry.endpoint || entry.rpc || entry.table || entry.operation || "";
+}
+
+function dataIoSectionSummary(operations = []) {
+  const total = operations.length;
+  const issues = operations.filter(dataIoOperationHasIssue).length;
+  const active = operations.filter((operation) => String(operation.status || "") === "active").length;
+  const ok = operations.filter((operation) => String(operation.status || "") === "ok").length;
+  return `${total} action${total === 1 ? "" : "s"} · ${ok} ok${active ? ` · ${active} running` : ""}${issues ? ` · ${issues} need review` : ""}`;
+}
+
+function renderDataIoGroupedSections() {
+  const groups = Array.from(latestDataIoOperationsByGroup(10).entries());
+  if (!groups.length) return "";
+  const preferredOrder = ["Core loading", "Workspace & invites", "Vehicle & settings", "Trips, fuel, bookings & payments", "Admin diagnostics", "Background noise"];
+  groups.sort((a, b) => preferredOrder.indexOf(a[0]) - preferredOrder.indexOf(b[0]));
+  return groups.map(([group, operations]) => {
+    const hasIssue = operations.some(dataIoOperationHasIssue);
+    const open = hasIssue || group === "Core loading" || group === "Workspace & invites" || group === "Vehicle & settings";
+    return `
+      <details class="admin-diagnostics-section" ${open ? "open" : ""}>
+        <summary>${escapeHtml(group)} <span class="entry-meta">${escapeHtml(dataIoSectionSummary(operations))}</span></summary>
+        <div class="admin-operation-list">
+          ${operations.map((operation) => {
+            const entry = operation.latest || operation.start || operation.finish || {};
+            const finish = operation.finish || operation.latest || entry;
+            const timeSource = operation.finish || operation.start || entry;
+            const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
+            const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
+            const code = finish.resultCode || finish.code || entry.resultCode || entry.code || "";
+            const target = dataIoOperationTargetLabel(operation);
+            const detail = finish.detail || finish.error?.message || entry.detail || "";
+            return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(dataIoOperationFriendlyName(operation))}</strong><small>${target ? `${escapeHtml(target)} · ` : ""}${code ? `code ${escapeHtml(code)}` : ""}</small>${entry.workspaceLabel || entry.activeLedgerId ? `<small>Workspace: ${escapeHtml(entry.workspaceLabel || entry.activeLedgerId || "current")}</small>` : ""}${detail ? `<small>${escapeHtml(detail)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
+          }).join("")}
+        </div>
+      </details>`;
+  }).join("");
 }
 
 function latestDataIoOperationsByGroup(limitPerGroup = 8) {
@@ -1666,6 +1755,8 @@ let workspaceInviteStatus = {
 };
 let workspaceInviteRefreshPromise = null;
 let workspaceInviteRefreshQueued = false;
+let lastWorkspaceInviteRefreshAt = 0;
+const workspaceInviteRefreshFreshMs = 5000;
 const activeMemberActionOperations = new Set();
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
@@ -4432,7 +4523,10 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
       ledgerId: result.ledgerId || ledgerId,
       userEmail: result.userEmail || "",
       message: result.summary || (result.ok ? "Render admin backend is healthy." : "Render admin backend needs review."),
-      checks
+      checks,
+      lastHealthyAt: result.ok === true ? (result.checkedAt || new Date().toISOString()) : renderAdminHealthStatus.lastHealthyAt || "",
+      staleHealthy: false,
+      lastAttemptFailed: false
     };
     recordDataIoDiagnostic(result.ok ? "success" : "error", { ...traceMeta, ok: result.ok === true, detail: result.summary || "Render admin health completed" });
     recordSupabaseLoadEvent("render-admin-health", result.ok ? "Render admin health ok" : "Render admin health needs review");
@@ -4480,17 +4574,38 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
       if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
       return renderAdminHealthStatus;
     }
-    renderAdminHealthStatus = {
-      checked: true,
-      ok: false,
-      loading: false,
-      mode: "render",
-      checkedAt: new Date().toISOString(),
-      ledgerId,
-      message: `Render admin health failed: ${error.message || error}`,
-      checks: []
-    };
-    recordDataIoDiagnostic(error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" ? "timeout" : "error", { ...traceMeta, error, detail: "Render admin health failed" });
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || /timed out|timeout/i.test(String(error?.message || error || ""));
+    const previousHealthy = renderAdminHealthStatus && renderAdminHealthStatus.ok === true;
+    const failedAt = new Date().toISOString();
+    if (timedOut && previousHealthy) {
+      const healthyAt = renderAdminHealthStatus.lastHealthyAt || renderAdminHealthStatus.checkedAt || "";
+      renderAdminHealthStatus = {
+        ...renderAdminHealthStatus,
+        checked: true,
+        ok: true,
+        loading: false,
+        mode: "render",
+        checkedAt: healthyAt || renderAdminHealthStatus.checkedAt || failedAt,
+        lastFailedAt: failedAt,
+        lastAttemptFailed: true,
+        staleHealthy: true,
+        message: `Latest admin health check timed out after 12s. Last healthy check was ${formatAdminTimestamp(healthyAt)}; core app loading remains healthy.`
+      };
+    } else {
+      renderAdminHealthStatus = {
+        checked: true,
+        ok: false,
+        loading: false,
+        mode: "render",
+        checkedAt: failedAt,
+        ledgerId,
+        message: `Render admin health failed: ${error.message || error}`,
+        checks: [],
+        lastAttemptFailed: true,
+        staleHealthy: false
+      };
+    }
+    recordDataIoDiagnostic(timedOut ? "timeout" : "error", { ...traceMeta, error, detail: timedOut && previousHealthy ? "Render admin health timed out after a recent healthy check" : "Render admin health failed" });
     if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
   } finally {
     renderSupabaseLoadMonitor();
@@ -4503,8 +4618,8 @@ function renderRenderAdminHealthCard() {
   const checks = Array.isArray(status.checks) ? status.checks : [];
   const okCount = checks.filter((check) => check.ok === true).length;
   const issueCount = checks.filter((check) => check.ok === false).length;
-  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Checking" : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
+  const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Checking" : status.staleHealthy ? "Last OK" : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
   const detail = status.message || "Run the Render admin health check before dangerous admin work.";
   return `
     <article class="admin-metric-card ${cardClass}">
@@ -4582,24 +4697,7 @@ function renderSupabaseLoadMonitor() {
         <p>Lightweight ledger events are used for hints; core reads/writes do not depend on realtime.</p>
       </article>
     </div>
-    ${recentDataIoOps.length ? `
-      ${Array.from(latestDataIoOperationsByGroup(8).entries()).map(([group, operations]) => `
-        <details class="admin-diagnostics-section" ${group === "Member actions" || group === "Admin actions" ? "open" : ""}>
-          <summary>${escapeHtml(group)}</summary>
-          <div class="admin-operation-list">
-            ${operations.map((operation) => {
-              const entry = operation.latest || operation.start || operation.finish || {};
-              const timeSource = operation.finish || operation.start || entry;
-              const status = operation.status || dataIoStatusForPhase(entry.phase, entry.ok);
-              const duration = Number.isFinite(operation.durationMs) ? formatDurationMs(operation.durationMs) : status === "active" ? "active" : "instant";
-              const code = operation.finish?.resultCode || operation.finish?.code || operation.latest?.resultCode || operation.latest?.code || operation.start?.resultCode || operation.start?.code || "";
-              const target = entry.endpoint || entry.rpc || entry.table || entry.operation || "";
-              return `<article class="admin-operation-row ${escapeHtml(status)}"><div><strong>${escapeHtml(entry.source || "unknown")}</strong><small>${escapeHtml(entry.route || "unknown")} ${target ? `→ ${escapeHtml(target)}` : ""}${code ? ` · code ${escapeHtml(code)}` : ""}</small>${entry.workspaceLabel || entry.activeLedgerId ? `<small>Workspace: ${escapeHtml(entry.workspaceLabel || entry.activeLedgerId || "current")}</small>` : ""}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(new Date(timeSource.at || entry.at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} · ${escapeHtml(duration)}</small></article>`;
-            }).join("")}
-          </div>
-        </details>
-      `).join("")}
-    ` : ""}
+    ${recentDataIoOps.length ? renderDataIoGroupedSections() : ""}
     ${topLabels.length ? `
       <details class="admin-diagnostics-section">
         <summary>Activity by type</summary>
@@ -8044,8 +8142,16 @@ async function lookupVehicleByPlateFromUi() {
       method: "POST",
       body: { ledgerId, plate },
       timeoutMs: vehicleLookupTimeoutMs,
-      timeoutLabel: "Vehicle lookup"
+      timeoutLabel: "Vehicle lookup",
+      allowResultOkFalse: true
     });
+    if (!result?.ok) {
+      const softError = new Error(result?.message || "Vehicle lookup did not return data.");
+      softError.code = result?.code || "VEHICLE_LOOKUP_FAILED";
+      softError.resultCode = softError.code;
+      softError.payload = result;
+      throw softError;
+    }
     applyVehicleLookupToSettings(result.vehicle || {});
     const lookedUpVehicleInfo = normalizeVehicleInfo(state.vehicleInfo);
     addAuditEntry({
@@ -8082,7 +8188,7 @@ async function lookupVehicleByPlateFromUi() {
     const message = notConfigured
       ? "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings."
       : timedOut
-        ? `Vehicle lookup for ${plate} timed out. Keep using manual fuel settings or try again.`
+        ? `Vehicle lookup for ${plate} timed out after ${Math.round(vehicleLookupTimeoutMs / 1000)}s. Manual fuel settings are still safe to use. Check Data I/O → Vehicle & settings for the result code.`
         : providerUnavailable
           ? "Vehicle lookup provider is unavailable right now. Keep using manual fuel settings or try again later."
           : `Vehicle lookup failed: ${String(payload?.message || error?.message || error || "Unknown error")}`;
@@ -13654,6 +13760,7 @@ async function refreshLinkedWorkspacesAfterInvite() {
   if (error) throw error;
   workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(data);
   workspaceInviteStatus.loaded = true;
+  lastWorkspaceInviteRefreshAt = Date.now();
   reconcileActiveLedgerSelection();
   renderActiveWorkspaceSelector();
   return workspaceInviteStatus.ledgers;
@@ -14154,15 +14261,39 @@ function canRefreshWorkspaceInviteTools() {
 
 function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
   if (!canRefreshWorkspaceInviteTools()) return null;
+  const normalizedReason = String(reason || "workspace-invite-refresh");
+  const manual = /manual|after-create|invite|redeem|switch|refresh-button/i.test(normalizedReason);
+  const now = Date.now();
+  if (!manual && workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && now - Number(lastWorkspaceInviteRefreshAt || 0) < workspaceInviteRefreshFreshMs) {
+    recordDataIoDiagnostic("skip", {
+      source: "workspace-tools-refresh",
+      route: "supabase-rpc",
+      rpc: "list_my_ledgers",
+      operation: "refresh",
+      ok: true,
+      resultCode: "WORKSPACE_REFRESH_RECENT",
+      detail: `Skipped duplicate workspace refresh (${normalizedReason}); the workspace list is already fresh.`
+    });
+    return Promise.resolve(workspaceInviteStatus);
+  }
   if (workspaceInviteStatus.loading && workspaceInviteRefreshPromise) {
-    workspaceInviteRefreshQueued = true;
+    if (manual) workspaceInviteRefreshQueued = true;
+    recordDataIoDiagnostic("skip", {
+      source: "workspace-tools-refresh",
+      route: "supabase-rpc",
+      rpc: "list_my_ledgers",
+      operation: "refresh",
+      ok: true,
+      resultCode: manual ? "WORKSPACE_REFRESH_QUEUED" : "WORKSPACE_REFRESH_IN_FLIGHT",
+      detail: manual ? `Queued workspace refresh (${normalizedReason}) behind the current refresh.` : `Skipped duplicate workspace refresh (${normalizedReason}); a refresh is already running.`
+    });
     return workspaceInviteRefreshPromise;
   }
-  workspaceInviteRefreshPromise = refreshWorkspaceInvites({ reason }).finally(() => {
+  workspaceInviteRefreshPromise = refreshWorkspaceInvites({ reason: normalizedReason }).finally(() => {
     workspaceInviteRefreshPromise = null;
     if (workspaceInviteRefreshQueued) {
       workspaceInviteRefreshQueued = false;
-      scheduleWorkspaceInviteRefresh(`${reason}-queued`);
+      scheduleWorkspaceInviteRefresh(`${normalizedReason}-queued`);
     }
   });
   return workspaceInviteRefreshPromise;
@@ -14199,7 +14330,8 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
     );
     if (ledgersError) throw ledgersError;
     workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
-    reconcileActiveLedgerSelection();
+    workspaceInviteStatus.loaded = true;
+    reconcileActiveLedgerSelection({ allowWhileLoading: true, reason });
     const ledgerId = getActiveLedgerId();
     if (canManageSettings()) {
       const { data: invites, error: invitesError } = await withWorkspaceInviteRequestTimeout(
@@ -14217,6 +14349,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
       workspaceInviteStatus.invites = [];
     }
     workspaceInviteStatus.loaded = true;
+    lastWorkspaceInviteRefreshAt = Date.now();
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_REFRESHED", detail: `Loaded ${workspaceInviteStatus.ledgers.length} workspace(s)${canManageSettings() ? ` and ${workspaceInviteStatus.invites.length} invite(s)` : ""}.` });
   } catch (error) {
     const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
