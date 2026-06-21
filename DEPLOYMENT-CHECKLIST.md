@@ -23,8 +23,8 @@ These values are checked by `npm run release:check`. When a runtime release chan
 
 - Version: `2026.06.18.257`
 - Service-worker cache: `fuel-ledger-v357`
-- Updated at: `2026-06-21T00:58:01.000Z`
-- Top release note: Render admin health now uses the shared full-timeout Render API helper, so token/header setup, fetch, and response-body reads all finish with matched Data I/O rows instead of leaving stale loading reports.
+- Updated at: `2026-06-21T01:35:00.000Z`
+- Top release note: Owner Activity now backs off after Render timeouts, Admin background refreshes poll less aggressively, and vehicle lookup no longer cascades into extra owner-activity loads when Render is already slow.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

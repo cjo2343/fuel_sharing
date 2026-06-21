@@ -1607,6 +1607,14 @@ let ownerActivityFetchInFlight = false;
 let ownerActivityFetchStartedAt = 0;
 let ownerActivityInFlightTraceMeta = null;
 let lastOwnerActivityFetchAt = 0;
+let ownerActivityCooldownUntil = 0;
+let lastOwnerActivityTimeoutAt = 0;
+let ownerActivityConsecutiveTimeouts = 0;
+let lastOwnerActivityCooldownDiagnosticAt = 0;
+const ownerActivityFreshMs = 30000;
+const ownerActivityBackgroundIntervalMs = 60000;
+const ownerActivityTimeoutCooldownBaseMs = 120000;
+const ownerActivityTimeoutCooldownMaxMs = 300000;
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -2555,16 +2563,16 @@ function setActiveView(view) {
   render();
   if (activeView === "admin") {
     scheduleWorkspaceInviteRefresh("admin-tab-open");
-    refreshOwnerActivity({ silent: true });
+    refreshOwnerActivity({ silent: true, reason: "admin-tab-open" });
   }
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
 
 window.setInterval(() => {
   if (activeView === "admin" && canUseGlobalAdminTools()) {
-    refreshOwnerActivity({ silent: true }).catch(() => {});
+    refreshOwnerActivity({ silent: true, reason: "admin-background" }).catch(() => {});
   }
-}, 15000);
+}, ownerActivityBackgroundIntervalMs);
 
 function renderSectionNavigation() {
   if (activeView === "admin" && !canManageSettings()) activeView = "log";
@@ -3238,7 +3246,7 @@ els.refreshBuildInfo?.addEventListener("click", () => {
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   if (!requireGlobalAdminToolsPermission("Refresh load monitor")) return;
   renderSupabaseLoadMonitor();
-  refreshOwnerActivity({ force: true, silent: true });
+  refreshOwnerActivity({ force: true, silent: true, reason: "load-monitor-refresh" });
   renderAdminGuardrailOverview();
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
@@ -4179,13 +4187,68 @@ function formatOwnerActivityRow(row = {}) {
   return `<article class="admin-operation-row ${row.ok === true ? "ok" : "failed"}"><div><strong>${escapeHtml(action)}</strong><small>${escapeHtml(actor)} · ${escapeHtml(workspace)}${code}</small>${summary ? `<small>${escapeHtml(summary)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(time)}${escapeHtml(duration)}</small></article>`;
 }
 
+function formatOwnerActivityCooldownMessage(now = Date.now()) {
+  const remainingMs = Math.max(0, ownerActivityCooldownUntil - now);
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  return `Owner activity is paused for ${remainingSeconds}s after repeated Render timeouts. Core app data is still loaded.`;
+}
+
+function recordOwnerActivityCooldownSkip(reason = "background") {
+  const now = Date.now();
+  if (now - lastOwnerActivityCooldownDiagnosticAt < 60000) return;
+  lastOwnerActivityCooldownDiagnosticAt = now;
+  const skippedContext = buildDataIoWorkspaceContext();
+  recordDataIoDiagnostic("skipped", {
+    source: "owner-activity",
+    route: "render-api",
+    endpoint: renderOwnerActivityUrl,
+    operation: "load",
+    operationId: createDataIoOperationId("owner-activity", "cooldown"),
+    ledgerId: skippedContext.loadedWorkspaceId,
+    selectedWorkspaceId: skippedContext.selectedWorkspaceId,
+    selectedWorkspaceLabel: skippedContext.selectedWorkspaceLabel,
+    loadedWorkspaceId: skippedContext.loadedWorkspaceId,
+    loadedWorkspaceLabel: skippedContext.loadedWorkspaceLabel,
+    workspaceMismatch: skippedContext.workspaceMismatch,
+    ok: true,
+    resultCode: "OWNER_ACTIVITY_COOLDOWN",
+    detail: `Owner activity refresh skipped during timeout cooldown (${reason}).`,
+    staleAfterMs: dataIoOperationStaleMs
+  });
+}
+
+function applyOwnerActivityTimeoutCooldown() {
+  ownerActivityConsecutiveTimeouts += 1;
+  lastOwnerActivityTimeoutAt = Date.now();
+  const multiplier = Math.min(ownerActivityConsecutiveTimeouts, 3);
+  const cooldownMs = Math.min(ownerActivityTimeoutCooldownBaseMs * multiplier, ownerActivityTimeoutCooldownMaxMs);
+  ownerActivityCooldownUntil = lastOwnerActivityTimeoutAt + cooldownMs;
+  return cooldownMs;
+}
+
+function clearOwnerActivityTimeoutCooldown() {
+  ownerActivityConsecutiveTimeouts = 0;
+  ownerActivityCooldownUntil = 0;
+  lastOwnerActivityTimeoutAt = 0;
+}
+
+function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", success = true } = {}) {
+  if (!success) return Promise.resolve(ownerActivityStatus);
+  if (Date.now() < ownerActivityCooldownUntil) {
+    recordOwnerActivityCooldownSkip(reason);
+    return Promise.resolve(ownerActivityStatus);
+  }
+  return refreshOwnerActivity({ silent: true, reason }).catch(() => ownerActivityStatus);
+}
+
 function renderOwnerActivityCard() {
   const status = ownerActivityStatus || {};
   const allRows = Array.isArray(status.rows) ? status.rows : [];
   const rows = allRows.slice(0, 20);
-  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Loading" : status.checked ? (status.ok ? `${rows.length} recent` : "Needs review") : "Not loaded";
-  const detail = status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
+  const coolingDown = Date.now() < (ownerActivityCooldownUntil || 0);
+  const cardClass = status.loading || coolingDown ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Loading" : coolingDown ? "Paused" : status.checked ? (status.ok ? `${rows.length} recent` : "Needs review") : "Not loaded";
+  const detail = coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>Owner activity</span>
@@ -4204,9 +4267,24 @@ function renderOwnerActivityCard() {
   `;
 }
 
-async function refreshOwnerActivity({ force = false, silent = true } = {}) {
+async function refreshOwnerActivity({ force = false, silent = true, bypassCooldown = false, reason = "background" } = {}) {
   if (!canUseGlobalAdminTools()) return ownerActivityStatus;
   const now = Date.now();
+  if (!bypassCooldown && now < ownerActivityCooldownUntil) {
+    ownerActivityStatus = {
+      ...ownerActivityStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      coolingDown: true,
+      cooldownUntil: new Date(ownerActivityCooldownUntil).toISOString(),
+      message: formatOwnerActivityCooldownMessage(now),
+      checkedAt: new Date().toISOString()
+    };
+    recordOwnerActivityCooldownSkip(reason);
+    if (!silent) setDataToolsMessage(ownerActivityStatus.message);
+    return ownerActivityStatus;
+  }
   if (ownerActivityFetchInFlight) {
     const ageMs = now - (ownerActivityFetchStartedAt || now);
     if (ageMs > dataIoOperationStaleMs) {
@@ -4246,7 +4324,7 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
       return ownerActivityStatus;
     }
   }
-  if (!force && ownerActivityStatus.checked && now - lastOwnerActivityFetchAt < 30000) return ownerActivityStatus;
+  if (!force && ownerActivityStatus.checked && now - lastOwnerActivityFetchAt < ownerActivityFreshMs) return ownerActivityStatus;
   ownerActivityFetchInFlight = true;
   ownerActivityFetchStartedAt = Date.now();
   ownerActivityStatus = { ...ownerActivityStatus, loading: true, message: "Loading server-owned owner activity..." };
@@ -4278,10 +4356,13 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
       timeoutLabel: "Owner activity load"
     });
     const rows = Array.isArray(result.activity) ? result.activity : [];
+    clearOwnerActivityTimeoutCooldown();
     ownerActivityStatus = {
       checked: true,
       ok: true,
       loading: false,
+      coolingDown: false,
+      cooldownUntil: "",
       message: rows.length ? `Loaded ${rows.length} server-owned activity row${rows.length === 1 ? "" : "s"}.` : "No server-owned owner activity rows yet.",
       rows,
       checkedAt: new Date().toISOString()
@@ -4291,11 +4372,14 @@ async function refreshOwnerActivity({ force = false, silent = true } = {}) {
     if (!silent) setDataToolsMessage(ownerActivityStatus.message);
   } catch (error) {
     const timedOut = /timeout|timed out|AbortError|PaymentActionTimeoutError/i.test(String(error?.code || error?.name || error?.message || error || ""));
+    if (timedOut) applyOwnerActivityTimeoutCooldown();
     ownerActivityStatus = {
       checked: true,
       ok: false,
       loading: false,
-      message: timedOut ? "Owner activity timed out. Try Refresh again; duplicate refreshes are skipped." : `Owner activity failed: ${error.message || error}`,
+      coolingDown: timedOut,
+      cooldownUntil: timedOut && ownerActivityCooldownUntil ? new Date(ownerActivityCooldownUntil).toISOString() : "",
+      message: timedOut ? formatOwnerActivityCooldownMessage() : `Owner activity failed: ${error.message || error}`,
       rows: ownerActivityStatus.rows || [],
       checkedAt: new Date().toISOString()
     };
@@ -7953,6 +8037,7 @@ async function lookupVehicleByPlateFromUi() {
   if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = true;
   if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Looking up vehicle through Render...";
   if (els.vehicleLookupSummary) els.vehicleLookupSummary.textContent = `Looking up ${plate}…`;
+  let shouldRefreshOwnerActivityAfterLookup = true;
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_STARTED" });
   try {
     const { result } = await callRenderJson(renderVehicleLookupUrl, {
@@ -7992,6 +8077,7 @@ async function lookupVehicleByPlateFromUi() {
     const notConfigured = /not configured|VEHICLE_LOOKUP_NOT_CONFIGURED/.test(String(payload?.message || error?.message || error || code));
     const providerUnavailable = /VEHICLE_LOOKUP_PROVIDER_ERROR|VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE|502|503/.test(String(payload?.message || error?.message || error || code));
     const resultCode = timedOut ? "VEHICLE_LOOKUP_TIMEOUT" : notConfigured ? "VEHICLE_LOOKUP_NOT_CONFIGURED" : providerUnavailable ? "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE" : "VEHICLE_LOOKUP_ERROR";
+    shouldRefreshOwnerActivityAfterLookup = !timedOut && !providerUnavailable;
     recordDataIoDiagnostic(timedOut ? "timeout" : notConfigured ? "skipped" : "error", { ...traceMeta, ok: false, error, resultCode, errorCode: code, detail: timedOut ? `Vehicle lookup for ${plate} timed out.` : String(payload?.message || error?.message || error || "Vehicle lookup failed.") });
     const message = notConfigured
       ? "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings."
@@ -8005,7 +8091,9 @@ async function lookupVehicleByPlateFromUi() {
     return false;
   } finally {
     if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = !canManageSettings() || !currentSession || !isActiveWorkspaceDataConfirmed();
-    refreshOwnerActivity({ force: true, silent: true }).catch(() => {});
+    if (shouldRefreshOwnerActivityAfterLookup) {
+      maybeRefreshOwnerActivityAfterMemberAction({ reason: "vehicle-lookup", success: true });
+    }
     renderSupabaseLoadMonitor();
   }
 }

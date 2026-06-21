@@ -9,7 +9,8 @@ assert.doesNotMatch(app, /const fetchPromise = fetch\(renderVehicleLookupUrl/, "
 assert.doesNotMatch(app, /const timeoutPromise = new Promise[\s\S]{0,500}Vehicle lookup/, "vehicle lookup should not leave orphaned timeout promises");
 assert.match(app, /VEHICLE_LOOKUP_STARTED/, "vehicle lookup should record a start diagnostic");
 assert.match(app, /VEHICLE_LOOKUP_TIMEOUT/, "vehicle lookup should record a timeout diagnostic");
-assert.match(app, /refreshOwnerActivity\(\{ force: true, silent: true \}\)\.catch/, "vehicle lookup should refresh owner activity after every lookup attempt");
+assert.match(app, /maybeRefreshOwnerActivityAfterMemberAction\(\{ reason: "vehicle-lookup", success: true \}\)/, "vehicle lookup should use the cooldown-aware owner activity refresh helper");
+assert.match(app, /shouldRefreshOwnerActivityAfterLookup = !timedOut && !providerUnavailable/, "vehicle lookup should avoid owner activity refreshes when Render/provider is already slow");
 assert.match(app, /const rows = allRows\.slice\(0, 20\)/, "owner activity should show enough rows for vehicle lookups to be visible");
 assert.match(app, /body: \{ limit: 120 \}/, "owner activity fetch should request enough rows for recent vehicle lookups");
 
