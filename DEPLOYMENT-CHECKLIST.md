@@ -32,10 +32,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v392`
-- Updated at: `2026-06-21T22:15:00.000Z`
-- Top release note: Workspace context resolution now treats linked workspace slugs as aliases for canonical ledger IDs in both the frontend resolver and Render /api/app/context, preventing ?workspace=slug links or remembered slug values from drifting back to main-car.
+- Version: `2026.06.18.258`
+- Service-worker cache: `fuel-ledger-v393`
+- Updated at: `2026-06-21T22:30:00.000Z`
+- Top release note: App session hydration now has one frontend lane for backend context: startup, auth, workspace switch, normal state load, and normalized state load all flow through hydrateAppSessionContext, while Admin diagnostics remain separately labeled and non-blocking.
 
 ## Invite beta readiness: member action Data I/O
 
@@ -640,9 +640,14 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 
 ### Backend app context pass 5 - v392
-- Runtime cache: `fuel-ledger-v392`.
+- Runtime cache: `fuel-ledger-v393`.
 - Admin/owner diagnostics are separated from the normal app sync lane; opening Admin no longer auto-runs owner/global routes or decides core workspace state.
 - Admin now renders a backend `/api/app/context` workspace/permission summary so the panel sees the active workspace even when optional global diagnostics have not been loaded.
 - Empty owner/global snapshots are labeled as explicit-only optional diagnostics instead of warning-looking zero-data cards.
 - Load reports include `adminDiagnosticsLane` for debugging the separated Admin lane.
 - Guardrail: `node tools/test-backend-app-context-pass5.mjs`.
+
+### App session hydrate lane - v393
+- Runtime cache: `fuel-ledger-v393`.
+- Backend `/api/app/context` is now consumed through `hydrateAppSessionContext`, a single frontend app-session/workspace context lane used by startup, auth, workspace switch, normal state load, and normalized state load.
+- Admin diagnostics remain separated from normal app UX: the Admin tab can inspect backend context for permissions, but owner/global diagnostics stay explicit and optional panel failures do not block workspace loading.

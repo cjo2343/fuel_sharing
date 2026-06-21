@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.257",
-    buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T22:15:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v392",
+    version: "2026.06.18.258",
+    buildLabel: "app-session-hydrate-lane",
+    updatedAt: "2026-06-21T22:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v393",
     releaseNotes: Object.freeze([
+      "App session hydration now has one frontend lane for backend context: startup, auth, workspace switch, normal state load, and normalized state load all flow through hydrateAppSessionContext, while Admin diagnostics remain separately labeled and non-blocking.",
       "Workspace context resolution now treats linked workspace slugs as aliases for canonical ledger IDs in both the frontend resolver and Render /api/app/context, preventing ?workspace=slug links or remembered slug values from drifting back to main-car.",
       "Backend app context pass 5 separates Admin/owner diagnostics from the normal app sync lane: Admin now shows backend context workspace/permission truth, optional owner/global routes do not auto-run, and load reports expose the separated admin diagnostics lane.",
       "Backend app context pass 4 moves startup/auth/cloud loading toward one sync lane: the frontend now asks /api/app/context before normal state loads, reuses fresh backend context during normalized loads, and stops running separate startup/auth workspace-list RPC refreshes before backend context is known.",

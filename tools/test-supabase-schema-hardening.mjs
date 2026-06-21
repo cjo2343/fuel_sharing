@@ -656,7 +656,7 @@ function testAuthBoundWorkspaceIdentityExists() {
   assert.match(app, /currentUser = displayName/);
   assert.match(app, /const displayName = displayProfile\?\.name \|\| ""/);
   assert.match(app, /knownLoggedInMember = Boolean\(profile && !profile\.pendingInvite\)/);
-  assert.match(app, /ensureBackendAppContextForSyncLane\("initial-session"\)|refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
+  assert.match(app, /hydrateAppSessionContext\(\{ reason: "initial-session", source: "startup" \}\)|ensureBackendAppContextForSyncLane\("initial-session"\)|refreshLinkedWorkspacesAfterInvite\(\)\.catch/);
   assert.doesNotMatch(app, /supabaseClient\.from\("ledgers"\)\.select\("\*"\)\.eq\("id", ledgerId\)\.maybeSingle\(\)/);
   assert.match(app, /Paste an invite code to join another workspace/);
   assert.match(app, /Share the invite link below/);
@@ -700,9 +700,9 @@ function testWorkspaceInviteAutoRefreshExists() {
   assert.match(app, /if \(activeView === "admin"\) \{\s*startAdminDiagnosticsLane\("admin-tab-open"\);/);
   assert.match(app, /function startAdminDiagnosticsLane[\s\S]*markOptionalAdminPanelsReadyForManualRefresh\(reason\)/);
   assert.doesNotMatch(app, /scheduleWorkspaceInviteRefresh\("startup-session"\)/);
-  assert.match(app, /ensureBackendAppContextForSyncLane\("initial-session"\)/);
+  assert.match(app, /hydrateAppSessionContext\(\{ reason: "initial-session", source: "startup" \}\)|ensureBackendAppContextForSyncLane\("initial-session"\)/);
   assert.doesNotMatch(app, /scheduleWorkspaceInviteRefresh\("auth-session"\)/);
-  assert.match(app, /ensureBackendAppContextForSyncLane\(`auth-\$\{String\(event \|\| "session"\)\.toLowerCase\(\)\}`\)/);
+  assert.match(app, /hydrateAppSessionContext\(\{ reason: `auth-\$\{String\(event \|\| "session"\)\.toLowerCase\(\)\}`, source: "auth" \}\)|ensureBackendAppContextForSyncLane\(`auth-\$\{String\(event \|\| "session"\)\.toLowerCase\(\)\}`\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("account-panel-render"\)/);
   assert.match(app, /await ensureWorkspaceInviteToolsReady\("before-create-invite"\)/);
   assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\.rpc\("create_ledger_invite"/);

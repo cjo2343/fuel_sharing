@@ -953,11 +953,12 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   clearStaleWorkspaceInviteLoading("workspace-switch");
   let targetLinkedFromCachedList = isLedgerLinkedToCurrentUser(targetLedgerId);
   const backendSwitchContext = currentSession
-    ? await getRenderAppContext({
-        ledgerId: targetLedgerId,
-        preferredWorkspaceId: targetLedgerId,
+    ? await hydrateAppSessionContext({
         reason: `workspace-switch:${source}`,
-        timeoutMs: 8000
+        preferredWorkspaceId: targetLedgerId,
+        force: true,
+        timeoutMs: 8000,
+        source: "workspace-switch"
       })
     : null;
   if (backendSwitchContext) {
@@ -5452,7 +5453,7 @@ async function startAdminDiagnosticsLane(reason = "admin") {
   };
   renderSupabaseLoadMonitor();
   try {
-    const context = await ensureBackendAppContextForSyncLane(`admin-diagnostics:${String(reason || "admin")}`);
+    const context = await hydrateAppSessionContext({ reason: `admin-diagnostics:${String(reason || "admin")}`, source: "admin-diagnostics", timeoutMs: 6000 });
     const isOwner = Boolean(context?.permissions?.canUseAppOwnerDiagnostics);
     adminDiagnosticsLaneStatus = {
       ...adminDiagnosticsLaneStatus,
@@ -8900,7 +8901,7 @@ async function initializeSupabase() {
   if (currentSession) beginStartupHydration("initial-session");
   updateAuthUi();
   if (currentSession) {
-    await ensureBackendAppContextForSyncLane("initial-session").catch((error) => console.warn("Initial backend app context failed", error));
+    await hydrateAppSessionContext({ reason: "initial-session", source: "startup" }).catch((error) => console.warn("Initial backend app context failed", error));
     await refreshAuthBoundMemberProfile();
   }
 
@@ -8916,7 +8917,7 @@ async function initializeSupabase() {
     if (session && !lastCloudSyncAt) beginStartupHydration(`auth-${String(event || "session").toLowerCase()}`);
     updateAuthUi();
     if (session) {
-      await ensureBackendAppContextForSyncLane(`auth-${String(event || "session").toLowerCase()}`).catch((error) => console.warn("Auth backend app context failed", error));
+      await hydrateAppSessionContext({ reason: `auth-${String(event || "session").toLowerCase()}`, source: "auth" }).catch((error) => console.warn("Auth backend app context failed", error));
       await refreshAuthBoundMemberProfile();
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
@@ -15625,20 +15626,86 @@ function isBackendAppContextFreshForWorkspace(workspaceId = getActiveLedgerId())
   );
 }
 
-async function ensureBackendAppContextForSyncLane(reason = "sync") {
+function getAppSessionHydrateReasonLabel(reason = "sync") {
+  return String(reason || "sync").trim().replace(/[^a-z0-9:_-]+/gi, "-").replace(/^-+|-+$/g, "") || "sync";
+}
+
+async function hydrateAppSessionContext({
+  reason = "sync",
+  preferredWorkspaceId = "",
+  force = false,
+  timeoutMs = 6000,
+  source = "normal-app-session"
+} = {}) {
   if (!currentSession) return null;
-  const activeWorkspaceId = getActiveLedgerId();
-  if (isBackendAppContextFreshForWorkspace(activeWorkspaceId)) return getBackendAppContext();
-  if (backendAppContextSyncPromise) return backendAppContextSyncPromise;
-  backendAppContextSyncPromise = getRenderAppContext({
-    ledgerId: activeWorkspaceId,
-    preferredWorkspaceId: activeWorkspaceId,
-    reason: `sync-lane:${String(reason || "sync")}`,
-    timeoutMs: 6000
-  }).finally(() => {
+  const reasonLabel = getAppSessionHydrateReasonLabel(reason);
+  const activeBefore = getActiveLedgerId();
+  const preferred = String(preferredWorkspaceId || activeBefore || getConfiguredLedgerId()).trim();
+  const targetWorkspaceId = preferred || activeBefore || getConfiguredLedgerId();
+  if (!force && isBackendAppContextFreshForWorkspace(targetWorkspaceId)) {
+    recordDataIoDiagnostic("skip", {
+      source: "app-session-context",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "hydrate",
+      ok: true,
+      resultCode: "APP_SESSION_CONTEXT_FRESH",
+      selectedWorkspaceId: targetWorkspaceId,
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      detail: `Reused fresh backend app session context for ${reasonLabel}.`
+    });
+    return getBackendAppContext();
+  }
+  if (backendAppContextSyncPromise) {
+    recordDataIoDiagnostic("skip", {
+      source: "app-session-context",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "hydrate",
+      ok: true,
+      resultCode: "APP_SESSION_CONTEXT_JOINED_IN_FLIGHT",
+      selectedWorkspaceId: targetWorkspaceId,
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      detail: `Joined existing app session context hydrate for ${reasonLabel}.`
+    });
+    return backendAppContextSyncPromise;
+  }
+  backendAppContextSyncPromise = (async () => {
+    const context = await getRenderAppContext({
+      ledgerId: targetWorkspaceId,
+      preferredWorkspaceId: targetWorkspaceId,
+      reason: `app-session:${reasonLabel}`,
+      timeoutMs
+    });
+    const backendWorkspaceId = String(context?.activeWorkspace?.ledgerId || context?.activeWorkspace?.ledger_id || "").trim();
+    const activeAfter = backendWorkspaceId || getActiveLedgerId();
+    if (activeAfter && activeAfter !== activeBefore && !isActiveWorkspaceDataConfirmed()) {
+      markActiveWorkspaceLoading(`app-session-context:${reasonLabel}`);
+    }
+    recordSyncDiagnostic("app-session-context-hydrate", context
+      ? `App session context hydrated for ${reasonLabel}.`
+      : `App session context was unavailable for ${reasonLabel}; continuing with existing workspace state.`, {
+        reason: reasonLabel,
+        source,
+        selectedWorkspaceId: activeAfter,
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        backendWorkspaceId
+      });
+    renderActiveWorkspaceSelector();
+    return context;
+  })().finally(() => {
     backendAppContextSyncPromise = null;
   });
   return backendAppContextSyncPromise;
+}
+
+async function ensureBackendAppContextForSyncLane(reason = "sync") {
+  return hydrateAppSessionContext({
+    reason,
+    preferredWorkspaceId: getActiveLedgerId(),
+    timeoutMs: 6000,
+    source: "normal-sync-lane"
+  });
 }
 
 function getBackendAppContextPermission(name) {
@@ -20198,7 +20265,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   let ledgerId = getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig);
   const backendContext = isBackendAppContextFreshForWorkspace(ledgerId)
     ? getBackendAppContext()
-    : await getRenderAppContext({ ledgerId, preferredWorkspaceId: ledgerId, reason: "state-load" });
+    : await hydrateAppSessionContext({ reason: "state-load", preferredWorkspaceId: ledgerId, source: "state-load" });
   const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
   if (backendWorkspaceId) ledgerId = backendWorkspaceId;
   const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
@@ -20730,8 +20797,8 @@ async function loadSupabaseState(options = {}) {
     return false;
   }
 
-  await ensureBackendAppContextForSyncLane(reason).catch((error) => {
-    recordSyncDiagnostic("app-context-sync-lane-fallback", error?.message || "Backend app context was unavailable; continuing with existing workspace state.", { reason, error });
+  await hydrateAppSessionContext({ reason, source: "loadSupabaseState" }).catch((error) => {
+    recordSyncDiagnostic("app-session-context-fallback", error?.message || "Backend app session context was unavailable; continuing with existing workspace state.", { reason, error });
   });
 
   const now = Date.now();
