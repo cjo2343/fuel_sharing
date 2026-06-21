@@ -5,8 +5,8 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const checklist = fs.readFileSync('DEPLOYMENT-CHECKLIST.md', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v382"/, 'build-info should expect v382 cache');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v382"/, 'service worker should publish v382 cache');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v383"/, 'build-info should expect v382 cache');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v383"/, 'service worker should publish v382 cache');
 assert.match(checklist, /fuel-ledger-v382/, 'deployment checklist should document v382 cache');
 assert.match(buildInfo, /function getServiceWorkerRegistration\(\)/, 'build-info should inspect existing service-worker registrations');
 assert.match(buildInfo, /registration\?\.active/, 'build-info should read active worker status even before page control attaches');

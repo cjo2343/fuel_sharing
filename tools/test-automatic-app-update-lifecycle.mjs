@@ -15,7 +15,7 @@ assert.match(buildInfo, /activateWaitingServiceWorker\(registration\)/, 'build-i
 assert.match(buildInfo, /reloadWhenSafe\(\)/, 'build-info should safely reload after automatic update activation');
 assert.match(app, /window\.FuelLedgerApp\.hasPendingLocalChanges/, 'app should expose pending-change status for safe automatic reloads');
 assert.match(app, /window\.FuelLedgerApp\.hasForegroundWriteInFlight/, 'app should expose foreground-write status for safe automatic reloads');
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v382"/, 'build-info should expect v381 cache');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v382"/, 'service worker should publish v381 cache');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v383"/, 'build-info should expect v381 cache');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v383"/, 'service worker should publish v381 cache');
 assert.match(checklist, /fuel-ledger-v382/, 'deployment checklist should document v382 cache');
 assert.match(buildInfo, /without user update buttons/, 'release notes should describe automatic update lifecycle');

@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T15:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v382",
+    updatedAt: "2026-06-21T15:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v383",
     releaseNotes: Object.freeze([
+      "Vehicle lookup now recovers without a manual refresh: after idle/backend wake delays it retries the Render lookup automatically, records VEHICLE_LOOKUP_AUTO_RETRY breadcrumbs, and only reports a timeout after backend/session recovery has been attempted.",
       "Service-worker status now self-heals for signed-in/test-user sessions: the app can ask the active worker for cache status even before page control is attached, retries registration/update handoff on visibility and URL changes, and performs one safe automatic controller reload instead of sitting forever on Checking.",
       "Admin background sync now uses lightweight cached checks only: full Render admin health no longer runs in automatic Admin polling, backend readiness stays on /api/ping, and the last healthy admin-health snapshot remains passive unless deep diagnostics or protected admin actions explicitly ask for it.",
       "Idle recovery now warms the Render backend and service-worker navigations fall back to the app shell even with ?workspace links, so vehicle lookup and workspace pages recover after the app sits idle without a manual refresh.",

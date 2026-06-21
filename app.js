@@ -1482,6 +1482,8 @@ let fuelPriceTimer = null;
 const fuelPriceRefreshIntervalMs = 60 * 60 * 1000;
 const fuelPriceFetchTimeoutMs = 3500;
 const vehicleLookupTimeoutMs = 20000;
+const vehicleLookupRetryDelayMs = 1200;
+const vehicleLookupMaxAttempts = 2;
 const renderBackendWakeTimeoutMs = 6000;
 const renderBackendWakeFreshMs = 45 * 1000;
 const renderBackendWakeRetryDelayMs = 1200;
@@ -9237,7 +9239,7 @@ function applyVehicleLookupToSettings(vehicle) {
   return true;
 }
 
-async function lookupVehicleByPlateFromUi() {
+async function lookupVehicleByPlateFromUi(options = {}) {
   if (!canManageSettings()) {
     showUserError("Only an admin can lookup and apply vehicle settings.");
     return false;
@@ -9257,6 +9259,7 @@ async function lookupVehicleByPlateFromUi() {
   const backendReady = await ensureRenderBackendReadyForUserAction({ reason: "vehicle-lookup", timeoutMs: renderBackendWakeTimeoutMs, retries: 2 });
   if (!backendReady?.ok) {
     const reason = backendReady?.message || "Render backend is not reachable yet.";
+    const automaticRetry = Boolean(options && options.automaticRetry === true);
     recordDataIoDiagnostic("timeout", {
       source: "vehicle-lookup",
       route: "render-api",
@@ -9270,8 +9273,13 @@ async function lookupVehicleByPlateFromUi() {
       detail: `Vehicle lookup waited for the backend to wake, but it was not ready: ${reason}`,
       error: backendReady?.error || null
     });
-    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "The backend is waking up. The app will reconnect automatically; try the lookup again in a moment if it does not start.";
-    scheduleRenderBackendWake("vehicle-lookup-retry");
+    if (!automaticRetry) {
+      if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "The backend is waking up. The app will retry this vehicle lookup automatically.";
+      scheduleRenderBackendWake("vehicle-lookup-retry");
+      window.setTimeout(() => lookupVehicleByPlateFromUi({ automaticRetry: true }), 2500);
+    } else if (els.vehicleLookupStatus) {
+      els.vehicleLookupStatus.textContent = "The backend is still waking up. The app will keep the workspace ready and you can continue editing manual fuel settings.";
+    }
     return false;
   }
   const operationId = createDataIoOperationId("vehicle-lookup", "lookup");
@@ -9297,12 +9305,18 @@ async function lookupVehicleByPlateFromUi() {
   let shouldRefreshOwnerActivityAfterLookup = true;
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "VEHICLE_LOOKUP_STARTED" });
   try {
-    const { result } = await callRenderJson(renderVehicleLookupUrl, {
+    const { result } = await callRenderJsonWithUserActionRecovery(renderVehicleLookupUrl, {
       method: "POST",
       body: { ledgerId, plate },
       timeoutMs: vehicleLookupTimeoutMs,
       timeoutLabel: "Vehicle lookup",
-      allowResultOkFalse: true
+      allowResultOkFalse: true,
+      attempts: vehicleLookupMaxAttempts,
+      recoveryReason: "vehicle-lookup",
+      onRetry: (attempt, attempts) => {
+        if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `Vehicle lookup is retrying automatically after reconnecting (${attempt}/${attempts})…`;
+        recordDataIoDiagnostic("start", { ...traceMeta, operationId: `${operationId}-retry-${attempt}`, ok: true, resultCode: "VEHICLE_LOOKUP_AUTO_RETRY", detail: `Retry vehicle lookup ${plate} after backend/session recovery` });
+      }
     });
     if (!result?.ok) {
       const softError = new Error(result?.message || "Vehicle lookup did not return data.");
@@ -9347,7 +9361,7 @@ async function lookupVehicleByPlateFromUi() {
     const message = notConfigured
       ? "Vehicle lookup API is not configured on Render yet. Keep using manual fuel settings."
       : timedOut
-        ? `Vehicle lookup for ${plate} timed out after ${Math.round(vehicleLookupTimeoutMs / 1000)}s. Manual fuel settings are still safe to use. Check Data I/O → Vehicle & settings for the result code.`
+        ? `Vehicle lookup for ${plate} timed out after automatic backend recovery and retry. Manual fuel settings are still safe to use. Check Data I/O → Vehicle & settings for the result code.`
         : providerUnavailable
           ? "Vehicle lookup provider is unavailable right now. Keep using manual fuel settings or try again later."
           : `Vehicle lookup failed: ${String(payload?.message || error?.message || error || "Unknown error")}`;
@@ -17429,6 +17443,38 @@ async function callRenderJson(endpoint, options = {}) {
   } finally {
     if (timeoutId) clearTimer(timeoutId);
   }
+}
+
+function isRecoverableRenderActionError(error) {
+  const text = String(error?.code || error?.resultCode || error?.status || error?.message || error || "");
+  if (error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError") return true;
+  if (/timeout|timed out|failed to fetch|networkerror|load failed|offline/i.test(text)) return true;
+  if (/^(502|503|504)$/.test(text)) return true;
+  if (/HTTP_50[234]|RENDER_BACKEND_WAKE|RENDER_API_TIMEOUT/i.test(text)) return true;
+  return false;
+}
+
+async function callRenderJsonWithUserActionRecovery(endpoint, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 1));
+  const reason = options.recoveryReason || options.timeoutLabel || "render-user-action";
+  const onRetry = typeof options.onRetry === "function" ? options.onRetry : null;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      if (onRetry) onRetry(attempt + 1, attempts, lastError);
+      await ensureRenderBackendReadyForUserAction({ reason: `${reason}-retry-${attempt}`, timeoutMs: renderBackendWakeTimeoutMs, retries: 1 });
+      await new Promise((resolve) => window.setTimeout(resolve, vehicleLookupRetryDelayMs));
+    }
+    try {
+      return await callRenderJson(endpoint, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts - 1 || !isRecoverableRenderActionError(error)) throw error;
+      recordSyncDiagnostic("render-user-action-retry", `${reason} will retry after backend/session recovery.`, { endpoint, attempt: attempt + 1, error, code: error?.code || error?.resultCode || error?.status || "" });
+      scheduleRenderBackendWake(`${reason}-recover`);
+    }
+  }
+  throw lastError || new Error(`${reason} failed.`);
 }
 
 function isRenderAuthRejected(response, result, text) {

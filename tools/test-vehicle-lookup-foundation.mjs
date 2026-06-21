@@ -12,7 +12,7 @@ assert.match(app, /VEHICLE_LOOKUP_STARTED/, 'vehicle lookup start code must be p
 assert.match(app, /VEHICLE_LOOKUP_OK/, 'vehicle lookup success code must be present');
 assert.match(app, /VEHICLE_LOOKUP_NOT_CONFIGURED/, 'not-configured code must be present');
 assert.match(app, /VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE/, 'provider unavailable code must be present');
-assert.match(app, /callRenderJson\(renderVehicleLookupUrl/, 'vehicle lookup must use the shared full-request Render JSON helper');
+assert.match(app, /callRenderJsonWithUserActionRecovery\(renderVehicleLookupUrl/, 'vehicle lookup must use the shared Render helper with automatic recovery');
 assert.match(app, /applyVehicleLookupToSettings/, 'vehicle lookup must apply suggested fuel settings only through app logic');
 assert.match(app, /state\.vehiclePlate/, 'vehicle plate must be persisted in state');
 assert.match(app, /state\.vehicleInfo/, 'vehicle info must be persisted in state');

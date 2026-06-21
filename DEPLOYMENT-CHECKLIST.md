@@ -32,13 +32,13 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Service-worker status now self-heals for signed-in/test-user sessions so the Version card does not sit forever on Checking while cache control attaches automatically.
+- Vehicle lookup now recovers after idle/backend wake delays by retrying the Render lookup automatically before reporting a timeout.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v382`
+- Service-worker cache: `fuel-ledger-v383`
 - `fuel-ledger-v382` - Service-worker status self-heals for signed-in/test-user sessions and does not sit forever on Checking while cache control is attached automatically.
 - `fuel-ledger-v381` - Admin background sync uses lightweight cached checks only; full Render admin health no longer runs from automatic Admin polling, while backend readiness stays on /api/ping and deep health remains explicit.
-- Updated at: `2026-06-21T15:35:00.000Z`
-- Top release note: Service-worker status now self-heals for signed-in/test-user sessions: the app can ask the active worker for cache status even before page control is attached, retries registration/update handoff on visibility and URL changes, and performs one safe automatic controller reload instead of sitting forever on Checking.
+- Updated at: `2026-06-21T15:50:00.000Z`
+- Top release note: Vehicle lookup now recovers without a manual refresh: after idle/backend wake delays it retries the Render lookup automatically, records VEHICLE_LOOKUP_AUTO_RETRY breadcrumbs, and only reports a timeout after backend/session recovery has been attempted.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -622,3 +622,4 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - 2026-06-21 09:00 UTC — Optional admin panel noise patch: workspace/invite refresh and owner-audit refresh no longer auto-run on Admin open or dominate Latest Data I/O; skipped rows are counted separately from failures; runtime cache `fuel-ledger-v361`.
 
 - 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v364`.
+- 2026-06-21T15:50:00.000Z — v383 vehicle lookup auto-retry recovery: after idle/backend wake delays the app retries vehicle lookup automatically, records `VEHICLE_LOOKUP_AUTO_RETRY`, and reports timeout only after recovery was attempted. Validation: `npm run validate`, `npm run release:check`.
