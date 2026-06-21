@@ -118,6 +118,14 @@ Full smoke test:
 npm run test:e2e
 ```
 
+On a fresh machine or clean CI-like checkout, install the Playwright browser once before running e2e tests:
+
+```sh
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
 The local pre-push hook runs validation and e2e automatically once installed:
 
 ```sh

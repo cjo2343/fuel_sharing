@@ -2743,6 +2743,38 @@ def apply_payment_action_to_state(state, payload):
     raise ValueError("Unsupported payment action")
 
 
+
+def cors_allowed_origin(request_origin, request_host):
+    """Return a CORS origin only when it is explicitly trusted.
+
+    Same-origin browser requests do not need CORS. Cross-origin local
+    development can opt in with FUEL_LEDGER_ALLOWED_ORIGINS, a
+    comma-separated list such as http://localhost:5173.
+    """
+    origin = str(request_origin or "").strip()
+    if not origin or origin == "null":
+        return ""
+
+    configured = [
+        item.strip().rstrip("/")
+        for item in os.environ.get("FUEL_LEDGER_ALLOWED_ORIGINS", "").split(",")
+        if item.strip()
+    ]
+    if origin.rstrip("/") in configured:
+        return origin
+
+    host = str(request_host or "").strip().lower()
+    parsed = urllib.parse.urlparse(origin)
+    if parsed.netloc.lower() == host and parsed.scheme in ("http", "https"):
+        return origin
+
+    return ""
+
+
+def log_internal_error(context, error):
+    print(f"{context}: {error}", file=sys.stderr)
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -2757,7 +2789,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        allowed_origin = cors_allowed_origin(self.headers.get("Origin"), self.headers.get("Host"))
+        if allowed_origin:
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Ledger-Api-Secret")
         self.end_headers()
@@ -2888,7 +2923,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "state": read_state()})
@@ -2917,7 +2952,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         record_owner_activity_as_service(ledger_id, user, action="state-load", route="/api/state/load", ok=True, result_code="OK", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace state loaded through Render.", metadata={"rows": {"members": len(state_rows.get("members") or []), "trips": len(state_rows.get("trips") or []), "fuel": len(state_rows.get("fuel") or []), "bookings": len(state_rows.get("bookings") or [])}}, context=state_rows.get("context"))
@@ -2957,7 +2992,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "FORBIDDEN", "message": str(error)}, status=403)
             return
         except Exception as error:
-            self.send_json({"ok": False, "code": "SETTINGS_SAVE_ERROR", "message": str(error)}, status=500)
+            self.send_safe_json_error("SETTINGS_SAVE_ERROR", error)
             return
 
         record_owner_activity_as_service(ledger.get("id"), user, action="settings-save", route="/api/settings/save", ok=True, result_code="SETTINGS_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace settings saved through Render.", metadata={"vehiclePlate": result.get("settings", {}).get("vehiclePlate") or "", "persisted": result.get("persisted") or {}}, context=context)
@@ -3016,7 +3051,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "FORBIDDEN", "message": str(error)}, status=403)
             return
         except Exception as error:
-            self.send_json({"ok": False, "code": "MEMBER_MANAGEMENT_ERROR", "message": str(error)}, status=500)
+            self.send_safe_json_error("MEMBER_MANAGEMENT_ERROR", error)
             return
 
 
@@ -3044,7 +3079,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
@@ -3075,7 +3110,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "result": result, "backend": "render", "reason": reason, "userEmail": user.get("email")})
@@ -3107,7 +3142,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "type": entry_type, "result": result, "backend": "render", "userEmail": user.get("email")})
@@ -3136,7 +3171,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "counts": counts, "backend": "render", "userEmail": user.get("email")})
@@ -3164,7 +3199,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json(health)
@@ -3192,7 +3227,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json(health)
@@ -3220,7 +3255,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "ledgerId": ledger_id, "storedReport": stored_report, "result": result, "backend": "render", "userEmail": user.get("email")})
@@ -3248,7 +3283,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "preview": preview, "backend": "render", "ledgerId": ledger_id, "userEmail": user.get("email")})
@@ -3276,7 +3311,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "cleanup": cleanup, "backend": "render", "ledgerId": ledger_id, "userEmail": user.get("email")})
@@ -3300,7 +3335,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "OWNER_ACTIVITY_ERROR", "message": body}, status=error.code)
             return
         except Exception as error:
-            self.send_json({"ok": False, "code": "OWNER_ACTIVITY_ERROR", "message": str(error)}, status=500)
+            self.send_safe_json_error("OWNER_ACTIVITY_ERROR", error)
             return
         self.send_json({"ok": True, "activity": rows, "backend": "render", "userEmail": user.get("email")})
 
@@ -3327,7 +3362,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True, "context": context, "backend": "render", "userEmail": user.get("email")})
@@ -3358,7 +3393,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="payment-status-action", route="/api/payments/status-action", ok=True, result_code="PAYMENT_STATUS_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Payment Status Action completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
@@ -3390,7 +3425,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="trip-upsert", route="/api/trips/upsert", ok=True, result_code="TRIP_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Trip Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
@@ -3422,7 +3457,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="fuel-upsert", route="/api/fuel/upsert", ok=True, result_code="FUEL_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Fuel Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
@@ -3454,7 +3489,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-upsert", route="/api/bookings/upsert", ok=True, result_code="BOOKING_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Booking Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
@@ -3487,7 +3522,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, str(error))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-delete", route="/api/bookings/delete", ok=True, result_code="BOOKING_DELETED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Booking Delete completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
@@ -3530,7 +3565,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         self.send_json({"ok": True})
@@ -3576,7 +3611,7 @@ class Handler(SimpleHTTPRequestHandler):
                 f"{supabase_url()}/rest/v1/push_subscriptions?user_email=eq.{encoded_email}&select=id,user_email,subscription"
             ) or []
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
 
         sent = 0
@@ -3696,7 +3731,7 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as error:
             response_status = 500
             record_lookup_activity(False, "VEHICLE_LOOKUP_ERROR", 500, f"Vehicle lookup failed for {plate or 'unknown plate'}." )
-            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_ERROR", "message": str(error)}, status=500)
+            self.send_safe_json_error("VEHICLE_LOOKUP_ERROR", error)
 
     def run_reminders(self):
         auth_error = reminder_job_auth_error(self)
@@ -3716,9 +3751,17 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(error.code, error.read().decode("utf-8"))
             return
         except Exception as error:
-            self.send_error(500, str(error))
+            self.send_safe_internal_error(error)
             return
         self.send_json(result)
+
+    def send_safe_internal_error(self, error, message="Unexpected server error. Please try again."):
+        log_internal_error(message, error)
+        self.send_error(500, message)
+
+    def send_safe_json_error(self, code, error, status=500, message="Unexpected server error. Please try again."):
+        log_internal_error(code, error)
+        self.send_json({"ok": False, "code": code, "message": message}, status=status)
 
     def send_json(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

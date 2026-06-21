@@ -83,7 +83,7 @@ class RenderSupabaseUserAuthTests(unittest.TestCase):
     def test_current_supabase_user_verifies_ecc_token_with_jwks_public_key(self):
         token, jwk = self.make_es256_token_and_jwk()
         handler = FakeHandler({"Authorization": f"Bearer {token}"})
-        with patch.object(server, "SUPABASE_JWT_SECRET", "legacy-secret-that-must-not-be-used"), \
+        with patch.object(server, "SUPABASE_JWT_SECRET", "legacy-secret-that-must-not-be-used-and-is-long"), \
              patch.object(server, "supabase_url", return_value="https://example.supabase.co"), \
              patch.object(server, "fetch_supabase_jwks", return_value=[jwk]), \
              patch.object(server, "request_json") as request_json:
@@ -113,11 +113,11 @@ class RenderSupabaseUserAuthTests(unittest.TestCase):
                 "email": "legacy@example.com",
                 "exp": int(time.time()) + 300,
             },
-            "legacy-secret",
+            "legacy-secret-long-enough-for-hs256-tests",
             algorithm="HS256",
         )
         handler = FakeHandler({"Authorization": f"Bearer {token}"})
-        with patch.object(server, "SUPABASE_JWT_SECRET", "legacy-secret"), \
+        with patch.object(server, "SUPABASE_JWT_SECRET", "legacy-secret-long-enough-for-hs256-tests"), \
              patch.object(server, "fetch_supabase_jwks", return_value=[]), \
              patch.object(server, "request_json") as request_json:
             user = server.current_supabase_user(handler)
