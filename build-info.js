@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T14:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v376",
+    updatedAt: "2026-06-21T14:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v377",
     releaseNotes: Object.freeze([
+      "App updates now run without user update buttons: version status polls automatically, waiting service workers activate themselves, and safe reloads retry after foreground writes finish instead of asking the user to refresh.",
       "Workspace live sync now completes workspace switches without page refresh: successful loads re-render after confirmation, delayed switches retry automatically, and same-user ledger events trigger lightweight auto-sync across tabs/devices.",
       "Workspace switching now stays usable while the workspace list is refreshing: cached linked workspaces remain selectable, stale loading flags are cleared, and Account keeps the cached workspace rows visible instead of freezing behind a loading message.",
       "Admin stability pass 2 separates core app health from optional owner diagnostics: Admin auto-refresh now staggers heavy checks, preserves last-known-good global data after timeouts, and keeps optional admin timeouts out of the core Latest Data I/O card.",
@@ -206,10 +207,50 @@
 
   window.FUEL_LEDGER_BUILD = BUILD_INFO;
 
+  let autoUpdatePollTimer = null;
+  let autoReloadRequested = false;
+  let lastRenderedServiceWorkerInfo = null;
+  let lastRenderedDeployedInfo = null;
+
   function serviceWorkerStatus() {
     if (!("serviceWorker" in navigator)) return "Not supported in this browser";
-    if (!navigator.serviceWorker.controller) return "Installed or waiting for next reload";
+    if (!navigator.serviceWorker.controller) return "Starting automatic app cache control";
     return "Active on this page";
+  }
+
+  function isReloadSafe() {
+    try {
+      if (window.FuelLedgerApp?.hasPendingLocalChanges?.()) return false;
+      if (window.FuelLedgerApp?.hasForegroundWriteInFlight?.()) return false;
+    } catch (error) {
+      return false;
+    }
+    return true;
+  }
+
+  function reloadWhenSafe(attempt = 0) {
+    if (autoReloadRequested && attempt > 0 && attempt % 5 !== 0) {
+      // keep retrying quietly; avoid spamming diagnostics while a save is active
+    }
+    autoReloadRequested = true;
+    if (isReloadSafe()) {
+      window.setTimeout(() => window.location.reload(), 250);
+      return;
+    }
+    if (attempt < 60) {
+      window.setTimeout(() => reloadWhenSafe(attempt + 1), 1000);
+    }
+  }
+
+  async function activateWaitingServiceWorker(registration) {
+    const waiting = registration?.waiting || registration?.installing;
+    if (!waiting) return false;
+    try {
+      waiting.postMessage({ type: "SKIP_WAITING" });
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 
   function requestServiceWorkerInfo(timeoutMs = 1200) {
@@ -267,9 +308,10 @@
 
   function renderBuildInfoPanel(target, serviceWorkerInfo = null, deployedInfo = null) {
     if (!target) return;
-    const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Not reported yet";
+    const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Checking automatically";
     const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
     const pageIsOlderThanDeploy = Boolean(deployedInfo?.expectedServiceWorkerCache && deployedInfo.expectedServiceWorkerCache !== BUILD_INFO.expectedServiceWorkerCache);
+    const serviceWorkerMissing = !serviceWorkerInfo?.cacheName;
     const cacheMatchesLoadedPage = serviceWorkerInfo?.cacheName
       ? serviceWorkerInfo.cacheName === BUILD_INFO.expectedServiceWorkerCache
       : null;
@@ -277,14 +319,16 @@
       ? serviceWorkerInfo.cacheName === deployedCache
       : null;
     const updatePending = pageIsOlderThanDeploy || (cacheMatchesLoadedPage === false && cacheMatchesDeploy === true);
-    const cacheClass = updatePending ? "warning" : cacheMatchesLoadedPage === false ? "warning" : "ok";
+    const cacheClass = updatePending || serviceWorkerMissing ? "warning" : cacheMatchesLoadedPage === false ? "warning" : "ok";
     const cacheNote = updatePending
-      ? "Update ready — the app will activate it and reload once when safe."
-      : cacheMatchesLoadedPage === false
-        ? "Update handoff in progress — use Refresh status or reload once if this persists."
-        : cacheMatchesLoadedPage === true
-          ? "Cache matches this loaded build."
-          : "Refresh status; the app can now activate waiting updates automatically.";
+      ? "Automatic update handoff in progress; the app will activate and reload once it is safe."
+      : serviceWorkerMissing
+        ? "Waiting for service-worker status; the app keeps checking in the background."
+        : cacheMatchesLoadedPage === false
+          ? "Automatic cache handoff in progress."
+          : cacheMatchesLoadedPage === true
+            ? "Cache matches this loaded build."
+            : "Checking app cache automatically.";
     const latestDeployLabel = deployedInfo?.buildLabel || BUILD_INFO.buildLabel;
     const latestDeployCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
     const latestDeployVersion = deployedInfo?.version || BUILD_INFO.version;
@@ -308,7 +352,7 @@
         </article>
         <article class="diagnostic-card ${cacheClass}">
           <strong>Update status</strong>
-          <p>${updatePending ? "Update ready" : cacheMatchesLoadedPage === false ? "Handoff" : "Current"}</p>
+          <p>${updatePending ? "Updating" : serviceWorkerMissing ? "Checking" : cacheMatchesLoadedPage === false ? "Handoff" : "Current"}</p>
           <small>${cacheNote}</small>
         </article>
         <article class="diagnostic-card ok">
@@ -339,26 +383,60 @@
     });
   }
 
-  async function refreshBuildInfo() {
-    renderBuildInfo(null, null);
+  async function refreshBuildInfo({ activateUpdates = true } = {}) {
+    renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
     const [serviceWorkerInfo, deployedInfo] = await Promise.all([
       requestServiceWorkerInfo(),
       requestLatestDeployedBuildInfo()
     ]);
+    lastRenderedServiceWorkerInfo = serviceWorkerInfo;
+    lastRenderedDeployedInfo = deployedInfo;
     renderBuildInfo(serviceWorkerInfo, deployedInfo);
+
+    if (activateUpdates && "serviceWorker" in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.update();
+        const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
+        const loadedCache = BUILD_INFO.expectedServiceWorkerCache;
+        const serviceWorkerCache = serviceWorkerInfo?.cacheName || "";
+        const pageIsBehind = Boolean(deployedCache && deployedCache !== loadedCache);
+        const workerIsBehind = Boolean(deployedCache && serviceWorkerCache && serviceWorkerCache !== deployedCache);
+        if (registration.waiting || registration.installing || pageIsBehind || workerIsBehind) {
+          const activated = await activateWaitingServiceWorker(registration);
+          if (activated || pageIsBehind) reloadWhenSafe();
+        }
+      } catch (error) {
+        // The next automatic poll will retry; never require a user-facing button.
+      }
+    }
+
     return { serviceWorkerInfo, deployedInfo };
+  }
+
+  function startAutoBuildInfoRefresh() {
+    if (autoUpdatePollTimer) return;
+    autoUpdatePollTimer = window.setInterval(() => {
+      if (document.hidden) return;
+      refreshBuildInfo({ activateUpdates: true });
+    }, 5000);
   }
 
   window.FuelBuildInfo = {
     BUILD_INFO,
     renderBuildInfo,
     refreshBuildInfo,
+    startAutoBuildInfoRefresh,
     serviceWorkerStatus
   };
 
-  refreshBuildInfo();
-  window.addEventListener("load", () => refreshBuildInfo());
+  refreshBuildInfo({ activateUpdates: true });
+  startAutoBuildInfoRefresh();
+  window.addEventListener("load", () => refreshBuildInfo({ activateUpdates: true }));
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("controllerchange", () => refreshBuildInfo());
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      refreshBuildInfo({ activateUpdates: false });
+      reloadWhenSafe();
+    });
   }
 })();

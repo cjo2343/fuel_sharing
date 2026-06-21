@@ -29,6 +29,6 @@ assert(serviceWorker.includes('self.skipWaiting();'), "Service worker requests i
 assert(serviceWorker.includes('self.clients.claim()'), "Service worker claims clients after activation.");
 assert(app.includes('newWorker.postMessage({ type: "SKIP_WAITING" });'), "App tells waiting service worker to activate.");
 assert(app.includes('window.location.reload()'), "App performs one controlled reload after controllerchange.");
-assert(buildInfo.includes('the app will activate it and reload once when safe'), "Build-info copy no longer tells users to close/reopen manually.");
+assert(buildInfo.includes('Automatic update handoff in progress') || buildInfo.includes('waiting service workers activate themselves'), "Build-info copy describes automatic update handoff without manual refresh buttons.");
 
 console.log("Account tab and service-worker update guardrails passed.");

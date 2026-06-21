@@ -1,4 +1,3 @@
-- 2026-06-21 14:05 UTC: v376 Workspace live sync now re-renders after workspace confirmation, retries delayed workspace switches automatically, and same-user ledger events trigger lightweight auto-sync across tabs/devices.
 - 2026-06-21 11:25 UTC: v370 App-owner global diagnostics now use a dedicated Render owner route to list all workspaces, target-user memberships such as testman21 across test1/test2, and recent vehicle lookup owner-activity rows without requiring the app owner to be a member of every workspace.
 - 2026-06-21 10:55 UTC: v369 Account workspace refresh is authoritative instead of freshness-skipped, one-row workspace lists are rechecked, and reports export visible selector plus signed-in-email membership probe rows so hidden test1 membership issues can be diagnosed.
 - 2026-06-21 10:45 UTC: v368 workspace list dedupe now keys by ledger id/slug, not display name, preventing main-car and test1 from collapsing when both are named Fuel Ledger; reports export vehicle lookup readiness.
@@ -28,12 +27,12 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Workspace live sync now finishes workspace switches without page refreshes, retries delayed workspace loads automatically, and re-renders after selected workspace confirmation.
+- App updates now run automatically without user update buttons.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v376`
-- `fuel-ledger-v376` - Workspace live sync re-renders after confirmed workspace loads, retries delayed switches automatically, and keeps same-user ledger events syncing across tabs/devices.
-- Updated at: `2026-06-21T14:05:00.000Z`
-- Top release note: Workspace live sync now completes workspace switches without page refresh: successful loads re-render after confirmation, delayed switches retry automatically, and same-user ledger events trigger lightweight auto-sync across tabs/devices.
+- Service-worker cache: `fuel-ledger-v377`
+- `fuel-ledger-v377` - Automatic app update lifecycle removes manual update buttons, polls service-worker/build status in the background, activates waiting caches, and safely reloads when foreground writes are finished.
+- Updated at: `2026-06-21T14:20:00.000Z`
+- Top release note: App updates now run without user update buttons: version status polls automatically, waiting service workers activate themselves, and safe reloads retry after foreground writes finish instead of asking the user to refresh.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

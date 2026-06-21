@@ -360,8 +360,9 @@ function testReleaseAboutPanelExists() {
   const css = readFileSync("styles.css", "utf8");
   assert.match(html, /id="aboutBuildInfoPanel"/);
   assert.match(html, /id="buildInfoPanel"/);
-  assert.match(app, /refreshBuildInfo: document\.querySelector\("#refreshBuildInfo"\)/);
-  assert.match(app, /els\.refreshBuildInfo\?\.addEventListener\("click"/);
+  assert.doesNotMatch(html, /id="refresh(?:About)?BuildInfo"/);
+  assert.match(buildInfo, /function startAutoBuildInfoRefresh\(\)/);
+  assert.match(buildInfo, /refreshBuildInfo\(\{ activateUpdates: true \}\)/);
   assert.match(buildInfo, /window\.FUEL_LEDGER_BUILD = BUILD_INFO/);
   assert.match(buildInfo, /releaseNotes: Object\.freeze\(\[/);
   assert.match(buildInfo, /Latest notes/);

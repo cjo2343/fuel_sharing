@@ -2646,8 +2646,6 @@ const els = {
   runRetentionCleanup: document.querySelector("#runRetentionCleanup"),
   retentionCleanupSummary: document.querySelector("#retentionCleanupSummary"),
   checkRenderAdminHealth: document.querySelector("#checkRenderAdminHealth"),
-  refreshAboutBuildInfo: document.querySelector("#refreshAboutBuildInfo"),
-  refreshBuildInfo: document.querySelector("#refreshBuildInfo"),
   pwaPanel: document.querySelector("#pwaPanel"),
   pwaMessage: document.querySelector("#pwaMessage"),
   installApp: document.querySelector("#installApp"),
@@ -4004,16 +4002,6 @@ els.cleanupTestLabData?.addEventListener("click", async () => {
     detail: "This removes entries carrying the generated test marker. Production data should be left untouched."
   }))) return;
   await traceAdminToolOperation("cleanup-test-lab-data", "Clean generated Test Lab data", cleanupGeneratedTestDataWithReport);
-});
-
-els.refreshAboutBuildInfo?.addEventListener("click", () => {
-  window.FuelBuildInfo?.refreshBuildInfo?.();
-});
-
-els.refreshBuildInfo?.addEventListener("click", () => {
-  if (!requireGlobalAdminToolsPermission("Refresh admin version status")) return;
-  window.FuelBuildInfo?.refreshBuildInfo?.();
-  renderAdminGuardrailOverview();
 });
 
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
@@ -17044,6 +17032,10 @@ function getFuelFallbackPriceForState(saved) {
 }
 
 
+window.FuelLedgerApp = window.FuelLedgerApp || {};
+window.FuelLedgerApp.hasPendingLocalChanges = () => Boolean(state.pendingLocalChanges);
+window.FuelLedgerApp.hasForegroundWriteInFlight = () => hasForegroundWriteInFlight();
+
 async function initializePwa() {
   pushSupported = notifications.isPushSupported();
 
@@ -17061,9 +17053,16 @@ async function initializePwa() {
         serviceWorkerControllerChanged = true;
         recordSyncDiagnostic("service-worker-controllerchange", "App update activated; reloading once so page files and the service-worker cache use the same build.");
         recordSupabaseLoadEvent("service-worker-controllerchange", "Service-worker update activated; one controlled reload will complete the handoff.");
-        if (!state.pendingLocalChanges && !hasForegroundWriteInFlight()) {
-          window.setTimeout(() => window.location.reload(), 250);
-        }
+        const reloadWhenSafe = (attempt = 0) => {
+          if (!state.pendingLocalChanges && !hasForegroundWriteInFlight()) {
+            window.setTimeout(() => window.location.reload(), 250);
+            return;
+          }
+          if (attempt < 20) {
+            window.setTimeout(() => reloadWhenSafe(attempt + 1), 1000);
+          }
+        };
+        reloadWhenSafe();
       });
 
       const registration = await navigator.serviceWorker.register("/service-worker.js");
