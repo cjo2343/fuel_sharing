@@ -16,10 +16,11 @@ assert(app.includes('data-owner-activity-scope="all"'), 'owner activity UI must 
 assert(app.includes('Global app-owner audit across users and workspaces'), 'owner activity copy must explain that other users/workspaces are normal audit data');
 assert(app.includes('ownerActivityVisibleRows'), 'owner activity must filter visible rows by current workspace by default');
 assert(app.includes('ledgerId: ownerActivityLoadedWorkspaceId()'), 'owner activity backend request must filter current-workspace loads by ledgerId');
-assert(app.includes('maybeLoadOwnerActivityOnAdminOpen'), 'admin open should use a one-time owner activity load helper');
+assert(app.includes('markOptionalAdminPanelsReadyForManualRefresh'), 'admin open should mark optional audit panels as manual instead of auto-loading them');
+assert(!app.includes('refreshOwnerActivity({ silent: true, reason: "admin-tab-open" }'), 'admin open must not auto-refresh owner activity');
 assert(!app.includes('ownerActivityBackgroundIntervalMs = 60000'), 'owner activity must not run a hidden recurring background interval');
 assert(!app.includes('reason: "admin-background"'), 'owner activity must not auto-refresh from a background admin interval');
-assert(app.includes('isOptionalOwnerActivityOperation'), 'latest global Data I/O must be able to exclude optional owner-activity audit failures');
+assert(app.includes('isOptionalAdminPanelOperation'), 'latest global Data I/O must exclude optional admin panel failures');
 assert(styles.includes('.owner-activity-scope'), 'owner activity scope controls must have dedicated styling');
 assert(styles.includes('.owner-activity-workspace-grid'), 'owner activity workspace summary must have dedicated styling');
 

@@ -696,7 +696,7 @@ function testWorkspaceInviteAutoRefreshExists() {
   assert.match(app, /function scheduleWorkspaceInviteRefresh\(reason = "workspace-invite-refresh"\)/);
   assert.match(app, /function canRefreshWorkspaceInviteTools\(\)/);
   assert.match(app, /async function ensureWorkspaceInviteToolsReady\(reason = "workspace-invite-ready"\)/);
-  assert.match(app, /if \(activeView === "admin"\) \{\s*scheduleWorkspaceInviteRefresh\("admin-tab-open"\);\s*maybeLoadOwnerActivityOnAdminOpen\(\);/);
+  assert.match(app, /if \(activeView === "admin"\) \{\s*markOptionalAdminPanelsReadyForManualRefresh\("admin-tab-open"\);/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("startup-session"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("auth-session"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("account-panel-render"\)/);
@@ -773,7 +773,7 @@ function testDataIoFlightRecorderExists() {
   assert.match(app, /latestDataIoDiagnostic/);
   assert.match(app, /function latestDataIoOperations\(limit = 6\)/);
   assert.match(app, /function formatDataIoOperationLine\(operation = \{\}\)/);
-  assert.match(app, /Latest data I\/O operations/);
+  assert.match(app, /This card ignores optional Admin panels/);
   assert.match(app, /dataIoDiagnostics: latestDataIoDiagnostics\(30\)/);
   assert.match(app, /dataIoOperations: latestDataIoOperations\(30\)/);
   assert.match(app, /source: "trip-save"/);

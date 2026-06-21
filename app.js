@@ -1298,7 +1298,8 @@ function dataIoSectionSummary(operations = []) {
   const issues = operations.filter(dataIoOperationHasIssue).length;
   const active = operations.filter((operation) => String(operation.status || "") === "active").length;
   const ok = operations.filter((operation) => String(operation.status || "") === "ok").length;
-  return `${total} action${total === 1 ? "" : "s"} · ${ok} ok${active ? ` · ${active} running` : ""}${issues ? ` · ${issues} need review` : ""}`;
+  const skipped = operations.filter((operation) => String(operation.status || "") === "skipped").length;
+  return `${total} action${total === 1 ? "" : "s"} · ${ok} ok${skipped ? ` · ${skipped} skipped` : ""}${active ? ` · ${active} running` : ""}${issues ? ` · ${issues} need review` : ""}`;
 }
 
 function renderDataIoGroupedSections() {
@@ -1416,9 +1417,19 @@ function isOptionalOwnerActivityOperation(operation = {}) {
   return String(entry.source || "").toLowerCase() === "owner-activity";
 }
 
+function isOptionalWorkspaceToolsOperation(operation = {}) {
+  const entry = operation.latest || operation.start || operation.finish || {};
+  const source = String(entry.source || "").toLowerCase();
+  return source === "workspace-tools-refresh";
+}
+
+function isOptionalAdminPanelOperation(operation = {}) {
+  return isOptionalOwnerActivityOperation(operation) || isOptionalWorkspaceToolsOperation(operation);
+}
+
 function latestDataIoOperation({ includeOptionalAdminAudit = false } = {}) {
   const operations = latestDataIoOperations(12);
-  return (includeOptionalAdminAudit ? operations : operations.filter((operation) => !isOptionalOwnerActivityOperation(operation)))[0] || null;
+  return (includeOptionalAdminAudit ? operations : operations.filter((operation) => !isOptionalAdminPanelOperation(operation)))[0] || null;
 }
 
 function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoOperationStaleMs) {
@@ -2698,8 +2709,7 @@ function setActiveView(view) {
   localStorage.setItem(viewStorageKey, activeView);
   render();
   if (activeView === "admin") {
-    scheduleWorkspaceInviteRefresh("admin-tab-open");
-    maybeLoadOwnerActivityOnAdminOpen();
+    markOptionalAdminPanelsReadyForManualRefresh("admin-tab-open");
   }
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
@@ -4450,11 +4460,20 @@ function clearOwnerActivityTimeoutCooldown() {
   ownerActivityAutoPausedUntilManual = false;
 }
 
-function maybeLoadOwnerActivityOnAdminOpen() {
-  if (!canUseGlobalAdminTools()) return Promise.resolve(ownerActivityStatus);
-  if (ownerActivityInitialAdminLoadAttempted || ownerActivityStatus.checked) return Promise.resolve(ownerActivityStatus);
+function markOptionalAdminPanelsReadyForManualRefresh(reason = "admin-open") {
+  // Opening Admin should not fire optional network panels that can become red global noise.
+  // Core ledger data is already loaded through /api/state/load; workspace/invite lists and
+  // owner audit rows are useful admin panels, but they are safe to refresh manually.
   ownerActivityInitialAdminLoadAttempted = true;
-  return refreshOwnerActivity({ silent: true, reason: "admin-tab-open" }).catch(() => ownerActivityStatus);
+  if (ownerActivityStatus && !ownerActivityStatus.checked) {
+    ownerActivityStatus.loading = false;
+    ownerActivityStatus.message = "Manual refresh";
+  }
+  return Promise.resolve({ ok: true, reason });
+}
+
+function maybeLoadOwnerActivityOnAdminOpen() {
+  return markOptionalAdminPanelsReadyForManualRefresh("admin-tab-open");
 }
 
 function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", success = true } = {}) {
@@ -4847,7 +4866,7 @@ function renderSupabaseLoadMonitor() {
         <span>Latest data I/O</span>
         <strong>${escapeHtml(latestOperationStatus)}</strong>
         <small>${latestDataIoOp ? escapeHtml(formatDataIoOperationLine(latestDataIoOp)) : "No operation yet"}</small>
-        <p>Latest data I/O operations are grouped by action type so start/finish pairs are readable.</p>
+        <p>This card ignores optional Admin panels such as workspace/invite refresh and owner audit refresh; those details stay in their sections below.</p>
       </article>
       ${renderRenderAdminHealthCard()}
       ${canUseGlobalAdminTools() ? renderOwnerActivityCard() : ""}
@@ -14362,7 +14381,7 @@ function renderWorkspaceInvitesPanel() {
     if (els.inviteList) els.inviteList.innerHTML = `<p class="empty-state">Sign in to review invites.</p>`;
     return;
   }
-  if (!workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && canRefreshWorkspaceInviteTools()) {
+  if (activeView === "account" && !workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && canRefreshWorkspaceInviteTools()) {
     scheduleWorkspaceInviteRefresh("account-panel-render");
   }
   if (workspaceInviteStatus.loading) {
@@ -14528,7 +14547,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
       ok: false,
       error,
       resultCode: timedOut ? "WORKSPACE_REFRESH_TIMEOUT" : "WORKSPACE_REFRESH_ERROR",
-      detail: workspaceInviteStatus.error
+      detail: timedOut ? "Workspace/invite panel refresh timed out. Existing workspace data remains usable; use Refresh only when you need the latest invite list." : workspaceInviteStatus.error
     });
   } finally {
     workspaceInviteStatus.loading = false;

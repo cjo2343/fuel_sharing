@@ -52,6 +52,6 @@ assert.match(
 
 assert.match(
   appSource,
-  /Latest data I\/O operations/,
+  /This card ignores optional Admin panels/,
   "admin diagnostics should keep the latest data I/O operation section visible"
 );

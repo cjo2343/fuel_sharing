@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T08:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v360",
+    updatedAt: "2026-06-21T09:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v361",
     releaseNotes: Object.freeze([
+      "Optional Admin panels no longer become the global red Latest Data I/O status: workspace/invite refresh and owner-audit refresh stay in their own sections, Admin opens no longer auto-run those optional refreshes, and skipped rows are counted separately from issues.",
       "Owner activity now treats multi-user and multi-workspace activity as normal global audit data: the app-owner view defaults to current workspace, can switch to all workspaces, groups by workspace/user, and no longer auto-refreshes after normal member actions.",
       "Owner activity is now summarized and manual-refreshable after timeouts: Admin shows grouped server-side activity instead of a long raw wall of rows, hides raw rows behind details, and pauses automatic owner-activity retries after timeout until the app owner asks for a refresh.",
       "Startup loading now separates core workspace load from admin diagnostics, coalesces duplicate workspace-list refreshes, keeps recent healthy admin health when a later check times out, makes workspace switching force-load the selected workspace, and groups Data I/O into readable Core, Workspace, Vehicle/settings, App action, Admin, and Background sections.",

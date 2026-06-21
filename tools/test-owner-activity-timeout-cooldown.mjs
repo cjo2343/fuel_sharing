@@ -11,7 +11,7 @@ assert.match(app, /resultCode:\s*"OWNER_ACTIVITY_COOLDOWN"/, "Cooldown skips sho
 assert.match(app, /formatOwnerActivityCooldownMessage\(now\)/, "Cooldown state should show a calm message instead of repeated failures.");
 assert.match(app, /coolingDown \? "Paused"/, "Owner activity card should render timeout cooldown as paused, not as an active failure.");
 assert.doesNotMatch(app, /reason: "admin-background"/, "Owner activity should not auto-refresh from a background admin interval.");
-assert.match(app, /maybeLoadOwnerActivityOnAdminOpen\(\)/, "Owner activity may load once when Admin opens, then remain manual.");
+assert.match(app, /markOptionalAdminPanelsReadyForManualRefresh\("admin-tab-open"\)/, "Owner activity should stay manual when Admin opens.");
 assert.doesNotMatch(app, /refreshOwnerActivity\(\{ force: true, silent: true \}\)\.catch\(\(\) => \{\}\)/, "Vehicle lookup should no longer force owner activity after every attempt.");
 
 console.log("ok - owner activity timeout cooldown guardrails passed");

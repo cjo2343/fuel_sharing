@@ -22,9 +22,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v360`
-- Updated at: `2026-06-21T08:45:00.000Z`
-- Top release note: Owner activity now treats multi-user and multi-workspace activity as normal global audit data: the app-owner view defaults to current workspace, can switch to all workspaces, groups by workspace/user, and no longer auto-refreshes after normal member actions.
+- Service-worker cache: `fuel-ledger-v361`
+- Updated at: `2026-06-21T09:00:00.000Z`
+- Top release note: Optional Admin panels no longer become the global red Latest Data I/O status: workspace/invite refresh and owner-audit refresh stay in their own sections, Admin opens no longer auto-run those optional refreshes, and skipped rows are counted separately from issues.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -604,3 +604,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Top release note: `Settings save now verifies the canonical saved ledger row before reporting success: vehicle columns must exist, vehicle plate/details are read back after write, missing migration 038 fails with SETTINGS_SCHEMA_MISSING, and Data I/O shows which settings actually persisted.`
 
 - Render API calls now use a shared frontend helper for fresh Supabase tokens, Authorization headers, timeouts, JSON parsing, and settings-save request handling instead of hand-rolled/stale token fetch code.
+
+- 2026-06-21 09:00 UTC — Optional admin panel noise patch: workspace/invite refresh and owner-audit refresh no longer auto-run on Admin open or dominate Latest Data I/O; skipped rows are counted separately from failures; runtime cache `fuel-ledger-v361`.
