@@ -1,3 +1,4 @@
+- 2026-06-21 15:35 UTC: v382 Service-worker status self-heals for signed-in/test-user sessions; build-info can query active workers before controller attach, retries handoff on resume/URL changes, and reloads once safely instead of leaving version status stuck on Checking.
 - 2026-06-21 15:25 UTC: v381 Admin background sync uses lightweight cached checks only; automatic Admin polling no longer calls full /api/admin/health, while /api/ping handles backend readiness and deep Render health stays explicit/passive.
 - 2026-06-21 15:10 UTC: v380 Idle recovery warms the Render backend before member actions, keeps Live Sync sessions gently connected while visible, and service-worker navigations with workspace query strings fall back to the app shell instead of 503 Offline.
 - 2026-06-21 14:50 UTC: v379 Admin global diagnostics now exports generic memberRows instead of targeted debug memberships, Owner Activity is manual/cached instead of auto-hammering Render, and owner-activity payloads are metadata-light by default.
@@ -31,12 +32,13 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Admin background sync now uses lightweight cached checks only; full Render admin health no longer runs from automatic Admin polling.
+- Service-worker status now self-heals for signed-in/test-user sessions so the Version card does not sit forever on Checking while cache control attaches automatically.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v381`
+- Service-worker cache: `fuel-ledger-v382`
+- `fuel-ledger-v382` - Service-worker status self-heals for signed-in/test-user sessions and does not sit forever on Checking while cache control is attached automatically.
 - `fuel-ledger-v381` - Admin background sync uses lightweight cached checks only; full Render admin health no longer runs from automatic Admin polling, while backend readiness stays on /api/ping and deep health remains explicit.
-- Updated at: `2026-06-21T15:25:00.000Z`
-- Top release note: Admin background sync now uses lightweight cached checks only: full Render admin health no longer runs in automatic Admin polling, backend readiness stays on /api/ping, and the last healthy admin-health snapshot remains passive unless deep diagnostics or protected admin actions explicitly ask for it.
+- Updated at: `2026-06-21T15:35:00.000Z`
+- Top release note: Service-worker status now self-heals for signed-in/test-user sessions: the app can ask the active worker for cache status even before page control is attached, retries registration/update handoff on visibility and URL changes, and performs one safe automatic controller reload instead of sitting forever on Checking.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

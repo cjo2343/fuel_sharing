@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T15:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v381",
+    updatedAt: "2026-06-21T15:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v382",
     releaseNotes: Object.freeze([
+      "Service-worker status now self-heals for signed-in/test-user sessions: the app can ask the active worker for cache status even before page control is attached, retries registration/update handoff on visibility and URL changes, and performs one safe automatic controller reload instead of sitting forever on Checking.",
       "Admin background sync now uses lightweight cached checks only: full Render admin health no longer runs in automatic Admin polling, backend readiness stays on /api/ping, and the last healthy admin-health snapshot remains passive unless deep diagnostics or protected admin actions explicitly ask for it.",
       "Idle recovery now warms the Render backend and service-worker navigations fall back to the app shell even with ?workspace links, so vehicle lookup and workspace pages recover after the app sits idle without a manual refresh.",
       "Admin global diagnostics are fully generic and cached: member rows replace the old targeted membership debug field, Owner Activity is manual/cached instead of auto-hammering, and owner-activity payloads are lighter.",
@@ -216,10 +217,27 @@
   let lastRenderedServiceWorkerInfo = null;
   let lastRenderedDeployedInfo = null;
 
-  function serviceWorkerStatus() {
+  function serviceWorkerStatus(serviceWorkerInfo = null) {
     if (!("serviceWorker" in navigator)) return "Not supported in this browser";
-    if (!navigator.serviceWorker.controller) return "Starting automatic app cache control";
-    return "Active on this page";
+    if (serviceWorkerInfo?.source === "active-uncontrolled") return "Active worker found; attaching page control automatically.";
+    if (serviceWorkerInfo?.source === "registration") return "Registered worker found; attaching page control automatically.";
+    if (!navigator.serviceWorker.controller) return "Starting automatic app cache control.";
+    return "Active on this page.";
+  }
+
+  async function getServiceWorkerRegistration() {
+    if (!("serviceWorker" in navigator)) return null;
+    try {
+      const existing = await navigator.serviceWorker.getRegistration("/");
+      if (existing) return existing;
+    } catch (error) {
+      // Fall through to ready/register. The next automatic poll will retry.
+    }
+    try {
+      return await navigator.serviceWorker.ready;
+    } catch (error) {
+      return null;
+    }
   }
 
   function isReloadSafe() {
@@ -257,20 +275,58 @@
     }
   }
 
-  function requestServiceWorkerInfo(timeoutMs = 1200) {
-    if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller || typeof MessageChannel === "undefined") {
-      return Promise.resolve(null);
+  async function requestServiceWorkerInfo(timeoutMs = 1200) {
+    if (!("serviceWorker" in navigator) || typeof MessageChannel === "undefined") {
+      return null;
     }
+
+    const registration = await getServiceWorkerRegistration();
+    const targetWorker = navigator.serviceWorker.controller
+      || registration?.active
+      || registration?.waiting
+      || registration?.installing;
+    if (!targetWorker) return null;
 
     return new Promise((resolve) => {
       const channel = new MessageChannel();
       const timeout = window.setTimeout(() => resolve(null), timeoutMs);
       channel.port1.onmessage = (event) => {
         window.clearTimeout(timeout);
-        resolve(event.data || null);
+        const payload = event.data || null;
+        if (payload && !navigator.serviceWorker.controller) {
+          payload.source = registration?.active ? "active-uncontrolled" : "registration";
+        }
+        resolve(payload);
       };
-      navigator.serviceWorker.controller.postMessage({ type: "GET_BUILD_INFO" }, [channel.port2]);
+      try {
+        targetWorker.postMessage({ type: "GET_BUILD_INFO" }, [channel.port2]);
+      } catch (error) {
+        window.clearTimeout(timeout);
+        resolve(null);
+      }
     });
+  }
+
+  async function ensureAutomaticServiceWorkerControl({ forceUpdate = false } = {}) {
+    if (!("serviceWorker" in navigator)) return null;
+    try {
+      const registration = await navigator.serviceWorker.register("/service-worker.js");
+      if (forceUpdate) await registration.update();
+      if (registration.waiting || registration.installing) {
+        await activateWaitingServiceWorker(registration);
+      }
+      if (!navigator.serviceWorker.controller && registration.active) {
+        const reloadKey = `fuel-ledger-sw-control-reload:${BUILD_INFO.expectedServiceWorkerCache}`;
+        const alreadyReloaded = window.sessionStorage?.getItem(reloadKey) === "1";
+        if (!alreadyReloaded) {
+          try { window.sessionStorage?.setItem(reloadKey, "1"); } catch (error) {}
+          reloadWhenSafe();
+        }
+      }
+      return registration;
+    } catch (error) {
+      return null;
+    }
   }
 
   function parseBuildInfoSource(source) {
@@ -371,7 +427,7 @@
         <article class="diagnostic-card ${cacheClass}">
           <strong>Service worker cache</strong>
           <p>${serviceWorkerCache}</p>
-          <small>${cacheMatchesDeploy ? "Matches latest deployed cache." : serviceWorkerStatus()}</small>
+          <small>${cacheMatchesDeploy ? "Matches latest deployed cache." : serviceWorkerStatus(serviceWorkerInfo)}</small>
         </article>
         <article class="diagnostic-card ok release-note-card">
           <strong>Latest notes</strong>
@@ -389,6 +445,9 @@
 
   async function refreshBuildInfo({ activateUpdates = true } = {}) {
     renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
+    if (activateUpdates) {
+      await ensureAutomaticServiceWorkerControl({ forceUpdate: false });
+    }
     const [serviceWorkerInfo, deployedInfo] = await Promise.all([
       requestServiceWorkerInfo(),
       requestLatestDeployedBuildInfo()
@@ -399,8 +458,7 @@
 
     if (activateUpdates && "serviceWorker" in navigator) {
       try {
-        const registration = await navigator.serviceWorker.ready;
-        await registration.update();
+        const registration = await ensureAutomaticServiceWorkerControl({ forceUpdate: true }) || await navigator.serviceWorker.ready;
         const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
         const loadedCache = BUILD_INFO.expectedServiceWorkerCache;
         const serviceWorkerCache = serviceWorkerInfo?.cacheName || "";
@@ -431,12 +489,18 @@
     renderBuildInfo,
     refreshBuildInfo,
     startAutoBuildInfoRefresh,
-    serviceWorkerStatus
+    serviceWorkerStatus,
+    ensureAutomaticServiceWorkerControl
   };
 
   refreshBuildInfo({ activateUpdates: true });
   startAutoBuildInfoRefresh();
   window.addEventListener("load", () => refreshBuildInfo({ activateUpdates: true }));
+  window.addEventListener("pageshow", () => refreshBuildInfo({ activateUpdates: true }));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshBuildInfo({ activateUpdates: true });
+  });
+  window.addEventListener("popstate", () => refreshBuildInfo({ activateUpdates: true }));
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       refreshBuildInfo({ activateUpdates: false });
