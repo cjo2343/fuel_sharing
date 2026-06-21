@@ -11,13 +11,13 @@ assert.match(app, /async function resolveActiveWorkspaceStateScope\(\{ reason = 
 assert.match(app, /async function requireActiveWorkspaceWriteScope\(\{ reason = "save", forceHydrate = false \} = \{\}\)/, 'state writes should require a validated active workspace scope');
 assert.match(app, /WORKSPACE_WRITE_SCOPE_MISMATCH/, 'stale selected-vs-loaded workspace writes should fail closed');
 assert.match(app, /stateScope = await resolveActiveWorkspaceStateScope\(\{ reason, operation: "load" \}\)/, 'normal cloud state load should resolve one workspace scope before loading data');
-assert.match(app, /\.from\("car_share_ledgers"\)[\s\S]*\.eq\("id", ledgerId\)/, 'JSON mirror load should use the canonical scoped ledger id');
-assert.match(app, /loadStateFromNormalizedTables\(jsonState, \{ reason, stateScope \}\)/, 'normalized table loads should reuse the already resolved state scope');
+assert.match(app, /const renderStateRows = await getRenderNormalizedStateRows\(ledgerId\);/, 'JSON mirror load should use the canonical scoped ledger id through Render state rows');
+assert.match(app, /loadStateFromNormalizedTables\(jsonState, \{ reason, stateScope, renderStateRows \}\)/, 'normalized table loads should reuse the already resolved state scope and Render state rows');
 assert.match(app, /const stateScope = await requireActiveWorkspaceWriteScope\(\{ reason \}\)/, 'saveSupabaseState should validate write scope before writing');
 assert.match(app, /saveJsonMirrorBackupViaRender\(\{ force, reason, savedAt, stateScope \}\)/, 'JSON mirror backup should pass the canonical write scope to Render');
-assert.match(build, /workspace-state-scope-lane/, 'build label should describe the state scope lane');
-assert.match(build, /fuel-ledger-v394/, 'build-info expected cache should be v394');
-assert.match(sw, /fuel-ledger-v394/, 'service worker cache should be v394');
-assert.match(checklist, /Workspace state scope lane - v394/, 'deployment checklist should document the state scope lane pass');
+assert.match(build, /render-owned-state-load-lane/, 'build label should describe the state scope lane');
+assert.match(build, /fuel-ledger-v395/, 'build-info expected cache should be v395');
+assert.match(sw, /fuel-ledger-v395/, 'service worker cache should be v395');
+assert.match(checklist, /Render-owned state load lane - v395/, 'deployment checklist should document the Render-owned state load pass');
 
 console.log('workspace state scope lane guardrails passed');

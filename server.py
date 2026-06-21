@@ -2289,9 +2289,15 @@ def get_normalized_state_rows_as_user(ledger_id, user, user_token):
             f"{supabase_url()}/rest/v1/trip_participants?select=trip_id,member_id&trip_id=in.({in_values})",
             api_key=supabase_key(),
         ) or []
+    mirror_rows = request_json(
+        f"{supabase_url()}/rest/v1/car_share_ledgers?select=state,updated_at&id=eq.{ledger_q}",
+        api_key=supabase_key(),
+    ) or []
+    json_mirror = mirror_rows[0] if isinstance(mirror_rows, list) and mirror_rows else None
     return {
         "context": context,
         "ledger": ledger,
+        "jsonMirror": json_mirror,
         "members": members,
         "periods": periods,
         "trips": trips,

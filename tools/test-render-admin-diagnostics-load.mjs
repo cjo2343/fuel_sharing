@@ -18,9 +18,9 @@ const checks = [
       && app.includes('recordSyncDiagnostic("admin-render-load-success"')
   },
   {
-    name: 'admin fast path runs before legacy JSON mirror load',
+    name: 'admin fast path runs before normal Render-owned state load gate',
     ok: app.indexOf('await tryRenderAdminDiagnosticsStateLoad(reason, loadToken, state)') > -1
-      && app.indexOf('await tryRenderAdminDiagnosticsStateLoad(reason, loadToken, state)') < app.indexOf('.from("car_share_ledgers")')
+      && app.indexOf('await tryRenderAdminDiagnosticsStateLoad(reason, loadToken, state)') < app.indexOf('const renderStateRows = await getRenderNormalizedStateRows(ledgerId)')
   },
   {
     name: 'fast path preserves stale load guard and fallback diagnostics',

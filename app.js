@@ -18566,7 +18566,7 @@ async function getRenderNormalizedStateRows(ledgerId) {
         ...traceMeta,
         ok: true,
         code: "AUTH_SESSION_NOT_READY",
-        detail: "Skipped Render state load until Supabase session is ready; using browser normalized table load."
+        detail: "Skipped Render state load until Supabase session is ready; normal app state load will wait for Render instead of reading directly from Supabase."
       });
       return null;
     }
@@ -18608,16 +18608,16 @@ async function getRenderNormalizedStateRows(ledgerId) {
         ...traceMeta,
         ok: true,
         code: "RENDER_AUTH_NOT_READY",
-        detail: "Render state load did not accept the current session yet; using browser normalized table load."
+        detail: "Render state load did not accept the current session yet; normal app state load will wait for Render instead of reading directly from Supabase."
       });
       return null;
     }
-    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; falling back to browser normalized table load.` });
+    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; Render-owned state load failed; browser table fallback is disabled for normal app UX.` });
     return null;
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render state load API", 12000);
-    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Falling back to browser normalized table load." });
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Render-owned state load failed; browser table fallback is disabled for normal app UX." });
     return null;
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
@@ -20343,14 +20343,19 @@ async function syncNormalizedTablesFromJson() {
 
 
 async function loadStateFromNormalizedTables(jsonFallbackState, options = {}) {
-  const { reason = "loadStateFromNormalizedTables", stateScope = null } = options || {};
+  const {
+    reason = "loadStateFromNormalizedTables",
+    stateScope = null,
+    renderStateRows: providedRenderStateRows = null,
+    allowBrowserReadFallback = false
+  } = options || {};
   recordSupabaseLoadEvent("normalized-table-load", reason);
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
   const scope = stateScope || await resolveActiveWorkspaceStateScope({ reason: "state-load", operation: "load" });
   const ledgerId = String(scope.ledgerId || getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig)).trim();
-  const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
+  const renderStateRows = providedRenderStateRows || await getRenderNormalizedStateRows(ledgerId);
   let participantResult = { data: [], error: null };
   let membersResult;
   let periodsResult;
@@ -20367,6 +20372,17 @@ async function loadStateFromNormalizedTables(jsonFallbackState, options = {}) {
     bookingsResult = { data: renderStateRows.bookings || [], error: null };
     requestsResult = { data: renderStateRows.requests || [], error: null };
     participantResult = { data: renderStateRows.tripParticipants || [], error: null };
+  } else if (!allowBrowserReadFallback) {
+    recordDataIoDiagnostic("blocked", {
+      source: "state-load",
+      route: "browser-read-fallback",
+      operation: "load",
+      ok: false,
+      ledgerId,
+      resultCode: "BROWSER_STATE_READ_FALLBACK_DISABLED",
+      detail: "Browser normalized-table reads are disabled for normal app state load; Render must own state retrieval."
+    });
+    return null;
   } else {
     [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
       supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
@@ -20928,19 +20944,24 @@ async function loadSupabaseState(options = {}) {
       return true;
     }
 
-    const { data, error } = await supabaseClient
-      .from("car_share_ledgers")
-      .select("state,updated_at")
-      .eq("id", ledgerId)
-      .maybeSingle();
-
-    if (error) {
-      recordSyncDiagnostic("json-mirror-load-error", error.message || "Could not read car_share_ledgers.", { reason, error });
-      throw error;
+    const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
+    if (!renderStateRows) {
+      recordDataIoDiagnostic("blocked", {
+        source: "state-load",
+        route: "browser-read-fallback",
+        operation: "load",
+        ok: false,
+        ledgerId,
+        resultCode: "RENDER_STATE_LOAD_REQUIRED",
+        detail: "Normal app state load did not read car_share_ledgers directly because Render is the state authority."
+      });
+      throw new Error("Render state load is required before loading workspace data.");
     }
+    const data = renderStateRows.jsonMirror || null;
+
     if (!data) {
-      recordSupabaseLoadEvent("supabase-json-mirror-missing", reason);
-      recordSyncDiagnostic("json-mirror-missing", "No JSON mirror row returned for this ledger.", { reason });
+      recordSupabaseLoadEvent("render-json-mirror-missing", reason);
+      recordSyncDiagnostic("json-mirror-missing", "Render returned no JSON mirror row for this ledger.", { reason });
     }
     if (!isCurrentSupabaseLoad(loadToken)) {
       recordSupabaseLoadEvent("supabase-load-stale-result", reason);
@@ -20958,7 +20979,7 @@ async function loadSupabaseState(options = {}) {
     let loadedFromTables = false;
 
     try {
-      const normalizedState = await loadStateFromNormalizedTables(jsonState, { reason, stateScope });
+      const normalizedState = await loadStateFromNormalizedTables(jsonState, { reason, stateScope, renderStateRows });
       if (normalizedState) {
         if (!isCurrentSupabaseLoad(loadToken)) {
           recordSupabaseLoadEvent("supabase-load-stale-result", `normalized tables (${reason})`);
@@ -21154,7 +21175,7 @@ async function maybeSaveJsonMirrorBackup(options = {}) {
 async function saveJsonMirrorBackupViaRender({ force = false, reason = "", savedAt = "", stateScope = null } = {}) {
   const ledgerId = String(stateScope?.ledgerId || getActiveWorkspaceStateScope({ reason }).ledgerId || supabaseHelpers.getLedgerId(supabaseConfig)).trim();
   const traceMeta = { source: "json-mirror-backup", route: "render-api", endpoint: renderJsonMirrorBackupUrl, operation: "upsert" };
-  if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: true };
+  if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: false, error: new Error("Sign in and select an active ledger before saving a JSON mirror backup through Render.") };
 
   let controller = null;
   let timeoutId = 0;
@@ -21191,14 +21212,13 @@ async function saveJsonMirrorBackupViaRender({ force = false, reason = "", saved
     const message = result?.message || result?.error || text || `Render JSON mirror backup failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    const shouldFallback = [404, 405, 501].includes(response.status);
     recordDataIoDiagnostic("error", {
       ...traceMeta,
       error,
       ledgerId,
-      detail: shouldFallback ? `HTTP ${response.status}; falling back to direct Supabase JSON mirror backup.` : `HTTP ${response.status}; not falling back.`
+      detail: `HTTP ${response.status}; direct browser JSON mirror fallback is disabled.`
     });
-    return { ok: false, shouldFallback, error };
+    return { ok: false, shouldFallback: false, error };
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render JSON mirror backup API", 12000);
@@ -21206,9 +21226,9 @@ async function saveJsonMirrorBackupViaRender({ force = false, reason = "", saved
       ...traceMeta,
       error,
       ledgerId,
-      detail: "Falling back to direct Supabase JSON mirror backup."
+      detail: "Direct browser JSON mirror fallback is disabled; Render must own this write."
     });
-    return { ok: false, shouldFallback: true, error };
+    return { ok: false, shouldFallback: false, error };
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
   }
@@ -21238,39 +21258,17 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
     lastCloudSyncAt = savedAt;
     return true;
   }
-  if (!renderResult.shouldFallback) {
-    throw renderResult.error || new Error("Render JSON mirror backup failed.");
-  }
-
-  const { error } = await supabaseClient
-    .from("car_share_ledgers")
-    .upsert({
-      id: stateScope.ledgerId,
-      state,
-      updated_at: savedAt
-    });
-
-  if (error) {
-    if (String(error.code || "") === "42501" || /permission|policy|rls/i.test(String(error.message || ""))) {
-      return false;
-    }
-    throw error;
-  }
-
-  recordDataIoDiagnostic("success", {
+  recordDataIoDiagnostic("blocked", {
     source: "json-mirror-backup",
-    route: "direct-table",
+    route: "browser-write-fallback",
     table: "car_share_ledgers",
     operation: "upsert",
-    ok: true,
+    ok: false,
     ledgerId: stateScope.ledgerId,
-    detail: "Saved through direct Supabase JSON mirror fallback."
+    resultCode: "BROWSER_JSON_MIRROR_WRITE_FALLBACK_DISABLED",
+    detail: "Direct browser JSON mirror backup fallback is disabled; Render must own JSON mirror writes."
   });
-  lastJsonMirrorSaveAt = savedAt;
-  localStorage.setItem(`${makeWorkspaceScopedStorageKey()}:jsonMirrorSavedAt`, String(Date.now()));
-  lastCloudSaveAt = savedAt;
-  lastCloudSyncAt = savedAt;
-  return true;
+  throw renderResult.error || new Error("Render JSON mirror backup failed.");
 }
 
 function applyIncomingState(nextState, status = "Live") {

@@ -32,10 +32,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.258`
-- Service-worker cache: `fuel-ledger-v394`
-- Updated at: `2026-06-21T22:45:00.000Z`
-- Top release note: Workspace state loading and saving now use one active workspace state scope from the hydrated backend app session; JSON mirror loads, normalized table loads, and cloud writes use that canonical ledger id, with stale workspace writes blocked before they can hit the wrong workspace.
+- Version: `2026.06.18.259`
+- Service-worker cache: `fuel-ledger-v395`
+- Updated at: `2026-06-21T23:05:00.000Z`
+- Top release note: Render now owns normal workspace state retrieval and JSON mirror backup writes: app loads require /api/state/load, JSON mirror state arrives inside the Render response, and direct browser car_share_ledgers read/write fallbacks are blocked with diagnostics.
 
 ## Invite beta readiness: member action Data I/O
 
@@ -658,3 +658,10 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - JSON mirror loads, normalized table loads, and cloud writes now use the same canonical ledger id instead of separately trusting URL/cache/default workspace values.
 - Saves fail closed with `WORKSPACE_WRITE_SCOPE_MISMATCH` when the selected/loaded workspace is stale, preventing immediate post-switch writes from hitting the wrong workspace.
 - Guardrail: `node tools/test-workspace-state-scope-lane.mjs`.
+
+### Render-owned state load lane - v395
+- Runtime cache: `fuel-ledger-v395`.
+- Normal app workspace state retrieval now requires Render `/api/state/load`; browser `car_share_ledgers` reads are blocked for normal app UX.
+- Render state load includes the JSON mirror row alongside normalized rows so the frontend can still use JSON as a compatibility fallback without reading Supabase directly.
+- JSON mirror backup writes no longer fall back to direct browser `car_share_ledgers` upserts; failed Render mirror writes fail closed with diagnostics.
+- Guardrail: `node tools/test-render-owned-state-load-lane.mjs`.

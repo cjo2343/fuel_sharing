@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.258",
-    buildLabel: "workspace-state-scope-lane",
-    updatedAt: "2026-06-21T22:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v394",
+    version: "2026.06.18.259",
+    buildLabel: "render-owned-state-load-lane",
+    updatedAt: "2026-06-21T23:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v395",
     releaseNotes: Object.freeze([
+      "Render now owns normal workspace state retrieval and JSON mirror backup writes: app loads require /api/state/load, JSON mirror state arrives inside the Render response, and direct browser car_share_ledgers read/write fallbacks are blocked with diagnostics.",
       "Workspace state loading and saving now use one active workspace state scope from the hydrated backend app session; JSON mirror loads, normalized table loads, and cloud writes use that canonical ledger id, with stale workspace writes blocked before they can hit the wrong workspace.",
       "App session hydration now has one frontend lane for backend context: startup, auth, workspace switch, normal state load, and normalized state load all flow through hydrateAppSessionContext, while Admin diagnostics remain separately labeled and non-blocking.",
       "Workspace context resolution now treats linked workspace slugs as aliases for canonical ledger IDs in both the frontend resolver and Render /api/app/context, preventing ?workspace=slug links or remembered slug values from drifting back to main-car.",
