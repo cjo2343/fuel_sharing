@@ -2138,6 +2138,19 @@ def choose_app_context_workspace(workspaces, requested_ids, user):
     return (workspaces[0] if workspaces else None), "first-linked-workspace" if workspaces else "no-linked-workspace"
 
 
+def list_workspace_invites_for_context_as_service(ledger_id, active_workspace, limit=25):
+    if not ledger_id or str((active_workspace or {}).get("role") or "").strip().lower() != "admin":
+        return []
+    ledger_q = quote_postgrest_value(ledger_id)
+    invite_limit = safe_int(limit, 25, minimum=1, maximum=50)
+    rows = request_json(
+        f"{supabase_url()}/rest/v1/ledger_invites?select=id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at&ledger_id=eq.{ledger_q}&order=created_at.desc&limit={invite_limit}",
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+        timeout=6,
+    ) or []
+    return rows if isinstance(rows, list) else []
+
+
 def build_app_context_response(payload, user):
     if not supabase_url() or not supabase_key():
         raise RuntimeError("Supabase server environment variables are missing")
@@ -3242,6 +3255,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/app/context":
             self.app_context_backend()
             return
+        if self.path == "/api/workspace/tools":
+            self.workspace_tools_backend()
+            return
         if self.path == "/api/state/load":
             self.load_state_backend()
             return
@@ -3354,6 +3370,51 @@ class Handler(SimpleHTTPRequestHandler):
             "context": context,
             "backend": "render",
             "durationMs": round((time.time() - started_at) * 1000),
+        })
+
+
+    def workspace_tools_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before loading workspace tools."}, status=401)
+            return
+        started_at = time.time()
+        try:
+            payload = read_request_body(self)
+            context = build_app_context_response(payload, user)
+            active = context.get("activeWorkspace") or {}
+            ledger_id = str(active.get("ledgerId") or active.get("ledger_id") or "").strip()
+            if not check_backend_rate_limit(self, "workspace-tools", user=user, ledger_id=ledger_id or "workspace-tools"):
+                return
+            include_invites = bool((payload if isinstance(payload, dict) else {}).get("includeInvites") or (payload if isinstance(payload, dict) else {}).get("include_invites"))
+            invites = list_workspace_invites_for_context_as_service(ledger_id, active) if include_invites else []
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except PermissionError as error:
+            self.send_json({"ok": False, "code": "FORBIDDEN", "message": str(error)}, status=403)
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_json({"ok": False, "code": "SUPABASE_ERROR", "message": body}, status=error.code)
+            return
+        except (TimeoutError, socket.timeout, urllib.error.URLError) as error:
+            self.send_json({"ok": False, "code": "WORKSPACE_TOOLS_TIMEOUT", "message": f"Workspace tools timed out while talking to Supabase: {error}"}, status=504)
+            return
+        except Exception as error:
+            self.send_safe_json_error("WORKSPACE_TOOLS_ERROR", error)
+            return
+        record_owner_activity_as_service(ledger_id, user, action="workspace-tools", route="/api/workspace/tools", ok=True, result_code="WORKSPACE_TOOLS_LOADED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Workspace tools loaded through Render.", metadata={"workspaceCount": len(context.get("linkedWorkspaces") or []), "inviteCount": len(invites)})
+        self.send_json({
+            "ok": True,
+            "code": "WORKSPACE_TOOLS_LOADED",
+            "context": context,
+            "activeWorkspace": context.get("activeWorkspace") or {},
+            "linkedWorkspaces": context.get("linkedWorkspaces") or [],
+            "permissions": context.get("permissions") or {},
+            "invites": invites,
+            "backend": "render",
+            "userEmail": user.get("email"),
         })
 
     def load_state_backend(self):

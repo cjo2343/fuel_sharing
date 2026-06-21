@@ -23,8 +23,8 @@ assert(app.includes('button.classList.toggle("hidden", (isAdminTab && !canManage
 assert(app.includes('els.workspaceInvitesPanel.classList.toggle("hidden", !currentSession)'), "Workspace/invite panel is member-facing for signed-in users.");
 assert(app.includes('document.querySelectorAll(".account-current-workspace-invite-card, .account-active-invites-card")'), "Admin-only invite cards are toggled inside Account.");
 assert(app.includes('card.classList.toggle("hidden", !isCurrentWorkspaceAdmin)'), "Current workspace invite management remains admin-only.");
-assert(app.includes('return Boolean(supabaseClient && currentSession);'), "Workspace list refresh can run for signed-in regular members.");
-assert(app.includes('if (canManageSettings()) {') && app.includes('workspaceInviteStatus.invites = [];'), "Invite list loads only for admins while regular members still get workspace list.");
+assert(app.includes('return Boolean(currentSession);'), "Workspace list refresh can run for signed-in regular members through Render.");
+assert(app.includes('includeInvites: canManageSettings()') && app.includes('workspaceInviteStatus.invites = Array.isArray(result?.invites) ? result.invites : [];'), "Invite list loads only through the Render workspace-tools lane while regular members still get workspace list.");
 assert(serviceWorker.includes('self.skipWaiting();'), "Service worker requests immediate activation.");
 assert(serviceWorker.includes('self.clients.claim()'), "Service worker claims clients after activation.");
 assert(app.includes('newWorker.postMessage({ type: "SKIP_WAITING" });'), "App tells waiting service worker to activate.");

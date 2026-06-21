@@ -13,7 +13,7 @@ mustInclude(app, 'function chooseWorkspaceFromMembership({ reason = "workspace-r
 mustInclude(app, 'decision = "single-non-default-workspace"', 'resolver can prefer a non-owner user single non-default workspace');
 mustInclude(app, 'updateWorkspaceResolutionDebug(decision, detail, { reason, preferredWorkspaceId: explicitPreferred, rejectedWorkspaceId });', 'workspace resolution decision is recorded for reports');
 mustInclude(app, 'workspaceResolution: updateWorkspaceResolutionDebug', 'load report exports workspace resolution details');
-mustInclude(app, 'await refreshWorkspaceMembershipProbe(reason).catch', 'workspace refresh probes current-email membership before resolving active workspace');
+mustInclude(app, 'updateWorkspaceMembershipProbeFromBackendContext(context || getBackendAppContext(), reason);', 'workspace refresh updates membership probe from backend context before resolving active workspace');
 mustInclude(app, 'reconcileActiveLedgerSelection({ allowWhileLoading: true, reason });', 'workspace list refresh resolves active workspace before invite lookup');
 mustInclude(validations, 'node tools/test-workspace-selection-repair.mjs', 'workspace selection repair guardrail is included in validation');
 

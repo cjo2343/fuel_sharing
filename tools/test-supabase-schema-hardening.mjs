@@ -584,7 +584,7 @@ function testInviteOnboardingFoundationExists() {
   assert.match(app, /supabaseClient\.rpc\("redeem_ledger_invite"/);
   assert.match(app, /describeInviteRedeemError/);
   assert.match(app, /switchActiveWorkspace\(targetLedger, "invite-redemption"\)/);
-  assert.match(app, /supabaseClient\.rpc\("list_my_ledgers"/);
+  assert.match(app, /renderWorkspaceToolsUrl = "\/api\/workspace\/tools"/);
   assert.match(index, /Codes are shown once, stored hashed in Supabase, and are not emailed automatically/);
   console.log("ok - testInviteOnboardingFoundationExists");
 }
@@ -684,8 +684,8 @@ function testWorkspaceInviteRefreshFailSafeExists() {
   assert.match(app, /Workspace invite refresh timed out/);
   assert.match(app, /async function withWorkspaceInviteRequestTimeout\(requestPromise, label/);
   assert.match(app, /Promise\.race\(\[/);
-  assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\.rpc\("list_my_ledgers"\)/);
-  assert.match(app, /withWorkspaceInviteRequestTimeout\(\s*supabaseClient\s*\.from\("ledger_invites"\)/);
+  assert.match(app, /refreshWorkspaceToolsViaRender\(reason\)/);
+  assert.match(app, /endpoint: renderWorkspaceToolsUrl/);
   assert.match(app, /workspaceInviteStatus\.loaded = Boolean\(getWorkspaceLedgerOptions\(\)\.length\);\s*workspaceInviteStatus\.invites = \[\];/);
   assert.match(app, /els\.refreshWorkspaceInvites\.disabled = false/);
   console.log("ok - testWorkspaceInviteRefreshFailSafeExists");

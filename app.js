@@ -26,6 +26,7 @@ const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
 const renderAppContextUrl = "/api/app/context";
+const renderWorkspaceToolsUrl = "/api/workspace/tools";
 const renderSettingsSaveUrl = "/api/settings/save";
 const renderMemberManagementUrl = "/api/members/manage";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
@@ -495,8 +496,8 @@ function clearStaleWorkspaceInviteLoading(reason = "workspace-refresh-stale") {
   workspaceInviteStatus.loaded = Boolean(getWorkspaceLedgerOptions().length);
   recordDataIoDiagnostic("timeout", {
     source: "workspace-tools-refresh",
-    route: "supabase-rpc",
-    rpc: "list_my_ledgers",
+    route: "render-api",
+    endpoint: renderWorkspaceToolsUrl,
     operation: "refresh",
     ok: false,
     resultCode: "WORKSPACE_REFRESH_STALE_CLEARED",
@@ -9637,8 +9638,8 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
     } catch (error) {
       recordDataIoDiagnostic("error", {
         source: "vehicle-lookup-workspace-context",
-        route: "supabase-rpc",
-        rpc: "list_my_ledgers",
+        route: "render-api",
+        endpoint: renderWorkspaceToolsUrl,
         operation: "refresh",
         ok: false,
         resultCode: "VEHICLE_LOOKUP_WORKSPACE_LIST_FAILED",
@@ -15826,14 +15827,22 @@ async function refreshBackendAppContextForActiveWorkspace(reason = "active-works
 }
 
 async function refreshLinkedWorkspacesAfterInvite(preferredLedgerId = "") {
-  if (!supabaseClient || !currentSession) return [];
+  if (!currentSession) return [];
   const preferred = String(preferredLedgerId || "").trim();
   if (preferred) setActiveLedgerId(preferred, { persist: true });
-  const { data, error } = await supabaseClient.rpc("list_my_ledgers");
-  if (error) throw error;
-  workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(data);
+  const context = await hydrateAppSessionContext({
+    reason: "refresh-linked-workspaces",
+    preferredWorkspaceId: preferred || getActiveLedgerId(),
+    force: true,
+    timeoutMs: workspaceInviteRequestTimeoutMs,
+    source: "workspace-tools-refresh"
+  });
+  const linked = Array.isArray(context?.linkedWorkspaces) ? context.linkedWorkspaces : [];
+  workspaceInviteStatus.rawLedgers = linked;
+  workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(linked);
   workspaceInviteStatus.loaded = true;
   lastWorkspaceInviteRefreshAt = Date.now();
+  updateWorkspaceMembershipProbeFromBackendContext(context, "refresh-linked-workspaces");
   reconcileActiveLedgerSelection({ allowWhileLoading: true, reason: "refresh-linked-workspaces", preferredLedgerId: preferred });
   renderActiveWorkspaceSelector();
   return workspaceInviteStatus.ledgers;
@@ -16196,29 +16205,29 @@ async function reconcileWorkspaceCreateAfterTimeout({ name, slug, traceMeta }) {
     ...traceMeta,
     operationId: createDataIoOperationId("workspace-create-verify", "refresh"),
     operation: "verify",
-    rpc: "list_my_ledgers",
+    route: "render-api",
+    endpoint: renderWorkspaceToolsUrl,
+    rpc: "",
     detail: `Verify whether timed-out workspace creation completed for ${name}`
   };
   recordDataIoDiagnostic("start", { ...verifyMeta, ok: true, resultCode: "WORKSPACE_CREATE_VERIFY_STARTED" });
   try {
     await new Promise((resolve) => window.setTimeout(resolve, 1200));
-    const { data, error } = await withWorkspaceInviteRequestTimeout(
-      supabaseClient.rpc("list_my_ledgers"),
-      "Workspace creation verification",
-      7000
-    );
-    if (error) throw error;
-    const ledgers = Array.isArray(data) ? data : [];
+    const result = await refreshWorkspaceToolsViaRender("workspace-create-verify");
+    const context = result?.context || null;
+    if (context) applyBackendAppContext(context, { reason: "workspace-create-verify" });
+    const ledgers = Array.isArray(result?.linkedWorkspaces) ? result.linkedWorkspaces : Array.isArray(context?.linkedWorkspaces) ? context.linkedWorkspaces : [];
     const match = ledgers.find((ledger) => {
-      const ledgerId = String(ledger.ledger_id || ledger.id || "").toLowerCase();
+      const ledgerId = String(ledger.ledger_id || ledger.ledgerId || ledger.id || "").toLowerCase();
       const ledgerSlug = String(ledger.slug || ledger.ledger_slug || "").toLowerCase();
       const ledgerName = String(ledger.name || ledger.ledger_name || "").trim().toLowerCase();
       return ledgerId === slug.toLowerCase() || ledgerSlug === slug.toLowerCase() || ledgerName === name.trim().toLowerCase();
     });
     if (match) {
+      workspaceInviteStatus.rawLedgers = ledgers;
       workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
       workspaceInviteStatus.loaded = true;
-      const newLedgerId = match.ledger_id || match.id || slug;
+      const newLedgerId = match.ledger_id || match.ledgerId || match.id || slug;
       setActiveLedgerId(newLedgerId, { persist: true });
       recordDataIoDiagnostic("success", {
         ...verifyMeta,
@@ -16412,7 +16421,50 @@ async function refreshWorkspaceMembershipProbe(reason = "workspace-membership-pr
 }
 
 function canRefreshWorkspaceInviteTools() {
-  return Boolean(supabaseClient && currentSession);
+  return Boolean(currentSession);
+}
+
+function updateWorkspaceMembershipProbeFromBackendContext(context, reason = "workspace-tools-refresh") {
+  const userEmail = normalizeEmail(context?.user?.email || getLoggedInEmail() || "");
+  const linked = Array.isArray(context?.linkedWorkspaces) ? context.linkedWorkspaces : [];
+  const rows = linked.map((workspace) => ({
+    id: String(workspace.memberId || workspace.member_id || ""),
+    ledgerId: String(workspace.ledgerId || workspace.ledger_id || ""),
+    email: userEmail,
+    name: String(workspace.memberName || context?.activeMember?.name || inferAuthBoundMemberName(userEmail) || ""),
+    role: normalizeWorkspaceRole(workspace.role || "member"),
+    isActive: true,
+    createdAt: "",
+    updatedAt: ""
+  })).filter((row) => row.ledgerId);
+  workspaceMembershipProbeStatus = {
+    checked: true,
+    ok: Boolean(rows.length),
+    loading: false,
+    error: rows.length ? "" : "No linked workspace rows returned by backend app context.",
+    reason: String(reason || "workspace-tools-refresh"),
+    signedInEmail: userEmail,
+    rows
+  };
+  return workspaceMembershipProbeStatus;
+}
+
+async function refreshWorkspaceToolsViaRender(reason = "workspace-tools-refresh") {
+  const preferredWorkspaceId = getActiveLedgerId() || getConfiguredLedgerId();
+  const { result } = await callRenderJson(renderWorkspaceToolsUrl, {
+    body: {
+      ledgerId: preferredWorkspaceId,
+      preferredWorkspaceId,
+      selectedWorkspaceId: getActiveLedgerId(),
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      urlWorkspaceId: getWorkspaceUrlLedgerId(),
+      includeInvites: canManageSettings(),
+      reason
+    },
+    timeoutMs: workspaceInviteRequestTimeoutMs,
+    timeoutLabel: "Render workspace tools"
+  });
+  return result;
 }
 
 function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
@@ -16423,8 +16475,8 @@ function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
   if (!manual && workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && getWorkspaceLedgerOptions().length > 1 && now - Number(lastWorkspaceInviteRefreshAt || 0) < workspaceInviteRefreshFreshMs) {
     recordDataIoDiagnostic("skip", {
       source: "workspace-tools-refresh",
-      route: "supabase-rpc",
-      rpc: "list_my_ledgers",
+      route: "render-api",
+      endpoint: renderWorkspaceToolsUrl,
       operation: "refresh",
       ok: true,
       resultCode: "WORKSPACE_REFRESH_RECENT",
@@ -16436,8 +16488,8 @@ function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
     if (manual) workspaceInviteRefreshQueued = true;
     recordDataIoDiagnostic("skip", {
       source: "workspace-tools-refresh",
-      route: "supabase-rpc",
-      rpc: "list_my_ledgers",
+      route: "render-api",
+      endpoint: renderWorkspaceToolsUrl,
       operation: "refresh",
       ok: true,
       resultCode: manual ? "WORKSPACE_REFRESH_QUEUED" : "WORKSPACE_REFRESH_IN_FLIGHT",
@@ -16472,8 +16524,8 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   const operationId = createDataIoOperationId("workspace-tools-refresh", "refresh");
   const traceMeta = {
     source: "workspace-tools-refresh",
-    route: "supabase-rpc",
-    rpc: "list_my_ledgers",
+    route: "render-api",
+    endpoint: renderWorkspaceToolsUrl,
     operation: "refresh",
     operationId,
     staleAfterMs: workspaceInviteRequestTimeoutMs,
@@ -16481,35 +16533,18 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   };
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "WORKSPACE_REFRESH_STARTED" });
   try {
-    const { data: ledgers, error: ledgersError } = await withWorkspaceInviteRequestTimeout(
-      supabaseClient.rpc("list_my_ledgers"),
-      "Workspace list refresh"
-    );
-    if (ledgersError) throw ledgersError;
-    workspaceInviteStatus.rawLedgers = Array.isArray(ledgers) ? ledgers : [];
+    const result = await refreshWorkspaceToolsViaRender(reason);
+    const context = result?.context || null;
+    if (context) applyBackendAppContext(context, { reason: `workspace-tools:${reason}` });
+    const ledgers = Array.isArray(result?.linkedWorkspaces) ? result.linkedWorkspaces : Array.isArray(context?.linkedWorkspaces) ? context.linkedWorkspaces : [];
+    workspaceInviteStatus.rawLedgers = ledgers;
     workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
+    workspaceInviteStatus.invites = Array.isArray(result?.invites) ? result.invites : [];
     workspaceInviteStatus.loaded = true;
-    await refreshWorkspaceMembershipProbe(reason).catch((probeError) => console.warn("Workspace membership probe failed", probeError));
+    updateWorkspaceMembershipProbeFromBackendContext(context || getBackendAppContext(), reason);
     reconcileActiveLedgerSelection({ allowWhileLoading: true, reason });
-    const ledgerId = getActiveLedgerId();
-    if (canManageSettings()) {
-      const { data: invites, error: invitesError } = await withWorkspaceInviteRequestTimeout(
-        supabaseClient
-          .from("ledger_invites")
-          .select("id,ledger_id,role,invited_email,max_uses,uses_count,expires_at,revoked_at,created_at")
-          .eq("ledger_id", ledgerId)
-          .order("created_at", { ascending: false })
-          .limit(25),
-        "Invite list refresh"
-      );
-      if (invitesError) throw invitesError;
-      workspaceInviteStatus.invites = Array.isArray(invites) ? invites : [];
-    } else {
-      workspaceInviteStatus.invites = [];
-    }
-    workspaceInviteStatus.loaded = true;
     lastWorkspaceInviteRefreshAt = Date.now();
-    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_REFRESHED", detail: `Loaded ${workspaceInviteStatus.ledgers.length} workspace(s)${canManageSettings() ? ` and ${workspaceInviteStatus.invites.length} invite(s)` : ""}.` });
+    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_REFRESHED", detail: `Loaded ${workspaceInviteStatus.ledgers.length} workspace(s) from Render${canManageSettings() ? ` and ${workspaceInviteStatus.invites.length} invite(s)` : ""}.` });
   } catch (error) {
     const timedOut = /timed out|timeout/i.test(String(error?.message || error || ""));
     workspaceInviteStatus.error = describeWorkspaceRefreshError(error);

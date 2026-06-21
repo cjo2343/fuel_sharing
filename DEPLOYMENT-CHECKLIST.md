@@ -32,10 +32,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.259`
-- Service-worker cache: `fuel-ledger-v395`
-- Updated at: `2026-06-21T23:05:00.000Z`
-- Top release note: Render now owns normal workspace state retrieval and JSON mirror backup writes: app loads require /api/state/load, JSON mirror state arrives inside the Render response, and direct browser car_share_ledgers read/write fallbacks are blocked with diagnostics.
+- Version: `2026.06.18.260`
+- Service-worker cache: `fuel-ledger-v396`
+- Updated at: `2026-06-21T23:25:00.000Z`
+- Top release note: Workspace tools now use a Render-owned lane: Account workspace refresh calls /api/workspace/tools, reuses backend app context linked workspaces, loads optional invite rows server-side, and no longer calls list_my_ledgers or ledger_invites directly from normal browser UX.
 
 ## Invite beta readiness: member action Data I/O
 
