@@ -1,4 +1,3 @@
-- 2026-06-21 11:50 UTC: v372 Vehicle lookup provider failures now return safe specific result codes, provider configuration appears in Render admin health, and app-owner global diagnostics are trimmed to keep reports responsive.
 - 2026-06-21 11:25 UTC: v370 App-owner global diagnostics now use a dedicated Render owner route to list all workspaces, target-user memberships such as testman21 across test1/test2, and recent vehicle lookup owner-activity rows without requiring the app owner to be a member of every workspace.
 - 2026-06-21 10:55 UTC: v369 Account workspace refresh is authoritative instead of freshness-skipped, one-row workspace lists are rechecked, and reports export visible selector plus signed-in-email membership probe rows so hidden test1 membership issues can be diagnosed.
 - 2026-06-21 10:45 UTC: v368 workspace list dedupe now keys by ledger id/slug, not display name, preventing main-car and test1 from collapsing when both are named Fuel Ledger; reports export vehicle lookup readiness.
@@ -28,12 +27,12 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Vehicle lookup provider diagnostics now classify auth, rate-limit, no-match, bad-response, timeout, and provider server errors without exposing secrets.
+- Admin auto-refresh now keeps the app-owner overview current while Admin is open without enabling broad realtime sync.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v372`
-- `fuel-ledger-v372` - Vehicle lookup provider failures now use safe specific result codes, provider configuration appears in Render admin health, and app-owner global diagnostics are trimmed to keep reports responsive.
-- Updated at: `2026-06-21T11:50:00.000Z`
-- Top release note: Vehicle lookup provider failures now return safe specific result codes such as auth failed, rate limited, no match, bad response, or timeout; Render admin health reports provider configuration, and app-owner global diagnostics are trimmed to avoid huge timeout-prone reports.
+- Service-worker cache: `fuel-ledger-v373`
+- `fuel-ledger-v373` - Admin now auto-refreshes calmly while open, global owner diagnostics use smaller bounded payloads, and optional diagnostic refresh noise no longer inflates the App activity warning.
+- Updated at: `2026-06-21T12:05:00.000Z`
+- Top release note: Admin now auto-refreshes calmly while open: Render health, global owner diagnostics, and owner activity update on bounded intervals, optional diagnostic noise no longer inflates the activity headline, and broad live sync can stay off while the overview stays current.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

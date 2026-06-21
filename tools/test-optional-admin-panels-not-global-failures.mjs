@@ -13,7 +13,8 @@ assert(app.includes('function isOptionalWorkspaceToolsOperation'), 'workspace/in
 assert(app.includes('function isOptionalAdminPanelOperation'), 'optional admin panels must be grouped for latest Data I/O filtering');
 assert(app.includes('operations.filter((operation) => !isOptionalAdminPanelOperation(operation))'), 'Latest Data I/O must ignore optional admin panel failures');
 assert(app.includes('This card ignores optional Admin panels'), 'Latest Data I/O card must explain why optional admin panels are not global app failures');
-assert(app.includes('markOptionalAdminPanelsReadyForManualRefresh("admin-tab-open")'), 'opening Admin should not auto-refresh optional panels');
+assert(app.includes('startAdminAutoRefresh("admin-tab-open")'), 'opening Admin should start the calm auto-refresh loop');
+assert(app.includes('markOptionalAdminPanelsReadyForManualRefresh(reason)'), 'auto-refresh startup should still mark optional panels as manual first');
 assert(!app.includes('scheduleWorkspaceInviteRefresh("admin-tab-open")'), 'opening Admin must not auto-refresh workspace/invite tools');
 assert(!app.includes('refreshOwnerActivity({ silent: true, reason: "admin-tab-open" }'), 'opening Admin must not auto-refresh owner activity');
 assert(app.includes('Workspace/invite panel refresh timed out. Existing workspace data remains usable'), 'workspace refresh timeout must be framed as optional stale admin data');

@@ -2174,6 +2174,16 @@ let ownerGlobalDiagnosticsStatus = {
 };
 let lastOwnerGlobalDiagnosticsFetchAt = 0;
 const ownerGlobalDiagnosticsFreshMs = 30000;
+let adminAutoRefreshTimer = null;
+let adminAutoRefreshInFlight = false;
+let lastAdminAutoRefreshTickAt = 0;
+let lastAdminAutoHealthAt = 0;
+let lastAdminAutoGlobalAt = 0;
+let lastAdminAutoOwnerActivityAt = 0;
+const adminAutoRefreshIntervalMs = 15000;
+const adminAutoHealthFreshMs = 2 * 60 * 1000;
+const adminAutoGlobalFreshMs = 45 * 1000;
+const adminAutoOwnerActivityFreshMs = 90 * 1000;
 let ownerActivityFetchInFlight = false;
 let ownerActivityFetchStartedAt = 0;
 let ownerActivityInFlightTraceMeta = null;
@@ -3169,8 +3179,9 @@ function setActiveView(view) {
   localStorage.setItem(viewStorageKey, activeView);
   render();
   if (activeView === "admin") {
-    markOptionalAdminPanelsReadyForManualRefresh("admin-tab-open");
-    refreshOwnerGlobalDiagnostics({ force: false, silent: true, reason: "admin-tab-open" }).catch((error) => console.warn("Owner global diagnostics failed", error));
+    startAdminAutoRefresh("admin-tab-open");
+  } else {
+    stopAdminAutoRefresh("view-change");
   }
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
@@ -3854,6 +3865,14 @@ els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
 els.checkRenderAdminHealth?.addEventListener("click", async () => {
   if (!requireGlobalAdminToolsPermission("Check Render admin health")) return;
   await traceAdminToolOperation("render-admin-health", "Check Render admin health", () => checkRenderAdminHealth());
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopAdminAutoRefresh("hidden");
+  } else if (activeView === "admin") {
+    startAdminAutoRefresh("visible-admin");
+  }
 });
 
 async function handleManualSyncNow(source = "manual") {
@@ -4639,8 +4658,9 @@ function isSupabaseLoadNoiseEvent(entry = {}) {
   const label = String(entry.label || "");
   if (Boolean(entry.diagnostic) || label.startsWith("sync-diagnostic:")) return true;
   if (entry.dataIo && (/^data-io:admin/i.test(label) || /^data-io:admin-tool:/i.test(label))) return true;
-  if (entry.dataIo && /^data-io:(json-mirror-backup|normalized-test-data-cleanup|retention-preview|retention-cleanup):/i.test(label)) return true;
+  if (entry.dataIo && /^data-io:(owner-activity|workspace-tools-refresh|json-mirror-backup|normalized-test-data-cleanup|retention-preview|retention-cleanup):/i.test(label)) return true;
   if (/^admin-tool:/i.test(label) || /^render-admin-health$/i.test(label) || /^render-admin-report-save$/i.test(label)) return true;
+  if (/^(workspace-resolution|workspace-load-start|workspace-load-confirmed)$/i.test(label)) return true;
   if (/^security-health/i.test(label) || /^normalized-health/i.test(label) || /^test-lab-report/i.test(label)) return true;
   if (/^(render-json-mirror-backup|json-mirror-save|browser-full-state-save-skip)$/i.test(label)) return true;
   if (/^(render-normalized-test-data-cleanup|normalized-reconciliation-dirty|test-lab-local-run)$/i.test(label)) return true;
@@ -4648,6 +4668,7 @@ function isSupabaseLoadNoiseEvent(entry = {}) {
   if (/skip$/i.test(label) || /-skip$/i.test(label) || /-disabled$/i.test(label)) return true;
   if (/^realtime-(resumed-visible|paused-hidden|disabled)$/i.test(label)) return true;
   if (/^ledger-events-subscription/i.test(label)) return true;
+  if (/^(background-sync-incomplete|supabase-load-skip|focus-sync-skip)$/i.test(label)) return true;
   return label === "foreground-operation-start"
     || label === "foreground-operation-finished"
     || label === "foreground-operation-timeout"
@@ -4979,6 +5000,91 @@ function summarizeOwnerGlobalDiagnostics(status = ownerGlobalDiagnosticsStatus) 
   };
 }
 
+function isAdminAutoRefreshActive() {
+  return activeView === "admin" && canUseGlobalAdminTools() && Boolean(currentSession);
+}
+
+function adminAutoRefreshStatusSummary() {
+  if (!canUseGlobalAdminTools()) return { title: "Off", detail: "Global Admin tools are not available for this account.", level: "warning" };
+  if (activeView !== "admin") return { title: "Idle", detail: "Open Admin to start calm automatic refreshes.", level: "ok" };
+  if (!currentSession) return { title: "Waiting", detail: "Sign in before Admin can auto-refresh.", level: "warning" };
+  if (adminAutoRefreshInFlight) return { title: "Refreshing", detail: "Updating Admin status now.", level: "warning" };
+  const last = lastAdminAutoRefreshTickAt ? formatAdminTimestamp(new Date(lastAdminAutoRefreshTickAt).toISOString()) : "Not yet";
+  return { title: "On", detail: `Refreshes every ${Math.round(adminAutoRefreshIntervalMs / 1000)}s while Admin is open. Last run: ${last}.`, level: "ok" };
+}
+
+function renderAdminAutoRefreshCard() {
+  const status = adminAutoRefreshStatusSummary();
+  return `
+    <article class="admin-metric-card ${escapeHtml(status.level)}">
+      <span>Admin auto-refresh</span>
+      <strong>${escapeHtml(status.title)}</strong>
+      <small>Calm live overview</small>
+      <p>${escapeHtml(status.detail)}</p>
+    </article>
+  `;
+}
+
+function startAdminAutoRefresh(reason = "admin") {
+  markOptionalAdminPanelsReadyForManualRefresh(reason);
+  if (!isAdminAutoRefreshActive()) {
+    renderSupabaseLoadMonitor();
+    return;
+  }
+  if (adminAutoRefreshTimer) window.clearTimeout(adminAutoRefreshTimer);
+  runAdminAutoRefreshTick(reason).catch((error) => console.warn("Admin auto-refresh failed", error));
+}
+
+function stopAdminAutoRefresh(reason = "stop") {
+  if (adminAutoRefreshTimer) window.clearTimeout(adminAutoRefreshTimer);
+  adminAutoRefreshTimer = null;
+  adminAutoRefreshInFlight = false;
+}
+
+function scheduleNextAdminAutoRefresh() {
+  if (adminAutoRefreshTimer) window.clearTimeout(adminAutoRefreshTimer);
+  if (!isAdminAutoRefreshActive()) {
+    adminAutoRefreshTimer = null;
+    return;
+  }
+  adminAutoRefreshTimer = window.setTimeout(() => {
+    runAdminAutoRefreshTick("admin-auto-refresh").catch((error) => console.warn("Admin auto-refresh failed", error));
+  }, adminAutoRefreshIntervalMs);
+}
+
+async function runAdminAutoRefreshTick(reason = "admin-auto-refresh") {
+  if (!isAdminAutoRefreshActive()) {
+    stopAdminAutoRefresh(`${reason}-inactive`);
+    return;
+  }
+  if (adminAutoRefreshInFlight) {
+    scheduleNextAdminAutoRefresh();
+    return;
+  }
+  adminAutoRefreshInFlight = true;
+  lastAdminAutoRefreshTickAt = Date.now();
+  renderSupabaseLoadMonitor();
+  try {
+    const now = Date.now();
+    if (!renderAdminHealthStatus.loading && (!renderAdminHealthStatus.checked || now - lastAdminAutoHealthAt > adminAutoHealthFreshMs)) {
+      lastAdminAutoHealthAt = now;
+      checkRenderAdminHealth({ silent: true }).catch((error) => console.warn("Auto Render health failed", error));
+    }
+    if (!ownerGlobalDiagnosticsStatus.loading && (!ownerGlobalDiagnosticsStatus.checked || now - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
+      lastAdminAutoGlobalAt = now;
+      refreshOwnerGlobalDiagnostics({ force: false, silent: true, reason }).catch((error) => console.warn("Auto owner global diagnostics failed", error));
+    }
+    if (!ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && now >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || now - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
+      lastAdminAutoOwnerActivityAt = now;
+      refreshOwnerActivity({ force: false, silent: true, reason }).catch((error) => console.warn("Auto owner activity failed", error));
+    }
+  } finally {
+    adminAutoRefreshInFlight = false;
+    renderSupabaseLoadMonitor();
+    scheduleNextAdminAutoRefresh();
+  }
+}
+
 function renderOwnerGlobalDiagnosticsCard() {
   const status = ownerGlobalDiagnosticsStatus || {};
   const summary = summarizeOwnerGlobalDiagnostics(status);
@@ -5025,13 +5131,13 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
   try {
     const { result } = await callRenderJson(renderOwnerGlobalDiagnosticsUrl, {
       method: "POST",
-      timeoutMs: 15000,
+      timeoutMs: 12000,
       timeoutLabel: "Owner global diagnostics",
       body: {
         targetEmail: appOwnerDiagnosticsTargetEmail(),
-        activityLimit: 120,
-        memberLimit: 1000,
-        workspaceLimit: 500
+        activityLimit: 20,
+        memberLimit: 300,
+        workspaceLimit: 80
       }
     });
     const diagnostics = result?.diagnostics || {};
@@ -5410,10 +5516,10 @@ function renderSupabaseLoadMonitor() {
   const latest = summary.latest.slice(0, 8);
   const statusClass = summary.highActivity ? "has-warning" : "";
   const statusText = summary.highActivity
-    ? "High app-side Supabase activity detected. Export a load report if Supabase CPU is elevated."
+    ? "High meaningful app-side database activity detected. Export a load report if Supabase CPU is elevated."
     : summary.coolingDown
-      ? "Activity was high earlier in the 5-minute window, but the last minute is cooling down."
-      : "No high app-side Supabase activity detected in the last 10 minutes.";
+      ? "Meaningful activity was high earlier in the 5-minute window, but the last minute is cooling down."
+      : "No high meaningful app-side database activity detected in the last 10 minutes.";
   const activityGroups = latestSupabaseActivityGroups(8);
   const healthySyncLabel = lastCloudSyncAt ? new Date(lastCloudSyncAt).toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" }) : "Not yet";
   const latestOperationStatus = latestDataIoOp?.status || "idle";
@@ -5448,11 +5554,12 @@ function renderSupabaseLoadMonitor() {
         <small>${escapeHtml(foregroundSummary)}</small>
         <p>If Saving is visible, this card must name the operation causing it.</p>
       </article>
+      ${renderAdminAutoRefreshCard()}
       <article class="admin-metric-card ${ledgerEventsChannel ? "ok" : "warning"}">
-        <span>Realtime</span>
-        <strong>${ledgerEventsChannel ? "Event channel" : "Waiting"}</strong>
-        <small>${liveSyncEnabled ? "Broad live sync enabled" : "Broad live sync off"}</small>
-        <p>Lightweight ledger events are used for hints; core reads/writes do not depend on realtime.</p>
+        <span>Realtime hints</span>
+        <strong>${ledgerEventsChannel ? "Connected" : "Waiting"}</strong>
+        <small>${liveSyncEnabled ? "Broad live sync enabled" : "Safe event hints"}</small>
+        <p>Admin auto-refresh keeps this overview moving; broad live sync can stay off to protect Supabase CPU.</p>
       </article>
     </div>
     ${recentDataIoOps.length ? renderDataIoGroupedSections() : ""}

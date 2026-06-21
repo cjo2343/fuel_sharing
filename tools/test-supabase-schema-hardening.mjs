@@ -696,7 +696,8 @@ function testWorkspaceInviteAutoRefreshExists() {
   assert.match(app, /function scheduleWorkspaceInviteRefresh\(reason = "workspace-invite-refresh"\)/);
   assert.match(app, /function canRefreshWorkspaceInviteTools\(\)/);
   assert.match(app, /async function ensureWorkspaceInviteToolsReady\(reason = "workspace-invite-ready"\)/);
-  assert.match(app, /if \(activeView === "admin"\) \{\s*markOptionalAdminPanelsReadyForManualRefresh\("admin-tab-open"\);/);
+  assert.match(app, /if \(activeView === "admin"\) \{\s*startAdminAutoRefresh\("admin-tab-open"\);/);
+  assert.match(app, /function startAdminAutoRefresh[\s\S]*markOptionalAdminPanelsReadyForManualRefresh\(reason\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("startup-session"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("auth-session"\)/);
   assert.match(app, /scheduleWorkspaceInviteRefresh\("account-panel-render"\)/);

@@ -14,6 +14,13 @@ const noisyEvents = [
   { label: "data-io:normalized-test-data-cleanup:start", dataIo: true },
   { label: "data-io:retention-preview:ok", dataIo: true },
   { label: "data-io:retention-cleanup:start", dataIo: true },
+  { label: "data-io:owner-activity:timeout", dataIo: true },
+  { label: "data-io:workspace-tools-refresh:ok", dataIo: true },
+  { label: "workspace-resolution" },
+  { label: "workspace-load-start" },
+  { label: "workspace-load-confirmed" },
+  { label: "background-sync-incomplete" },
+  { label: "supabase-load-skip" },
   { label: "render-admin-report-save" },
   { label: "render-json-mirror-backup" },
   { label: "json-mirror-save" },
@@ -57,10 +64,20 @@ for (const event of realActivityEvents) {
   );
 }
 
-assert.match(
-  appSource,
-  /function isSupabaseLoadNoiseEvent\(entry = \{\}\)[\s\S]*entry\.dataIo[\s\S]*\^data-io:admin[\s\S]*json-mirror-backup[\s\S]*retention-cleanup[\s\S]*\^security-health[\s\S]*\^test-lab-report[\s\S]*render-retention-preview[\s\S]*-skip[\s\S]*\^ledger-events-subscription/,
-  "Admin/test/backup/retention/skip/realtime diagnostics should be filtered before computing the activity headline"
-);
+for (const expectedPattern of [
+  /\^data-io:admin/,
+  /owner-activity/,
+  /workspace-tools-refresh/,
+  /workspace-resolution/,
+  /workspace-load-confirmed/,
+  /background-sync-incomplete/,
+  /\^ledger-events-subscription/
+]) {
+  assert.match(
+    match[0],
+    expectedPattern,
+    `Noise filter should include ${expectedPattern}`
+  );
+}
 
 console.log("Supabase activity headline noise checks passed.");
