@@ -34,11 +34,11 @@ These values are checked by `npm run release:check`. When a runtime release chan
 
 - Vehicle lookup now recovers after idle/backend wake delays by retrying the Render lookup automatically before reporting a timeout.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v383`
+- Service-worker cache: `fuel-ledger-v384`
 - `fuel-ledger-v382` - Service-worker status self-heals for signed-in/test-user sessions and does not sit forever on Checking while cache control is attached automatically.
 - `fuel-ledger-v381` - Admin background sync uses lightweight cached checks only; full Render admin health no longer runs from automatic Admin polling, while backend readiness stays on /api/ping and deep health remains explicit.
-- Updated at: `2026-06-21T15:50:00.000Z`
-- Top release note: Vehicle lookup now recovers without a manual refresh: after idle/backend wake delays it retries the Render lookup automatically, records VEHICLE_LOOKUP_AUTO_RETRY breadcrumbs, and only reports a timeout after backend/session recovery has been attempted.
+- Updated at: `2026-06-21T17:35:00.000Z`
+- Top release note: Vehicle lookup is now workspace-context-first: before calling Render it confirms the URL/selected/loaded workspace and signed-in admin profile all match, reloads the requested workspace if needed, sends explicit workspace context with the lookup, and retries once without a browser refresh when secondary workspaces are still settling.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -623,3 +623,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v364`.
 - 2026-06-21T15:50:00.000Z — v383 vehicle lookup auto-retry recovery: after idle/backend wake delays the app retries vehicle lookup automatically, records `VEHICLE_LOOKUP_AUTO_RETRY`, and reports timeout only after recovery was attempted. Validation: `npm run validate`, `npm run release:check`.
+
+- 2026-06-21T17:35:00.000Z — v384 workspace-context-first vehicle lookup: vehicle lookup now confirms URL/selected/loaded workspace and signed-in admin context before calling Render, reloads secondary workspace context if needed, sends explicit workspace ids with the lookup, and retries once without a browser refresh. Validation: `npm run validate`, `npm run release:check`.

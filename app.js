@@ -8462,7 +8462,8 @@ function buildDataIoWorkspaceContext(meta = {}) {
   };
 }
 
-// Guardrail compatibility: assertActiveWorkspaceDataConfirmed("lookup vehicle information") still guards vehicle lookup before Render calls.
+// Guardrail compatibility: assertActiveWorkspaceDataConfirmed("lookup vehicle information", "vehicle-lookup") still guards vehicle lookup before Render calls through ensureVehicleLookupWorkspaceContext.
+// Guardrail compatibility: assertActiveWorkspaceDataConfirmed("lookup vehicle information") remains documented for workspace switch safety tests.
 // Guardrail compatibility: resultCode: "WORKSPACE_SWITCHED" remains the stable success code for completed workspace switches.
 // Guardrail text: Use the workspace selector to reload this app around another linked workspace.
 function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
@@ -9239,12 +9240,140 @@ function applyVehicleLookupToSettings(vehicle) {
   return true;
 }
 
-async function lookupVehicleByPlateFromUi(options = {}) {
-  if (!canManageSettings()) {
-    showUserError("Only an admin can lookup and apply vehicle settings.");
-    return false;
+async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
+  const requestedWorkspaceId = String(readActiveWorkspaceIdFromCurrentUrl() || getActiveLedgerId() || getConfiguredLedgerId()).trim();
+  const automaticRetry = Boolean(options?.automaticRetry);
+  const workspaceRetry = Number(options?.workspaceContextRetry || 0);
+  const beforeContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: requestedWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(requestedWorkspaceId) });
+  const linkedBefore = getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === requestedWorkspaceId);
+  if (requestedWorkspaceId && String(getActiveLedgerId() || "") !== requestedWorkspaceId && linkedBefore) {
+    setActiveLedgerId(requestedWorkspaceId, { persist: true, updateUrl: true });
+  } else if (requestedWorkspaceId && String(getActiveLedgerId() || "") !== requestedWorkspaceId) {
+    setActiveLedgerId(requestedWorkspaceId, { persist: true, updateUrl: true });
   }
-  if (!assertActiveWorkspaceDataConfirmed("lookup vehicle information", "vehicle-lookup")) return false;
+
+  const activeWorkspaceId = String(getActiveLedgerId() || "").trim();
+  const urlWorkspaceId = String(readActiveWorkspaceIdFromCurrentUrl() || "").trim();
+  const activeLinked = isLedgerLinkedToCurrentUser(activeWorkspaceId);
+  if (!activeLinked && supabaseClient && currentSession) {
+    try {
+      if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `Refreshing workspace membership before looking up ${plate}…`;
+      await refreshLinkedWorkspacesAfterInvite(activeWorkspaceId);
+    } catch (error) {
+      recordDataIoDiagnostic("error", {
+        source: "vehicle-lookup-workspace-context",
+        route: "supabase-rpc",
+        rpc: "list_my_ledgers",
+        operation: "refresh",
+        ok: false,
+        resultCode: "VEHICLE_LOOKUP_WORKSPACE_LIST_FAILED",
+        statusCode: "VEHICLE_LOOKUP_WORKSPACE_LIST_FAILED",
+        errorCode: error?.code || "",
+        error,
+        ledgerId: getLoadedWorkspaceId(),
+        selectedWorkspaceId: activeWorkspaceId,
+        selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(activeWorkspaceId),
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        loadedWorkspaceLabel: getLoadedWorkspaceLabel(),
+        workspaceMismatch: activeWorkspaceId !== getLoadedWorkspaceId(),
+        detail: `Vehicle lookup could not refresh workspace membership for ${getWorkspaceLabelByLedgerId(activeWorkspaceId)}.`
+      });
+    }
+  }
+
+  const linkedAfter = isLedgerLinkedToCurrentUser(activeWorkspaceId);
+  if (supabaseClient && currentSession && !linkedAfter) {
+    const message = `${getWorkspaceLabelByLedgerId(activeWorkspaceId)} is not linked to this signed-in user yet. Refreshing the whole page should not be required; open Account and wait for workspace membership to load.`;
+    recordDataIoDiagnostic("blocked", {
+      source: "vehicle-lookup-workspace-context",
+      route: "workspace-session",
+      operation: "verify",
+      ok: false,
+      resultCode: "VEHICLE_LOOKUP_WORKSPACE_NOT_LINKED",
+      statusCode: "VEHICLE_LOOKUP_WORKSPACE_NOT_LINKED",
+      ledgerId: getLoadedWorkspaceId(),
+      selectedWorkspaceId: activeWorkspaceId,
+      selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(activeWorkspaceId),
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      loadedWorkspaceLabel: getLoadedWorkspaceLabel(),
+      workspaceMismatch: activeWorkspaceId !== getLoadedWorkspaceId(),
+      detail: message
+    });
+    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = message;
+    showUserError(message);
+    return { ok: false, ledgerId: activeWorkspaceId, context: beforeContext, reason: "not_linked" };
+  }
+
+  const needsWorkspaceLoad = !isActiveWorkspaceDataConfirmed() || String(getLoadedWorkspaceId() || "") !== String(activeWorkspaceId || "");
+  if (needsWorkspaceLoad) {
+    const operationId = createDataIoOperationId("vehicle-lookup-workspace-context", "load");
+    const loadContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: activeWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(activeWorkspaceId) });
+    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `Loading ${loadContext.selectedWorkspaceLabel} before vehicle lookup…`;
+    recordDataIoDiagnostic("start", {
+      source: "vehicle-lookup-workspace-context",
+      route: "workspace-session",
+      operation: "load",
+      operationId,
+      ok: true,
+      resultCode: "VEHICLE_LOOKUP_WORKSPACE_CONTEXT_RELOAD",
+      statusCode: "VEHICLE_LOOKUP_WORKSPACE_CONTEXT_RELOAD",
+      ledgerId: loadContext.loadedWorkspaceId,
+      selectedWorkspaceId: loadContext.selectedWorkspaceId,
+      selectedWorkspaceLabel: loadContext.selectedWorkspaceLabel,
+      loadedWorkspaceId: loadContext.loadedWorkspaceId,
+      loadedWorkspaceLabel: loadContext.loadedWorkspaceLabel,
+      workspaceMismatch: loadContext.workspaceMismatch,
+      detail: `Reload ${loadContext.selectedWorkspaceLabel} before vehicle lookup ${plate}.`
+    });
+    const loaded = await loadSupabaseStateWithTimeout(
+      { force: true, manual: true, reason: `vehicle-lookup-workspace-context:${activeWorkspaceId}` },
+      supabaseStartupLoadTimeoutMs,
+      `Loading ${getWorkspaceLabelByLedgerId(activeWorkspaceId)} before vehicle lookup is delayed.`
+    );
+    await refreshAuthBoundMemberProfile().catch((error) => console.warn("Vehicle lookup member profile refresh failed", error));
+    const confirmed = Boolean(loaded || isActiveWorkspaceDataConfirmed()) && String(getLoadedWorkspaceId() || "") === String(activeWorkspaceId || "");
+    const afterContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: activeWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(activeWorkspaceId) });
+    recordDataIoDiagnostic(confirmed ? "success" : "timeout", {
+      source: "vehicle-lookup-workspace-context",
+      route: "workspace-session",
+      operation: "load",
+      operationId,
+      ok: confirmed,
+      resultCode: confirmed ? "VEHICLE_LOOKUP_WORKSPACE_CONTEXT_READY" : "VEHICLE_LOOKUP_WORKSPACE_CONTEXT_TIMEOUT",
+      statusCode: confirmed ? "VEHICLE_LOOKUP_WORKSPACE_CONTEXT_READY" : "VEHICLE_LOOKUP_WORKSPACE_CONTEXT_TIMEOUT",
+      ledgerId: afterContext.loadedWorkspaceId,
+      selectedWorkspaceId: afterContext.selectedWorkspaceId,
+      selectedWorkspaceLabel: afterContext.selectedWorkspaceLabel,
+      loadedWorkspaceId: afterContext.loadedWorkspaceId,
+      loadedWorkspaceLabel: afterContext.loadedWorkspaceLabel,
+      workspaceMismatch: afterContext.workspaceMismatch,
+      detail: confirmed ? `${afterContext.selectedWorkspaceLabel} is ready for vehicle lookup.` : `${afterContext.selectedWorkspaceLabel} did not confirm before vehicle lookup.`
+    });
+    if (!confirmed) {
+      if (!automaticRetry && workspaceRetry < 1) {
+        if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = `${afterContext.selectedWorkspaceLabel} is still loading. The app will retry the vehicle lookup automatically.`;
+        window.setTimeout(() => lookupVehicleByPlateFromUi({ automaticRetry: true, workspaceContextRetry: workspaceRetry + 1 }), 1800);
+      } else if (els.vehicleLookupStatus) {
+        els.vehicleLookupStatus.textContent = `${afterContext.selectedWorkspaceLabel} still is not confirmed. Vehicle lookup is paused to avoid using the wrong workspace.`;
+      }
+      return { ok: false, ledgerId: activeWorkspaceId, context: afterContext, reason: "not_confirmed" };
+    }
+  } else {
+    await refreshAuthBoundMemberProfile().catch(() => null);
+  }
+
+  const finalContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: getActiveLedgerId(), selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(getActiveLedgerId()) });
+  return {
+    ok: isActiveWorkspaceDataConfirmed() && !finalContext.workspaceMismatch,
+    ledgerId: getActiveLedgerId(),
+    urlWorkspaceId,
+    requestedWorkspaceId,
+    context: finalContext,
+    reason: "ready"
+  };
+}
+
+async function lookupVehicleByPlateFromUi(options = {}) {
   if (!currentSession?.access_token) {
     showUserError("Sign in before looking up a vehicle.");
     return false;
@@ -9254,7 +9383,29 @@ async function lookupVehicleByPlateFromUi(options = {}) {
     if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Enter a number plate first.";
     return false;
   }
-  const ledgerId = getActiveLedgerId();
+  const workspaceReady = await ensureVehicleLookupWorkspaceContext(plate, options);
+  if (!workspaceReady?.ok) return false;
+  if (!canManageSettings()) {
+    const context = workspaceReady.context || buildDataIoWorkspaceContext();
+    recordDataIoDiagnostic("blocked", {
+      source: "vehicle-lookup-workspace-context",
+      route: "workspace-session",
+      operation: "permission",
+      ok: false,
+      resultCode: "VEHICLE_LOOKUP_WORKSPACE_ADMIN_REQUIRED",
+      statusCode: "VEHICLE_LOOKUP_WORKSPACE_ADMIN_REQUIRED",
+      ledgerId: context.loadedWorkspaceId,
+      selectedWorkspaceId: context.selectedWorkspaceId,
+      selectedWorkspaceLabel: context.selectedWorkspaceLabel,
+      loadedWorkspaceId: context.loadedWorkspaceId,
+      loadedWorkspaceLabel: context.loadedWorkspaceLabel,
+      workspaceMismatch: context.workspaceMismatch,
+      detail: `${context.selectedWorkspaceLabel} is loaded, but the signed-in user is not confirmed as workspace admin.`
+    });
+    showUserError("Only an admin can lookup and apply vehicle settings.");
+    return false;
+  }
+  const ledgerId = workspaceReady.ledgerId || getActiveLedgerId();
   if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Checking backend connection before vehicle lookup...";
   const backendReady = await ensureRenderBackendReadyForUserAction({ reason: "vehicle-lookup", timeoutMs: renderBackendWakeTimeoutMs, retries: 2 });
   if (!backendReady?.ok) {
@@ -9283,7 +9434,7 @@ async function lookupVehicleByPlateFromUi(options = {}) {
     return false;
   }
   const operationId = createDataIoOperationId("vehicle-lookup", "lookup");
-  const workspaceContext = buildDataIoWorkspaceContext();
+  const workspaceContext = workspaceReady.context || buildDataIoWorkspaceContext({ selectedWorkspaceId: ledgerId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(ledgerId) });
   const traceMeta = {
     source: "vehicle-lookup",
     route: "render-api",
@@ -9291,13 +9442,15 @@ async function lookupVehicleByPlateFromUi(options = {}) {
     operation: "lookup",
     operationId,
     ledgerId,
+    requestedWorkspaceId: workspaceReady.requestedWorkspaceId || ledgerId,
+    urlWorkspaceId: workspaceReady.urlWorkspaceId || readActiveWorkspaceIdFromCurrentUrl(),
     selectedWorkspaceId: workspaceContext.selectedWorkspaceId,
     selectedWorkspaceLabel: workspaceContext.selectedWorkspaceLabel,
     loadedWorkspaceId: workspaceContext.loadedWorkspaceId,
     loadedWorkspaceLabel: workspaceContext.loadedWorkspaceLabel,
     workspaceMismatch: workspaceContext.workspaceMismatch,
     staleAfterMs: vehicleLookupTimeoutMs,
-    detail: `Lookup vehicle ${plate}`
+    detail: `Lookup vehicle ${plate} in ${workspaceContext.selectedWorkspaceLabel}`
   };
   if (els.vehicleLookupButton) els.vehicleLookupButton.disabled = true;
   if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Looking up vehicle through Render...";
@@ -9307,7 +9460,13 @@ async function lookupVehicleByPlateFromUi(options = {}) {
   try {
     const { result } = await callRenderJsonWithUserActionRecovery(renderVehicleLookupUrl, {
       method: "POST",
-      body: { ledgerId, plate },
+      body: {
+        ledgerId,
+        plate,
+        selectedWorkspaceId: workspaceContext.selectedWorkspaceId,
+        loadedWorkspaceId: workspaceContext.loadedWorkspaceId,
+        urlWorkspaceId: workspaceReady.urlWorkspaceId || readActiveWorkspaceIdFromCurrentUrl()
+      },
       timeoutMs: vehicleLookupTimeoutMs,
       timeoutLabel: "Vehicle lookup",
       allowResultOkFalse: true,
