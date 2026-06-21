@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T17:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v384",
+    updatedAt: "2026-06-21T18:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v385",
     releaseNotes: Object.freeze([
+      "Vehicle lookup clicks are now impossible to lose silently: the button records VEHICLE_LOOKUP_CLICKED before any guard, stays clickable during workspace settling so the handler can recover context, delegated click binding survives Settings re-renders, and load reports include button binding/disabled/status state.",
       "Vehicle lookup is now workspace-context-first: before calling Render it confirms the URL/selected/loaded workspace and signed-in admin profile all match, reloads the requested workspace if needed, sends explicit workspace context with the lookup, and retries once without a browser refresh when secondary workspaces are still settling.",
       "Vehicle lookup now recovers without a manual refresh: after idle/backend wake delays it retries the Render lookup automatically, records VEHICLE_LOOKUP_AUTO_RETRY breadcrumbs, and only reports a timeout after backend/session recovery has been attempted.",
       "Service-worker status now self-heals for signed-in/test-user sessions: the app can ask the active worker for cache status even before page control is attached, retries registration/update handoff on visibility and URL changes, and performs one safe automatic controller reload instead of sitting forever on Checking.",
