@@ -1,3 +1,4 @@
+- 2026-06-21 11:25 UTC: v370 App-owner global diagnostics now use a dedicated Render owner route to list all workspaces, target-user memberships such as testman21 across test1/test2, and recent vehicle lookup owner-activity rows without requiring the app owner to be a member of every workspace.
 - 2026-06-21 10:55 UTC: v369 Account workspace refresh is authoritative instead of freshness-skipped, one-row workspace lists are rechecked, and reports export visible selector plus signed-in-email membership probe rows so hidden test1 membership issues can be diagnosed.
 - 2026-06-21 10:45 UTC: v368 workspace list dedupe now keys by ledger id/slug, not display name, preventing main-car and test1 from collapsing when both are named Fuel Ledger; reports export vehicle lookup readiness.
 - 2026-06-21 10:35 UTC: v368 workspace resolution visibility exports URL/user memory/linked workspaces/decision details in load reports and prefers a non-owner user's single non-default workspace over the configured default.
@@ -27,9 +28,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v369`
-- Updated at: `2026-06-21T10:55:00.000Z`
-- Top release note: Workspace refresh is now authoritative on Account open/manual refreshes, one-row workspace lists no longer get freshness-skipped, load reports export the visible selector and current-email membership probe, and vehicle lookup readiness remains visible so hidden test1 membership issues can be diagnosed.
+- Service-worker cache: `fuel-ledger-v370`
+- Updated at: `2026-06-21T11:25:00.000Z`
+- Top release note: App-owner global diagnostics now use a dedicated Render owner route so the app owner can see all workspaces, target-user memberships such as testman21 across test1/test2, and recent vehicle lookup activity without being a member of each workspace.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

@@ -37,6 +37,7 @@ const renderAdminHealthUrl = "/api/admin/health";
 const renderAdminReportSaveUrl = "/api/admin/reports/save";
 const renderAdminSecurityHealthUrl = "/api/admin/security-health";
 const renderOwnerActivityUrl = "/api/owner/activity";
+const renderOwnerGlobalDiagnosticsUrl = "/api/owner/global-diagnostics";
 const renderVehicleLookupUrl = "/api/vehicle/lookup";
 const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
@@ -3151,6 +3152,7 @@ function setActiveView(view) {
   render();
   if (activeView === "admin") {
     markOptionalAdminPanelsReadyForManualRefresh("admin-tab-open");
+    refreshOwnerGlobalDiagnostics({ force: false, silent: true, reason: "admin-tab-open" }).catch((error) => console.warn("Owner global diagnostics failed", error));
   }
   if (activeView === "account") scheduleWorkspaceInviteRefresh("account-tab-open");
 }
@@ -3911,9 +3913,9 @@ els.toggleLiveSync?.addEventListener("click", async () => {
   render();
 });
 
-els.exportSupabaseLoadReport?.addEventListener("click", () => {
+els.exportSupabaseLoadReport?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
-  downloadSupabaseLoadReport();
+  await downloadSupabaseLoadReport();
 });
 
 els.previewRetentionCleanup?.addEventListener("click", () => {
@@ -4746,6 +4748,7 @@ function buildSupabaseLoadReport() {
     workspaceSession: getWorkspaceSessionSnapshot(),
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
     workspaceMembershipProbe: workspaceMembershipProbeStatus,
+    appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsStatus,
     vehicleLookupReadiness: getVehicleLookupReadinessSnapshot(),
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
@@ -4930,6 +4933,125 @@ function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", 
   // look like current-workspace churn. The app owner can refresh it manually when needed.
   recordOwnerActivityCooldownSkip(`${reason}-manual-audit`);
   return Promise.resolve(ownerActivityStatus);
+}
+
+
+function appOwnerDiagnosticsTargetEmail() {
+  return "testman21@chrjohn.dk";
+}
+
+function summarizeOwnerGlobalDiagnostics(status = ownerGlobalDiagnosticsStatus) {
+  const workspaces = Array.isArray(status.workspaces) ? status.workspaces : [];
+  const vehicleRows = Array.isArray(status.recentVehicleActivity) ? status.recentVehicleActivity : [];
+  const targetRows = Array.isArray(status.targetMemberships) ? status.targetMemberships : [];
+  return {
+    workspaceCount: Number(status.workspaceCount || workspaces.length || 0),
+    memberRowCount: Number(status.memberRowCount || 0),
+    targetMembershipCount: targetRows.length,
+    vehicleActivityCount: vehicleRows.length,
+    workspaceLabels: workspaces.map((workspace) => workspace.label || workspace.slug || workspace.ledgerId || "unknown").slice(0, 12),
+    targetMemberships: targetRows.map((row) => `${row.workspaceLabel || row.ledgerId || "unknown"} · ${row.role || "member"}${row.isActive === false ? " · inactive" : ""}`).slice(0, 12),
+    latestVehicleActivity: vehicleRows.slice(0, 5).map((row) => ({
+      at: row.created_at || "",
+      actor: row.actor_email || "unknown user",
+      workspace: row.workspace_label || row.ledger_id || "unknown workspace",
+      resultCode: row.result_code || "",
+      ok: row.ok === true
+    }))
+  };
+}
+
+function renderOwnerGlobalDiagnosticsCard() {
+  const status = ownerGlobalDiagnosticsStatus || {};
+  const summary = summarizeOwnerGlobalDiagnostics(status);
+  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Checking" : status.checked ? (status.ok ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Needs review") : "Not checked";
+  const detail = status.message || "Global app-owner diagnostics show all workspaces without requiring the app owner to be a member of each workspace.";
+  const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No global workspaces returned.</li>`;
+  const targetList = summary.targetMemberships.length ? summary.targetMemberships.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No target-user membership rows returned for ${escapeHtml(appOwnerDiagnosticsTargetEmail())}.</li>`;
+  const vehicleList = summary.latestVehicleActivity.length ? summary.latestVehicleActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}${row.resultCode ? ` · ${escapeHtml(row.resultCode)}` : ""}</li>`).join("") : `<li>No recent vehicle lookup owner-activity rows.</li>`;
+  return `
+    <article class="admin-metric-card ${cardClass}">
+      <span>App-owner global scope</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${summary.memberRowCount} member row${summary.memberRowCount === 1 ? "" : "s"} · ${summary.vehicleActivityCount} recent vehicle lookup row${summary.vehicleActivityCount === 1 ? "" : "s"}</small>
+      <p>${escapeHtml(detail)}</p>
+    </article>
+    <details class="admin-diagnostics-section">
+      <summary>App-owner global diagnostics</summary>
+      <div class="admin-diagnostics-dashboard">
+        <article class="admin-metric-card ok"><span>Global workspaces</span><strong>${summary.workspaceCount}</strong><small>Service-role owner route</small><ul class="test-lab-check-list readable-activity-list">${workspaceList}</ul></article>
+        <article class="admin-metric-card ${summary.targetMembershipCount ? "ok" : "warning"}"><span>testman21 memberships</span><strong>${summary.targetMembershipCount}</strong><small>Across all workspaces</small><ul class="test-lab-check-list readable-activity-list">${targetList}</ul></article>
+        <article class="admin-metric-card ${summary.vehicleActivityCount ? "ok" : "warning"}"><span>Recent vehicle lookups</span><strong>${summary.vehicleActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${vehicleList}</ul></article>
+      </div>
+    </details>
+  `;
+}
+
+async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, reason = "owner-global-diagnostics" } = {}) {
+  if (!canUseGlobalAdminTools()) return ownerGlobalDiagnosticsStatus;
+  const now = Date.now();
+  if (!force && ownerGlobalDiagnosticsStatus.checked && ownerGlobalDiagnosticsStatus.ok && now - lastOwnerGlobalDiagnosticsFetchAt < ownerGlobalDiagnosticsFreshMs) {
+    return ownerGlobalDiagnosticsStatus;
+  }
+  ownerGlobalDiagnosticsStatus = {
+    ...ownerGlobalDiagnosticsStatus,
+    loading: true,
+    checked: ownerGlobalDiagnosticsStatus.checked || false,
+    message: "Loading app-owner global workspace diagnostics...",
+    error: "",
+    reason
+  };
+  if (!silent) setDataToolsMessage(ownerGlobalDiagnosticsStatus.message);
+  renderSupabaseLoadMonitor();
+  try {
+    const { result } = await callRenderJson(renderOwnerGlobalDiagnosticsUrl, {
+      method: "POST",
+      timeoutMs: 15000,
+      timeoutLabel: "Owner global diagnostics",
+      body: {
+        targetEmail: appOwnerDiagnosticsTargetEmail(),
+        activityLimit: 120,
+        memberLimit: 1000,
+        workspaceLimit: 500
+      }
+    });
+    const diagnostics = result?.diagnostics || {};
+    const workspaces = Array.isArray(diagnostics.workspaces) ? diagnostics.workspaces : [];
+    const targetMemberships = Array.isArray(diagnostics.targetMemberships) ? diagnostics.targetMemberships : [];
+    const recentVehicleActivity = Array.isArray(diagnostics.recentVehicleActivity) ? diagnostics.recentVehicleActivity : [];
+    ownerGlobalDiagnosticsStatus = {
+      checked: true,
+      ok: true,
+      loading: false,
+      scope: result?.scope || "app-owner-global",
+      reason,
+      message: `Loaded ${workspaces.length} global workspace${workspaces.length === 1 ? "" : "s"}; ${targetMemberships.length} testman21 membership row${targetMemberships.length === 1 ? "" : "s"}; ${recentVehicleActivity.length} recent vehicle lookup row${recentVehicleActivity.length === 1 ? "" : "s"}.`,
+      workspaceCount: Number(diagnostics.workspaceCount || workspaces.length || 0),
+      workspaces,
+      memberRowCount: Number(diagnostics.memberRowCount || 0),
+      targetMemberships,
+      inviteCount: Number(diagnostics.inviteCount || 0),
+      recentVehicleActivity,
+      recentActivity: Array.isArray(diagnostics.recentActivity) ? diagnostics.recentActivity : [],
+      error: ""
+    };
+    lastOwnerGlobalDiagnosticsFetchAt = Date.now();
+    if (!silent) setDataToolsMessage(ownerGlobalDiagnosticsStatus.message);
+  } catch (error) {
+    ownerGlobalDiagnosticsStatus = {
+      ...ownerGlobalDiagnosticsStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      error: error?.message || String(error || "Owner global diagnostics failed."),
+      message: `Owner global diagnostics failed: ${error?.message || error}`
+    };
+    if (!silent) setDataToolsMessage(ownerGlobalDiagnosticsStatus.message);
+  } finally {
+    renderSupabaseLoadMonitor();
+  }
+  return ownerGlobalDiagnosticsStatus;
 }
 
 function renderOwnerActivityCard() {
@@ -5300,6 +5422,7 @@ function renderSupabaseLoadMonitor() {
         <p>This card ignores optional Admin panels such as workspace/invite refresh and owner audit refresh; those details stay in their sections below.</p>
       </article>
       ${renderRenderAdminHealthCard()}
+      ${canUseGlobalAdminTools() ? renderOwnerGlobalDiagnosticsCard() : ""}
       ${canUseGlobalAdminTools() ? renderOwnerActivityCard() : ""}
       <article class="admin-metric-card ${activeForeground.length ? "warning" : "ok"}">
         <span>Foreground save</span>
@@ -5738,7 +5861,10 @@ function renderAdminGuardrailOverview() {
   `;
 }
 
-function downloadSupabaseLoadReport() {
+async function downloadSupabaseLoadReport() {
+  if (canUseGlobalAdminTools()) {
+    await refreshOwnerGlobalDiagnostics({ force: true, silent: true, reason: "load-report-export" }).catch((error) => console.warn("Owner global diagnostics export refresh failed", error));
+  }
   const report = redactSensitiveDiagnostics(buildSupabaseLoadReport());
   const stamp = localDateString().replace(/[^0-9-]/g, "") || "today";
   downloadTextFile(`fuel-ledger-supabase-load-report-${stamp}.json`, JSON.stringify(report, null, 2), "application/json");

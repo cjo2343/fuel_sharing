@@ -313,6 +313,115 @@ def list_owner_activity_as_service(payload=None):
     return request_json(query, api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"), timeout=6) or []
 
 
+
+def list_owner_global_diagnostics_as_service(payload=None):
+    payload = payload if isinstance(payload, dict) else {}
+    activity_limit = safe_int(payload.get("activityLimit"), 80, minimum=1, maximum=250)
+    member_limit = safe_int(payload.get("memberLimit"), 500, minimum=1, maximum=1000)
+    workspace_limit = safe_int(payload.get("workspaceLimit"), 200, minimum=1, maximum=500)
+    target_email = str(payload.get("targetEmail") or payload.get("target_email") or "").strip().lower()
+    target_ledger = str(payload.get("targetLedgerId") or payload.get("target_ledger_id") or "").strip()
+
+    ledgers = request_json(
+        f"{supabase_url()}/rest/v1/ledgers?select=id,slug,name,created_at,updated_at&order=created_at.asc&limit={workspace_limit}",
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+        timeout=6,
+    ) or []
+    members = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,ledger_id,email,name,role,is_active,created_at,updated_at&order=created_at.asc&limit={member_limit}",
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+        timeout=6,
+    ) or []
+    invites = request_json(
+        f"{supabase_url()}/rest/v1/ledger_invites?select=id,ledger_id,role,invited_email,revoked_at,expires_at,uses_count,max_uses,created_at&order=created_at.desc&limit=200",
+        api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
+        timeout=6,
+    ) or []
+    recent_activity = list_owner_activity_as_service({"limit": activity_limit})
+    recent_vehicle_activity = list_owner_activity_as_service({"limit": activity_limit, "action": "vehicle-lookup"})
+
+    ledgers_by_id = {str(row.get("id") or ""): row for row in ledgers if row.get("id")}
+    member_counts = {}
+    admin_counts = {}
+    active_counts = {}
+    for member in members:
+        ledger_id = str(member.get("ledger_id") or "")
+        if not ledger_id:
+            continue
+        member_counts[ledger_id] = member_counts.get(ledger_id, 0) + 1
+        if member.get("is_active") is not False:
+            active_counts[ledger_id] = active_counts.get(ledger_id, 0) + 1
+        if str(member.get("role") or "").lower() == "admin" and member.get("is_active") is not False:
+            admin_counts[ledger_id] = admin_counts.get(ledger_id, 0) + 1
+
+    workspace_summaries = []
+    for ledger in ledgers:
+        ledger_id = str(ledger.get("id") or "")
+        slug = str(ledger.get("slug") or ledger_id)
+        name = str(ledger.get("name") or slug or ledger_id)
+        label = f"{name} ({slug})" if slug and slug != name else name
+        workspace_summaries.append({
+            "ledgerId": ledger_id,
+            "slug": slug,
+            "name": name,
+            "label": label,
+            "memberCount": member_counts.get(ledger_id, 0),
+            "activeMemberCount": active_counts.get(ledger_id, 0),
+            "adminCount": admin_counts.get(ledger_id, 0),
+            "createdAt": ledger.get("created_at") or "",
+            "updatedAt": ledger.get("updated_at") or "",
+        })
+
+    target_memberships = []
+    for member in members:
+        email = str(member.get("email") or "").strip().lower()
+        ledger_id = str(member.get("ledger_id") or "")
+        if target_email and email != target_email:
+            continue
+        if target_ledger and ledger_id != target_ledger:
+            continue
+        ledger = ledgers_by_id.get(ledger_id) or {}
+        slug = str(ledger.get("slug") or ledger_id)
+        name = str(ledger.get("name") or slug or ledger_id)
+        label = f"{name} ({slug})" if slug and slug != name else name
+        target_memberships.append({
+            "id": str(member.get("id") or ""),
+            "ledgerId": ledger_id,
+            "workspaceLabel": label,
+            "email": email,
+            "name": str(member.get("name") or ""),
+            "role": str(member.get("role") or "member"),
+            "isActive": member.get("is_active") is not False,
+            "createdAt": member.get("created_at") or "",
+            "updatedAt": member.get("updated_at") or "",
+        })
+
+    invite_summaries = []
+    for invite in invites:
+        ledger_id = str(invite.get("ledger_id") or "")
+        invite_summaries.append({
+            "ledgerId": ledger_id,
+            "role": str(invite.get("role") or "member"),
+            "invitedEmail": str(invite.get("invited_email") or "").strip().lower(),
+            "revoked": bool(invite.get("revoked_at")),
+            "expiresAt": invite.get("expires_at") or "",
+            "usesCount": safe_int(invite.get("uses_count"), 0, minimum=0),
+            "maxUses": safe_int(invite.get("max_uses"), 1, minimum=1),
+            "createdAt": invite.get("created_at") or "",
+        })
+
+    return {
+        "workspaceCount": len(workspace_summaries),
+        "workspaces": workspace_summaries,
+        "memberRowCount": len(members),
+        "targetEmail": target_email,
+        "targetMemberships": target_memberships[:100],
+        "inviteCount": len(invite_summaries),
+        "invites": invite_summaries[:100],
+        "recentActivity": recent_activity,
+        "recentVehicleActivity": recent_vehicle_activity,
+    }
+
 def fetch_fuel_price(path):
     parsed = urllib.parse.urlparse(path)
     query = urllib.parse.parse_qs(parsed.query)
@@ -1392,6 +1501,7 @@ def build_render_admin_route_health(ledger_id, context):
         ("settingsSave", "/api/settings/save", "Render workspace settings save route"),
         ("memberManagement", "/api/members/manage", "Render workspace member-management route"),
         ("ownerActivity", "/api/owner/activity", "Render app-owner activity route"),
+        ("ownerGlobalDiagnostics", "/api/owner/global-diagnostics", "Render app-owner global workspace diagnostics route"),
         ("vehicleLookup", "/api/vehicle/lookup", "Render vehicle lookup proxy route"),
     ]
     return [
@@ -2882,6 +2992,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/owner/activity":
             self.owner_activity_backend()
             return
+        if self.path == "/api/owner/global-diagnostics":
+            self.owner_global_diagnostics_backend()
+            return
         if self.path == "/api/admin/retention/preview":
             self.preview_retention_cleanup_backend()
             return
@@ -3343,6 +3456,29 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_safe_json_error("OWNER_ACTIVITY_ERROR", error)
             return
         self.send_json({"ok": True, "activity": rows, "backend": "render", "userEmail": user.get("email")})
+
+    def owner_global_diagnostics_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before viewing owner diagnostics."}, status=401)
+            return
+        if not is_configured_app_owner(user):
+            self.send_json({"ok": False, "code": "OWNER_ONLY", "message": "Only the configured app owner can view global workspace diagnostics."}, status=403)
+            return
+        try:
+            payload = read_request_body(self)
+            diagnostics = list_owner_global_diagnostics_as_service(payload)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except urllib.error.HTTPError as error:
+            body = error.read().decode("utf-8") if hasattr(error, "read") else str(error)
+            self.send_json({"ok": False, "code": "OWNER_GLOBAL_DIAGNOSTICS_ERROR", "message": body}, status=error.code)
+            return
+        except Exception as error:
+            self.send_safe_json_error("OWNER_GLOBAL_DIAGNOSTICS_ERROR", error)
+            return
+        self.send_json({"ok": True, "diagnostics": diagnostics, "backend": "render", "scope": "app-owner-global", "userEmail": user.get("email")})
 
 
     def get_write_context_backend(self):
