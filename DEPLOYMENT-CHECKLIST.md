@@ -22,9 +22,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v358`
-- Updated at: `2026-06-21T08:20:00.000Z`
-- Top release note: Startup loading now separates core workspace load from admin diagnostics, coalesces duplicate workspace-list refreshes, keeps recent healthy admin health when a later check times out, makes workspace switching force-load the selected workspace, and groups Data I/O into readable Core, Workspace, Vehicle/settings, App action, Admin, and Background sections.
+- Service-worker cache: `fuel-ledger-v359`
+- Updated at: `2026-06-21T08:30:00.000Z`
+- Top release note: Owner activity is now summarized and manual-refreshable after timeouts: Admin shows grouped server-side activity instead of a long raw wall of rows, hides raw rows behind details, and pauses automatic owner-activity retries after timeout until the app owner asks for a refresh.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

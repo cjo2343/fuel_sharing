@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T08:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v358",
+    updatedAt: "2026-06-21T08:30:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v359",
     releaseNotes: Object.freeze([
+      "Owner activity is now summarized and manual-refreshable after timeouts: Admin shows grouped server-side activity instead of a long raw wall of rows, hides raw rows behind details, and pauses automatic owner-activity retries after timeout until the app owner asks for a refresh.",
       "Startup loading now separates core workspace load from admin diagnostics, coalesces duplicate workspace-list refreshes, keeps recent healthy admin health when a later check times out, makes workspace switching force-load the selected workspace, and groups Data I/O into readable Core, Workspace, Vehicle/settings, App action, Admin, and Background sections.",
       "Workspace membership refresh now repairs stale locally selected workspaces, so an unavailable workspace such as test1 no longer leaves settings locked behind Loading before settings can be edited.",
       "Owner Activity now backs off after Render timeouts, Admin background refreshes poll less aggressively, and vehicle lookup no longer cascades into extra owner-activity loads when Render is already slow.",

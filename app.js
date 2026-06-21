@@ -1704,6 +1704,8 @@ const ownerActivityFreshMs = 30000;
 const ownerActivityBackgroundIntervalMs = 60000;
 const ownerActivityTimeoutCooldownBaseMs = 120000;
 const ownerActivityTimeoutCooldownMaxMs = 300000;
+const ownerActivityVisibleRowLimit = 6;
+let ownerActivityAutoPausedUntilManual = false;
 let supabaseSecurityStatus = {
   checked: false,
   ok: false,
@@ -2056,6 +2058,16 @@ window.addEventListener("hashchange", () => handleStartupDeepLinks());
 document.addEventListener("click", (event) => {
   if (!event.target.closest("[data-sync-health-action]")) return;
   focusSyncHealthAction();
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-owner-activity-refresh]");
+  if (!button) return;
+  event.preventDefault();
+  if (!requireGlobalAdminToolsPermission("Refresh owner activity")) return;
+  refreshOwnerActivity({ force: true, silent: false, bypassCooldown: true, reason: "manual-refresh" }).catch((error) => {
+    setDataToolsMessage(`Owner activity refresh failed: ${error?.message || error}`);
+  });
 });
 
 els.loginForm.addEventListener("submit", async (event) => {
@@ -3337,7 +3349,9 @@ els.refreshBuildInfo?.addEventListener("click", () => {
 els.refreshSupabaseLoadMonitor?.addEventListener("click", () => {
   if (!requireGlobalAdminToolsPermission("Refresh load monitor")) return;
   renderSupabaseLoadMonitor();
-  refreshOwnerActivity({ force: true, silent: true, reason: "load-monitor-refresh" });
+  if (!ownerActivityAutoPausedUntilManual && Date.now() >= (ownerActivityCooldownUntil || 0)) {
+    refreshOwnerActivity({ silent: true, reason: "load-monitor-refresh" });
+  }
   renderAdminGuardrailOverview();
   setDataToolsMessage("Supabase load monitor refreshed.");
 });
@@ -4266,6 +4280,44 @@ function buildSupabaseLoadReport() {
   };
 }
 
+function normalizeOwnerActivityGroupKey(row = {}) {
+  return [row.action || row.route || "activity", row.actor_email || "unknown", row.workspace_label || row.ledger_id || "unknown"].join("|");
+}
+
+function summarizeOwnerActivityRows(rows = []) {
+  const summaryByKey = new Map();
+  rows.forEach((row) => {
+    const key = normalizeOwnerActivityGroupKey(row);
+    const existing = summaryByKey.get(key) || {
+      action: row.action || row.route || "activity",
+      actor: row.actor_email || "unknown user",
+      workspace: row.workspace_label || row.ledger_id || "unknown workspace",
+      ok: 0,
+      issues: 0,
+      count: 0,
+      latestAt: row.created_at || "",
+      latestSummary: row.summary || row.route || ""
+    };
+    existing.count += 1;
+    if (row.ok === true) existing.ok += 1;
+    else existing.issues += 1;
+    if (!existing.latestAt || Date.parse(row.created_at || "") > Date.parse(existing.latestAt || "")) {
+      existing.latestAt = row.created_at || existing.latestAt;
+      existing.latestSummary = row.summary || row.route || existing.latestSummary;
+    }
+    summaryByKey.set(key, existing);
+  });
+  return Array.from(summaryByKey.values()).sort((a, b) => Date.parse(b.latestAt || "") - Date.parse(a.latestAt || ""));
+}
+
+function formatOwnerActivitySummaryRow(row = {}) {
+  const time = row.latestAt ? new Date(row.latestAt).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--";
+  const status = row.issues ? `${row.issues} issue${row.issues === 1 ? "" : "s"}` : "OK";
+  const statusClass = row.issues ? "failed" : "ok";
+  const countText = `${row.count} event${row.count === 1 ? "" : "s"}`;
+  return `<article class="admin-operation-row compact ${statusClass}"><div><strong>${escapeHtml(row.action)}</strong><small>${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}</small><small>${escapeHtml(countText)}${row.latestSummary ? ` · ${escapeHtml(row.latestSummary)}` : ""}</small></div><span>${escapeHtml(status)}</span><small>${escapeHtml(time)}</small></article>`;
+}
+
 function formatOwnerActivityRow(row = {}) {
   const time = row.created_at ? new Date(row.created_at).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--:--";
   const workspace = row.workspace_label || row.ledger_id || "unknown workspace";
@@ -4275,7 +4327,7 @@ function formatOwnerActivityRow(row = {}) {
   const code = row.result_code ? ` · ${row.result_code}` : "";
   const duration = Number.isFinite(Number(row.duration_ms)) && Number(row.duration_ms) > 0 ? ` · ${formatDurationMs(Number(row.duration_ms))}` : "";
   const summary = row.summary || row.route || "";
-  return `<article class="admin-operation-row ${row.ok === true ? "ok" : "failed"}"><div><strong>${escapeHtml(action)}</strong><small>${escapeHtml(actor)} · ${escapeHtml(workspace)}${code}</small>${summary ? `<small>${escapeHtml(summary)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(time)}${escapeHtml(duration)}</small></article>`;
+  return `<article class="admin-operation-row compact ${row.ok === true ? "ok" : "failed"}"><div><strong>${escapeHtml(action)}</strong><small>${escapeHtml(actor)} · ${escapeHtml(workspace)}${code}</small>${summary ? `<small>${escapeHtml(summary)}</small>` : ""}</div><span>${escapeHtml(status)}</span><small>${escapeHtml(time)}${escapeHtml(duration)}</small></article>`;
 }
 
 function formatOwnerActivityCooldownMessage(now = Date.now()) {
@@ -4321,10 +4373,15 @@ function clearOwnerActivityTimeoutCooldown() {
   ownerActivityConsecutiveTimeouts = 0;
   ownerActivityCooldownUntil = 0;
   lastOwnerActivityTimeoutAt = 0;
+  ownerActivityAutoPausedUntilManual = false;
 }
 
 function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", success = true } = {}) {
   if (!success) return Promise.resolve(ownerActivityStatus);
+  if (ownerActivityAutoPausedUntilManual) {
+    recordOwnerActivityCooldownSkip(`${reason}-manual-pause`);
+    return Promise.resolve(ownerActivityStatus);
+  }
   if (Date.now() < ownerActivityCooldownUntil) {
     recordOwnerActivityCooldownSkip(reason);
     return Promise.resolve(ownerActivityStatus);
@@ -4335,24 +4392,36 @@ function maybeRefreshOwnerActivityAfterMemberAction({ reason = "member-action", 
 function renderOwnerActivityCard() {
   const status = ownerActivityStatus || {};
   const allRows = Array.isArray(status.rows) ? status.rows : [];
-  const rows = allRows.slice(0, 20);
+  const summaryRows = summarizeOwnerActivityRows(allRows).slice(0, ownerActivityVisibleRowLimit);
+  const recentRows = allRows.slice(0, ownerActivityVisibleRowLimit);
+  const hiddenCount = Math.max(0, allRows.length - recentRows.length);
   const coolingDown = Date.now() < (ownerActivityCooldownUntil || 0);
-  const cardClass = status.loading || coolingDown ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Loading" : coolingDown ? "Paused" : status.checked ? (status.ok ? `${rows.length} recent` : "Needs review") : "Not loaded";
-  const detail = coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
+  const manuallyPaused = ownerActivityAutoPausedUntilManual || status.manualPaused;
+  const cardClass = status.loading || coolingDown || manuallyPaused ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
+  const title = status.loading ? "Loading" : manuallyPaused ? "Manual refresh" : coolingDown ? "Paused" : status.checked ? (status.ok ? `${allRows.length} recent` : "Needs review") : "Not loaded";
+  const detail = manuallyPaused
+    ? "Owner activity auto-refresh is paused after a timeout. Use Refresh owner activity when you need this audit view; core ledger data is still loaded."
+    : coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Server-owned activity lets the app owner see safe cross-user/cross-workspace backend actions.";
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>Owner activity</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>Server-side · all workspaces</small>
+      <small>Server-side audit · optional admin view</small>
       <p>${escapeHtml(detail)}</p>
+      <button type="button" class="secondary small-button" data-owner-activity-refresh>Refresh owner activity</button>
     </article>
-    ${rows.length ? `
-      <details class="admin-diagnostics-section" open>
-        <summary>Owner activity · server-side</summary>
-        <div class="admin-operation-list">
-          ${rows.map(formatOwnerActivityRow).join("")}
+    ${summaryRows.length ? `
+      <details class="admin-diagnostics-section owner-activity-section">
+        <summary>Owner activity summary <span class="entry-meta">${escapeHtml(summaryRows.length)} grouped · ${escapeHtml(allRows.length)} raw${hiddenCount ? ` · ${hiddenCount} hidden` : ""}</span></summary>
+        <div class="admin-operation-list compact-list">
+          ${summaryRows.map(formatOwnerActivitySummaryRow).join("")}
         </div>
+        <details class="admin-nested-details">
+          <summary>Show latest raw owner activity rows</summary>
+          <div class="admin-operation-list compact-list owner-activity-raw-list">
+            ${recentRows.map(formatOwnerActivityRow).join("")}
+          </div>
+        </details>
       </details>
     ` : ""}
   `;
@@ -4361,6 +4430,19 @@ function renderOwnerActivityCard() {
 async function refreshOwnerActivity({ force = false, silent = true, bypassCooldown = false, reason = "background" } = {}) {
   if (!canUseGlobalAdminTools()) return ownerActivityStatus;
   const now = Date.now();
+  if (!force && ownerActivityAutoPausedUntilManual) {
+    ownerActivityStatus = {
+      ...ownerActivityStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      manualPaused: true,
+      message: "Owner activity auto-refresh is paused after a timeout. Use Refresh owner activity to try again.",
+      checkedAt: new Date().toISOString()
+    };
+    recordOwnerActivityCooldownSkip(`${reason}-manual-pause`);
+    return ownerActivityStatus;
+  }
   if (!bypassCooldown && now < ownerActivityCooldownUntil) {
     ownerActivityStatus = {
       ...ownerActivityStatus,
@@ -4463,7 +4545,10 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
     if (!silent) setDataToolsMessage(ownerActivityStatus.message);
   } catch (error) {
     const timedOut = /timeout|timed out|AbortError|PaymentActionTimeoutError/i.test(String(error?.code || error?.name || error?.message || error || ""));
-    if (timedOut) applyOwnerActivityTimeoutCooldown();
+    if (timedOut) {
+      applyOwnerActivityTimeoutCooldown();
+      ownerActivityAutoPausedUntilManual = true;
+    }
     ownerActivityStatus = {
       checked: true,
       ok: false,

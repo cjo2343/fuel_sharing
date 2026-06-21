@@ -3614,6 +3614,62 @@ body.auth-locked #authPanel .text-button {
 }
 
 
+
+.admin-diagnostics-section.owner-activity-section {
+  background: #fbfdfb;
+}
+
+.admin-diagnostics-section .entry-meta {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.admin-operation-list.compact-list {
+  gap: 0.45rem;
+  max-height: 380px;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.admin-operation-row.compact {
+  grid-template-columns: minmax(14rem, 1fr) minmax(4.5rem, auto) minmax(5rem, auto);
+  padding: 0.62rem 0.75rem;
+  border-radius: 12px;
+}
+
+.admin-operation-row.compact strong {
+  font-size: 0.92rem;
+}
+
+.admin-operation-row.compact small {
+  font-size: 0.78rem;
+}
+
+.admin-nested-details {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+}
+
+.admin-nested-details > summary {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.owner-activity-raw-list {
+  margin-top: 0.55rem;
+}
+
+.small-button {
+  width: fit-content;
+  padding: 0.48rem 0.72rem;
+  font-size: 0.82rem;
+  border-radius: 12px;
+}
+
 @media (max-width: 860px) {
   .booking-month-weekdays,
   .booking-month-grid {
@@ -5138,6 +5194,62 @@ body.auth-locked #authPanel .text-button {
 .readable-activity-list li {
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+
+.admin-diagnostics-section.owner-activity-section {
+  background: #fbfdfb;
+}
+
+.admin-diagnostics-section .entry-meta {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.admin-operation-list.compact-list {
+  gap: 0.45rem;
+  max-height: 380px;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.admin-operation-row.compact {
+  grid-template-columns: minmax(14rem, 1fr) minmax(4.5rem, auto) minmax(5rem, auto);
+  padding: 0.62rem 0.75rem;
+  border-radius: 12px;
+}
+
+.admin-operation-row.compact strong {
+  font-size: 0.92rem;
+}
+
+.admin-operation-row.compact small {
+  font-size: 0.78rem;
+}
+
+.admin-nested-details {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+}
+
+.admin-nested-details > summary {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.owner-activity-raw-list {
+  margin-top: 0.55rem;
+}
+
+.small-button {
+  width: fit-content;
+  padding: 0.48rem 0.72rem;
+  font-size: 0.82rem;
+  border-radius: 12px;
 }
 
 @media (max-width: 860px) {
