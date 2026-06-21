@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T09:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v363",
+    updatedAt: "2026-06-21T09:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v364",
     releaseNotes: Object.freeze([
+      "Settings lock diagnostics now use the canonical active workspace instead of stale selector DOM: when settings/vehicle lookup is blocked by a workspace that is still loading, Data I/O records settings-edit and vehicle-lookup WORKSPACE_NOT_LOADED rows with selected-vs-loaded workspace IDs and retries stale loading locks.",
       "Workspace session state now separates selected and loaded workspaces: switches and blocked actions record selected-vs-loaded IDs, vehicle lookup records WORKSPACE_NOT_LOADED when settings are locked, and the app retries loading the selected workspace instead of silently reporting only the previous workspace.",
       "Latest Data I/O diagnostics now use the same global-vs-optional filtering as the operation card, while Owner Activity refresh disables while loading and duplicate clicks no longer add skipped Data I/O noise.",
       "Optional Admin panels no longer become the global red Latest Data I/O status: workspace/invite refresh and owner-audit refresh stay in their own sections, Admin opens no longer auto-run those optional refreshes, and skipped rows are counted separately from issues.",

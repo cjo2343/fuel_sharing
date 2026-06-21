@@ -288,8 +288,35 @@ function recordWorkspaceActionBlocked(source = "workspace-action", action = "cha
 
 function requestActiveWorkspaceReload(reason = "workspace-action-blocked") {
   if (!supabaseClient || !currentSession) return;
-  if (activeWorkspaceLoadInProgress || supabaseLoadInFlight || workspaceSessionRecoveryInFlight) return;
   const targetLedgerId = getActiveLedgerId();
+  const loadingSameWorkspace = activeWorkspaceLoadInProgress && String(activeWorkspaceLoadLedgerId || "") === String(targetLedgerId || "");
+  const loadingAgeMs = activeWorkspaceLoadStartedAt ? Date.now() - Number(activeWorkspaceLoadStartedAt) : 0;
+  if (workspaceSessionRecoveryInFlight || supabaseLoadInFlight) return;
+  if (activeWorkspaceLoadInProgress && loadingSameWorkspace && loadingAgeMs < 10000) return;
+  if (activeWorkspaceLoadInProgress && loadingSameWorkspace && loadingAgeMs >= 10000) {
+    recordDataIoDiagnostic("timeout", {
+      source: "workspace-session",
+      route: "workspace-session",
+      operation: "load",
+      ok: false,
+      resultCode: "WORKSPACE_SESSION_RETRY_AFTER_STALE_LOADING",
+      statusCode: "WORKSPACE_SESSION_RETRY_AFTER_STALE_LOADING",
+      code: "WORKSPACE_SESSION_RETRY_AFTER_STALE_LOADING",
+      detail: `${getWorkspaceLabelByLedgerId(targetLedgerId)} was still locked after ${Math.round(loadingAgeMs / 1000)}s; starting a fresh bounded workspace load.`,
+      ledgerId: getLoadedWorkspaceId(),
+      selectedWorkspaceId: targetLedgerId,
+      selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId),
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      loadedWorkspaceLabel: getLoadedWorkspaceLabel(),
+      workspaceMismatch: String(targetLedgerId || "") !== String(getLoadedWorkspaceId() || ""),
+      workspaceLabel: `${getWorkspaceLabelByLedgerId(targetLedgerId)} · loaded ${getLoadedWorkspaceLabel()}`
+    });
+    activeWorkspaceLoadInProgress = false;
+    activeWorkspaceLoadLedgerId = "";
+    activeWorkspaceLoadStartedAt = 0;
+  } else if (activeWorkspaceLoadInProgress) {
+    return;
+  }
   workspaceSessionRecoveryInFlight = true;
   window.setTimeout(async () => {
     try {
@@ -304,6 +331,48 @@ function requestActiveWorkspaceReload(reason = "workspace-action-blocked") {
       render();
     }
   }, 0);
+}
+
+
+function maybeRecordSettingsWorkspaceLocked() {
+  if (!supabaseClient || !currentSession) return;
+  if (isActiveWorkspaceDataConfirmed()) return;
+  const selectedWorkspaceId = getActiveLedgerId();
+  const session = getWorkspaceSessionSnapshot({
+    selectedWorkspaceId,
+    selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(selectedWorkspaceId)
+  });
+  const signature = `${session.selectedWorkspaceId}|${session.loadedWorkspaceId}|${session.loadStatus}`;
+  const now = Date.now();
+  if (signature === lastSettingsWorkspaceLockSignature && now - Number(lastSettingsWorkspaceLockRecordedAt || 0) < 15000) return;
+  lastSettingsWorkspaceLockSignature = signature;
+  lastSettingsWorkspaceLockRecordedAt = now;
+  const baseMeta = {
+    route: "workspace-session",
+    operation: "blocked",
+    ok: false,
+    resultCode: "WORKSPACE_NOT_LOADED",
+    statusCode: "WORKSPACE_NOT_LOADED",
+    code: "WORKSPACE_NOT_LOADED",
+    ledgerId: session.loadedWorkspaceId,
+    selectedWorkspaceId: session.selectedWorkspaceId,
+    selectedWorkspaceLabel: session.selectedWorkspaceLabel,
+    loadedWorkspaceId: session.loadedWorkspaceId,
+    loadedWorkspaceLabel: session.loadedWorkspaceLabel,
+    workspaceMismatch: session.workspaceMismatch,
+    workspaceLabel: session.workspaceMismatch ? `${session.selectedWorkspaceLabel} · loaded ${session.loadedWorkspaceLabel}` : session.loadedWorkspaceLabel
+  };
+  recordDataIoDiagnostic("blocked", {
+    ...baseMeta,
+    source: "settings-edit",
+    detail: `${session.selectedWorkspaceLabel} settings are locked until that workspace data is loaded. ${session.loadedWorkspaceLabel} remains the last confirmed workspace.`
+  });
+  recordDataIoDiagnostic("blocked", {
+    ...baseMeta,
+    source: "vehicle-lookup",
+    detail: `Vehicle lookup is blocked until ${session.selectedWorkspaceLabel} is loaded. ${session.loadedWorkspaceLabel} remains the last confirmed workspace.`
+  });
+  requestActiveWorkspaceReload("settings-lock");
 }
 
 function assertActiveWorkspaceDataConfirmed(action = "change this workspace", source = "workspace-action") {
@@ -824,6 +893,8 @@ let activeWorkspaceLoadStartedAt = 0;
 let lastConfirmedWorkspaceLedgerId = "";
 let lastConfirmedWorkspaceLabel = "";
 let workspaceSessionRecoveryInFlight = false;
+let lastSettingsWorkspaceLockSignature = "";
+let lastSettingsWorkspaceLockRecordedAt = 0;
 
 const foregroundOperationStaleMs = 20000;
 const foregroundOperations = new Map();
@@ -7644,19 +7715,16 @@ function getCurrentWorkspaceContext() {
 }
 
 function getSelectedWorkspaceIdFromUi() {
-  const value = String(els?.activeWorkspace?.value || "").trim();
-  return value || getActiveLedgerId();
+  // Canonical workspace selection lives in activeLedgerId. The <select> can lag behind
+  // during render/startup, so diagnostics must not trust stale DOM values.
+  const active = String(getActiveLedgerId() || "").trim();
+  if (active) return active;
+  return String(els?.activeWorkspace?.value || "").trim() || getConfiguredLedgerId();
 }
 
 function getSelectedWorkspaceLabelFromUi() {
-  const select = els?.activeWorkspace;
   const value = getSelectedWorkspaceIdFromUi();
-  const selectedOption = select && select.selectedOptions && select.selectedOptions.length ? select.selectedOptions[0] : null;
-  if (selectedOption && selectedOption.textContent) {
-    return String(selectedOption.textContent || "").trim();
-  }
-  const match = getWorkspaceLedgerOptions().find((ledger) => String(ledger.ledger_id || "") === String(value || ""));
-  return match ? getWorkspaceOptionLabel(match) : (value || getCurrentWorkspaceContext().label);
+  return getWorkspaceLabelByLedgerId(value) || value || getCurrentWorkspaceContext().label;
 }
 
 function getCurrentWorkspaceLabel() {
@@ -8539,9 +8607,14 @@ function renderSettings() {
     els.settingsPanel.classList.toggle("hidden", !canManage);
   }
   if (canManage && !workspaceConfirmed && els.vehicleLookupStatus) {
+    maybeRecordSettingsWorkspaceLocked();
+    const session = getWorkspaceSessionSnapshot({
+      selectedWorkspaceId: getActiveLedgerId(),
+      selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(getActiveLedgerId())
+    });
     els.vehicleLookupStatus.textContent = activeWorkspaceLoadInProgress
-      ? `Loading ${getCurrentWorkspaceLabel()} before settings can be edited…`
-      : `Workspace data for ${getCurrentWorkspaceLabel()} is not confirmed yet. Use Sync now before editing.`;
+      ? `Loading ${session.selectedWorkspaceLabel} before settings can be edited…`
+      : `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded. Loading ${session.selectedWorkspaceLabel} before settings can be edited…`;
   }
 
   const isEditingSettings = Boolean(els.settingsForm && els.settingsForm.contains(document.activeElement));

@@ -16,5 +16,10 @@ assert.match(app, /assertActiveWorkspaceDataConfirmed\("lookup vehicle informati
 assert.match(app, /alreadySelected && isActiveWorkspaceDataConfirmed\(\)/, 'workspace switching should only ignore an already-selected workspace when it is confirmed.');
 assert.match(app, /WORKSPACE_LOAD_RETRY_STARTED/, 're-selecting an unconfirmed workspace should record a retry instead of doing nothing.');
 assert.match(app, /selectedWorkspaceLabel[\s\S]*loadedWorkspaceLabel[\s\S]*editing stays locked/, 'delayed workspace switch diagnostics should explain selected-vs-loaded state.');
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v363"/, 'build-info should point to v363 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v363"/, 'service worker cache should be bumped to v363.');
+
+assert.match(app, /function maybeRecordSettingsWorkspaceLocked\(\)[\s\S]*source: "settings-edit"[\s\S]*source: "vehicle-lookup"/, 'rendered settings lock should record both settings and vehicle lookup blocked breadcrumbs.');
+assert.match(app, /function getSelectedWorkspaceIdFromUi\(\)[\s\S]*stale DOM values[\s\S]*getActiveLedgerId\(\)/, 'Data I/O selected workspace should prefer canonical active ledger over stale selector DOM.');
+assert.match(app, /WORKSPACE_SESSION_RETRY_AFTER_STALE_LOADING/, 'stale workspace loading locks should be diagnosed and retried.');
+assert.match(app, /maybeRecordSettingsWorkspaceLocked\(\);[\s\S]*Loading \$\{session\.selectedWorkspaceLabel\} before settings can be edited/, 'Settings lock render path should invoke workspace-session diagnostics before showing the loading message.');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v364"/, 'build-info should point to v363 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v364"/, 'service worker cache should be bumped to v363.');
