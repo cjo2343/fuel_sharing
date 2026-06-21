@@ -593,6 +593,98 @@ function requestActiveWorkspaceReload(reason = "workspace-action-blocked") {
 }
 
 
+function clearWorkspaceSwitchAutoRetry(reason = "cleared") {
+  if (workspaceSwitchAutoRetryTimer) {
+    window.clearTimeout(workspaceSwitchAutoRetryTimer);
+    workspaceSwitchAutoRetryTimer = null;
+  }
+  if (workspaceSwitchAutoRetryLedgerId) {
+    recordSupabaseLoadEvent("workspace-switch-live-retry-clear", `${reason}: ${workspaceSwitchAutoRetryLedgerId}`);
+  }
+  workspaceSwitchAutoRetryLedgerId = "";
+  workspaceSwitchAutoRetryAttempts = 0;
+}
+
+function scheduleWorkspaceSwitchAutoRetry(ledgerId, reason = "workspace-switch") {
+  if (!supabaseClient || !currentSession) return;
+  const targetLedgerId = String(ledgerId || getActiveLedgerId() || "").trim();
+  if (!targetLedgerId) return;
+  if (isActiveWorkspaceDataConfirmed() && String(getActiveLedgerId() || "") === targetLedgerId) {
+    clearWorkspaceSwitchAutoRetry(`${reason}-already-confirmed`);
+    return;
+  }
+  if (workspaceSwitchAutoRetryTimer && workspaceSwitchAutoRetryLedgerId === targetLedgerId) return;
+  if (workspaceSwitchAutoRetryLedgerId && workspaceSwitchAutoRetryLedgerId !== targetLedgerId) {
+    clearWorkspaceSwitchAutoRetry(`${reason}-target-changed`);
+  }
+  workspaceSwitchAutoRetryLedgerId = targetLedgerId;
+  const attempt = workspaceSwitchAutoRetryAttempts;
+  const delayMs = workspaceSwitchAutoRetryDelaysMs[Math.min(attempt, workspaceSwitchAutoRetryDelaysMs.length - 1)];
+  recordDataIoDiagnostic("skip", {
+    source: "workspace-switch-live-sync",
+    route: "workspace-session",
+    operation: "load",
+    ok: true,
+    resultCode: "WORKSPACE_SWITCH_AUTO_RETRY_SCHEDULED",
+    selectedWorkspaceId: targetLedgerId,
+    selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId),
+    loadedWorkspaceId: getLoadedWorkspaceId(),
+    loadedWorkspaceLabel: getLoadedWorkspaceLabel(),
+    workspaceMismatch: String(targetLedgerId || "") !== String(getLoadedWorkspaceId() || ""),
+    detail: `Will retry loading ${getWorkspaceLabelByLedgerId(targetLedgerId)} automatically in ${Math.round(delayMs / 1000)}s.`
+  });
+  workspaceSwitchAutoRetryTimer = window.setTimeout(async () => {
+    workspaceSwitchAutoRetryTimer = null;
+    if (!supabaseClient || !currentSession) return;
+    if (String(getActiveLedgerId() || "") !== targetLedgerId) {
+      clearWorkspaceSwitchAutoRetry(`${reason}-active-workspace-changed`);
+      return;
+    }
+    if (isActiveWorkspaceDataConfirmed()) {
+      clearWorkspaceSwitchAutoRetry(`${reason}-confirmed-before-retry`);
+      return;
+    }
+    if (supabaseLoadInFlight) {
+      workspaceSwitchAutoRetryAttempts += 1;
+      scheduleWorkspaceSwitchAutoRetry(targetLedgerId, `${reason}-load-in-flight`);
+      return;
+    }
+    workspaceSwitchAutoRetryAttempts += 1;
+    markActiveWorkspaceLoading(`workspace-switch-live-sync:${reason}`);
+    showAppMessage(`Still loading ${getWorkspaceLabelByLedgerId(targetLedgerId)}. Retrying automatically…`, "info", { timeoutMs: 3500 });
+    const loaded = await loadSupabaseStateWithTimeout(
+      { force: true, background: false, reason: `workspace-switch-live-sync:${reason}:${targetLedgerId}` },
+      supabaseStartupLoadTimeoutMs,
+      `Loading ${getWorkspaceLabelByLedgerId(targetLedgerId)} is delayed. The app will keep retrying without a page refresh.`
+    );
+    if (loaded || isActiveWorkspaceDataConfirmed()) {
+      clearWorkspaceSwitchAutoRetry(`${reason}-confirmed`);
+      showAppMessage(`${getWorkspaceLabelByLedgerId(targetLedgerId)} is loaded and ready.`, "success", { timeoutMs: 3500 });
+      render();
+      return;
+    }
+    if (workspaceSwitchAutoRetryAttempts < workspaceSwitchAutoRetryDelaysMs.length) {
+      scheduleWorkspaceSwitchAutoRetry(targetLedgerId, reason);
+    } else {
+      recordDataIoDiagnostic("timeout", {
+        source: "workspace-switch-live-sync",
+        route: "workspace-session",
+        operation: "load",
+        ok: false,
+        resultCode: "WORKSPACE_SWITCH_AUTO_RETRY_EXHAUSTED",
+        selectedWorkspaceId: targetLedgerId,
+        selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId),
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        loadedWorkspaceLabel: getLoadedWorkspaceLabel(),
+        workspaceMismatch: String(targetLedgerId || "") !== String(getLoadedWorkspaceId() || ""),
+        detail: `${getWorkspaceLabelByLedgerId(targetLedgerId)} still has not confirmed after automatic retries.`
+      });
+      render();
+    }
+  }, delayMs);
+}
+
+
 function maybeRecordSettingsWorkspaceLocked() {
   if (!supabaseClient || !currentSession) return;
   if (isActiveWorkspaceDataConfirmed()) return;
@@ -903,8 +995,10 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
       workspaceLabel: confirmedSession.loadedWorkspaceLabel,
       detail: `${confirmedSession.selectedWorkspaceLabel} data is confirmed and safe to edit.`
     });
+    clearWorkspaceSwitchAutoRetry(`switch-confirmed:${source}`);
     showAppMessage(`Switched to ${getCurrentWorkspaceLabel()}. Workspace data is loaded and safe to edit.`, "success", { timeoutMs: 4500 });
     scheduleWorkspaceInviteRefresh(`switch-confirmed:${source}`);
+    render();
   } else {
     markActiveWorkspaceLoadFailed(source);
     const delayedSession = getWorkspaceSessionSnapshot({ selectedWorkspaceId: targetLedgerId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId) });
@@ -921,7 +1015,9 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
       workspaceLabel: delayedSession.workspaceMismatch ? `${delayedSession.selectedWorkspaceLabel} · loaded ${delayedSession.loadedWorkspaceLabel}` : delayedSession.loadedWorkspaceLabel,
       detail: `${delayedSession.selectedWorkspaceLabel} is selected, but ${delayedSession.loadedWorkspaceLabel} remains loaded; editing stays locked.`
     });
-    showUserError(`${delayedSession.selectedWorkspaceLabel} is selected, but its data has not loaded yet. You are still viewing ${delayedSession.loadedWorkspaceLabel}. Try Sync now before editing.`);
+    showUserError(`${delayedSession.selectedWorkspaceLabel} is selected, but its data has not loaded yet. The app will retry automatically; you should not need to refresh the page.`);
+    scheduleWorkspaceSwitchAutoRetry(targetLedgerId, source);
+    render();
   }
 }
 
@@ -1154,6 +1250,10 @@ let activeWorkspaceLoadStartedAt = 0;
 let lastConfirmedWorkspaceLedgerId = "";
 let lastConfirmedWorkspaceLabel = "";
 let workspaceSessionRecoveryInFlight = false;
+let workspaceSwitchAutoRetryTimer = null;
+let workspaceSwitchAutoRetryLedgerId = "";
+let workspaceSwitchAutoRetryAttempts = 0;
+const workspaceSwitchAutoRetryDelaysMs = [2000, 5000, 10000, 20000];
 let lastSettingsWorkspaceLockSignature = "";
 let lastSettingsWorkspaceLockRecordedAt = 0;
 
@@ -19830,10 +19930,17 @@ async function loadSupabaseState(options = {}) {
     clearSyncDelay(`load-success:${reason}`);
     recordSyncDiagnostic("load-success", loadedFromTables ? "Loaded from normalized tables." : "Loaded from JSON mirror fallback.", { reason, loadedFromTables });
     markActiveWorkspaceConfirmed(reason);
+    if (/workspace-switch|workspace-session|ledger-event|manual|startup|auth/i.test(String(reason || ""))) {
+      clearWorkspaceSwitchAutoRetry(`load-confirmed:${reason}`);
+    }
     setSyncStatus(loadedFromTables ? "Tables" : "Cloud");
+    render();
     return true;
   } catch (error) {
     markActiveWorkspaceLoadFailed(reason);
+    if (/workspace-switch|workspace-session/i.test(String(reason || ""))) {
+      scheduleWorkspaceSwitchAutoRetry(getActiveLedgerId(), `load-error:${reason}`);
+    }
     lastSyncError = error.message || "Could not load cloud data.";
     lastCloudRetryAt = new Date().toISOString();
     recordSyncDiagnostic("load-error", lastSyncError, { reason, error });
@@ -20208,13 +20315,13 @@ function handleLedgerEventNotification(row) {
   const actorEmail = String(row.actor_email || "").trim().toLowerCase();
   const targetEmail = String(row.target_email || "").trim().toLowerCase();
   const me = currentSessionEmail();
-  if (actorEmail && me && actorEmail === me) return;
+  const sameActor = Boolean(actorEmail && me && actorEmail === me);
   if (targetEmail && me && targetEmail !== me) return;
 
   const title = row.title || "New shared update";
   const body = row.body || "Someone updated the shared fuel ledger.";
-  recordSupabaseLoadEvent("ledger-event-notification", row.event_type || "ledger_events");
-  showAppMessage(`${title}: ${body} Refreshing shared data automatically...`, "info");
+  recordSupabaseLoadEvent(sameActor ? "ledger-event-self-sync" : "ledger-event-notification", row.event_type || "ledger_events");
+  if (!sameActor) showAppMessage(`${title}: ${body} Refreshing shared data automatically...`, "info");
   setSyncStatus("Cloud");
   scheduleLedgerEventAutoSync(row);
 }
