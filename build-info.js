@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T10:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v366",
+    updatedAt: "2026-06-21T10:35:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v367",
     releaseNotes: Object.freeze([
+      "Workspace resolution is now exported in load reports and the resolver explains why it picked main-car or another workspace; non-owner users with one joined non-default workspace are preferred into that workspace instead of drifting to the default.",
       "Stability overhaul pass 1 makes workspace selection user-scoped, avoids recording Settings/vehicle lookup as failed during normal startup loading, clears stale Settings lock text after workspace load, and adds a visible Workspace session debug card.",
       "Workspace identity is now URL-backed and create/join/switch flows preserve the intended workspace through refreshes, so secondary workspaces such as test1 no longer drift back to main-car after list refresh or reload.",
       "Settings lock diagnostics now use the canonical active workspace instead of stale selector DOM: when settings/vehicle lookup is blocked by a workspace that is still loading, Data I/O records settings-edit and vehicle-lookup WORKSPACE_NOT_LOADED rows with selected-vs-loaded workspace IDs and retries stale loading locks.",

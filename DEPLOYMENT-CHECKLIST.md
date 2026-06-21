@@ -1,3 +1,4 @@
+- 2026-06-21 10:35 UTC: v367 workspace resolution visibility exports URL/user memory/linked workspaces/decision details in load reports and prefers a non-owner user's single non-default workspace over the configured default.
 - 2026-06-21 10:20 UTC: v366 stability overhaul pass 1 scopes remembered workspace selection per signed-in user, avoids false Settings/vehicle lookup blocked failures during startup loading, clears stale lock text after workspace load, and adds a visible Workspace session debug card.
 - 2026-06-21 09:15 UTC: v362 filters Latest Data I/O diagnostics the same way as operation status, keeps optional owner/workspace panel failures inside their sections, disables Owner Activity refresh while loading, and suppresses duplicate owner-activity skip rows.
 - 2026-06-19: v233 separates workspace-admin scope from primary app-admin tools. Admins of secondary/private workspaces can manage only their workspace settings, members, and invites; global Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
@@ -24,9 +25,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v366`
-- Updated at: `2026-06-21T10:20:00.000Z`
-- Top release note: Stability overhaul pass 1 makes workspace selection user-scoped, avoids recording Settings/vehicle lookup as failed during normal startup loading, clears stale Settings lock text after workspace load, and adds a visible Workspace session debug card.
+- Service-worker cache: `fuel-ledger-v367`
+- Updated at: `2026-06-21T10:35:00.000Z`
+- Top release note: Workspace resolution is now exported in load reports and the resolver explains why it picked main-car or another workspace; non-owner users with one joined non-default workspace are preferred into that workspace instead of drifting to the default.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
