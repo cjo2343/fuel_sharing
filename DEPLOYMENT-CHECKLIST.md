@@ -1,3 +1,4 @@
+- 2026-06-21 09:15 UTC: v362 filters Latest Data I/O diagnostics the same way as operation status, keeps optional owner/workspace panel failures inside their sections, disables Owner Activity refresh while loading, and suppresses duplicate owner-activity skip rows.
 - 2026-06-19: v233 separates workspace-admin scope from primary app-admin tools. Admins of secondary/private workspaces can manage only their workspace settings, members, and invites; global Data tools, Security Health, Render admin health, diagnostics, backups/imports, and Test Lab stay hidden outside the primary app-admin workspace.
 - 2026-06-19 v229: Member-facing onboarding actions now have their own Admin Data I/O flight-recorder group with stable result codes for workspace refresh, create, switch, invite redeem, and profile setup so beta-user failures are visible without DevTools.
 - 2026-06-19 v217: Normal foreground writes for trips, fuel, bookings, booking deletes, payment-status actions, and ledger-directory sync now fail closed through Render instead of falling back to browser Supabase RPC/direct-table writes.
@@ -22,9 +23,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v361`
-- Updated at: `2026-06-21T09:00:00.000Z`
-- Top release note: Optional Admin panels no longer become the global red Latest Data I/O status: workspace/invite refresh and owner-audit refresh stay in their own sections, Admin opens no longer auto-run those optional refreshes, and skipped rows are counted separately from issues.
+- Service-worker cache: `fuel-ledger-v362`
+- Updated at: `2026-06-21T09:15:00.000Z`
+- Top release note: Latest Data I/O diagnostics now use the same global-vs-optional filtering as the operation card, while Owner Activity refresh disables while loading and duplicate clicks no longer add skipped Data I/O noise.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

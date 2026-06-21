@@ -12,14 +12,14 @@ function assert(condition, message) {
 
 assert(app.includes('ownerActivityFetchStartedAt'), 'owner activity tracks fetch start time');
 assert(app.includes('ownerActivityInFlightTraceMeta'), 'owner activity keeps trace metadata for forced timeout finish rows');
-assert(app.includes('OWNER_ACTIVITY_REFRESH_IN_FLIGHT'), 'duplicate owner activity refreshes are explicitly skipped');
+assert(app.includes('Owner activity refresh is already running.'), 'duplicate owner activity refreshes are handled in UI state without normal Data I/O skip noise');
 assert(app.includes('OWNER_ACTIVITY_TIMEOUT'), 'stale owner activity refreshes record timeout finish rows');
 assert(app.includes('const requestAndReadPromise = (async () => {\n      const headers = await buildRenderRequestHeaders'), 'Render API timeout wraps token/header setup and fetch/body read');
 assert(app.includes('maybeRefreshOwnerActivityAfterMemberAction({ reason: "vehicle-lookup", success: true })'), 'vehicle lookup uses the owner-activity helper without auto-refreshing the global audit log');
 assert(app.includes('shouldRefreshOwnerActivityAfterLookup = !timedOut && !providerUnavailable'), 'vehicle lookup should not cascade into owner activity when Render is already timing out or provider is unavailable');
 
 assert(server.includes('def get_member_context_as_service_fast'), 'server has fast member-only vehicle lookup authorization');
-assert(server.includes('context = get_member_context_as_service_fast(ledger_id, user, timeout=5)'), 'vehicle lookup avoids slow open-period state-load context');
+assert(server.includes('context = get_member_context_as_service_fast(ledger_id, user, timeout=3)'), 'vehicle lookup avoids slow open-period state-load context');
 assert(server.includes('def record_lookup_activity'), 'vehicle lookup has one guaranteed owner activity recorder');
 assert(server.includes('VEHICLE_LOOKUP_CLIENT_CLOSED'), 'vehicle lookup records client disconnects');
 assert(server.includes('VEHICLE_LOOKUP_TIMEOUT'), 'vehicle lookup records timeout outcomes');

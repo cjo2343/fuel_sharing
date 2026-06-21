@@ -1427,6 +1427,23 @@ function isOptionalAdminPanelOperation(operation = {}) {
   return isOptionalOwnerActivityOperation(operation) || isOptionalWorkspaceToolsOperation(operation);
 }
 
+function isOptionalOwnerActivityDiagnostic(entry = {}) {
+  return String(entry.source || "").toLowerCase() === "owner-activity";
+}
+
+function isOptionalWorkspaceToolsDiagnostic(entry = {}) {
+  return String(entry.source || "").toLowerCase() === "workspace-tools-refresh";
+}
+
+function isOptionalAdminPanelDiagnostic(entry = {}) {
+  return isOptionalOwnerActivityDiagnostic(entry) || isOptionalWorkspaceToolsDiagnostic(entry);
+}
+
+function latestDataIoDiagnostic({ includeOptionalAdminAudit = false } = {}) {
+  const diagnostics = latestDataIoDiagnostics(30);
+  return (includeOptionalAdminAudit ? diagnostics : diagnostics.filter((entry) => !isOptionalAdminPanelDiagnostic(entry)))[0] || null;
+}
+
 function latestDataIoOperation({ includeOptionalAdminAudit = false } = {}) {
   const operations = latestDataIoOperations(12);
   return (includeOptionalAdminAudit ? operations : operations.filter((operation) => !isOptionalAdminPanelOperation(operation)))[0] || null;
@@ -4306,7 +4323,8 @@ function buildSupabaseLoadReport() {
     events: getSupabaseLoadEvents(30 * 60 * 1000),
     dataIoDiagnostics: latestDataIoDiagnostics(30),
     dataIoOperations: latestDataIoOperations(30),
-    latestDataIoDiagnostic: lastDataIoDiagnostic,
+    latestDataIoDiagnostic: latestDataIoDiagnostic(),
+    latestOptionalAdminDataIoDiagnostic: latestDataIoDiagnostic({ includeOptionalAdminAudit: true }),
     latestDataIoOperation: latestDataIoOperation(),
     normalizedTableStatus,
     supabaseSecurityStatus,
@@ -4507,7 +4525,7 @@ function renderOwnerActivityCard() {
       <small>${ownerActivityScope === "all" ? "All workspaces" : "Current workspace only"} · optional admin view</small>
       <p>${escapeHtml(detail)}</p>
       ${renderOwnerActivityScopeControls()}
-      <button type="button" class="secondary small-button" data-owner-activity-refresh>Refresh owner activity</button>
+      <button type="button" class="secondary small-button" data-owner-activity-refresh ${ownerActivityFetchInFlight || status.loading ? "disabled aria-disabled=\"true\"" : ""}>${ownerActivityFetchInFlight || status.loading ? "Refreshing owner activity…" : "Refresh owner activity"}</button>
     </article>
     ${summaryRows.length ? `
       <details class="admin-diagnostics-section owner-activity-section">
@@ -4575,26 +4593,11 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
       ownerActivityFetchStartedAt = 0;
       ownerActivityInFlightTraceMeta = null;
     } else {
-      if (force) {
-        const skippedContext = buildDataIoWorkspaceContext();
-        recordDataIoDiagnostic("skipped", {
-          source: "owner-activity",
-          route: "render-api",
-          endpoint: renderOwnerActivityUrl,
-          operation: "load",
-          operationId: createDataIoOperationId("owner-activity", "skip"),
-          ledgerId: skippedContext.loadedWorkspaceId,
-          selectedWorkspaceId: skippedContext.selectedWorkspaceId,
-          selectedWorkspaceLabel: skippedContext.selectedWorkspaceLabel,
-          loadedWorkspaceId: skippedContext.loadedWorkspaceId,
-          loadedWorkspaceLabel: skippedContext.loadedWorkspaceLabel,
-          workspaceMismatch: skippedContext.workspaceMismatch,
-          ok: true,
-          resultCode: "OWNER_ACTIVITY_REFRESH_IN_FLIGHT",
-          detail: "Owner activity refresh already running; skipped duplicate refresh.",
-          staleAfterMs: dataIoOperationStaleMs
-        });
-      }
+      ownerActivityStatus = {
+        ...ownerActivityStatus,
+        loading: true,
+        message: "Owner activity refresh is already running."
+      };
       return ownerActivityStatus;
     }
   }
