@@ -25,6 +25,7 @@ const renderBookingUpsertUrl = "/api/bookings/upsert";
 const renderBookingDeleteUrl = "/api/bookings/delete";
 const renderWriteContextUrl = "/api/context/write";
 const renderStateLoadUrl = "/api/state/load";
+const renderAppContextUrl = "/api/app/context";
 const renderSettingsSaveUrl = "/api/settings/save";
 const renderMemberManagementUrl = "/api/members/manage";
 const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
@@ -2420,6 +2421,16 @@ let workspaceInviteStatus = {
   rawLedgers: [],
   invites: [],
   lastCreatedInvite: null
+};
+let appBackendContextStatus = {
+  checked: false,
+  ok: false,
+  loading: false,
+  error: "",
+  checkedAt: "",
+  context: null,
+  activeWorkspaceId: "",
+  decision: "not-checked"
 };
 let workspaceMembershipProbeStatus = {
   checked: false,
@@ -5050,6 +5061,7 @@ function buildSupabaseLoadReport() {
     workspaceSession: getWorkspaceSessionSnapshot(),
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
     workspaceMembershipProbe: workspaceMembershipProbeStatus,
+    appBackendContext: appBackendContextStatus,
     appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsReportStatus(),
     vehicleLookupReadiness: getVehicleLookupReadinessSnapshot(),
     summary,
@@ -15259,6 +15271,111 @@ function describeInviteRedeemError(error) {
   return message;
 }
 
+
+function getWorkspaceUrlLedgerId() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    return workspaceUrlParamNames.map((name) => normalizeWorkspaceUrlId(params.get(name) || "")).find(Boolean) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function applyBackendAppContext(context, { persist = true, reason = "app-context" } = {}) {
+  if (!context || typeof context !== "object") return "";
+  const linked = Array.isArray(context.linkedWorkspaces) ? context.linkedWorkspaces : [];
+  if (linked.length) {
+    workspaceInviteStatus.rawLedgers = linked;
+    workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(linked);
+    workspaceInviteStatus.loaded = true;
+    workspaceInviteStatus.loading = false;
+    workspaceInviteStatus.loadingStartedAt = 0;
+    workspaceInviteStatus.error = "";
+    lastWorkspaceInviteRefreshAt = Date.now();
+  }
+  const active = context.activeWorkspace || {};
+  const activeId = String(active.ledgerId || active.ledger_id || "").trim();
+  if (activeId && activeId !== getActiveLedgerId()) {
+    setActiveLedgerId(activeId, { persist, updateUrl: true });
+    recordSupabaseLoadEvent("backend-app-context-workspace", `${reason}: ${activeId}`);
+  }
+  appBackendContextStatus = {
+    checked: true,
+    ok: true,
+    loading: false,
+    error: "",
+    checkedAt: new Date().toISOString(),
+    context,
+    activeWorkspaceId: activeId || getActiveLedgerId(),
+    decision: context.resolution?.decision || "backend-context"
+  };
+  updateWorkspaceResolutionDebug(appBackendContextStatus.decision, "Backend app context selected the active workspace.", {
+    reason,
+    selectedWorkspaceId: activeId || getActiveLedgerId(),
+    linkedWorkspaceCount: linked.length
+  });
+  renderActiveWorkspaceSelector();
+  return activeId;
+}
+
+async function getRenderAppContext({ ledgerId = getActiveLedgerId(), reason = "app-context", timeoutMs = 8000 } = {}) {
+  if (!currentSession || typeof fetch !== "function") return null;
+  const operationId = createDataIoOperationId("app-context", "load");
+  const traceMeta = { source: "app-context", route: "render-api", endpoint: renderAppContextUrl, operation: "load", operationId };
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    const accessToken = await getFreshRenderAccessToken();
+    if (!accessToken) return null;
+    appBackendContextStatus = { ...appBackendContextStatus, loading: true, error: "" };
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "APP_CONTEXT_STARTED", detail: `Load backend app context (${reason})` });
+    controller = new AbortController();
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+        reject(paymentActionTimeoutError("Backend app context", timeoutMs));
+      }, timeoutMs);
+    });
+    const response = await Promise.race([fetch(renderAppContextUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        ledgerId,
+        selectedWorkspaceId: getActiveLedgerId(),
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        urlWorkspaceId: getWorkspaceUrlLedgerId(),
+        reason
+      })
+    }), timeoutPromise]);
+    window.clearTimeout(timeoutId);
+    timeoutId = 0;
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    if (response.ok && result?.ok && result?.context) {
+      const activeId = applyBackendAppContext(result.context, { reason });
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "APP_CONTEXT_LOADED", detail: `Backend context loaded ${activeId || getActiveLedgerId()}` });
+      return result.context;
+    }
+    const message = result?.message || result?.error || text || `Backend app context failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    appBackendContextStatus = { ...appBackendContextStatus, checked: true, ok: false, loading: false, error: message, checkedAt: new Date().toISOString() };
+    recordDataIoDiagnostic("error", { ...traceMeta, ok: false, error, resultCode: "APP_CONTEXT_ERROR", detail: message });
+    return null;
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    const message = error?.message || String(error || "Backend app context failed");
+    appBackendContextStatus = { ...appBackendContextStatus, checked: true, ok: false, loading: false, error: message, checkedAt: new Date().toISOString() };
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, ok: false, error, resultCode: timedOut ? "APP_CONTEXT_TIMEOUT" : "APP_CONTEXT_EXCEPTION", detail: message });
+    return null;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+    appBackendContextStatus = { ...appBackendContextStatus, loading: false };
+  }
+}
+
 async function refreshLinkedWorkspacesAfterInvite(preferredLedgerId = "") {
   if (!supabaseClient || !currentSession) return [];
   const preferred = String(preferredLedgerId || "").trim();
@@ -19774,7 +19891,10 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  let ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+  const backendContext = await getRenderAppContext({ ledgerId, reason: "state-load" });
+  const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
+  if (backendWorkspaceId) ledgerId = backendWorkspaceId;
   const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
   let participantResult = { data: [], error: null };
   let membersResult;

@@ -83,6 +83,7 @@ const scripts = [
   "node tools/test-vehicle-lookup-request-scoped-status.mjs",
   "node tools/test-service-worker-status-self-heal.mjs",
   "node tools/test-idle-background-cleanup.mjs",
+  "node tools/test-backend-app-context.mjs",
   "node tools/test-workspace-selector-dedup.mjs",
   "node tools/test-workspace-authoritative-refresh-and-membership-probe.mjs",
   "node tools/test-owner-global-diagnostics-status-initialized.mjs",

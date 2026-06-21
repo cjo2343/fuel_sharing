@@ -2037,6 +2037,130 @@ def get_state_load_context_as_service(ledger_id, user):
     }
 
 
+
+def list_app_context_workspaces_as_service(user):
+    """Return the signed-in user's backend-owned workspace membership summary.
+
+    This is intentionally small and fast. It gives the frontend one canonical
+    source for workspace identity instead of mixing URL, local cache, and RPC
+    state before the page knows which ledger is authoritative.
+    """
+    user_email = str((user or {}).get("email") or "").strip().lower()
+    if not user_email:
+        raise PermissionError("Signed-in user email is required")
+    member_rows = request_json(
+        f"{supabase_url()}/rest/v1/ledger_members?select=id,ledger_id,name,email,role,is_active,updated_at&email=eq.{quote_postgrest_value(user_email)}&is_active=eq.true&order=created_at.asc",
+        api_key=supabase_key(),
+        timeout=6,
+    ) or []
+    ledger_ids = []
+    for row in member_rows:
+        ledger_id = str(row.get("ledger_id") or "").strip()
+        if ledger_id and ledger_id not in ledger_ids:
+            ledger_ids.append(ledger_id)
+
+    ledgers_by_id = {}
+    for ledger_id in ledger_ids[:25]:
+        try:
+            rows = request_json(
+                f"{supabase_url()}/rest/v1/ledgers?select=id,slug,name,currency,fuel_type,estimated_consumption_l_per_100km,fuel_tank_capacity_l,fallback_fuel_price,low_fuel_threshold_percent,updated_at&id=eq.{quote_postgrest_value(ledger_id)}&limit=1",
+                api_key=supabase_key(),
+                timeout=4,
+            ) or []
+            if rows:
+                ledgers_by_id[ledger_id] = rows[0]
+        except Exception as error:
+            log_internal_error("app context ledger lookup failed", error)
+
+    workspaces = []
+    for member in member_rows:
+        ledger_id = str(member.get("ledger_id") or "").strip()
+        if not ledger_id:
+            continue
+        ledger = ledgers_by_id.get(ledger_id) or {}
+        slug = str(ledger.get("slug") or ledger_id).strip() or ledger_id
+        name = str(ledger.get("name") or slug or ledger_id).strip() or "Fuel Ledger"
+        role = "admin" if str(member.get("role") or "").strip().lower() == "admin" else "member"
+        workspaces.append({
+            "ledgerId": ledger_id,
+            "ledger_id": ledger_id,
+            "slug": slug,
+            "name": name,
+            "label": f"{name} ({slug or ledger_id})",
+            "role": role,
+            "memberId": member.get("id") or "",
+            "member_id": member.get("id") or "",
+            "memberName": member.get("name") or "",
+            "primary": ledger_id == "main-car",
+            "settings": {
+                "currency": ledger.get("currency") or "",
+                "fuelType": ledger.get("fuel_type") or "",
+                "fuelConsumption": ledger.get("estimated_consumption_l_per_100km"),
+                "fuelTankCapacity": ledger.get("fuel_tank_capacity_l"),
+                "fuelFallbackPrice": ledger.get("fallback_fuel_price"),
+                "fuelWarningThreshold": ledger.get("low_fuel_threshold_percent"),
+            },
+        })
+    return workspaces
+
+
+def choose_app_context_workspace(workspaces, requested_ids, user):
+    by_id = {str(row.get("ledgerId") or row.get("ledger_id") or "").strip(): row for row in workspaces}
+    for requested in requested_ids:
+        requested = str(requested or "").strip()
+        if requested and requested in by_id:
+            return by_id[requested], "requested-linked"
+    if len(workspaces) == 1:
+        return workspaces[0], "single-linked-workspace"
+    configured = by_id.get("main-car")
+    non_default = [row for row in workspaces if str(row.get("ledgerId") or "") != "main-car"]
+    if non_default and not is_configured_app_owner(user):
+        return non_default[0], "member-non-default-workspace"
+    if configured:
+        return configured, "default-linked-workspace"
+    return (workspaces[0] if workspaces else None), "first-linked-workspace" if workspaces else "no-linked-workspace"
+
+
+def build_app_context_response(payload, user):
+    if not supabase_url() or not supabase_key():
+        raise RuntimeError("Supabase server environment variables are missing")
+    payload = payload if isinstance(payload, dict) else {}
+    requested_ids = [
+        payload.get("ledgerId"),
+        payload.get("ledger_id"),
+        payload.get("selectedWorkspaceId"),
+        payload.get("urlWorkspaceId"),
+        payload.get("preferredWorkspaceId"),
+    ]
+    workspaces = list_app_context_workspaces_as_service(user)
+    active, reason = choose_app_context_workspace(workspaces, requested_ids, user)
+    is_owner = is_configured_app_owner(user)
+    permissions = {
+        "isAppOwner": is_owner,
+        "canUseAppOwnerDiagnostics": is_owner,
+        "canViewAdminDiagnostics": is_owner,
+        "canWrite": bool(active),
+        "canManageSettings": bool(active and active.get("role") == "admin"),
+        "canManageMembers": bool(active and active.get("role") == "admin"),
+        "canLookupVehicle": bool(active and active.get("role") == "admin"),
+    }
+    return {
+        "user": {
+            "email": user.get("email") or "",
+            "id": user.get("sub") or user.get("id") or "",
+            "isAppOwner": is_owner,
+        },
+        "activeWorkspace": active or {},
+        "linkedWorkspaces": workspaces,
+        "permissions": permissions,
+        "resolution": {
+            "decision": reason,
+            "requestedWorkspaceIds": [str(value or "").strip() for value in requested_ids if str(value or "").strip()],
+            "linkedWorkspaceCount": len(workspaces),
+        },
+    }
+
+
 def get_member_context_as_service_fast(ledger_id, user, timeout=5):
     """Fast active-member authorization for lightweight routes such as vehicle lookup.
 
@@ -3078,6 +3202,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/context/write":
             self.get_write_context_backend()
             return
+        if self.path == "/api/app/context":
+            self.app_context_backend()
+            return
         if self.path == "/api/state/load":
             self.load_state_backend()
             return
@@ -3165,6 +3292,32 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_json({"ok": True, "state": read_state()})
 
+
+
+    def app_context_backend(self):
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before loading app context."}, status=401)
+            return
+        started_at = time.time()
+        try:
+            payload = read_request_body(self)
+            context = build_app_context_response(payload, user)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"ok": False, "code": "BAD_REQUEST", "message": str(error)}, status=400)
+            return
+        except PermissionError as error:
+            self.send_json({"ok": False, "code": "NOT_ALLOWED", "message": str(error)}, status=403)
+            return
+        except Exception as error:
+            self.send_safe_internal_error(error)
+            return
+        self.send_json({
+            "ok": True,
+            "context": context,
+            "backend": "render",
+            "durationMs": round((time.time() - started_at) * 1000),
+        })
 
     def load_state_backend(self):
         user = current_supabase_user(self)
