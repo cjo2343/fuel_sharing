@@ -1317,6 +1317,17 @@ let visibleSavingFailsafeTimer = null;
 let startupHydrationActive = false;
 let startupHydrationStartedAt = 0;
 let startupHydrationReason = "";
+const appStartupGateRetryLimit = 1;
+let appStartupGateState = {
+  phase: "idle",
+  ready: false,
+  loading: false,
+  error: "",
+  reason: "",
+  startedAt: 0,
+  completedAt: 0
+};
+let appStartupGatePromise = null;
 let activeWorkspaceLoadInProgress = false;
 let activeWorkspaceLoadLedgerId = "";
 let activeWorkspaceLoadStartedAt = 0;
@@ -1412,6 +1423,110 @@ function shouldSuppressStartupHydrationDelay() {
   if (!supabaseClient || !currentSession || !startupHydrationActive) return false;
   const ageMs = Date.now() - Number(startupHydrationStartedAt || Date.now());
   return ageMs < startupHydrationGraceMs;
+}
+
+function setAppStartupGatePhase(phase, detail = "", extra = {}) {
+  const normalizedPhase = String(phase || "idle");
+  appStartupGateState = {
+    ...appStartupGateState,
+    phase: normalizedPhase,
+    ready: normalizedPhase === "ready",
+    loading: !["idle", "ready", "failed"].includes(normalizedPhase),
+    error: normalizedPhase === "failed" ? String(detail || "Startup did not complete.") : "",
+    reason: String(extra.reason || appStartupGateState.reason || "startup"),
+    startedAt: appStartupGateState.startedAt || Date.now(),
+    completedAt: ["ready", "failed"].includes(normalizedPhase) ? Date.now() : 0
+  };
+  document.body.classList.toggle("app-startup-gated", appStartupGateState.loading);
+  if (detail) recordSyncDiagnostic(`startup-gate-${normalizedPhase}`, detail, { ...extra, startupGate: appStartupGateState });
+  renderSyncHealthBanner();
+  return appStartupGateState;
+}
+
+function isAppStartupGateReady() {
+  if (!supabaseClient || !currentSession) return true;
+  return appStartupGateState.ready === true && Boolean(lastCloudSyncAt || lastCloudSaveAt);
+}
+
+function shouldDelayOptionalStartupLane(reason = "optional") {
+  if (!supabaseClient || !currentSession) return false;
+  if (isAppStartupGateReady()) return false;
+  const normalizedReason = String(reason || "optional").toLowerCase();
+  if (/^manual-|critical-action|workspace-switch|startup-wake-gate/.test(normalizedReason)) return false;
+  return appStartupGateState.loading || startupHydrationActive || !lastCloudSyncAt;
+}
+
+async function ensureAppStartupWakeGate(reason = "startup", { force = false } = {}) {
+  if (!supabaseClient || !currentSession) return false;
+  const normalizedReason = String(reason || "startup");
+  if (!force && isAppStartupGateReady()) {
+    recordSyncDiagnostic("startup-gate-ready", `Startup gate already ready for ${normalizedReason}.`, { reason: normalizedReason, startupGate: appStartupGateState });
+    return true;
+  }
+  if (appStartupGatePromise) {
+    recordDataIoDiagnostic("skip", {
+      source: "startup-wake-gate",
+      route: "render-api",
+      operation: "startup",
+      ok: true,
+      resultCode: "STARTUP_GATE_JOINED_IN_FLIGHT",
+      detail: `Joined existing startup wake gate for ${normalizedReason}.`
+    });
+    return appStartupGatePromise;
+  }
+  appStartupGatePromise = (async () => {
+    appStartupGateState = {
+      phase: "starting",
+      ready: false,
+      loading: true,
+      error: "",
+      reason: normalizedReason,
+      startedAt: Date.now(),
+      completedAt: 0
+    };
+    beginStartupHydration(normalizedReason);
+    setSyncStatus("Syncing", { source: "startup-wake-gate" });
+    setAppStartupGatePhase("waking-backend", `Waking Render before loading workspace (${normalizedReason}).`, { reason: normalizedReason });
+    try {
+      const wake = await ensureRenderBackendReadyForUserAction({ reason: `startup-gate:${normalizedReason}`, timeoutMs: renderBackendWakeTimeoutMs, retries: appStartupGateRetryLimit });
+      if (!wake?.ok) {
+        throw new Error(wake?.message || "Render backend did not wake before startup load.");
+      }
+      setAppStartupGatePhase("hydrating-context", `Loading backend app context before workspace state (${normalizedReason}).`, { reason: normalizedReason });
+      await hydrateAppSessionContext({ reason: normalizedReason, source: "startup-wake-gate", timeoutMs: 8000 });
+      await refreshAuthBoundMemberProfile().catch((error) => {
+        recordSyncDiagnostic("startup-gate-profile-warning", error?.message || "Auth-bound member profile refresh did not complete.", { reason: normalizedReason, error });
+      });
+      setAppStartupGatePhase("loading-state", `Loading workspace state after backend context (${normalizedReason}).`, { reason: normalizedReason });
+      const loaded = await loadSupabaseStateWithTimeout(
+        { force: true, reason: `startup-wake-gate:${normalizedReason}` },
+        supabaseStartupLoadTimeoutMs,
+        "Startup backend/workspace load is delayed. Use Retry loading workspace; a browser refresh should not be needed."
+      );
+      if (!loaded && !hasRecentHealthyCloudSync()) {
+        throw new Error("Workspace state did not load during startup gate.");
+      }
+      subscribeToLedgerEvents();
+      subscribeToSupabaseState();
+      setAppStartupGatePhase("ready", `Startup gate ready for ${normalizedReason}.`, { reason: normalizedReason });
+      finishStartupHydration(`startup-gate-ready:${normalizedReason}`);
+      clearSyncDelay(`startup-gate-ready:${normalizedReason}`);
+      updateAuthUi();
+      render();
+      return true;
+    } catch (error) {
+      setAppStartupGatePhase("failed", error?.message || "Startup gate failed before workspace state loaded.", { reason: normalizedReason, error });
+      finishStartupHydration(`startup-gate-failed:${normalizedReason}`);
+      lastSyncError = "Backend startup is delayed. Tap Retry loading workspace; a browser refresh should not be needed.";
+      lastCloudRetryAt = new Date().toISOString();
+      setSyncStatus("Delayed");
+      render();
+      return false;
+    } finally {
+      appStartupGatePromise = null;
+    }
+  })();
+  return appStartupGatePromise;
 }
 
 
@@ -5138,7 +5253,8 @@ function buildSupabaseLoadReport() {
       lastCloudSyncAt,
       lastJsonMirrorSaveAt,
       lastLocalSaveAt,
-      lastSyncError
+      lastSyncError,
+      appStartupGate: appStartupGateState
     },
     workspaceSession: getWorkspaceSessionSnapshot(),
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
@@ -8902,8 +9018,7 @@ async function initializeSupabase() {
   if (currentSession) beginStartupHydration("initial-session");
   updateAuthUi();
   if (currentSession) {
-    await hydrateAppSessionContext({ reason: "initial-session", source: "startup" }).catch((error) => console.warn("Initial backend app context failed", error));
-    await refreshAuthBoundMemberProfile();
+    await ensureAppStartupWakeGate("initial-session", { force: true });
   }
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
@@ -8918,11 +9033,17 @@ async function initializeSupabase() {
     if (session && !lastCloudSyncAt) beginStartupHydration(`auth-${String(event || "session").toLowerCase()}`);
     updateAuthUi();
     if (session) {
-      await hydrateAppSessionContext({ reason: `auth-${String(event || "session").toLowerCase()}`, source: "auth" }).catch((error) => console.warn("Auth backend app context failed", error));
+      const authEvent = String(event || "auth-change").toLowerCase();
+      if (!isAppStartupGateReady()) {
+        await ensureAppStartupWakeGate(`auth-${authEvent}`, { force: !lastCloudSyncAt });
+        updateAuthUi();
+        render();
+        return;
+      }
+      await hydrateAppSessionContext({ reason: `auth-${authEvent}`, source: "auth" }).catch((error) => console.warn("Auth backend app context failed", error));
       await refreshAuthBoundMemberProfile();
       subscribeToLedgerEvents();
       subscribeToSupabaseState();
-      const authEvent = String(event || "auth-change").toLowerCase();
       const userKey = String(session.user?.id || session.user?.email || "");
       const now = Date.now();
       const isSameUser = userKey && userKey === lastAuthCloudSyncUserKey;
@@ -8959,16 +9080,9 @@ async function initializeSupabase() {
   });
 
   if (currentSession) {
-    beginStartupHydration("startup");
-    updateAuthUi();
-    subscribeToLedgerEvents();
-    subscribeToSupabaseState();
-    await loadSupabaseStateWithTimeout(
-      { force: true, reason: "startup" },
-      supabaseStartupLoadTimeoutMs,
-      "Startup cloud sync is delayed. Retrying in the background."
-    );
-    finishStartupHydration("startup-loaded");
+    if (!isAppStartupGateReady()) {
+      await ensureAppStartupWakeGate("startup", { force: true });
+    }
     updateAuthUi();
     render();
   }
@@ -9060,8 +9174,13 @@ function markCloudSyncDidNotComplete(message = "Cloud sync did not complete.") {
 
 
 window.addEventListener("focus", () => {
-  if (supabaseClient && currentSession) scheduleRenderBackendWake("window-focus");
+  if (supabaseClient && currentSession && isAppStartupGateReady()) scheduleRenderBackendWake("window-focus");
   if (!supabaseClient || !currentSession || liveSyncEnabled) return;
+  if (shouldDelayOptionalStartupLane("window-focus")) {
+    recordSupabaseLoadEvent("focus-sync-skip", "startup gate not ready");
+    recordSyncDiagnostic("focus-sync-startup-gated", "Skipped focus sync until startup wake gate is ready.", { reason: "window-focus", startupGate: appStartupGateState });
+    return;
+  }
   const now = Date.now();
   const recentFocusAttempt = now - Number(lastFocusSyncAttemptAt || 0) < supabaseFocusReloadCooldownMs;
   const recentLoadAttempt = now - Number(lastSupabaseLoadAt || 0) < supabaseFocusReloadCooldownMs;
@@ -9098,7 +9217,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.setInterval(() => {
-  if (liveSyncEnabled) scheduleRenderBackendWake("visible-live-sync-keepalive");
+  if (liveSyncEnabled && isAppStartupGateReady()) scheduleRenderBackendWake("visible-live-sync-keepalive");
 }, 45 * 1000);
 
 function getPendingLoginInviteCode() {
@@ -10060,6 +10179,30 @@ function renderPeriodEntryLock() {
 function buildSyncHealthBannerState() {
   clearRecoverableSyncDelayAfterHealthySync("render-banner-after-healthy-sync");
 
+  if (supabaseClient && currentSession && appStartupGateState.loading) {
+    const phaseLabel = {
+      "waking-backend": "Waking backend",
+      "hydrating-context": "Loading workspace session",
+      "loading-state": "Loading workspace data"
+    }[appStartupGateState.phase] || "Starting app";
+    return {
+      level: "warning",
+      title: phaseLabel,
+      message: "The app is waiting for Render, backend session context, and workspace data before enabling background refreshes. This should finish without a browser refresh.",
+      action: "Retry loading workspace"
+    };
+  }
+
+  if (supabaseClient && currentSession && appStartupGateState.phase === "failed") {
+    return {
+      level: "error",
+      title: "Backend startup delayed",
+      message: appStartupGateState.error || "The backend did not finish the startup sequence. Retry inside the app instead of refreshing the browser.",
+      action: "Retry loading workspace",
+      diagnostics: latestSyncDiagnostics(4)
+    };
+  }
+
   if (isStartupHydrating() || shouldSuppressStartupHydrationDelay()) {
     return null;
   }
@@ -10138,6 +10281,12 @@ function focusSyncHealthAction() {
   if (supabaseClient && !currentSession && els.loginEmail) {
     setActiveView("log");
     els.loginEmail.focus();
+    return;
+  }
+  if (supabaseClient && currentSession && !isAppStartupGateReady()) {
+    ensureAppStartupWakeGate("manual-retry", { force: true }).catch((error) => {
+      console.warn("Startup retry failed", error);
+    });
     return;
   }
   handleManualSyncNow("banner").catch((error) => {
@@ -16470,6 +16619,18 @@ async function refreshWorkspaceToolsViaRender(reason = "workspace-tools-refresh"
 function scheduleWorkspaceInviteRefresh(reason = "workspace-invite-refresh") {
   if (!canRefreshWorkspaceInviteTools()) return null;
   const normalizedReason = String(reason || "workspace-invite-refresh");
+  if (shouldDelayOptionalStartupLane(`workspace-tools:${normalizedReason}`)) {
+    recordDataIoDiagnostic("skip", {
+      source: "workspace-tools-refresh",
+      route: "render-api",
+      endpoint: renderWorkspaceToolsUrl,
+      operation: "refresh",
+      ok: true,
+      resultCode: "WORKSPACE_REFRESH_STARTUP_GATED",
+      detail: `Skipped workspace tools refresh (${normalizedReason}) until startup wake gate is ready.`
+    });
+    return Promise.resolve(workspaceInviteStatus);
+  }
   const manual = /manual|after-create|invite|redeem|switch|refresh-button|account-tab-open|account-panel-render|startup-session|auth-session|initial-session/i.test(normalizedReason);
   const now = Date.now();
   if (!manual && workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && getWorkspaceLedgerOptions().length > 1 && now - Number(lastWorkspaceInviteRefreshAt || 0) < workspaceInviteRefreshFreshMs) {
@@ -21489,6 +21650,11 @@ function resumeRealtimeForVisiblePage() {
     hiddenRealtimePauseTimer = null;
   }
   if (!supabaseClient || !currentSession) return;
+  if (shouldDelayOptionalStartupLane("realtime-visible-resume")) {
+    recordSupabaseLoadEvent("realtime-resume-skip", "startup gate not ready");
+    recordSyncDiagnostic("realtime-startup-gated", "Skipped realtime resume until startup wake gate is ready.", { reason: "realtime-visible-resume", startupGate: appStartupGateState });
+    return;
+  }
   subscribeToLedgerEvents();
   if (liveSyncEnabled) subscribeToSupabaseState({ force: true });
   recordSupabaseLoadEvent("realtime-resumed-visible", liveSyncEnabled ? "ledger events + broad realtime" : "ledger events");
@@ -21500,7 +21666,7 @@ function handleRealtimeVisibilityChange() {
     pauseRealtimeForHiddenPage();
   } else {
     resumeRealtimeForVisiblePage();
-    scheduleRenderBackendWake("visible-resume");
+    if (isAppStartupGateReady()) scheduleRenderBackendWake("visible-resume");
   }
 }
 

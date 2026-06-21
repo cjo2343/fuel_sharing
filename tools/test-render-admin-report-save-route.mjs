@@ -9,11 +9,11 @@ const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const packageJson = fs.readFileSync('package.json', 'utf8');
 const audit = fs.readFileSync('BACKEND-PATH-AUDIT.md', 'utf8');
 
-assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249|250|251|252|253|254|255|256|257|258|259|260)"/, 'build-info should publish v307 or a preserving v309 patch');
-assert.match(buildInfo, /buildLabel:\s*"(?:render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|render-admin-report-save-route)"/, 'build-info should use v307 label');
+assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:207|208|209|210|211|212|213|214|215|216|217|218|219|220|221|222|222|222|222|222|222|222|222|222|222|222|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249|250|251|252|253|254|255|256|257|258|259|260|261)"/, 'build-info should publish v307 or a preserving v309 patch');
+assert.match(buildInfo, /buildLabel:\s*"(?:startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|render-admin-report-save-route)"/, 'build-info should use v307 label');
 assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v3[0-9][0-9]"/, 'build-info should expect v307 or a preserving v309 cache');
 assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v3[0-9][0-9]"/, 'service worker should use v307 or a preserving v309 cache');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|render-admin-report-save-route)"/, 'service worker label should match v307');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane|workspace-state-scope-lane|app-session-hydrate-lane|render-admin-report-save-route)"/, 'service worker label should match v307');
 
 assert.match(app, /const renderAdminReportSaveUrl = "\/api\/admin\/reports\/save";/, 'app should define the Render admin report-save URL');
 assert.match(app, /async function saveTestLabReportViaRender\(report\)/, 'app should save reports through Render');

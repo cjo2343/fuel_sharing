@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.260",
-    buildLabel: "render-workspace-tools-lane",
-    updatedAt: "2026-06-21T23:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v396",
+    version: "2026.06.18.261",
+    buildLabel: "startup-wake-gate-lane",
+    updatedAt: "2026-06-21T23:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v397",
     releaseNotes: Object.freeze([
+      "Startup wake gate now serializes cold app launch: Render wake, backend app context, and workspace state load run as one ordered sequence before realtime, focus sync, or Account workspace tools refresh can start; the sync banner offers Retry loading workspace instead of requiring a browser refresh.",
       "Workspace tools now use a Render-owned lane: Account workspace refresh calls /api/workspace/tools, reuses backend app context linked workspaces, loads optional invite rows server-side, and no longer calls list_my_ledgers or ledger_invites directly from normal browser UX.",
       "Render now owns normal workspace state retrieval and JSON mirror backup writes: app loads require /api/state/load, JSON mirror state arrives inside the Render response, and direct browser car_share_ledgers read/write fallbacks are blocked with diagnostics.",
       "Workspace state loading and saving now use one active workspace state scope from the hydrated backend app session; JSON mirror loads, normalized table loads, and cloud writes use that canonical ledger id, with stale workspace writes blocked before they can hit the wrong workspace.",

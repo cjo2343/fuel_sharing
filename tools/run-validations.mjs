@@ -204,7 +204,7 @@ const scripts = [
   "node --check tools/test-app-session-hydrate-lane.mjs",
   "node --check tools/test-workspace-state-scope-lane.mjs",
   "node --check tools/test-render-owned-state-load-lane.mjs",
-  "node --check tools/test-render-workspace-tools-lane.mjs",
+  "node --check tools/test-startup-wake-gate-lane.mjs",
   "node --check tools/test-invite-link-onboarding.mjs",
   "node --check tools/test-invite-identity-onboarding.mjs",
   "node --check tools/test-invite-email-preflight.mjs",

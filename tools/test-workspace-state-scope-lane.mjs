@@ -15,9 +15,9 @@ assert.match(app, /const renderStateRows = await getRenderNormalizedStateRows\(l
 assert.match(app, /loadStateFromNormalizedTables\(jsonState, \{ reason, stateScope, renderStateRows \}\)/, 'normalized table loads should reuse the already resolved state scope and Render state rows');
 assert.match(app, /const stateScope = await requireActiveWorkspaceWriteScope\(\{ reason \}\)/, 'saveSupabaseState should validate write scope before writing');
 assert.match(app, /saveJsonMirrorBackupViaRender\(\{ force, reason, savedAt, stateScope \}\)/, 'JSON mirror backup should pass the canonical write scope to Render');
-assert.match(build, /render-workspace-tools-lane|render-owned-state-load-lane/, 'build label should describe the state scope lane');
-assert.match(build, /fuel-ledger-v(?:395|396)/, 'build-info expected cache should be v395');
-assert.match(sw, /fuel-ledger-v(?:395|396)/, 'service worker cache should be v395');
+assert.match(build, /startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane/, 'build label should describe the state scope lane');
+assert.match(build, /fuel-ledger-v(?:395|396|397)/, 'build-info expected cache should be v395 or later');
+assert.match(sw, /fuel-ledger-v(?:395|396|397)/, 'service worker cache should be v395 or later');
 assert.match(checklist, /Current release target/, 'deployment checklist should document the Render-owned state load pass');
 
 console.log('workspace state scope lane guardrails passed');
