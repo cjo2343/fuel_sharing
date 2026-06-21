@@ -10,6 +10,10 @@ function mustInclude(source, text, label = text) {
 
 mustInclude(app, 'function normalizeWorkspaceLedgerList', 'workspace ledger list normalizer');
 mustInclude(app, 'function mergeWorkspaceLedgerRows', 'duplicate workspace rows are merged through strongest-role helper');
+
+mustInclude(app, 'const identityParts = [ledger.ledger_id, ledger.slug]', 'workspace ledger dedup must use ledger id/slug, not the display name');
+assert.ok(!app.includes('[ledger.ledger_id, ledger.slug, ledger.name].map(normalizeWorkspaceIdentifier)'), 'workspaces with the same display name must not be merged together');
+mustInclude(app, 'getWorkspaceOptionLabel(ledger)', 'workspace overview should show slug/id-disambiguated labels');
 mustInclude(app, 'return normalized === getConfiguredLedgerId();', 'default ledger is only implicitly linked outside signed-in workspace mode');
 mustInclude(app, 'if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading))', 'workspace switch waits for authoritative workspace list');
 mustInclude(app, 'workspaceInviteStatus.loaded = Boolean(getWorkspaceLedgerOptions().length);', 'workspace refresh timeout preserves loaded=false when no authoritative list exists');

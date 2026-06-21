@@ -23,8 +23,9 @@ assert.match(app, /if \(activeWorkspaceLoadInProgress \|\| supabaseLoadInFlight 
 assert.match(app, /function chooseWorkspaceFromMembership\(\{ reason = "workspace-resolution", preferredLedgerId = "" \} = \{\}\)/, 'membership-based workspace resolver should exist.');
 assert.match(app, /decision = "single-non-default-workspace"/, 'non-owner users with one non-default workspace should be preferred into that workspace.');
 assert.match(app, /workspaceResolution: updateWorkspaceResolutionDebug/, 'load reports should export the workspace resolution decision.');
+assert.match(app, /vehicleLookupReadiness: getVehicleLookupReadinessSnapshot\(\)/, 'load reports should export why vehicle lookup is disabled or ready.');
 
 assert.match(app, /Workspace session[\s\S]*URL \$\{escapeHtml\(readActiveWorkspaceIdFromCurrentUrl\(\) \|\| "none"\)\}/, 'workspace scope summary should expose a temporary workspace session debug card.');
 
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v367"/, 'build-info should point to v367 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v367"/, 'service worker cache should be bumped to v365.');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v368"/, 'build-info should point to v368 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v368"/, 'service worker cache should be bumped to v365.');

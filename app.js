@@ -144,6 +144,7 @@ function updateWorkspaceResolutionDebug(decision = "observed", detail = "", extr
     ledgerId: String(ledger.ledger_id || ""),
     slug: String(ledger.slug || ""),
     name: String(ledger.name || ""),
+    label: getWorkspaceOptionLabel(ledger),
     role: normalizeWorkspaceRole(ledger.role || "member"),
     primary: String(ledger.ledger_id || "") === String(getConfiguredLedgerId() || "")
   }));
@@ -406,11 +407,11 @@ function normalizeWorkspaceLedgerList(ledgers = []) {
   (Array.isArray(ledgers) ? ledgers : []).forEach((rawLedger) => {
     const ledger = normalizeWorkspaceLedgerRow(rawLedger);
     if (!ledger) return;
-    const identityParts = [ledger.ledger_id, ledger.slug, ledger.name].map(normalizeWorkspaceIdentifier).filter(Boolean);
-    const key = identityParts.find((part) => byKey.has(part)) || normalizeWorkspaceIdentifier(ledger.ledger_id || ledger.slug || ledger.name);
+    const identityParts = [ledger.ledger_id, ledger.slug].map(normalizeWorkspaceIdentifier).filter(Boolean);
+    const key = identityParts.find((part) => byKey.has(part)) || normalizeWorkspaceIdentifier(ledger.ledger_id || ledger.slug);
     if (!key) return;
     const merged = mergeWorkspaceLedgerRows(byKey.get(key), ledger);
-    const mergedKeys = [merged.ledger_id, merged.slug, merged.name].map(normalizeWorkspaceIdentifier).filter(Boolean);
+    const mergedKeys = [merged.ledger_id, merged.slug].map(normalizeWorkspaceIdentifier).filter(Boolean);
     mergedKeys.forEach((mergedKey) => byKey.set(mergedKey, merged));
     byKey.set(key, merged);
   });
@@ -4733,6 +4734,7 @@ function buildSupabaseLoadReport() {
     },
     workspaceSession: getWorkspaceSessionSnapshot(),
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
+    vehicleLookupReadiness: getVehicleLookupReadinessSnapshot(),
     summary,
     events: getSupabaseLoadEvents(30 * 60 * 1000),
     dataIoDiagnostics: latestDataIoDiagnostics(30),
@@ -8668,6 +8670,31 @@ function addVehicleFact(facts, value, formatter = null) {
   const raw = typeof formatter === "function" ? formatter(value) : value;
   const text = normalizeVehicleText(raw, { max: 120 });
   if (text) facts.push(text);
+}
+
+function getVehicleLookupReadinessSnapshot() {
+  const currentSessionActive = Boolean(currentSession);
+  const canManage = canManageSettings();
+  const workspaceConfirmed = isActiveWorkspaceDataConfirmed();
+  const plate = String(state.vehiclePlate || els.vehiclePlate?.value || "").trim();
+  let reason = "ready";
+  if (!currentSessionActive) reason = "not_signed_in";
+  else if (!canManage) reason = "not_workspace_admin";
+  else if (!workspaceConfirmed) reason = activeWorkspaceLoadInProgress || supabaseLoadInFlight || startupHydrationActive ? "workspace_loading" : "workspace_not_loaded";
+  else if (!plate) reason = "plate_missing";
+  return {
+    ready: currentSessionActive && canManage && workspaceConfirmed && Boolean(plate),
+    buttonEnabled: Boolean(els.vehicleLookupButton && !els.vehicleLookupButton.disabled),
+    reason,
+    hasSession: currentSessionActive,
+    canManageSettings: canManage,
+    workspaceConfirmed,
+    platePresent: Boolean(plate),
+    activeWorkspaceLoadInProgress,
+    supabaseLoadInFlight,
+    startupHydrationActive,
+    session: getWorkspaceSessionSnapshot()
+  };
 }
 
 function renderVehicleLookupSummary() {
@@ -14846,8 +14873,8 @@ function renderWorkspaceInvitesPanel() {
       ? ledgers.map((ledger) => `
         <div class="member-management-row workspace-row ${ledger.ledger_id === currentLedgerId ? "current" : ""}">
           <div class="member-field-stack">
-            <strong>${escapeHtml(ledger.name || ledger.slug || ledger.ledger_id)}</strong>
-            <small>${escapeHtml(ledger.ledger_id === currentLedgerId ? "Current selected workspace" : "Linked workspace")}</small>
+            <strong>${escapeHtml(getWorkspaceOptionLabel(ledger))}</strong>
+            <small>${escapeHtml(ledger.ledger_id === currentLedgerId ? `Current selected workspace · ${ledger.ledger_id}` : `Linked workspace · ${ledger.ledger_id}`)}</small>
           </div>
           <span class="status-pill ${ledger.role === "admin" ? "status-ok" : ""}">${escapeHtml(ledger.role || "member")}</span>
           <span class="entry-meta">${ledger.invite_required === false ? "Public signup flag on" : "Invite required"}</span>
