@@ -2344,12 +2344,10 @@ const ownerGlobalDiagnosticsFreshMs = 5 * 60 * 1000;
 let adminAutoRefreshTimer = null;
 let adminAutoRefreshInFlight = false;
 let lastAdminAutoRefreshTickAt = 0;
-let lastAdminAutoHealthAt = 0;
 let lastAdminAutoGlobalAt = 0;
 let lastAdminAutoOwnerActivityAt = 0;
 let adminAutoRefreshNextTaskIndex = 0;
 const adminAutoRefreshIntervalMs = 30000;
-const adminAutoHealthFreshMs = 10 * 60 * 1000;
 const adminAutoGlobalFreshMs = 5 * 60 * 1000;
 const adminAutoOwnerActivityFreshMs = 2 * 60 * 1000;
 const ownerActivityAutoRefreshEnabled = false;
@@ -5171,12 +5169,10 @@ function isAdminAutoRefreshActive() {
 
 function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
   const tasks = [];
-  const healthFailedRecently = adminOptionalStatusFailedRecently(renderAdminHealthStatus, referenceTime);
+  // Keep automatic Admin refreshes lightweight. Full /api/admin/health is an explicit
+  // deep diagnostic only; background checks use /api/ping and cached global snapshots.
   const globalFailedRecently = adminOptionalStatusFailedRecently(ownerGlobalDiagnosticsStatus, referenceTime);
   const ownerActivityFailedRecently = ownerActivityConsecutiveTimeouts > 0 && referenceTime < (ownerActivityCooldownUntil || 0);
-  if (!renderAdminHealthStatus.loading && !healthFailedRecently && (!renderAdminHealthStatus.checked || referenceTime - lastAdminAutoHealthAt > adminAutoHealthFreshMs)) {
-    tasks.push("health");
-  }
   if (!ownerGlobalDiagnosticsStatus.loading && !globalFailedRecently && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
     tasks.push("global");
   }
@@ -5188,7 +5184,7 @@ function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
 
 function chooseAdminAutoRefreshTask(tasks = []) {
   if (!tasks.length) return "";
-  const order = ["health", "global", "owner-activity"];
+  const order = ["global", "owner-activity"];
   for (let i = 0; i < order.length; i += 1) {
     const candidate = order[(adminAutoRefreshNextTaskIndex + i) % order.length];
     if (tasks.includes(candidate)) {
@@ -5205,7 +5201,7 @@ function adminAutoRefreshStatusSummary() {
   if (!currentSession) return { title: "Waiting", detail: "Sign in before Admin can auto-refresh.", level: "warning" };
   if (adminAutoRefreshInFlight) return { title: "Refreshing", detail: "Updating Admin status now.", level: "warning" };
   const last = lastAdminAutoRefreshTickAt ? formatAdminTimestamp(new Date(lastAdminAutoRefreshTickAt).toISOString()) : "Not yet";
-  return { title: "On", detail: `Quiet background checks run at most every ${Math.round(adminAutoRefreshIntervalMs / 1000)}s while Admin is open. Slow optional checks back off automatically; Owner Activity is manual/cached so it cannot keep hammering Render. Last run: ${last}.`, level: "ok" };
+  return { title: "On", detail: `Quiet background checks use lightweight ping/cached global snapshots only. Full Render admin health is passive and runs only from deep diagnostics or protected admin actions. Last run: ${last}.`, level: "ok" };
 }
 
 function renderAdminAutoRefreshCard() {
@@ -5214,7 +5210,7 @@ function renderAdminAutoRefreshCard() {
     <article class="admin-metric-card ${escapeHtml(status.level)}">
       <span>Admin auto-refresh</span>
       <strong>${escapeHtml(status.title)}</strong>
-      <small>Calm live overview</small>
+      <small>Lightweight live overview</small>
       <p>${escapeHtml(status.detail)}</p>
     </article>
   `;
@@ -5262,10 +5258,7 @@ async function runAdminAutoRefreshTick(reason = "admin-auto-refresh") {
   try {
     const now = Date.now();
     const task = chooseAdminAutoRefreshTask(dueAdminAutoRefreshTasks(now));
-    if (task === "health") {
-      lastAdminAutoHealthAt = now;
-      await checkRenderAdminHealth({ silent: true });
-    } else if (task === "global") {
+    if (task === "global") {
       lastAdminAutoGlobalAt = now;
       await refreshOwnerGlobalDiagnostics({ force: false, silent: true, reason });
     } else if (task === "owner-activity") {
@@ -5795,7 +5788,7 @@ function renderSupabaseLoadMonitor() {
         <span>Realtime hints</span>
         <strong>${ledgerEventsChannel ? "Connected" : "Waiting"}</strong>
         <small>${liveSyncEnabled ? "Broad live sync enabled" : "Safe event hints"}</small>
-        <p>Admin auto-refresh keeps this overview moving; broad live sync can stay off to protect Supabase CPU.</p>
+        <p>Admin background sync keeps this overview moving with lightweight cached checks; full Render health runs only in deep diagnostics.</p>
       </article>
     </div>
     ${recentDataIoOps.length ? renderDataIoGroupedSections() : ""}

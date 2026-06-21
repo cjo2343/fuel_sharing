@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T15:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v380",
+    updatedAt: "2026-06-21T15:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v381",
     releaseNotes: Object.freeze([
+      "Admin background sync now uses lightweight cached checks only: full Render admin health no longer runs in automatic Admin polling, backend readiness stays on /api/ping, and the last healthy admin-health snapshot remains passive unless deep diagnostics or protected admin actions explicitly ask for it.",
       "Idle recovery now warms the Render backend and service-worker navigations fall back to the app shell even with ?workspace links, so vehicle lookup and workspace pages recover after the app sits idle without a manual refresh.",
       "Admin global diagnostics are fully generic and cached: member rows replace the old targeted membership debug field, Owner Activity is manual/cached instead of auto-hammering, and owner-activity payloads are lighter.",
       "Admin optional diagnostics now back off instead of hammering slow Render health/global routes: load reports use cached snapshots, hardcoded test-user cards are removed, and global diagnostics stay generic/last-good-first.",

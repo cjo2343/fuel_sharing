@@ -11,7 +11,7 @@ assert.match(appSource, /function runAdminAutoRefreshTick\(/, "Admin auto-refres
 assert.match(appSource, /startAdminAutoRefresh\("admin-tab-open"\)/, "Opening Admin should start automatic refreshes.");
 assert.match(appSource, /document\.addEventListener\("visibilitychange"/, "Admin auto-refresh should pause while the tab is hidden.");
 assert.match(appSource, /renderAdminAutoRefreshCard\(\)/, "The Supabase load monitor should show Admin auto-refresh status.");
-assert.match(appSource, /Admin auto-refresh keeps this overview moving; broad live sync can stay off to protect Supabase CPU\./, "Realtime copy should explain that auto-refresh, not broad live sync, keeps Admin smooth.");
+assert.match(appSource, /Admin background sync keeps this overview moving with lightweight cached checks; full Render health runs only in deep diagnostics\./, "Realtime copy should explain that lightweight cached sync keeps Admin smooth.");
 assert.match(appSource, /activityLimit: 5/, "Global diagnostics auto-refresh should request a tiny bounded activity window.");
 assert.match(appSource, /workspaceLimit: 40/, "Global diagnostics auto-refresh should keep workspace queries bounded.");
 assert.match(appSource, /memberLimit: 80/, "Global diagnostics auto-refresh should keep member queries tightly bounded.");
@@ -20,7 +20,9 @@ assert.doesNotMatch(appSource, /activityLimit: 120/, "Global diagnostics should 
 console.log("Admin auto-refresh overview guardrail passed.");
 
 assert.match(appSource, /dueAdminAutoRefreshTasks/, "Admin auto-refresh should compute due work before running optional checks.");
-assert.match(appSource, /chooseAdminAutoRefreshTask/, "Admin auto-refresh should stagger heavy optional checks instead of firing all at once.");
+assert.match(appSource, /chooseAdminAutoRefreshTask/, "Admin auto-refresh should stagger optional checks instead of firing all at once.");
+assert.doesNotMatch(appSource, /tasks\.push\("health"\)/, "Admin auto-refresh must not enqueue heavy Render admin health.");
+assert.match(appSource, /Full \/api\/admin\/health is an explicit/, "Full Render admin health should be explicit-only, not background-polled.");
 assert.match(appSource, /lastGoodOwnerGlobalDiagnosticsStatus/, "Global diagnostics should preserve last-known-good data after optional refresh timeouts.");
 assert.match(appSource, /ownerGlobalDiagnosticsReportStatus\(\)/, "Reports should use last-known-good global diagnostics instead of timeout-cleared empty data.");
 assert.match(appSource, /isOptionalAdminHealthDiagnostic/, "Render admin-health timeouts should stay in optional Admin diagnostics, not the core Latest Data I\/O card.");
