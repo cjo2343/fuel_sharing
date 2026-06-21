@@ -180,14 +180,39 @@ function isConfiguredAppOwnerEmail(email = getLoggedInEmail()) {
   return getConfiguredAppOwnerEmails().includes(normalized);
 }
 
+function getWorkspaceIdentityValues(ledger = {}) {
+  return [ledger.ledger_id, ledger.ledgerId, ledger.id, ledger.slug]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function buildWorkspaceIdentityLookup(ledgers = []) {
+  const lookup = new Map();
+  ledgers.forEach((ledger) => {
+    getWorkspaceIdentityValues(ledger).forEach((value) => {
+      if (!lookup.has(value)) lookup.set(value, ledger);
+    });
+  });
+  return lookup;
+}
+
+function resolveWorkspaceIdentityToLedgerId(value, ledgers = getWorkspaceLedgerOptions()) {
+  const normalized = normalizeWorkspaceUrlId(value || "");
+  if (!normalized) return "";
+  const match = buildWorkspaceIdentityLookup(ledgers).get(normalized);
+  return String(match?.ledger_id || match?.ledgerId || match?.id || normalized).trim();
+}
+
 function chooseWorkspaceFromMembership({ reason = "workspace-resolution", preferredLedgerId = "" } = {}) {
   const ledgers = getWorkspaceLedgerOptions();
   if (!supabaseClient || !currentSession || !ledgers.length) {
     updateWorkspaceResolutionDebug("membership-not-loaded", "Workspace membership is not loaded yet; keeping the current active workspace.", { reason });
     return false;
   }
-  const linkedIds = new Set(ledgers.map((ledger) => String(ledger.ledger_id || "")).filter(Boolean));
-  const nonDefaultLedgers = ledgers.filter((ledger) => String(ledger.ledger_id || "") && String(ledger.ledger_id || "") !== String(getConfiguredLedgerId() || ""));
+  const linkedIdentityLookup = buildWorkspaceIdentityLookup(ledgers);
+  const configuredLedgerIdValue = String(getConfiguredLedgerId() || "");
+  const nonDefaultLedgers = ledgers.filter((ledger) => String(ledger.ledger_id || "") && !getWorkspaceIdentityValues(ledger).includes(configuredLedgerIdValue));
   const explicitPreferred = normalizeWorkspaceUrlId(preferredLedgerId || "");
   const urlWorkspaceId = readActiveWorkspaceIdFromCurrentUrl();
   const scopedRememberedWorkspaceId = readScopedRememberedWorkspaceIdForCurrentUser();
@@ -199,16 +224,18 @@ function chooseWorkspaceFromMembership({ reason = "workspace-resolution", prefer
   let detail = "Keeping the current active workspace.";
   let rejectedWorkspaceId = "";
 
-  if (explicitPreferred && linkedIds.has(explicitPreferred)) {
-    target = explicitPreferred;
+  const preferredWorkspace = explicitPreferred ? linkedIdentityLookup.get(explicitPreferred) : null;
+  if (preferredWorkspace) {
+    target = String(preferredWorkspace.ledger_id || preferredWorkspace.ledgerId || preferredWorkspace.id || explicitPreferred).trim();
     decision = "explicit-preferred-linked";
     detail = `Using explicit preferred workspace ${explicitPreferred}.`;
   } else if (explicitPreferred) {
     rejectedWorkspaceId = explicitPreferred;
   }
 
-  if (!target && urlWorkspaceId && linkedIds.has(urlWorkspaceId)) {
-    target = urlWorkspaceId;
+  const urlWorkspace = urlWorkspaceId ? linkedIdentityLookup.get(urlWorkspaceId) : null;
+  if (!target && urlWorkspace) {
+    target = String(urlWorkspace.ledger_id || urlWorkspace.ledgerId || urlWorkspace.id || urlWorkspaceId).trim();
     decision = "url-workspace-linked";
     detail = `Using workspace from URL: ${urlWorkspaceId}.`;
   } else if (!target && urlWorkspaceId) {
@@ -217,8 +244,12 @@ function chooseWorkspaceFromMembership({ reason = "workspace-resolution", prefer
     detail = `URL requested ${urlWorkspaceId}, but it is not linked to the signed-in user.`;
   }
 
-  if (!target && scopedRememberedWorkspaceId && scopedRememberedWorkspaceId !== getConfiguredLedgerId() && linkedIds.has(scopedRememberedWorkspaceId)) {
-    target = scopedRememberedWorkspaceId;
+  const scopedRememberedWorkspace = scopedRememberedWorkspaceId ? linkedIdentityLookup.get(scopedRememberedWorkspaceId) : null;
+  const scopedRememberedLedgerId = scopedRememberedWorkspace
+    ? String(scopedRememberedWorkspace.ledger_id || scopedRememberedWorkspace.ledgerId || scopedRememberedWorkspace.id || scopedRememberedWorkspaceId).trim()
+    : "";
+  if (!target && scopedRememberedLedgerId && scopedRememberedLedgerId !== getConfiguredLedgerId()) {
+    target = scopedRememberedLedgerId;
     decision = "user-remembered-non-default-linked";
     detail = `Using user-scoped remembered workspace ${scopedRememberedWorkspaceId}.`;
   }
@@ -229,20 +260,25 @@ function chooseWorkspaceFromMembership({ reason = "workspace-resolution", prefer
     detail = `Signed-in non-owner has one non-default workspace (${target}); preferring it over the default workspace.`;
   }
 
-  if (!target && scopedRememberedWorkspaceId && linkedIds.has(scopedRememberedWorkspaceId)) {
-    target = scopedRememberedWorkspaceId;
+  if (!target && scopedRememberedLedgerId) {
+    target = scopedRememberedLedgerId;
     decision = "user-remembered-linked";
     detail = `Using user-scoped remembered workspace ${scopedRememberedWorkspaceId}.`;
   }
 
-  if (!target && legacyRememberedWorkspaceId && linkedIds.has(legacyRememberedWorkspaceId) && !scopedRememberedWorkspaceId) {
-    target = legacyRememberedWorkspaceId;
+  const legacyRememberedWorkspace = legacyRememberedWorkspaceId ? linkedIdentityLookup.get(legacyRememberedWorkspaceId) : null;
+  const legacyRememberedLedgerId = legacyRememberedWorkspace
+    ? String(legacyRememberedWorkspace.ledger_id || legacyRememberedWorkspace.ledgerId || legacyRememberedWorkspace.id || legacyRememberedWorkspaceId).trim()
+    : "";
+  if (!target && legacyRememberedLedgerId && !scopedRememberedWorkspaceId) {
+    target = legacyRememberedLedgerId;
     decision = "legacy-remembered-linked";
     detail = `Using legacy remembered workspace ${legacyRememberedWorkspaceId}.`;
   }
 
-  if (!target && linkedIds.has(activeBefore)) {
-    target = activeBefore;
+  const activeBeforeWorkspace = activeBefore ? linkedIdentityLookup.get(activeBefore) : null;
+  if (!target && activeBeforeWorkspace) {
+    target = String(activeBeforeWorkspace.ledger_id || activeBeforeWorkspace.ledgerId || activeBeforeWorkspace.id || activeBefore).trim();
     decision = "current-active-linked";
     detail = `Current active workspace ${activeBefore} is linked; keeping it.`;
   }
@@ -432,10 +468,10 @@ function getWorkspaceLedgerOptions() {
 }
 
 function isLedgerLinkedToCurrentUser(ledgerId) {
-  const normalized = String(ledgerId || "").trim();
+  const normalized = normalizeWorkspaceUrlId(ledgerId || "");
   if (!normalized) return false;
   if (!supabaseClient || !currentSession) return normalized === getConfiguredLedgerId();
-  return getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === normalized);
+  return Boolean(buildWorkspaceIdentityLookup(getWorkspaceLedgerOptions()).get(normalized));
 }
 
 function hasCachedLinkedWorkspaceOptions() {
@@ -926,7 +962,7 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     : null;
   if (backendSwitchContext) {
     const backendLinkedIds = Array.isArray(backendSwitchContext.linkedWorkspaces)
-      ? backendSwitchContext.linkedWorkspaces.map((workspace) => String(workspace?.ledgerId || workspace?.ledger_id || "").trim()).filter(Boolean)
+      ? backendSwitchContext.linkedWorkspaces.flatMap((workspace) => getWorkspaceIdentityValues(workspace)).filter(Boolean)
       : [];
     const backendActiveId = String(backendSwitchContext.activeWorkspace?.ledgerId || backendSwitchContext.activeWorkspace?.ledger_id || "").trim();
     targetLinkedFromCachedList = backendLinkedIds.includes(targetLedgerId);

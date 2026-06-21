@@ -2104,16 +2104,33 @@ def list_app_context_workspaces_as_service(user):
     return workspaces
 
 
+def workspace_identity_values(row):
+    values = []
+    for key in ("ledgerId", "ledger_id", "id", "slug"):
+        value = str((row or {}).get(key) or "").strip()
+        if value and value not in values:
+            values.append(value)
+    return values
+
+
+def build_workspace_identity_index(workspaces):
+    index = {}
+    for row in workspaces:
+        for value in workspace_identity_values(row):
+            index.setdefault(value, row)
+    return index
+
+
 def choose_app_context_workspace(workspaces, requested_ids, user):
-    by_id = {str(row.get("ledgerId") or row.get("ledger_id") or "").strip(): row for row in workspaces}
+    by_identity = build_workspace_identity_index(workspaces)
     for requested in requested_ids:
         requested = str(requested or "").strip()
-        if requested and requested in by_id:
-            return by_id[requested], "requested-linked"
+        if requested and requested in by_identity:
+            return by_identity[requested], "requested-linked"
     if len(workspaces) == 1:
         return workspaces[0], "single-linked-workspace"
-    configured = by_id.get("main-car")
-    non_default = [row for row in workspaces if str(row.get("ledgerId") or "") != "main-car"]
+    configured = by_identity.get("main-car")
+    non_default = [row for row in workspaces if "main-car" not in workspace_identity_values(row)]
     if non_default and not is_configured_app_owner(user):
         return non_default[0], "member-non-default-workspace"
     if configured:

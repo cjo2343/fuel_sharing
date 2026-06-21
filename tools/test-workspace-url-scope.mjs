@@ -7,6 +7,9 @@ const serviceWorker = readFileSync(new URL('../service-worker.js', import.meta.u
 
 assert.match(app, /const workspaceUrlParamNames = Object\.freeze\(\["workspace", "ledger"\]\)/, 'workspace and ledger URL parameters should be recognized.');
 assert.match(app, /let activeLedgerId = readActiveWorkspaceIdFromCurrentUrl\(\) \|\| localStorage\.getItem\(activeWorkspaceStorageKey\) \|\| configuredLedgerId/, 'URL workspace should win before localStorage/default workspace.');
+assert.match(app, /function getWorkspaceIdentityValues\(ledger = \{\}\)/, 'workspace identity resolution should include a helper for slug/id aliases.');
+assert.match(app, /function buildWorkspaceIdentityLookup\(ledgers = \[\]\)/, 'workspace identity resolution should build slug/id lookup maps.');
+assert.match(app, /const urlWorkspace = urlWorkspaceId \? linkedIdentityLookup\.get\(urlWorkspaceId\) : null;/, 'URL workspace aliases should be resolved through linked workspace identity lookup.');
 assert.match(app, /function writeActiveWorkspaceToCurrentUrl\(ledgerId\)[\s\S]*url\.searchParams\.set\("workspace", normalized\)/, 'active workspace changes should update ?workspace=.');
 assert.match(app, /function setActiveLedgerId\(ledgerId, \{ persist = true, updateUrl = true \} = \{\}\)[\s\S]*writeActiveWorkspaceToCurrentUrl\(normalized\)/, 'setActiveLedgerId should persist URL-backed navigation state.');
 assert.match(app, /function removeWorkspaceScopeFromUrlObject\(url\)[\s\S]*workspaceUrlParamNames\.forEach/, 'invite links should be able to strip workspace navigation state.');
