@@ -2126,11 +2126,16 @@ def build_app_context_response(payload, user):
         raise RuntimeError("Supabase server environment variables are missing")
     payload = payload if isinstance(payload, dict) else {}
     requested_ids = [
-        payload.get("ledgerId"),
-        payload.get("ledger_id"),
+        # Prefer explicit UI/session intent over legacy/default ledger ids. The
+        # frontend may still pass the configured default ledger as ledgerId during
+        # startup, so keeping ledgerId first can incorrectly pull users back to
+        # main-car after a workspace switch.
+        payload.get("preferredWorkspaceId"),
         payload.get("selectedWorkspaceId"),
         payload.get("urlWorkspaceId"),
-        payload.get("preferredWorkspaceId"),
+        payload.get("loadedWorkspaceId"),
+        payload.get("ledgerId"),
+        payload.get("ledger_id"),
     ]
     workspaces = list_app_context_workspaces_as_service(user)
     active, reason = choose_app_context_workspace(workspaces, requested_ids, user)

@@ -915,7 +915,40 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   if (!targetLedgerId) return;
   if (alreadySelected && isActiveWorkspaceDataConfirmed()) return;
   clearStaleWorkspaceInviteLoading("workspace-switch");
-  const targetLinkedFromCachedList = isLedgerLinkedToCurrentUser(targetLedgerId);
+  let targetLinkedFromCachedList = isLedgerLinkedToCurrentUser(targetLedgerId);
+  const backendSwitchContext = currentSession
+    ? await getRenderAppContext({
+        ledgerId: targetLedgerId,
+        preferredWorkspaceId: targetLedgerId,
+        reason: `workspace-switch:${source}`,
+        timeoutMs: 8000
+      })
+    : null;
+  if (backendSwitchContext) {
+    const backendLinkedIds = Array.isArray(backendSwitchContext.linkedWorkspaces)
+      ? backendSwitchContext.linkedWorkspaces.map((workspace) => String(workspace?.ledgerId || workspace?.ledger_id || "").trim()).filter(Boolean)
+      : [];
+    const backendActiveId = String(backendSwitchContext.activeWorkspace?.ledgerId || backendSwitchContext.activeWorkspace?.ledger_id || "").trim();
+    targetLinkedFromCachedList = backendLinkedIds.includes(targetLedgerId);
+    if (!targetLinkedFromCachedList || backendActiveId !== targetLedgerId) {
+      recordDataIoDiagnostic("blocked", {
+        source: "workspace-switch",
+        route: "render-api",
+        endpoint: renderAppContextUrl,
+        operation: "switch",
+        resultCode: "WORKSPACE_SWITCH_BACKEND_CONTEXT_BLOCKED",
+        ok: false,
+        selectedWorkspaceId: targetLedgerId,
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        detail: targetLinkedFromCachedList
+          ? `Backend app context selected ${backendActiveId || "no workspace"} instead of ${targetLedgerId}.`
+          : `Backend app context says ${targetLedgerId} is not linked to the signed-in user.`
+      });
+      showUserError("The backend could not confirm access to that workspace. The app did not switch.");
+      renderActiveWorkspaceSelector();
+      return;
+    }
+  }
   const workspaceListStillLoading = Boolean(supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading));
   if (workspaceListStillLoading && !targetLinkedFromCachedList) {
     showUserError("Workspace list is still loading. Wait for it to finish before switching workspace.");
@@ -15349,7 +15382,7 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
   return activeId;
 }
 
-async function getRenderAppContext({ ledgerId = getActiveLedgerId(), reason = "app-context", timeoutMs = 8000 } = {}) {
+async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWorkspaceId = "", reason = "app-context", timeoutMs = 8000 } = {}) {
   if (!currentSession || typeof fetch !== "function") return null;
   const operationId = createDataIoOperationId("app-context", "load");
   const traceMeta = { source: "app-context", route: "render-api", endpoint: renderAppContextUrl, operation: "load", operationId };
@@ -15373,6 +15406,7 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), reason = "a
       headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         ledgerId,
+        preferredWorkspaceId: preferredWorkspaceId || ledgerId || getActiveLedgerId(),
         selectedWorkspaceId: getActiveLedgerId(),
         loadedWorkspaceId: getLoadedWorkspaceId(),
         urlWorkspaceId: getWorkspaceUrlLedgerId(),
@@ -15447,8 +15481,10 @@ function getBackendActiveMemberProfile() {
 }
 
 async function refreshBackendAppContextForActiveWorkspace(reason = "active-workspace") {
+  const activeWorkspaceId = getActiveLedgerId();
   return getRenderAppContext({
-    ledgerId: getActiveLedgerId(),
+    ledgerId: activeWorkspaceId,
+    preferredWorkspaceId: activeWorkspaceId,
     reason,
     timeoutMs: reason === "vehicle-lookup" ? 6000 : 8000
   });
@@ -19976,8 +20012,8 @@ async function loadStateFromNormalizedTables(jsonFallbackState) {
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
-  let ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const backendContext = await getRenderAppContext({ ledgerId, reason: "state-load" });
+  let ledgerId = getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig);
+  const backendContext = await getRenderAppContext({ ledgerId, preferredWorkspaceId: ledgerId, reason: "state-load" });
   const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
   if (backendWorkspaceId) ledgerId = backendWorkspaceId;
   const renderStateRows = await getRenderNormalizedStateRows(ledgerId);

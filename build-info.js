@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T20:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v389",
+    updatedAt: "2026-06-21T20:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v390",
     releaseNotes: Object.freeze([
+      "Backend app context pass 3 makes workspace switching backend-context-driven: /api/app/context now prefers explicit selected/preferred workspace ids before legacy/default ledger ids, state load uses the active workspace as preferred context, and workspace switches block unless Render confirms the target workspace is linked and active.",
       "Backend app context pass 2 makes permissions and vehicle lookup consume the backend app context: active member/admin permissions now come from /api/app/context when available, vehicle lookup asks for backend context before workspace recovery, and reports expose backend vehicle permission state.",
       "Backend app context pass 1 adds a Render-owned /api/app/context source of truth for signed-in user, active workspace, linked workspaces, and permissions; startup state load now asks the backend for that context before loading workspace data.",
     "Vehicle lookup status is now request-scoped: changing the plate clears stale saved messages, each lookup records requested/returned plate IDs, stale mismatched results are ignored, and the UI only shows saved details when they match the current plate.",

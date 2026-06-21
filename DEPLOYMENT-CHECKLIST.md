@@ -1,3 +1,4 @@
+- 2026-06-21 20:25 UTC: fuel-ledger-v390 Backend app context pass 3 makes workspace switching backend-context-driven, prioritizes selected/preferred workspace ids over legacy/default ledger ids, and keeps state-load on the active backend-confirmed workspace.
 - Backend app context pass 1: Render `/api/app/context` now returns the canonical signed-in user/workspace/permissions snapshot, and startup state load consumes it before browser workspace inference.
 - 2026-06-21 19:25 UTC: v387 Vehicle lookup status is request-scoped; plate changes clear stale saved messages, lookup diagnostics record requested/returned plates, and mismatched/stale results are ignored instead of showing the wrong vehicle.
 - 2026-06-21 15:35 UTC: v382 Service-worker status self-heals for signed-in/test-user sessions; build-info can query active workers before controller attach, retries handoff on resume/URL changes, and reloads once safely instead of leaving version status stuck on Checking.
@@ -34,13 +35,13 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Backend app context now drives workspace/admin permissions for settings, global diagnostics, and vehicle lookup when the backend context matches the active workspace.
+- Vehicle lookup now recovers after idle/backend wake delays by retrying the Render lookup automatically before reporting a timeout.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v389`
-- `fuel-ledger-v389` - Backend app context returns active member details plus permissions for settings, members, and vehicle lookup.
-- `fuel-ledger-v389` - Vehicle lookup refreshes backend app context before workspace recovery and reports backend permission state.
-- Updated at: `2026-06-21T20:05:00.000Z`
-- Top release note: Backend app context pass 2 makes permissions and vehicle lookup consume the backend app context: active member/admin permissions now come from /api/app/context when available, vehicle lookup asks for backend context before workspace recovery, and reports expose backend vehicle permission state.
+- Service-worker cache: `fuel-ledger-v390`
+- `fuel-ledger-v390` - Backend app context pass 3 makes workspace switching backend-context-driven and keeps state-load on the backend-confirmed active workspace.
+- `fuel-ledger-v390` - /api/app/context now prefers selected/preferred workspace ids over legacy/default ledger ids.
+- Updated at: `2026-06-21T20:25:00.000Z`
+- Top release note: Backend app context pass 3 makes workspace switching backend-context-driven: /api/app/context now prefers explicit selected/preferred workspace ids before legacy/default ledger ids, state load uses the active workspace as preferred context, and workspace switches block unless Render confirms the target workspace is linked and active.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
