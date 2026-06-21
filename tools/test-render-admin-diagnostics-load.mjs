@@ -13,7 +13,7 @@ const checks = [
   {
     name: 'admin diagnostics has Render state-load fast path',
     ok: /async\s+function\s+tryRenderAdminDiagnosticsStateLoad\s*\(/.test(app)
-      && app.includes('await loadStateFromNormalizedTables(jsonFallbackState || state)')
+      && app.includes('await loadStateFromNormalizedTables(jsonFallbackState || state, { reason: `admin-diagnostics:${reason}`, stateScope: adminStateScope })')
       && app.includes('recordSupabaseLoadEvent("render-admin-diagnostics-load", reason)')
       && app.includes('recordSyncDiagnostic("admin-render-load-success"')
   },

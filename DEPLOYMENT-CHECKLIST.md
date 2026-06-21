@@ -33,9 +33,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 ## Current release target
 - Version: `2026.06.18.258`
-- Service-worker cache: `fuel-ledger-v393`
-- Updated at: `2026-06-21T22:30:00.000Z`
-- Top release note: App session hydration now has one frontend lane for backend context: startup, auth, workspace switch, normal state load, and normalized state load all flow through hydrateAppSessionContext, while Admin diagnostics remain separately labeled and non-blocking.
+- Service-worker cache: `fuel-ledger-v394`
+- Updated at: `2026-06-21T22:45:00.000Z`
+- Top release note: Workspace state loading and saving now use one active workspace state scope from the hydrated backend app session; JSON mirror loads, normalized table loads, and cloud writes use that canonical ledger id, with stale workspace writes blocked before they can hit the wrong workspace.
 
 ## Invite beta readiness: member action Data I/O
 
@@ -651,3 +651,10 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Runtime cache: `fuel-ledger-v393`.
 - Backend `/api/app/context` is now consumed through `hydrateAppSessionContext`, a single frontend app-session/workspace context lane used by startup, auth, workspace switch, normal state load, and normalized state load.
 - Admin diagnostics remain separated from normal app UX: the Admin tab can inspect backend context for permissions, but owner/global diagnostics stay explicit and optional panel failures do not block workspace loading.
+
+### Workspace state scope lane - v394
+- Runtime cache: `fuel-ledger-v394`.
+- Normal app state load resolves one active workspace state scope from the hydrated backend app session before touching JSON mirror or normalized tables.
+- JSON mirror loads, normalized table loads, and cloud writes now use the same canonical ledger id instead of separately trusting URL/cache/default workspace values.
+- Saves fail closed with `WORKSPACE_WRITE_SCOPE_MISMATCH` when the selected/loaded workspace is stale, preventing immediate post-switch writes from hitting the wrong workspace.
+- Guardrail: `node tools/test-workspace-state-scope-lane.mjs`.

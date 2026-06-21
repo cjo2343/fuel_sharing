@@ -15609,6 +15609,91 @@ function getBackendAppContextActiveWorkspaceId() {
   return String(context?.activeWorkspace?.ledgerId || context?.activeWorkspace?.ledger_id || appBackendContextStatus?.activeWorkspaceId || "").trim();
 }
 
+function getCanonicalWorkspaceIdFromAppSessionContext(context = getBackendAppContext()) {
+  const fromContext = String(context?.activeWorkspace?.ledgerId || context?.activeWorkspace?.ledger_id || "").trim();
+  if (fromContext) return fromContext;
+  return String(appBackendContextStatus?.activeWorkspaceId || "").trim();
+}
+
+function getActiveWorkspaceStateScope({ context = getBackendAppContext(), reason = "state-scope" } = {}) {
+  const backendWorkspaceId = getCanonicalWorkspaceIdFromAppSessionContext(context);
+  const selectedWorkspaceId = String(getActiveLedgerId() || getConfiguredLedgerId()).trim();
+  const loadedWorkspaceId = String(getLoadedWorkspaceId() || "").trim();
+  const ledgerId = String(backendWorkspaceId || selectedWorkspaceId || getConfiguredLedgerId()).trim();
+  const staleSelection = Boolean(backendWorkspaceId && selectedWorkspaceId && backendWorkspaceId !== selectedWorkspaceId);
+  const staleLoadedWorkspace = Boolean(ledgerId && loadedWorkspaceId && loadedWorkspaceId !== ledgerId);
+  return {
+    ledgerId,
+    backendWorkspaceId,
+    selectedWorkspaceId,
+    loadedWorkspaceId,
+    staleSelection,
+    staleLoadedWorkspace,
+    source: backendWorkspaceId ? "app-session-context" : "frontend-fallback",
+    reason: String(reason || "state-scope")
+  };
+}
+
+async function resolveActiveWorkspaceStateScope({ reason = "state-scope", operation = "load", forceHydrate = false } = {}) {
+  const preferredWorkspaceId = getActiveLedgerId() || getConfiguredLedgerId();
+  const context = (!forceHydrate && isBackendAppContextFreshForWorkspace(preferredWorkspaceId))
+    ? getBackendAppContext()
+    : await hydrateAppSessionContext({
+      reason: `${operation}:${reason}`,
+      preferredWorkspaceId,
+      source: "state-scope"
+    });
+  const scope = getActiveWorkspaceStateScope({ context, reason });
+  if (scope.ledgerId && scope.staleSelection) {
+    setActiveLedgerId(scope.ledgerId, { persist: true, updateUrl: true });
+  }
+  recordSyncDiagnostic("active-workspace-state-scope", `Using ${scope.ledgerId || "unknown workspace"} for ${operation}.`, {
+    reason,
+    operation,
+    ledgerId: scope.ledgerId,
+    backendWorkspaceId: scope.backendWorkspaceId,
+    selectedWorkspaceId: scope.selectedWorkspaceId,
+    loadedWorkspaceId: scope.loadedWorkspaceId,
+    staleSelection: scope.staleSelection,
+    staleLoadedWorkspace: scope.staleLoadedWorkspace,
+    source: scope.source
+  });
+  return getActiveWorkspaceStateScope({ context: getBackendAppContext() || context, reason });
+}
+
+function isWorkspaceWriteScopeAllowed(scope = {}, reason = "save") {
+  const ledgerId = String(scope.ledgerId || "").trim();
+  const selectedWorkspaceId = String(getActiveLedgerId() || "").trim();
+  const loadedWorkspaceId = String(getLoadedWorkspaceId() || "").trim();
+  if (!ledgerId) return false;
+  if (selectedWorkspaceId && selectedWorkspaceId !== ledgerId) return false;
+  if (loadedWorkspaceId && loadedWorkspaceId !== ledgerId && !/member-bootstrap|json mirror backup|audit JSON mirror backup|safety backup|backup/i.test(String(reason || ""))) {
+    return false;
+  }
+  return true;
+}
+
+async function requireActiveWorkspaceWriteScope({ reason = "save", forceHydrate = false } = {}) {
+  const scope = await resolveActiveWorkspaceStateScope({ reason, operation: "write", forceHydrate });
+  if (isWorkspaceWriteScopeAllowed(scope, reason)) return scope;
+  const retryScope = await resolveActiveWorkspaceStateScope({ reason: `${reason}:retry`, operation: "write", forceHydrate: true });
+  if (isWorkspaceWriteScopeAllowed(retryScope, reason)) return retryScope;
+  const message = `Blocked save because the loaded workspace (${retryScope.loadedWorkspaceId || "unknown"}) does not match the active workspace (${retryScope.ledgerId || retryScope.selectedWorkspaceId || "unknown"}).`;
+  recordSyncDiagnostic("workspace-write-scope-blocked", message, { reason, ...retryScope });
+  recordDataIoDiagnostic("error", {
+    source: "active-workspace-state-scope",
+    operation: "write",
+    ok: false,
+    resultCode: "WORKSPACE_WRITE_SCOPE_MISMATCH",
+    ledgerId: retryScope.ledgerId,
+    selectedWorkspaceId: retryScope.selectedWorkspaceId,
+    loadedWorkspaceId: retryScope.loadedWorkspaceId,
+    detail: message
+  });
+  throw new Error(message);
+}
+
+
 function isBackendAppContextCurrentForActiveWorkspace() {
   const backendWorkspaceId = getBackendAppContextActiveWorkspaceId();
   return Boolean(appBackendContextStatus?.ok && backendWorkspaceId && backendWorkspaceId === String(getActiveLedgerId() || ""));
@@ -20257,17 +20342,14 @@ async function syncNormalizedTablesFromJson() {
 
 
 
-async function loadStateFromNormalizedTables(jsonFallbackState) {
-  recordSupabaseLoadEvent("normalized-table-load", "loadStateFromNormalizedTables");
+async function loadStateFromNormalizedTables(jsonFallbackState, options = {}) {
+  const { reason = "loadStateFromNormalizedTables", stateScope = null } = options || {};
+  recordSupabaseLoadEvent("normalized-table-load", reason);
   if (!supabaseClient || !currentSession) return null;
   if (!(await hasFreshSupabaseSession())) return null;
 
-  let ledgerId = getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig);
-  const backendContext = isBackendAppContextFreshForWorkspace(ledgerId)
-    ? getBackendAppContext()
-    : await hydrateAppSessionContext({ reason: "state-load", preferredWorkspaceId: ledgerId, source: "state-load" });
-  const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
-  if (backendWorkspaceId) ledgerId = backendWorkspaceId;
+  const scope = stateScope || await resolveActiveWorkspaceStateScope({ reason: "state-load", operation: "load" });
+  const ledgerId = String(scope.ledgerId || getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig)).trim();
   const renderStateRows = await getRenderNormalizedStateRows(ledgerId);
   let participantResult = { data: [], error: null };
   let membersResult;
@@ -20757,7 +20839,8 @@ async function tryRenderAdminDiagnosticsStateLoad(reason, loadToken, jsonFallbac
   if (!isAdminDiagnosticsLoadReason(reason)) return false;
 
   try {
-    const normalizedState = await loadStateFromNormalizedTables(jsonFallbackState || state);
+    const adminStateScope = await resolveActiveWorkspaceStateScope({ reason: `admin-diagnostics:${reason}`, operation: "admin-load" });
+    const normalizedState = await loadStateFromNormalizedTables(jsonFallbackState || state, { reason: `admin-diagnostics:${reason}`, stateScope: adminStateScope });
     if (!normalizedState) return false;
     if (!isCurrentSupabaseLoad(loadToken)) {
       recordSupabaseLoadEvent("supabase-load-stale-result", `admin render state (${reason})`);
@@ -20797,9 +20880,13 @@ async function loadSupabaseState(options = {}) {
     return false;
   }
 
-  await hydrateAppSessionContext({ reason, source: "loadSupabaseState" }).catch((error) => {
+  let stateScope = null;
+  try {
+    stateScope = await resolveActiveWorkspaceStateScope({ reason, operation: "load" });
+  } catch (error) {
     recordSyncDiagnostic("app-session-context-fallback", error?.message || "Backend app session context was unavailable; continuing with existing workspace state.", { reason, error });
-  });
+    stateScope = getActiveWorkspaceStateScope({ reason });
+  }
 
   const now = Date.now();
   if (shouldDeferBackgroundCloudLoad(reason, now)) {
@@ -20834,7 +20921,8 @@ async function loadSupabaseState(options = {}) {
   try {
     clearRecoverableSyncDelayAfterHealthySync(`load-start:${reason}`);
     setSyncStatus("Syncing", { source: reason });
-    recordSyncDiagnostic("load-start", reason, { force });
+    const ledgerId = String(stateScope?.ledgerId || getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig)).trim();
+    recordSyncDiagnostic("load-start", reason, { force, ledgerId, stateScope });
 
     if (await tryRenderAdminDiagnosticsStateLoad(reason, loadToken, state)) {
       return true;
@@ -20843,7 +20931,7 @@ async function loadSupabaseState(options = {}) {
     const { data, error } = await supabaseClient
       .from("car_share_ledgers")
       .select("state,updated_at")
-      .eq("id", supabaseHelpers.getLedgerId(supabaseConfig))
+      .eq("id", ledgerId)
       .maybeSingle();
 
     if (error) {
@@ -20870,7 +20958,7 @@ async function loadSupabaseState(options = {}) {
     let loadedFromTables = false;
 
     try {
-      const normalizedState = await loadStateFromNormalizedTables(jsonState);
+      const normalizedState = await loadStateFromNormalizedTables(jsonState, { reason, stateScope });
       if (normalizedState) {
         if (!isCurrentSupabaseLoad(loadToken)) {
           recordSupabaseLoadEvent("supabase-load-stale-result", `normalized tables (${reason})`);
@@ -20912,7 +21000,7 @@ async function loadSupabaseState(options = {}) {
     scheduleNormalizedTableCheck({ delayMs: 120000, reason: "load" });
     if (ensureMemberForLoggedInUser()) await saveSupabaseState({ reason: "member-bootstrap" });
     clearSyncDelay(`load-success:${reason}`);
-    recordSyncDiagnostic("load-success", loadedFromTables ? "Loaded from normalized tables." : "Loaded from JSON mirror fallback.", { reason, loadedFromTables });
+    recordSyncDiagnostic("load-success", loadedFromTables ? "Loaded from normalized tables." : "Loaded from JSON mirror fallback.", { reason, loadedFromTables, ledgerId });
     markActiveWorkspaceConfirmed(reason);
     if (/workspace-switch|workspace-session|ledger-event|manual|startup|auth/i.test(String(reason || ""))) {
       clearWorkspaceSwitchAutoRetry(`load-confirmed:${reason}`);
@@ -20998,8 +21086,10 @@ async function saveSupabaseState(options = {}) {
   }
 
   try {
+    const stateScope = await requireActiveWorkspaceWriteScope({ reason });
     setSyncStatus("Saving", { source: reason });
     ignoreRealtimeUntil = Date.now() + 1500;
+    recordSupabaseLoadEvent("workspace-write-scope", `${reason}; ledger=${stateScope.ledgerId}`);
 
     // Phase 2AB: normalized row/RPC writes are primary for routine trip, fuel,
     // booking, and payment changes. Avoid full JSON-to-table reconciliation on
@@ -21061,8 +21151,8 @@ async function maybeSaveJsonMirrorBackup(options = {}) {
 }
 
 
-async function saveJsonMirrorBackupViaRender({ force = false, reason = "", savedAt = "" } = {}) {
-  const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+async function saveJsonMirrorBackupViaRender({ force = false, reason = "", savedAt = "", stateScope = null } = {}) {
+  const ledgerId = String(stateScope?.ledgerId || getActiveWorkspaceStateScope({ reason }).ledgerId || supabaseHelpers.getLedgerId(supabaseConfig)).trim();
   const traceMeta = { source: "json-mirror-backup", route: "render-api", endpoint: renderJsonMirrorBackupUrl, operation: "upsert" };
   if (!currentSession?.access_token || !ledgerId) return { ok: false, shouldFallback: true };
 
@@ -21134,11 +21224,12 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
   recordSupabaseLoadEvent("json-mirror-save", `${resolvedReason}; purpose=${mirrorPurpose}`);
   if (!supabaseClient || !currentSession) return false;
   if (!canManageSettings()) return false;
+  const stateScope = await requireActiveWorkspaceWriteScope({ reason: resolvedReason });
   if (!force && normalizedReadModeActive && !hasLedgerData(state)) return false;
 
   const savedAt = new Date().toISOString();
   reason = resolvedReason;
-  const renderResult = await saveJsonMirrorBackupViaRender({ force, reason, savedAt });
+  const renderResult = await saveJsonMirrorBackupViaRender({ force, reason, savedAt, stateScope });
   if (renderResult.ok) {
     lastRenderJsonMirrorBackupAt = Date.now();
     lastJsonMirrorSaveAt = savedAt;
@@ -21154,7 +21245,7 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
   const { error } = await supabaseClient
     .from("car_share_ledgers")
     .upsert({
-      id: supabaseHelpers.getLedgerId(supabaseConfig),
+      id: stateScope.ledgerId,
       state,
       updated_at: savedAt
     });
@@ -21172,7 +21263,7 @@ async function saveJsonMirrorBackup({ force = false, reason = "" } = {}) {
     table: "car_share_ledgers",
     operation: "upsert",
     ok: true,
-    ledgerId: supabaseHelpers.getLedgerId(supabaseConfig),
+    ledgerId: stateScope.ledgerId,
     detail: "Saved through direct Supabase JSON mirror fallback."
   });
   lastJsonMirrorSaveAt = savedAt;
