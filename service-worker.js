@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v379";
+const CACHE_NAME = "fuel-ledger-v380";
 const BUILD_LABEL = "render-admin-report-save-route";
-const BUILD_UPDATED_AT = "2026-06-21T14:50:00.000Z";
+const BUILD_UPDATED_AT = "2026-06-21T15:10:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -75,14 +75,28 @@ function cacheKeyForRequest(request) {
   return `${url.pathname}${url.search}`;
 }
 
+function pathKeyForRequest(request) {
+  const url = new URL(request.url);
+  return url.pathname || "/";
+}
+
 function isCoreAssetRequest(request) {
   const key = cacheKeyForRequest(request);
-  return CORE_ASSETS.includes(key) || (request.mode === "navigate" && key === "/");
+  const pathKey = pathKeyForRequest(request);
+  return CORE_ASSETS.includes(key) || CORE_ASSETS.includes(pathKey) || request.mode === "navigate";
+}
+
+async function matchNavigationShell(cache) {
+  return (await cache.match("/index.html")) || (await cache.match("/"));
 }
 
 async function cacheFirstCoreAsset(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
+  if (request.mode === "navigate") {
+    const shell = await matchNavigationShell(cache);
+    if (shell) return shell;
+  }
+  const cached = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
   if (cached) return cached;
   const response = await fetch(request);
   if (response && response.ok) cache.put(request, response.clone());
@@ -118,20 +132,30 @@ self.addEventListener("fetch", (event) => {
   }
   if (isCoreAssetRequest(request)) {
     event.respondWith(
-      cacheFirstCoreAsset(request).catch(() => caches.match(request).then((response) => {
+      cacheFirstCoreAsset(request).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const response = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
         if (response) return response;
-        if (request.mode === "navigate") return caches.match("/");
+        if (request.mode === "navigate") {
+          const shell = await matchNavigationShell(cache);
+          if (shell) return shell;
+        }
         return new Response("Offline", { status: 503, statusText: "Offline" });
-      }))
+      })
     );
     return;
   }
   event.respondWith(
-    fetch(request).catch(() => caches.match(request).then((response) => {
+    fetch(request).catch(async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const response = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
       if (response) return response;
-      if (request.mode === "navigate") return caches.match("/");
+      if (request.mode === "navigate") {
+        const shell = await matchNavigationShell(cache);
+        if (shell) return shell;
+      }
       return new Response("Offline", { status: 503, statusText: "Offline" });
-    }))
+    })
   );
 });
 

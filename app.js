@@ -39,6 +39,7 @@ const renderAdminSecurityHealthUrl = "/api/admin/security-health";
 const renderOwnerActivityUrl = "/api/owner/activity";
 const renderOwnerGlobalDiagnosticsUrl = "/api/owner/global-diagnostics";
 const renderVehicleLookupUrl = "/api/vehicle/lookup";
+const renderBackendPingUrl = "/api/ping";
 const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
@@ -1254,6 +1255,10 @@ let workspaceSwitchAutoRetryTimer = null;
 let workspaceSwitchAutoRetryLedgerId = "";
 let workspaceSwitchAutoRetryAttempts = 0;
 const workspaceSwitchAutoRetryDelaysMs = [2000, 5000, 10000, 20000];
+let renderBackendWakePromise = null;
+let renderBackendWakeLastOkAt = 0;
+let renderBackendWakeLastAttemptAt = 0;
+let renderBackendWakeTimer = null;
 let lastSettingsWorkspaceLockSignature = "";
 let lastSettingsWorkspaceLockRecordedAt = 0;
 
@@ -1477,6 +1482,9 @@ let fuelPriceTimer = null;
 const fuelPriceRefreshIntervalMs = 60 * 60 * 1000;
 const fuelPriceFetchTimeoutMs = 3500;
 const vehicleLookupTimeoutMs = 20000;
+const renderBackendWakeTimeoutMs = 6000;
+const renderBackendWakeFreshMs = 45 * 1000;
+const renderBackendWakeRetryDelayMs = 1200;
 let fuelPriceInFlight = false;
 let lastCloudSaveAt = "";
 let lastCloudSyncAt = "";
@@ -8747,6 +8755,7 @@ function markCloudSyncDidNotComplete(message = "Cloud sync did not complete.") {
 
 
 window.addEventListener("focus", () => {
+  if (supabaseClient && currentSession) scheduleRenderBackendWake("window-focus");
   if (!supabaseClient || !currentSession || liveSyncEnabled) return;
   const now = Date.now();
   const recentFocusAttempt = now - Number(lastFocusSyncAttemptAt || 0) < supabaseFocusReloadCooldownMs;
@@ -8782,6 +8791,10 @@ window.addEventListener("focus", () => {
 document.addEventListener("visibilitychange", () => {
   handleRealtimeVisibilityChange();
 });
+
+window.setInterval(() => {
+  if (liveSyncEnabled) scheduleRenderBackendWake("visible-live-sync-keepalive");
+}, 45 * 1000);
 
 function getPendingLoginInviteCode() {
   return normalizeInviteCodeInput(els.loginInviteCode?.value || localStorage.getItem(pendingWorkspaceInviteCodeKey) || "");
@@ -9247,6 +9260,27 @@ async function lookupVehicleByPlateFromUi() {
     return false;
   }
   const ledgerId = getActiveLedgerId();
+  if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "Checking backend connection before vehicle lookup...";
+  const backendReady = await ensureRenderBackendReadyForUserAction({ reason: "vehicle-lookup", timeoutMs: renderBackendWakeTimeoutMs, retries: 2 });
+  if (!backendReady?.ok) {
+    const reason = backendReady?.message || "Render backend is not reachable yet.";
+    recordDataIoDiagnostic("timeout", {
+      source: "vehicle-lookup",
+      route: "render-api",
+      endpoint: renderBackendPingUrl,
+      operation: "preflight",
+      ok: false,
+      resultCode: backendReady?.code || "RENDER_BACKEND_WAKE_FAILED",
+      statusCode: backendReady?.code || "RENDER_BACKEND_WAKE_FAILED",
+      errorCode: backendReady?.code || "RENDER_BACKEND_WAKE_FAILED",
+      ledgerId,
+      detail: `Vehicle lookup waited for the backend to wake, but it was not ready: ${reason}`,
+      error: backendReady?.error || null
+    });
+    if (els.vehicleLookupStatus) els.vehicleLookupStatus.textContent = "The backend is waking up. The app will reconnect automatically; try the lookup again in a moment if it does not start.";
+    scheduleRenderBackendWake("vehicle-lookup-retry");
+    return false;
+  }
   const operationId = createDataIoOperationId("vehicle-lookup", "lookup");
   const workspaceContext = buildDataIoWorkspaceContext();
   const traceMeta = {
@@ -17263,6 +17297,87 @@ async function buildRenderRequestHeaders(extraHeaders = {}) {
   };
 }
 
+function hasFreshRenderBackendWake(referenceTime = Date.now()) {
+  return Number(renderBackendWakeLastOkAt || 0) > 0 && referenceTime - Number(renderBackendWakeLastOkAt || 0) < renderBackendWakeFreshMs;
+}
+
+async function pingRenderBackend({ reason = "ping", timeoutMs = renderBackendWakeTimeoutMs } = {}) {
+  if (typeof fetch !== "function") return { ok: false, code: "FETCH_UNAVAILABLE", message: "Browser fetch is unavailable." };
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return { ok: false, code: "BROWSER_OFFLINE", message: "Browser is offline." };
+  }
+  const startedAt = Date.now();
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const setTimer = typeof window !== "undefined" && window.setTimeout ? window.setTimeout.bind(window) : setTimeout;
+    const clearTimer = typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout.bind(window) : clearTimeout;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimer(() => {
+        if (controller) controller.abort();
+        reject(createRenderApiTimeoutError("Render backend wake", timeoutMs));
+      }, timeoutMs);
+    });
+    const pingUrl = `${renderBackendPingUrl}?reason=${encodeURIComponent(reason)}&workspace=${encodeURIComponent(getActiveLedgerId() || "")}&t=${Date.now()}`;
+    const fetchPromise = fetch(pingUrl, {
+      method: "GET",
+      cache: "no-store",
+      signal: controller ? controller.signal : undefined,
+      headers: { "Accept": "application/json" }
+    });
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    if (timeoutId) clearTimer(timeoutId);
+    const ok = Boolean(response && response.ok);
+    if (ok) {
+      renderBackendWakeLastOkAt = Date.now();
+      recordSupabaseLoadEvent("render-backend-wake-ok", `${reason} · ${Date.now() - startedAt} ms`);
+      return { ok: true, code: "OK", status: response.status, durationMs: Date.now() - startedAt };
+    }
+    return { ok: false, code: `HTTP_${response?.status || 0}`, status: response?.status || 0, message: `Render backend wake returned ${response?.status || "no response"}.` };
+  } catch (error) {
+    if (timeoutId) {
+      try { (typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout : clearTimeout)(timeoutId); } catch (_) {}
+    }
+    const timeout = error?.name === "AbortError" || /timeout|timed out/i.test(String(error?.message || error?.code || ""));
+    return { ok: false, code: timeout ? "RENDER_BACKEND_WAKE_TIMEOUT" : "RENDER_BACKEND_WAKE_FAILED", message: String(error?.message || error || "Render backend wake failed."), error };
+  }
+}
+
+async function ensureRenderBackendReadyForUserAction({ reason = "user-action", timeoutMs = renderBackendWakeTimeoutMs, retries = 1 } = {}) {
+  if (hasFreshRenderBackendWake()) return { ok: true, cached: true };
+  if (renderBackendWakePromise) return renderBackendWakePromise;
+  renderBackendWakePromise = (async () => {
+    const attempts = Math.max(1, Number(retries || 0) + 1);
+    let lastResult = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      renderBackendWakeLastAttemptAt = Date.now();
+      lastResult = await pingRenderBackend({ reason: `${reason}${attempt ? `-retry-${attempt}` : ""}`, timeoutMs });
+      if (lastResult?.ok) return lastResult;
+      recordSyncDiagnostic("render-backend-wake-failed", lastResult?.message || "Render backend wake did not complete.", { reason, attempt, code: lastResult?.code || "", error: lastResult?.error });
+      if (attempt < attempts - 1) await new Promise((resolve) => window.setTimeout(resolve, renderBackendWakeRetryDelayMs));
+    }
+    return lastResult || { ok: false, code: "RENDER_BACKEND_WAKE_FAILED", message: "Render backend wake failed." };
+  })().finally(() => {
+    renderBackendWakePromise = null;
+  });
+  return renderBackendWakePromise;
+}
+
+function scheduleRenderBackendWake(reason = "background") {
+  if (!supabaseClient || !currentSession) return;
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  if (hasFreshRenderBackendWake()) return;
+  const now = Date.now();
+  if (renderBackendWakeTimer || now - Number(renderBackendWakeLastAttemptAt || 0) < 5000) return;
+  renderBackendWakeTimer = window.setTimeout(() => {
+    renderBackendWakeTimer = null;
+    ensureRenderBackendReadyForUserAction({ reason, timeoutMs: renderBackendWakeTimeoutMs, retries: 0 }).catch((error) => {
+      recordSyncDiagnostic("render-backend-wake-error", String(error?.message || error || "Render backend wake failed."), { reason, error });
+    });
+  }, 250);
+}
+
 function createRenderApiTimeoutError(label, timeoutMs) {
   const error = paymentActionTimeoutError(label || "Render API", timeoutMs);
   error.code = error.code || "RENDER_API_TIMEOUT";
@@ -20401,6 +20516,7 @@ function handleRealtimeVisibilityChange() {
     pauseRealtimeForHiddenPage();
   } else {
     resumeRealtimeForVisiblePage();
+    scheduleRenderBackendWake("visible-resume");
   }
 }
 

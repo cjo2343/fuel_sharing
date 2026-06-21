@@ -3024,6 +3024,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        parsed_path = urllib.parse.urlparse(self.path).path
+        if parsed_path == "/api/ping":
+            self.send_json({
+                "ok": True,
+                "service": "fuel-ledger-render",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            return
         if self.path == "/api/state":
             if not authorize_ledger_api(self):
                 return

@@ -1,3 +1,5 @@
+- 2026-06-21 15:10 UTC: v380 Idle recovery warms the Render backend before member actions, keeps Live Sync sessions gently connected while visible, and service-worker navigations with workspace query strings fall back to the app shell instead of 503 Offline.
+- Top release note: Idle recovery now warms the Render backend and service-worker navigations fall back to the app shell even with ?workspace links, so vehicle lookup and workspace pages recover after the app sits idle without a manual refresh.
 - 2026-06-21 14:50 UTC: v379 Admin global diagnostics now exports generic memberRows instead of targeted debug memberships, Owner Activity is manual/cached instead of auto-hammering Render, and owner-activity payloads are metadata-light by default.
 - 2026-06-21 14:35 UTC: v378 Admin optional diagnostics now back off instead of hammering slow Render health/global routes; reports export cached snapshots and global diagnostics stay generic/last-good-first.
 - 2026-06-21 11:25 UTC: v370 App-owner global diagnostics now use a dedicated Render owner route to list all workspaces, generic member/workspace summaries, and recent vehicle lookup owner-activity rows without requiring the app owner to be a member of every workspace.
@@ -31,9 +33,9 @@ These values are checked by `npm run release:check`. When a runtime release chan
 
 - Admin global diagnostics now exports generic member rows and Owner Activity stays manual/cached instead of auto-hammering slow optional routes.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v379`
-- `fuel-ledger-v379` - Admin global diagnostics are fully generic and cached; Owner Activity uses lighter manual requests and no longer auto-hammers Render.
-- Updated at: `2026-06-21T14:50:00.000Z`
+- Service-worker cache: `fuel-ledger-v380`
+- `fuel-ledger-v380` - Idle recovery warms the Render backend before vehicle lookup/member actions and query-string workspace navigations stay inside the cached app shell instead of 503 Offline.
+- Updated at: `2026-06-21T15:10:00.000Z`
 - Top release note: Admin global diagnostics are fully generic and cached: member rows replace the old targeted membership debug field, Owner Activity is manual/cached instead of auto-hammering, and owner-activity payloads are lighter.
 ## Invite beta readiness: member action Data I/O
 

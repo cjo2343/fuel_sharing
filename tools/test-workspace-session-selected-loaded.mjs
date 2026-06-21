@@ -21,5 +21,5 @@ assert.match(app, /function maybeRecordSettingsWorkspaceLocked\(\)[\s\S]*source:
 assert.match(app, /function getSelectedWorkspaceIdFromUi\(\)[\s\S]*stale DOM values[\s\S]*getActiveLedgerId\(\)/, 'Data I/O selected workspace should prefer canonical active ledger over stale selector DOM.');
 assert.match(app, /WORKSPACE_SESSION_RETRY_AFTER_STALE_LOADING/, 'stale workspace loading locks should be diagnosed and retried.');
 assert.match(app, /maybeRecordSettingsWorkspaceLocked\(\);[\s\S]*Loading \$\{session\.selectedWorkspaceLabel\} before settings can be edited/, 'Settings lock render path should invoke workspace-session diagnostics before showing the loading message.');
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v379"/, 'build-info should point to v375 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v379"/, 'service worker cache should be bumped to v371.');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v380"/, 'build-info should point to v375 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v380"/, 'service worker cache should be bumped to v371.');
