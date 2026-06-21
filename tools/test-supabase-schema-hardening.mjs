@@ -362,7 +362,7 @@ function testReleaseAboutPanelExists() {
   assert.match(html, /id="buildInfoPanel"/);
   assert.doesNotMatch(html, /id="refresh(?:About)?BuildInfo"/);
   assert.match(buildInfo, /function startAutoBuildInfoRefresh\(\)/);
-  assert.match(buildInfo, /refreshBuildInfo\(\{ activateUpdates: true \}\)/);
+  assert.match(buildInfo, /scheduleBuildInfoRefresh\(\{ activateUpdates: true \}\)/);
   assert.match(buildInfo, /window\.FUEL_LEDGER_BUILD = BUILD_INFO/);
   assert.match(buildInfo, /releaseNotes: Object\.freeze\(\[/);
   assert.match(buildInfo, /Latest notes/);

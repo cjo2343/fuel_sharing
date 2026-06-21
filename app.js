@@ -2351,6 +2351,7 @@ let lastAdminAutoOwnerActivityAt = 0;
 let adminAutoRefreshNextTaskIndex = 0;
 const adminAutoRefreshIntervalMs = 30000;
 const adminAutoGlobalFreshMs = 5 * 60 * 1000;
+const ownerGlobalDiagnosticsAutoRefreshEnabled = false;
 const adminAutoOwnerActivityFreshMs = 2 * 60 * 1000;
 const ownerActivityAutoRefreshEnabled = false;
 const adminAutoOptionalFailureBackoffMs = 5 * 60 * 1000;
@@ -5164,7 +5165,8 @@ function markOptionalAdminPanelsReadyForManualRefresh(reason = "admin-open") {
   ownerActivityInitialAdminLoadAttempted = true;
   if (ownerActivityStatus && !ownerActivityStatus.checked) {
     ownerActivityStatus.loading = false;
-    ownerActivityStatus.message = "Manual refresh";
+    ownerActivityStatus.message = "Optional audit is paused until you refresh this card.";
+    ownerActivityStatus.manualPaused = true;
   }
   return Promise.resolve({ ok: true, reason });
 }
@@ -5225,7 +5227,7 @@ function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
   // deep diagnostic only; background checks use /api/ping and cached global snapshots.
   const globalFailedRecently = adminOptionalStatusFailedRecently(ownerGlobalDiagnosticsStatus, referenceTime);
   const ownerActivityFailedRecently = ownerActivityConsecutiveTimeouts > 0 && referenceTime < (ownerActivityCooldownUntil || 0);
-  if (!ownerGlobalDiagnosticsStatus.loading && !globalFailedRecently && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
+  if (ownerGlobalDiagnosticsAutoRefreshEnabled && !ownerGlobalDiagnosticsStatus.loading && !globalFailedRecently && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
     tasks.push("global");
   }
   if (ownerActivityAutoRefreshEnabled && !ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && !ownerActivityFailedRecently && referenceTime >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || referenceTime - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
@@ -5348,9 +5350,11 @@ function renderOwnerGlobalDiagnosticsCard() {
   const status = ownerGlobalDiagnosticsReportStatus();
   const summary = summarizeOwnerGlobalDiagnostics(status);
   const hasSnapshot = summary.workspaceCount > 0 || summary.memberRowCount > 0 || summary.vehicleActivityCount > 0 || summary.recentActivityCount > 0;
-  const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok || hasSnapshot ? "ok" : "warning") : "warning";
-  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : status.checked ? (summary.workspaceCount ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Quiet") : "Not checked";
-  const detail = status.message || "Global app-owner diagnostics are optional and cached; slow checks should not block workspace use.";
+  const cardClass = hasSnapshot || status.checked || !status.loading ? "ok" : "warning";
+  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : status.checked ? (summary.workspaceCount ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Quiet") : "Quiet";
+  const detail = status.staleHealthy
+    ? "Optional global diagnostics are showing the last good cached snapshot. Core workspace data and live sync are still running."
+    : status.message || "Global app-owner diagnostics are optional and cached; slow checks should not block workspace use.";
   const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No cached global workspace snapshot yet.</li>`;
   const vehicleList = summary.latestVehicleActivity.length ? summary.latestVehicleActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}${row.resultCode ? ` · ${escapeHtml(row.resultCode)}` : ""}</li>`).join("") : `<li>No cached recent vehicle lookup activity yet.</li>`;
   const activityList = summary.latestActivity.length ? summary.latestActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)} · ${escapeHtml(row.action)}</li>`).join("") : `<li>No cached recent global activity yet.</li>`;
@@ -5466,11 +5470,11 @@ function renderOwnerActivityCard() {
   const hiddenCount = Math.max(0, visibleRows.length - recentRows.length);
   const coolingDown = Date.now() < (ownerActivityCooldownUntil || 0);
   const manuallyPaused = ownerActivityAutoPausedUntilManual || status.manualPaused;
-  const cardClass = status.loading || coolingDown || manuallyPaused ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
-  const title = status.loading ? "Loading" : manuallyPaused ? "Manual refresh" : coolingDown ? "Paused" : status.checked ? (status.ok ? `${visibleRows.length} shown` : "Needs review") : "Not loaded";
+  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? "ok" : "warning") : "ok";
+  const title = status.loading ? "Loading" : coolingDown ? "Paused" : visibleRows.length ? `${visibleRows.length} shown` : "Optional audit";
   const detail = manuallyPaused
-    ? "Owner activity auto-refresh is paused. Use Refresh owner activity when you need this optional audit view; core ledger data is still loaded."
-    : coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Global app-owner audit across users and workspaces. This is not the current workspace state.";
+    ? "Optional owner activity is paused until you refresh this card. Core ledger data and live sync are still running."
+    : coolingDown ? formatOwnerActivityCooldownMessage() : status.message || "Global app-owner audit across users and workspaces. This optional panel is not the current workspace state.";
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>Owner activity · global audit</span>

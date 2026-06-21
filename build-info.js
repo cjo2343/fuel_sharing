@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T18:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v385",
+    updatedAt: "2026-06-21T18:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v386",
     releaseNotes: Object.freeze([
+      "Idle Admin/background cleanup: service-worker/build-status messages are now best-effort and cannot throw uncaught closed-channel errors, favicon.ico is handled by the app shell, and optional owner/global diagnostics stay calm when idle instead of looking like core app failures.",
       "Vehicle lookup clicks are now impossible to lose silently: the button records VEHICLE_LOOKUP_CLICKED before any guard, stays clickable during workspace settling so the handler can recover context, delegated click binding survives Settings re-renders, and load reports include button binding/disabled/status state.",
       "Vehicle lookup is now workspace-context-first: before calling Render it confirms the URL/selected/loaded workspace and signed-in admin profile all match, reloads the requested workspace if needed, sends explicit workspace context with the lookup, and retries once without a browser refresh when secondary workspaces are still settling.",
       "Vehicle lookup now recovers without a manual refresh: after idle/backend wake delays it retries the Render lookup automatically, records VEHICLE_LOOKUP_AUTO_RETRY breadcrumbs, and only reports a timeout after backend/session recovery has been attempted.",
@@ -283,31 +284,45 @@
       return null;
     }
 
-    const registration = await getServiceWorkerRegistration();
-    const targetWorker = navigator.serviceWorker.controller
-      || registration?.active
-      || registration?.waiting
-      || registration?.installing;
-    if (!targetWorker) return null;
+    try {
+      const registration = await getServiceWorkerRegistration();
+      const targetWorker = navigator.serviceWorker.controller
+        || registration?.active
+        || registration?.waiting
+        || registration?.installing;
+      if (!targetWorker) return null;
 
-    return new Promise((resolve) => {
-      const channel = new MessageChannel();
-      const timeout = window.setTimeout(() => resolve(null), timeoutMs);
-      channel.port1.onmessage = (event) => {
-        window.clearTimeout(timeout);
-        const payload = event.data || null;
-        if (payload && !navigator.serviceWorker.controller) {
-          payload.source = registration?.active ? "active-uncontrolled" : "registration";
+      return await new Promise((resolve) => {
+        const channel = new MessageChannel();
+        let settled = false;
+        const settle = (payload = null) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          try { channel.port1.onmessage = null; } catch (error) {}
+          try { channel.port1.onmessageerror = null; } catch (error) {}
+          try { channel.port1.close(); } catch (error) {}
+          try { channel.port2.close(); } catch (error) {}
+          resolve(payload);
+        };
+        const timeout = window.setTimeout(() => settle(null), timeoutMs);
+        channel.port1.onmessage = (event) => {
+          const payload = event.data || null;
+          if (payload && !navigator.serviceWorker.controller) {
+            payload.source = registration?.active ? "active-uncontrolled" : "registration";
+          }
+          settle(payload);
+        };
+        channel.port1.onmessageerror = () => settle(null);
+        try {
+          targetWorker.postMessage({ type: "GET_BUILD_INFO" }, [channel.port2]);
+        } catch (error) {
+          settle(null);
         }
-        resolve(payload);
-      };
-      try {
-        targetWorker.postMessage({ type: "GET_BUILD_INFO" }, [channel.port2]);
-      } catch (error) {
-        window.clearTimeout(timeout);
-        resolve(null);
-      }
-    });
+      });
+    } catch (error) {
+      return null;
+    }
   }
 
   async function ensureAutomaticServiceWorkerControl({ forceUpdate = false } = {}) {
@@ -447,43 +462,54 @@
   }
 
   async function refreshBuildInfo({ activateUpdates = true } = {}) {
-    renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
-    if (activateUpdates) {
-      await ensureAutomaticServiceWorkerControl({ forceUpdate: false });
-    }
-    const [serviceWorkerInfo, deployedInfo] = await Promise.all([
-      requestServiceWorkerInfo(),
-      requestLatestDeployedBuildInfo()
-    ]);
-    lastRenderedServiceWorkerInfo = serviceWorkerInfo;
-    lastRenderedDeployedInfo = deployedInfo;
-    renderBuildInfo(serviceWorkerInfo, deployedInfo);
-
-    if (activateUpdates && "serviceWorker" in navigator) {
-      try {
-        const registration = await ensureAutomaticServiceWorkerControl({ forceUpdate: true }) || await navigator.serviceWorker.ready;
-        const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
-        const loadedCache = BUILD_INFO.expectedServiceWorkerCache;
-        const serviceWorkerCache = serviceWorkerInfo?.cacheName || "";
-        const pageIsBehind = Boolean(deployedCache && deployedCache !== loadedCache);
-        const workerIsBehind = Boolean(deployedCache && serviceWorkerCache && serviceWorkerCache !== deployedCache);
-        if (registration.waiting || registration.installing || pageIsBehind || workerIsBehind) {
-          const activated = await activateWaitingServiceWorker(registration);
-          if (activated || pageIsBehind) reloadWhenSafe();
-        }
-      } catch (error) {
-        // The next automatic poll will retry; never require a user-facing button.
+    try {
+      renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
+      if (activateUpdates) {
+        await ensureAutomaticServiceWorkerControl({ forceUpdate: false });
       }
-    }
+      const [serviceWorkerInfo, deployedInfo] = await Promise.all([
+        requestServiceWorkerInfo().catch(() => null),
+        requestLatestDeployedBuildInfo().catch(() => null)
+      ]);
+      lastRenderedServiceWorkerInfo = serviceWorkerInfo;
+      lastRenderedDeployedInfo = deployedInfo;
+      renderBuildInfo(serviceWorkerInfo, deployedInfo);
 
-    return { serviceWorkerInfo, deployedInfo };
+      if (activateUpdates && "serviceWorker" in navigator) {
+        try {
+          const registration = await ensureAutomaticServiceWorkerControl({ forceUpdate: true }) || await navigator.serviceWorker.ready;
+          const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
+          const loadedCache = BUILD_INFO.expectedServiceWorkerCache;
+          const serviceWorkerCache = serviceWorkerInfo?.cacheName || "";
+          const pageIsBehind = Boolean(deployedCache && deployedCache !== loadedCache);
+          const workerIsBehind = Boolean(deployedCache && serviceWorkerCache && serviceWorkerCache !== deployedCache);
+          if (registration.waiting || registration.installing || pageIsBehind || workerIsBehind) {
+            const activated = await activateWaitingServiceWorker(registration);
+            if (activated || pageIsBehind) reloadWhenSafe();
+          }
+        } catch (error) {
+          // The next automatic poll will retry; never require a user-facing button.
+        }
+      }
+
+      return { serviceWorkerInfo, deployedInfo };
+    } catch (error) {
+      renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
+      return { serviceWorkerInfo: lastRenderedServiceWorkerInfo, deployedInfo: lastRenderedDeployedInfo, error };
+    }
+  }
+
+  function scheduleBuildInfoRefresh(options = {}) {
+    refreshBuildInfo(options).catch(() => {
+      renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
+    });
   }
 
   function startAutoBuildInfoRefresh() {
     if (autoUpdatePollTimer) return;
     autoUpdatePollTimer = window.setInterval(() => {
       if (document.hidden) return;
-      refreshBuildInfo({ activateUpdates: true });
+      scheduleBuildInfoRefresh({ activateUpdates: true });
     }, 5000);
   }
 
@@ -491,22 +517,23 @@
     BUILD_INFO,
     renderBuildInfo,
     refreshBuildInfo,
+    scheduleBuildInfoRefresh,
     startAutoBuildInfoRefresh,
     serviceWorkerStatus,
     ensureAutomaticServiceWorkerControl
   };
 
-  refreshBuildInfo({ activateUpdates: true });
+  scheduleBuildInfoRefresh({ activateUpdates: true });
   startAutoBuildInfoRefresh();
-  window.addEventListener("load", () => refreshBuildInfo({ activateUpdates: true }));
-  window.addEventListener("pageshow", () => refreshBuildInfo({ activateUpdates: true }));
+  window.addEventListener("load", () => scheduleBuildInfoRefresh({ activateUpdates: true }));
+  window.addEventListener("pageshow", () => scheduleBuildInfoRefresh({ activateUpdates: true }));
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) refreshBuildInfo({ activateUpdates: true });
+    if (!document.hidden) scheduleBuildInfoRefresh({ activateUpdates: true });
   });
-  window.addEventListener("popstate", () => refreshBuildInfo({ activateUpdates: true }));
+  window.addEventListener("popstate", () => scheduleBuildInfoRefresh({ activateUpdates: true }));
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      refreshBuildInfo({ activateUpdates: false });
+      scheduleBuildInfoRefresh({ activateUpdates: false });
       reloadWhenSafe();
     });
   }

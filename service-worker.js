@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v385";
+const CACHE_NAME = "fuel-ledger-v386";
 const BUILD_LABEL = "render-admin-report-save-route";
-const BUILD_UPDATED_AT = "2026-06-21T18:25:00.000Z";
+const BUILD_UPDATED_AT = "2026-06-21T18:55:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -32,6 +32,7 @@ const CORE_ASSETS = [
   "/planner-booking-bridge.js",
   "/app.js",
   "/manifest.json",
+  "/favicon.ico",
   "/icon-192.png",
   "/icon-512.png"
 ];
@@ -62,11 +63,15 @@ self.addEventListener("message", (event) => {
     return;
   }
   if (event.data?.type === "GET_BUILD_INFO") {
-    event.ports?.[0]?.postMessage({
-      cacheName: CACHE_NAME,
-      buildLabel: BUILD_LABEL,
-      updatedAt: BUILD_UPDATED_AT
-    });
+    try {
+      event.ports?.[0]?.postMessage({
+        cacheName: CACHE_NAME,
+        buildLabel: BUILD_LABEL,
+        updatedAt: BUILD_UPDATED_AT
+      });
+    } catch (error) {
+      // The page may have navigated away during an automatic cache-status poll.
+    }
   }
 });
 
@@ -126,6 +131,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname === "/favicon.ico") {
+    event.respondWith(caches.open(CACHE_NAME).then(async (cache) => {
+      return (await cache.match("/favicon.ico")) || (await cache.match("/icon-192.png")) || fetch(request);
+    }));
+    return;
+  }
   if (url.pathname === "/build-info.js") {
     event.respondWith(networkFirstBuildInfo(request));
     return;

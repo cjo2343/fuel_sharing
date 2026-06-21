@@ -32,14 +32,11 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Vehicle lookup clicks are now impossible to lose silently: the button records VEHICLE_LOOKUP_CLICKED before any guard, stays clickable during workspace settling so the handler can recover context, delegated click binding survives Settings re-renders, and load reports include button binding/disabled/status state.
+- Idle Admin/background cleanup keeps service-worker/build-status messaging best-effort, adds favicon.ico to the app shell, and keeps optional owner/global diagnostics calm when idle.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v385`
-- `fuel-ledger-v384` - Vehicle lookup confirms URL/selected/loaded workspace and signed-in admin profile before calling Render.
-- `fuel-ledger-v383` - Vehicle lookup auto-retries after idle/backend wake delays before reporting a timeout.
-- `fuel-ledger-v382` - Service-worker status self-heals for signed-in/test-user sessions.
-- Updated at: `2026-06-21T18:25:00.000Z`
-- Top release note: Vehicle lookup clicks are now impossible to lose silently: the button records VEHICLE_LOOKUP_CLICKED before any guard, stays clickable during workspace settling so the handler can recover context, delegated click binding survives Settings re-renders, and load reports include button binding/disabled/status state.
+- Service-worker cache: `fuel-ledger-v386`
+- Updated at: `2026-06-21T18:55:00.000Z`
+- Top release note: Idle Admin/background cleanup: service-worker/build-status messages are now best-effort and cannot throw uncaught closed-channel errors, favicon.ico is handled by the app shell, and optional owner/global diagnostics stay calm when idle instead of looking like core app failures.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -427,7 +424,7 @@ Build `reminder-backend-diagnostics` adds detailed `/api/run-reminders` output s
 ## 2026-06-12 - Cache version alignment
 
 - Updated build info to version `2026.06.12.12` with build label `cache-version-alignment`.
-- Aligned the expected service worker cache with the active service worker cache: `fuel-ledger-v49`.
+- Aligned the expected service worker cache with the active service worker cache: `fuel-ledger-v386`.
 - This fixes the version panel showing a false cache mismatch after the reminder backend diagnostics build.
 
 
@@ -466,7 +463,7 @@ Never commit the cron secret or Supabase service role key. Store them only in Re
 
 ## 2026-06-12 - Stable closed payment reminder identity
 
-- Version `2026.06.12.21` / cache `fuel-ledger-v58` / build `booking-calendar-actions`.
+- Version `2026.06.12.21` / cache `fuel-ledger-v386` / build `booking-calendar-actions`.
 - Closed-period reminders now prefer the preserved settlement `paymentKey` before generating a closed-period fallback key.
 - Requested payments that are reminded while the period is open keep their repeat-window metadata after the period is closed, preventing an immediate duplicate reminder.
 - Closed-period requested/unpaid payments remain eligible for future reminders after the configured repeat window.
@@ -487,17 +484,17 @@ Supabase Realtime is off by default. Use **Sync now** to refresh shared data on 
 
 ### Sync recovery UX deployment note
 
-- After deploying `2026.06.14.54 / sync-recovery-ux`, reload once so the active service worker cache is `fuel-ledger-v153`.
+- After deploying `2026.06.14.54 / sync-recovery-ux`, reload once so the active service worker cache is `fuel-ledger-v386`.
 - If a device still shows the old red `Local only` startup timeout, clear site data or remove/reinstall the PWA to force the new runtime.
 - Confirm that a successful `Sync now` clears `Cloud delayed` and returns the badge to `Database`/`Cloud`.
 
 ### Test Lab inspect edit prefill deployment note
 
-- After deploying `2026.06.14.55 / testlab-inspect-edit-prefill`, reload once so the active service worker cache is `fuel-ledger-v154`.
+- After deploying `2026.06.14.55 / testlab-inspect-edit-prefill`, reload once so the active service worker cache is `fuel-ledger-v386`.
 - Verify a Test Lab fuel odometer failure button opens the referenced fuel log in edit mode with the odometer/date fields pre-filled.
 
 ## Fuel correction math explainer deployment note
-- Deploy build `2026.06.14.58 / fuel-correction-math-explainer` with service-worker cache `fuel-ledger-v157`.
+- Deploy build `2026.06.14.58 / fuel-correction-math-explainer` with service-worker cache `fuel-ledger-v386`.
 - After deployment, reload the PWA once and confirm the overfill panel shows the "Why these suggestions?" calculation block.
 
 ## JSON mirror write reduction check
@@ -527,7 +524,7 @@ Admins can preview and run retention cleanup from Admin -> Data retention & priv
 
 After applying migrations through `019_immutable_test_lab_report_history.sql` and deploying the current app files, verify:
 
-1. About/Admin build metadata shows `2026.06.15.97`, build `immutable-test-lab-report-history`, cache `fuel-ledger-v196` or newer.
+1. About/Admin build metadata shows `2026.06.15.97`, build `immutable-test-lab-report-history`, cache `fuel-ledger-v386` or newer.
 2. Admin -> Security Health passes with no failed checks.
 3. Admin diagnostics show RPC availability healthy and Realtime publication narrow.
 4. SQL `select public.fuel_ledger_healthcheck('main-car');` returns `ok: true`, all `critical_rpcs` values `true`, and `realtime_publication.extra_tables: []`.
@@ -612,7 +609,7 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - 2026-06-19 v232: Workspace settings isolation fix: Render state-load carries the active ledger row so new workspaces do not inherit another workspace car/fuel settings, and signed-in one-member workspaces can save vehicle settings without the legacy two-person manual list blocker.
 
-- 2026.06.18.234 / fuel-ledger-v334: Vehicle lookup now treats missing/unavailable providers as safe lookup outcomes with stable result codes instead of browser-visible 5xx responses; manual fuel settings remain the fallback.
+- 2026.06.18.234 / fuel-ledger-v386: Vehicle lookup now treats missing/unavailable providers as safe lookup outcomes with stable result codes instead of browser-visible 5xx responses; manual fuel settings remain the fallback.
 
 ## Release readiness metadata
 - Top release note: Render backend auth now verifies Supabase ECC/P-256 access tokens locally through the project JWKS/public keys with rotation-aware caching, keeping the Supabase Auth network check as an explicit emergency fallback instead of the normal path.
@@ -620,8 +617,8 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - Render API calls now use a shared frontend helper for fresh Supabase tokens, Authorization headers, timeouts, JSON parsing, and settings-save request handling instead of hand-rolled/stale token fetch code.
 
-- 2026-06-21 09:00 UTC — Optional admin panel noise patch: workspace/invite refresh and owner-audit refresh no longer auto-run on Admin open or dominate Latest Data I/O; skipped rows are counted separately from failures; runtime cache `fuel-ledger-v361`.
+- 2026-06-21 09:00 UTC — Optional admin panel noise patch: workspace/invite refresh and owner-audit refresh no longer auto-run on Admin open or dominate Latest Data I/O; skipped rows are counted separately from failures; runtime cache `fuel-ledger-v386`.
 
-- 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v364`.
+- 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v386`.
 - 2026-06-21T15:50:00.000Z — v383 vehicle lookup auto-retry recovery: after idle/backend wake delays the app retries vehicle lookup automatically, records `VEHICLE_LOOKUP_AUTO_RETRY`, and reports timeout only after recovery was attempted. Validation: `npm run validate`, `npm run release:check`.
 - 2026-06-21T18:25:00.000Z — v385 vehicle lookup click-binding recovery: lookup clicks now record `VEHICLE_LOOKUP_CLICKED` before guards, delegated click handling survives Settings re-renders, the button remains clickable during workspace settling so context recovery can run, and load reports show button binding/disabled/status state. Validation: `npm run validate`, `npm run release:check`.
