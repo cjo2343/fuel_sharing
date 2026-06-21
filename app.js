@@ -4329,11 +4329,32 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
   const traceMeta = { source: "admin-render-health", route: "render-api", endpoint: renderAdminHealthUrl, operation: "health", operationId, ledgerId };
   renderAdminHealthStatus = { ...renderAdminHealthStatus, loading: true, message: "Checking Render admin backend..." };
   renderSupabaseLoadMonitor();
-  let controller = null;
-  let timeoutId = 0;
   try {
-    const accessToken = await getFreshRenderAccessToken();
-    if (!accessToken) {
+    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Render admin health" });
+    const { result } = await callRenderJson(renderAdminHealthUrl, {
+      method: "POST",
+      body: { ledgerId },
+      timeoutMs: 12000,
+      timeoutLabel: "Render admin health API",
+      allowResultOkFalse: true
+    });
+    const checks = Array.isArray(result.checks) ? result.checks : [];
+    renderAdminHealthStatus = {
+      checked: true,
+      ok: result.ok === true,
+      loading: false,
+      mode: "render",
+      checkedAt: result.checkedAt || new Date().toISOString(),
+      ledgerId: result.ledgerId || ledgerId,
+      userEmail: result.userEmail || "",
+      message: result.summary || (result.ok ? "Render admin backend is healthy." : "Render admin backend needs review."),
+      checks
+    };
+    recordDataIoDiagnostic(result.ok ? "success" : "error", { ...traceMeta, ok: result.ok === true, detail: result.summary || "Render admin health completed" });
+    recordSupabaseLoadEvent("render-admin-health", result.ok ? "Render admin health ok" : "Render admin health needs review");
+    if (!silent) setDataToolsMessage(result.ok ? "Render admin health is green." : "Render admin health needs review.");
+  } catch (error) {
+    if (error?.code === "AUTH_REQUIRED") {
       renderAdminHealthStatus = {
         checked: true,
         ok: false,
@@ -4354,67 +4375,27 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
       if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
       return renderAdminHealthStatus;
     }
-
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, detail: "Render admin health" });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render admin health API", 12000));
-      }, 12000);
-    });
-    const fetchPromise = fetch(renderAdminHealthUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ ledgerId })
-    });
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-    if (!response.ok || !result) {
-      if (isRenderAuthRejected(response, result, text)) {
-        renderAdminHealthStatus = {
-          checked: true,
-          ok: false,
-          loading: false,
-          mode: "session",
-          checkedAt: new Date().toISOString(),
-          ledgerId,
-          message: "Render did not accept the current sign-in yet. Refresh or sign in again before running Render admin health.",
-          checks: [],
-          skipped: true
-        };
-        recordDataIoDiagnostic("skip", {
-          ...traceMeta,
-          ok: true,
-          code: "RENDER_AUTH_NOT_READY",
-          detail: "Render admin health skipped because the backend did not accept the current session."
-        });
-        if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
-        return renderAdminHealthStatus;
-      }
-      const error = new Error(result?.error || result?.message || text || `Render admin health failed (${response.status})`);
-      error.status = response.status;
-      throw error;
+    if (isRenderAuthRejected({ status: error?.status }, error?.payload, error?.message)) {
+      renderAdminHealthStatus = {
+        checked: true,
+        ok: false,
+        loading: false,
+        mode: "session",
+        checkedAt: new Date().toISOString(),
+        ledgerId,
+        message: "Render did not accept the current sign-in yet. Refresh or sign in again before running Render admin health.",
+        checks: [],
+        skipped: true
+      };
+      recordDataIoDiagnostic("skip", {
+        ...traceMeta,
+        ok: true,
+        code: "RENDER_AUTH_NOT_READY",
+        detail: "Render admin health skipped because the backend did not accept the current session."
+      });
+      if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
+      return renderAdminHealthStatus;
     }
-    const checks = Array.isArray(result.checks) ? result.checks : [];
-    renderAdminHealthStatus = {
-      checked: true,
-      ok: result.ok === true,
-      loading: false,
-      mode: "render",
-      checkedAt: result.checkedAt || new Date().toISOString(),
-      ledgerId: result.ledgerId || ledgerId,
-      userEmail: result.userEmail || "",
-      message: result.summary || (result.ok ? "Render admin backend is healthy." : "Render admin backend needs review."),
-      checks
-    };
-    recordDataIoDiagnostic(result.ok ? "success" : "error", { ...traceMeta, ok: result.ok === true, detail: result.summary || "Render admin health completed" });
-    recordSupabaseLoadEvent("render-admin-health", result.ok ? "Render admin health ok" : "Render admin health needs review");
-    if (!silent) setDataToolsMessage(result.ok ? "Render admin health is green." : "Render admin health needs review.");
-  } catch (error) {
     renderAdminHealthStatus = {
       checked: true,
       ok: false,
@@ -4428,7 +4409,6 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
     recordDataIoDiagnostic(error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" ? "timeout" : "error", { ...traceMeta, error, detail: "Render admin health failed" });
     if (!silent) setDataToolsMessage(renderAdminHealthStatus.message);
   } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
     renderSupabaseLoadMonitor();
   }
   return renderAdminHealthStatus;
@@ -15834,6 +15814,7 @@ async function callRenderJson(endpoint, options = {}) {
   const method = options.method || "POST";
   const timeoutMs = Number(options.timeoutMs || 12000);
   const timeoutLabel = options.timeoutLabel || `Render API ${endpoint}`;
+  const allowResultOkFalse = options.allowResultOkFalse === true;
   const setTimer = typeof window !== "undefined" && window.setTimeout ? window.setTimeout.bind(window) : setTimeout;
   const clearTimer = typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout.bind(window) : clearTimeout;
   let controller = null;
@@ -15863,7 +15844,7 @@ async function callRenderJson(endpoint, options = {}) {
     const { response, text } = await Promise.race([requestAndReadPromise, timeoutPromise]);
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-    if (!response.ok || !result?.ok) {
+    if (!response.ok || (!allowResultOkFalse && !result?.ok)) {
       const message = result?.message || result?.error || text || `Render API call failed (${response.status})`;
       const error = new Error(message);
       error.status = response.status;

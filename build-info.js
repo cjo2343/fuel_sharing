@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.256",
+    version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-20T16:30:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v356",
+    updatedAt: "2026-06-21T00:58:01.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v357",
     releaseNotes: Object.freeze([
+      "Render admin health now uses the shared full-timeout Render API helper, so token/header setup, fetch, and response-body reads all finish with matched Data I/O rows instead of leaving stale loading reports.",
       "Member-facing vehicle lookup, settings, trip, fuel, booking, payment, and settlement actions now group under Member actions in Data I/O, Supabase load reports export a deeper 30-row Data I/O window, and the owner-activity guard matches the helper-based vehicle lookup recorder.",
       "Owner activity refreshes are now serialized and fail closed: duplicate refreshes record a skipped row, stale in-flight refreshes get a timeout finish row, Render API timeouts cover token/header setup too, and vehicle lookup uses a fast membership check plus a guaranteed owner-activity receipt for success, errors, timeouts, and client disconnects.",
       "Vehicle lookup now uses the shared Render API helper with a full request/body timeout, records matched Data I/O start/finish rows, refreshes Owner activity after each attempt, and records server-side owner activity for lookup errors instead of throwing uncaught timeout errors.",

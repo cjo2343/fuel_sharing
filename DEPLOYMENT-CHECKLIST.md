@@ -21,10 +21,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Version: `2026.06.18.256`
-- Service-worker cache: `fuel-ledger-v356`
-- Updated at: `2026-06-20T16:30:00.000Z`
-- Top release note: Member-facing vehicle lookup, settings, trip, fuel, booking, payment, and settlement actions now group under Member actions in Data I/O, Supabase load reports export a deeper 30-row Data I/O window, and the owner-activity guard matches the helper-based vehicle lookup recorder.
+- Version: `2026.06.18.257`
+- Service-worker cache: `fuel-ledger-v357`
+- Updated at: `2026-06-21T00:58:01.000Z`
+- Top release note: Render admin health now uses the shared full-timeout Render API helper, so token/header setup, fetch, and response-body reads all finish with matched Data I/O rows instead of leaving stale loading reports.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
