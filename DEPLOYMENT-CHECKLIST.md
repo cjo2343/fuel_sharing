@@ -33,9 +33,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 ## Current release target
 - Version: `2026.06.18.261`
-- Service-worker cache: `fuel-ledger-v398`
-- Updated at: `2026-06-22T00:05:00.000Z`
-- Top release note: Post-startup auth events now reuse the successful startup wake gate instead of running an immediate duplicate state load, and Admin diagnostics completes from fresh backend app context without leaving a stale loading state.
+- Service-worker cache: `fuel-ledger-v399`
+- Updated at: `2026-06-22T00:25:00.000Z`
+- Top release note: Workspace switching now avoids joining an in-flight backend app-context request for a different workspace, so switching users/workspaces gets a fresh target-specific context and loads the selected workspace without requiring a browser refresh.
 
 ## Invite beta readiness: member action Data I/O
 

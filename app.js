@@ -2649,6 +2649,8 @@ let adminDiagnosticsLaneStatus = {
 };
 const backendAppContextFreshMs = 45000;
 let backendAppContextSyncPromise = null;
+let backendAppContextSyncTargetWorkspaceId = "";
+let backendAppContextSyncReasonLabel = "";
 let workspaceMembershipProbeStatus = {
   checked: false,
   ok: false,
@@ -15949,19 +15951,51 @@ async function hydrateAppSessionContext({
     return getBackendAppContext();
   }
   if (backendAppContextSyncPromise) {
+    const inFlightTarget = String(backendAppContextSyncTargetWorkspaceId || "").trim();
+    const sameTarget = !inFlightTarget || !targetWorkspaceId || inFlightTarget === targetWorkspaceId;
+    if (sameTarget) {
+      recordDataIoDiagnostic("skip", {
+        source: "app-session-context",
+        route: "render-api",
+        endpoint: renderAppContextUrl,
+        operation: "hydrate",
+        ok: true,
+        resultCode: "APP_SESSION_CONTEXT_JOINED_IN_FLIGHT",
+        selectedWorkspaceId: targetWorkspaceId,
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        detail: `Joined existing app session context hydrate for ${reasonLabel}.`
+      });
+      return backendAppContextSyncPromise;
+    }
     recordDataIoDiagnostic("skip", {
       source: "app-session-context",
       route: "render-api",
       endpoint: renderAppContextUrl,
       operation: "hydrate",
       ok: true,
-      resultCode: "APP_SESSION_CONTEXT_JOINED_IN_FLIGHT",
+      resultCode: "APP_SESSION_CONTEXT_WAITED_FOR_DIFFERENT_TARGET",
       selectedWorkspaceId: targetWorkspaceId,
       loadedWorkspaceId: getLoadedWorkspaceId(),
-      detail: `Joined existing app session context hydrate for ${reasonLabel}.`
+      detail: `Waited for in-flight app context for ${inFlightTarget} before hydrating ${targetWorkspaceId} for ${reasonLabel}.`
     });
-    return backendAppContextSyncPromise;
+    try { await backendAppContextSyncPromise; } catch (_) {}
+    if (!force && isBackendAppContextFreshForWorkspace(targetWorkspaceId)) {
+      recordDataIoDiagnostic("skip", {
+        source: "app-session-context",
+        route: "render-api",
+        endpoint: renderAppContextUrl,
+        operation: "hydrate",
+        ok: true,
+        resultCode: "APP_SESSION_CONTEXT_FRESH_AFTER_WAIT",
+        selectedWorkspaceId: targetWorkspaceId,
+        loadedWorkspaceId: getLoadedWorkspaceId(),
+        detail: `Reused fresh backend app session context for ${targetWorkspaceId} after waiting for ${reasonLabel}.`
+      });
+      return getBackendAppContext();
+    }
   }
+  backendAppContextSyncTargetWorkspaceId = targetWorkspaceId;
+  backendAppContextSyncReasonLabel = reasonLabel;
   backendAppContextSyncPromise = (async () => {
     const context = await getRenderAppContext({
       ledgerId: targetWorkspaceId,
@@ -15987,6 +16021,8 @@ async function hydrateAppSessionContext({
     return context;
   })().finally(() => {
     backendAppContextSyncPromise = null;
+    backendAppContextSyncTargetWorkspaceId = "";
+    backendAppContextSyncReasonLabel = "";
   });
   return backendAppContextSyncPromise;
 }
