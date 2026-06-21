@@ -10,8 +10,8 @@ const maintenanceNotes = readFileSync("MAINTENANCE-NOTES.md", "utf8");
 const hardeningSteps = readFileSync("SECURITY-HARDENING-STEPS.md", "utf8");
 
 assert.match(buildInfo, /version:\s*"2026\.06\.18\.(?:218|219|220|221|222|222|222|223|224|225|226|227|228|229|230|231|232|233|234|235|236|237|238|239|240|241|242|243|244|245|246|247|248|249|250|251|252|253|254|255|256|257)"/, "runtime version should be bumped for redaction hardening");
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[89]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365|366|367|368|369|370|371|372|373|374)"/, "build-info should point at v318 cache");
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[89]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365|366|367|368|369|370|371|372|373|374)"/, "service worker should use v318 cache");
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:31[89]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365|366|367|368|369|370|371|372|373|374|375|375)"/, "build-info should point at v318 cache");
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"fuel-ledger-v(?:31[89]|320|321|322|323|324|325|326|327|328|329|330|331|332|333|334|335|336|337|338|339|340|341|342|343|344|345|346|347|348|349|350|351|352|352|353|354|355|356|357|358|359|360|361|362|363|364|365|366|367|368|369|370|371|372|373|374|375|375)"/, "service worker should use v318 cache");
 assert.match(buildInfo, /Debug, load-monitor, and saved Test Lab\/Security Health reports now redact more token spellings/, "release note should describe redaction hardening");
 
 assert.match(app, /function redactDiagnosticUrlSecrets\(value\)/, "URL secret redactor should exist");

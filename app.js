@@ -436,6 +436,37 @@ function isLedgerLinkedToCurrentUser(ledgerId) {
   return getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === normalized);
 }
 
+function hasCachedLinkedWorkspaceOptions() {
+  return Boolean(getWorkspaceLedgerOptions().length);
+}
+
+function hasCachedSwitchableWorkspaceOptions() {
+  const current = getActiveLedgerId();
+  return getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") && String(ledger.ledger_id || "") !== current);
+}
+
+function clearStaleWorkspaceInviteLoading(reason = "workspace-refresh-stale") {
+  if (!workspaceInviteStatus.loading) return false;
+  const startedAt = Number(workspaceInviteStatus.loadingStartedAt || 0);
+  const ageMs = startedAt ? Date.now() - startedAt : workspaceInviteRequestTimeoutMs + 1;
+  if (workspaceInviteRefreshPromise && ageMs <= workspaceInviteRequestTimeoutMs + 2000) return false;
+  workspaceInviteStatus.loading = false;
+  workspaceInviteStatus.loadingStartedAt = 0;
+  workspaceInviteRefreshPromise = null;
+  workspaceInviteRefreshQueued = false;
+  workspaceInviteStatus.loaded = Boolean(getWorkspaceLedgerOptions().length);
+  recordDataIoDiagnostic("timeout", {
+    source: "workspace-tools-refresh",
+    route: "supabase-rpc",
+    rpc: "list_my_ledgers",
+    operation: "refresh",
+    ok: false,
+    resultCode: "WORKSPACE_REFRESH_STALE_CLEARED",
+    detail: `Cleared stale workspace refresh loading state (${reason}); cached workspace list remains usable.`
+  });
+  return true;
+}
+
 function setActiveLedgerId(ledgerId, { persist = true, updateUrl = true } = {}) {
   const normalized = String(ledgerId || getConfiguredLedgerId()).trim() || getConfiguredLedgerId();
   activeLedgerId = normalized;
@@ -754,6 +785,7 @@ function renderActiveWorkspaceSelector() {
   const ledgers = getWorkspaceLedgerOptions();
   const current = getActiveLedgerId();
   const currentKnown = ledgers.some((ledger) => String(ledger.ledger_id || "") === current);
+  clearStaleWorkspaceInviteLoading("render-selector");
   const loading = Boolean(workspaceInviteStatus.loading || (supabaseClient && currentSession && !workspaceInviteStatus.loaded));
   let options = [];
   if (ledgers.length) {
@@ -778,7 +810,9 @@ function renderActiveWorkspaceSelector() {
     const suffix = ledger.unconfirmed ? " · loading" : role;
     return `<option value="${escapeHtml(id)}" ${id === current ? "selected" : ""}>${escapeHtml(ledger.label + suffix)}</option>`;
   }).join("");
-  els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || safeOptions.length <= 1;
+  const linkedOptionCount = safeOptions.filter((ledger) => !ledger.unconfirmed).length;
+  const loadingWithoutUsableAlternatives = loading && linkedOptionCount <= 1;
+  els.activeWorkspace.disabled = !supabaseClient || !currentSession || loadingWithoutUsableAlternatives || safeOptions.length <= 1;
 }
 
 async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
@@ -786,12 +820,25 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   const alreadySelected = targetLedgerId && targetLedgerId === getActiveLedgerId();
   if (!targetLedgerId) return;
   if (alreadySelected && isActiveWorkspaceDataConfirmed()) return;
-  if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading)) {
+  clearStaleWorkspaceInviteLoading("workspace-switch");
+  const targetLinkedFromCachedList = isLedgerLinkedToCurrentUser(targetLedgerId);
+  const workspaceListStillLoading = Boolean(supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading));
+  if (workspaceListStillLoading && !targetLinkedFromCachedList) {
     showUserError("Workspace list is still loading. Wait for it to finish before switching workspace.");
     renderActiveWorkspaceSelector();
     return;
   }
-  if (!isLedgerLinkedToCurrentUser(targetLedgerId)) {
+  if (workspaceListStillLoading && targetLinkedFromCachedList) {
+    recordDataIoDiagnostic("skip", {
+      source: "workspace-switch",
+      route: "member-action",
+      operation: "switch",
+      ok: true,
+      resultCode: "WORKSPACE_SWITCH_USED_CACHED_LIST",
+      detail: `Switching to ${getWorkspaceLabelByLedgerId(targetLedgerId)} using the cached linked workspace list while a refresh finishes.`
+    });
+  }
+  if (!targetLinkedFromCachedList) {
     recordDataIoDiagnostic("blocked", {
       source: "workspace-switch",
       route: "member-action",
@@ -2256,6 +2303,7 @@ let memberManagementStatus = {
 let workspaceInviteStatus = {
   loaded: false,
   loading: false,
+  loadingStartedAt: 0,
   error: "",
   ledgers: [],
   rawLedgers: [],
@@ -15197,7 +15245,9 @@ function renderWorkspaceInvitesPanel() {
   if (activeView === "account" && !workspaceInviteStatus.loaded && !workspaceInviteStatus.loading && canRefreshWorkspaceInviteTools()) {
     scheduleWorkspaceInviteRefresh("account-panel-render");
   }
-  if (workspaceInviteStatus.loading) {
+  clearStaleWorkspaceInviteLoading("render-workspace-panel");
+  const hasCachedWorkspaceRows = Boolean((workspaceInviteStatus.ledgers || []).length);
+  if (workspaceInviteStatus.loading && !hasCachedWorkspaceRows) {
     if (els.workspaceList) els.workspaceList.innerHTML = `<p class="empty-state">Loading workspaces and invites...</p>`;
     if (els.inviteList) els.inviteList.innerHTML = `<p class="empty-state">Loading invites...</p>`;
     return;
@@ -15213,8 +15263,11 @@ function renderWorkspaceInvitesPanel() {
   const currentLedgerId = getActiveLedgerId();
   const ledgers = workspaceInviteStatus.ledgers || [];
   if (els.workspaceList) {
+    const refreshNotice = workspaceInviteStatus.loading && ledgers.length
+      ? `<p class="entry-meta">Refreshing workspace list… cached workspaces remain selectable.</p>`
+      : "";
     els.workspaceList.innerHTML = ledgers.length
-      ? ledgers.map((ledger) => `
+      ? refreshNotice + ledgers.map((ledger) => `
         <div class="member-management-row workspace-row ${ledger.ledger_id === currentLedgerId ? "current" : ""}">
           <div class="member-field-stack">
             <strong>${escapeHtml(getWorkspaceOptionLabel(ledger))}</strong>
@@ -15384,6 +15437,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   if (!supabaseClient || !currentSession) return;
   if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = true;
   workspaceInviteStatus.loading = true;
+  workspaceInviteStatus.loadingStartedAt = Date.now();
   workspaceInviteStatus.error = "";
   renderWorkspaceInvitesPanel();
   const operationId = createDataIoOperationId("workspace-tools-refresh", "refresh");
@@ -15441,6 +15495,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
     });
   } finally {
     workspaceInviteStatus.loading = false;
+    workspaceInviteStatus.loadingStartedAt = 0;
     if (els.refreshWorkspaceInvites) els.refreshWorkspaceInvites.disabled = false;
     renderWorkspaceInvitesPanel();
   }

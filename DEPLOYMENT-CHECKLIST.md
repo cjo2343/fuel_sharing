@@ -27,12 +27,12 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
-- Admin stability pass 2 now keeps core app health separate from optional owner diagnostics and preserves last-known-good global data after timeouts.
+- Workspace switching now remains usable while the workspace list refreshes, cached linked workspace rows stay visible, and stale workspace-loading flags are cleared.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v374`
-- `fuel-ledger-v374` - Admin stability pass 2 staggers heavy optional checks, preserves last-known-good app-owner global data after timeouts, and keeps optional Admin timeouts out of core Latest Data I/O.
-- Updated at: `2026-06-21T13:20:00.000Z`
-- Top release note: Admin stability pass 2 separates core app health from optional owner diagnostics: Admin auto-refresh now staggers heavy checks, preserves last-known-good global data after timeouts, and keeps optional admin timeouts out of the core Latest Data I/O card.
+- Service-worker cache: `fuel-ledger-v375`
+- `fuel-ledger-v375` - Workspace switching uses cached linked workspace options during refreshes, clears stale loading state, and keeps Account workspace rows visible instead of freezing behind a loading message.
+- Updated at: `2026-06-21T13:45:00.000Z`
+- Top release note: Workspace switching now stays usable while the workspace list is refreshing: cached linked workspaces remain selectable, stale loading flags are cleared, and Account keeps the cached workspace rows visible instead of freezing behind a loading message.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.

@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T13:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v374",
+    updatedAt: "2026-06-21T13:45:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v375",
     releaseNotes: Object.freeze([
+      "Workspace switching now stays usable while the workspace list is refreshing: cached linked workspaces remain selectable, stale loading flags are cleared, and Account keeps the cached workspace rows visible instead of freezing behind a loading message.",
       "Admin stability pass 2 separates core app health from optional owner diagnostics: Admin auto-refresh now staggers heavy checks, preserves last-known-good global data after timeouts, and keeps optional admin timeouts out of the core Latest Data I/O card.",
       "Admin now auto-refreshes calmly while open: Render health, global owner diagnostics, and owner activity update on bounded intervals, optional diagnostic noise no longer inflates the activity headline, and broad live sync can stay off while the overview stays current.",
       "Vehicle lookup provider failures now return safe specific result codes such as auth failed, rate limited, no match, bad response, or timeout; Render admin health reports provider configuration, and app-owner global diagnostics are trimmed to avoid huge timeout-prone reports.",

@@ -15,9 +15,9 @@ mustInclude(app, 'const identityParts = [ledger.ledger_id, ledger.slug]', 'works
 assert.ok(!app.includes('[ledger.ledger_id, ledger.slug, ledger.name].map(normalizeWorkspaceIdentifier)'), 'workspaces with the same display name must not be merged together');
 mustInclude(app, 'getWorkspaceOptionLabel(ledger)', 'workspace overview should show slug/id-disambiguated labels');
 mustInclude(app, 'return normalized === getConfiguredLedgerId();', 'default ledger is only implicitly linked outside signed-in workspace mode');
-mustInclude(app, 'if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading))', 'workspace switch waits for authoritative workspace list');
+mustInclude(app, 'if (workspaceListStillLoading && !targetLinkedFromCachedList)', 'workspace switch waits only when the target is not in the cached authoritative workspace list');
 mustInclude(app, 'workspaceInviteStatus.loaded = Boolean(getWorkspaceLedgerOptions().length);', 'workspace refresh timeout preserves loaded=false when no authoritative list exists');
-mustInclude(app, 'els.activeWorkspace.disabled = !supabaseClient || !currentSession || loading || safeOptions.length <= 1;', 'workspace selector disabled while membership list is loading');
+mustInclude(app, 'const loadingWithoutUsableAlternatives = loading && linkedOptionCount <= 1;', 'workspace selector stays usable while refreshing if cached linked alternatives exist');
 
 mustInclude(migration, 'with ranked_members as', 'list_my_ledgers ranked duplicate cleanup');
 mustInclude(migration, "bool_or(lm.role = 'admin')", 'list_my_ledgers chooses admin if duplicate rows exist');
