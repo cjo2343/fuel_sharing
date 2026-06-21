@@ -2324,7 +2324,7 @@ let ownerGlobalDiagnosticsStatus = {
   workspaceCount: 0,
   workspaces: [],
   memberRowCount: 0,
-  targetMemberships: [],
+  memberRows: [],
   inviteCount: 0,
   recentVehicleActivity: [],
   recentActivity: [],
@@ -2344,6 +2344,7 @@ const adminAutoRefreshIntervalMs = 30000;
 const adminAutoHealthFreshMs = 10 * 60 * 1000;
 const adminAutoGlobalFreshMs = 5 * 60 * 1000;
 const adminAutoOwnerActivityFreshMs = 2 * 60 * 1000;
+const ownerActivityAutoRefreshEnabled = false;
 const adminAutoOptionalFailureBackoffMs = 5 * 60 * 1000;
 let ownerActivityFetchInFlight = false;
 let ownerActivityFetchStartedAt = 0;
@@ -5171,7 +5172,7 @@ function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
   if (!ownerGlobalDiagnosticsStatus.loading && !globalFailedRecently && (!ownerGlobalDiagnosticsStatus.checked || referenceTime - lastAdminAutoGlobalAt > adminAutoGlobalFreshMs)) {
     tasks.push("global");
   }
-  if (!ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && !ownerActivityFailedRecently && referenceTime >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || referenceTime - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
+  if (ownerActivityAutoRefreshEnabled && !ownerActivityFetchInFlight && !ownerActivityAutoPausedUntilManual && !ownerActivityFailedRecently && referenceTime >= (ownerActivityCooldownUntil || 0) && (!ownerActivityStatus.checked || referenceTime - lastAdminAutoOwnerActivityAt > adminAutoOwnerActivityFreshMs)) {
     tasks.push("owner-activity");
   }
   return tasks;
@@ -5196,7 +5197,7 @@ function adminAutoRefreshStatusSummary() {
   if (!currentSession) return { title: "Waiting", detail: "Sign in before Admin can auto-refresh.", level: "warning" };
   if (adminAutoRefreshInFlight) return { title: "Refreshing", detail: "Updating Admin status now.", level: "warning" };
   const last = lastAdminAutoRefreshTickAt ? formatAdminTimestamp(new Date(lastAdminAutoRefreshTickAt).toISOString()) : "Not yet";
-  return { title: "On", detail: `Quiet background checks run at most every ${Math.round(adminAutoRefreshIntervalMs / 1000)}s while Admin is open. Slow optional checks back off automatically. Last run: ${last}.`, level: "ok" };
+  return { title: "On", detail: `Quiet background checks run at most every ${Math.round(adminAutoRefreshIntervalMs / 1000)}s while Admin is open. Slow optional checks back off automatically; Owner Activity is manual/cached so it cannot keep hammering Render. Last run: ${last}.`, level: "ok" };
 }
 
 function renderAdminAutoRefreshCard() {
@@ -5347,7 +5348,7 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
     });
     const diagnostics = result?.diagnostics || {};
     const workspaces = Array.isArray(diagnostics.workspaces) ? diagnostics.workspaces : [];
-    const targetMemberships = Array.isArray(diagnostics.targetMemberships) ? diagnostics.targetMemberships : [];
+    const memberRows = Array.isArray(diagnostics.memberRows) ? diagnostics.memberRows : [];
     const recentVehicleActivity = Array.isArray(diagnostics.recentVehicleActivity) ? diagnostics.recentVehicleActivity : [];
     ownerGlobalDiagnosticsStatus = {
       checked: true,
@@ -5360,7 +5361,7 @@ async function refreshOwnerGlobalDiagnostics({ force = false, silent = true, rea
       workspaceCount: Number(diagnostics.workspaceCount || workspaces.length || 0),
       workspaces,
       memberRowCount: Number(diagnostics.memberRowCount || 0),
-      targetMemberships,
+      memberRows,
       inviteCount: Number(diagnostics.inviteCount || 0),
       recentVehicleActivity,
       recentActivity: Array.isArray(diagnostics.recentActivity) ? diagnostics.recentActivity : [],
@@ -5527,8 +5528,8 @@ async function refreshOwnerActivity({ force = false, silent = true, bypassCooldo
   try {
     const { result } = await callRenderJson(renderOwnerActivityUrl, {
       method: "POST",
-      body: ownerActivityScope === "all" ? { limit: 120 } : { limit: 120, ledgerId: ownerActivityLoadedWorkspaceId() },
-      timeoutMs: 10000,
+      body: ownerActivityScope === "all" ? { limit: 30, includeMetadata: false } : { limit: 30, ledgerId: ownerActivityLoadedWorkspaceId(), includeMetadata: false },
+      timeoutMs: 8000,
       timeoutLabel: "Owner activity load"
     });
     const rows = Array.isArray(result.activity) ? result.activity : [];

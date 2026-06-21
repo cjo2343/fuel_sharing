@@ -12,7 +12,7 @@ assert.match(server, /VEHICLE_LOOKUP_PROVIDER_BAD_RESPONSE/, 'vehicle lookup sho
 assert.match(server, /providerBodySample/, 'vehicle lookup should record only a short provider body sample.');
 assert.match(server, /k not in \("apiKey", "token", "authorization"\)/, 'vehicle lookup metadata should explicitly filter provider secrets.');
 assert.match(server, /vehicle-provider-config/, 'Render admin health should include vehicle provider configuration status.');
-assert.match(server, /activity_limit = safe_int\(payload\.get\("activityLimit"\), 24/, 'owner global diagnostics should use a bounded default activity limit.');
+assert.match(server, /activity_limit = safe_int\(payload\.get\("activityLimit"\), 12/, 'owner global diagnostics should use a bounded default activity limit.');
 assert.match(server, /"invites": invite_summaries\[:25\]/, 'owner global diagnostics should trim invite rows.');
 assert.match(server, /"recentActivity": recent_activity\[:activity_limit\]/, 'owner global diagnostics should trim recent activity rows.');
 assert.match(server, /"truncated": \{/, 'owner global diagnostics should report truncation flags.');

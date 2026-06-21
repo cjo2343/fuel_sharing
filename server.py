@@ -301,7 +301,11 @@ def list_owner_activity_as_service(payload=None):
     ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
     action = str(payload.get("action") or "").strip()
     status = str(payload.get("status") or "").strip().lower()
-    query = f"{supabase_url()}/rest/v1/owner_activity_log?select=id,created_at,ledger_id,workspace_label,actor_email,actor_member_id,actor_role,route,action,result_code,status_code,duration_ms,ok,summary,metadata&order=created_at.desc&limit={limit}"
+    include_metadata = payload.get("includeMetadata") is True or payload.get("include_metadata") is True
+    selected_columns = "id,created_at,ledger_id,workspace_label,actor_email,actor_member_id,actor_role,route,action,result_code,status_code,duration_ms,ok,summary"
+    if include_metadata:
+        selected_columns += ",metadata"
+    query = f"{supabase_url()}/rest/v1/owner_activity_log?select={selected_columns}&order=created_at.desc&limit={limit}"
     if ledger_id:
         query += f"&ledger_id=eq.{quote_postgrest_value(ledger_id)}"
     if action:
@@ -319,8 +323,8 @@ def list_owner_global_diagnostics_as_service(payload=None):
     # Keep the app-owner report useful but bounded: full recent activity made reports
     # enormous and could push the route past the browser timeout even after the
     # important workspace/member/vehicle evidence had loaded.
-    activity_limit = safe_int(payload.get("activityLimit"), 24, minimum=1, maximum=80)
-    member_limit = safe_int(payload.get("memberLimit"), 300, minimum=1, maximum=600)
+    activity_limit = safe_int(payload.get("activityLimit"), 12, minimum=1, maximum=40)
+    member_limit = safe_int(payload.get("memberLimit"), 120, minimum=1, maximum=300)
     workspace_limit = safe_int(payload.get("workspaceLimit"), 80, minimum=1, maximum=200)
     target_email = str(payload.get("targetEmail") or payload.get("target_email") or "").strip().lower()
     target_ledger = str(payload.get("targetLedgerId") or payload.get("target_ledger_id") or "").strip()
@@ -340,8 +344,8 @@ def list_owner_global_diagnostics_as_service(payload=None):
         api_key=env_value("SUPABASE_SERVICE_ROLE_KEY"),
         timeout=6,
     ) or []
-    recent_activity = list_owner_activity_as_service({"limit": activity_limit})
-    recent_vehicle_activity = list_owner_activity_as_service({"limit": activity_limit, "action": "vehicle-lookup"})
+    recent_activity = list_owner_activity_as_service({"limit": activity_limit, "includeMetadata": False})
+    recent_vehicle_activity = list_owner_activity_as_service({"limit": activity_limit, "action": "vehicle-lookup", "includeMetadata": True})
 
     ledgers_by_id = {str(row.get("id") or ""): row for row in ledgers if row.get("id")}
     member_counts = {}
@@ -375,7 +379,7 @@ def list_owner_global_diagnostics_as_service(payload=None):
             "updatedAt": ledger.get("updated_at") or "",
         })
 
-    target_memberships = []
+    member_rows = []
     for member in members:
         email = str(member.get("email") or "").strip().lower()
         ledger_id = str(member.get("ledger_id") or "")
@@ -387,7 +391,7 @@ def list_owner_global_diagnostics_as_service(payload=None):
         slug = str(ledger.get("slug") or ledger_id)
         name = str(ledger.get("name") or slug or ledger_id)
         label = f"{name} ({slug})" if slug and slug != name else name
-        target_memberships.append({
+        member_rows.append({
             "id": str(member.get("id") or ""),
             "ledgerId": ledger_id,
             "workspaceLabel": label,
@@ -417,8 +421,7 @@ def list_owner_global_diagnostics_as_service(payload=None):
         "workspaceCount": len(workspace_summaries),
         "workspaces": workspace_summaries,
         "memberRowCount": len(members),
-        "targetEmail": target_email,
-        "targetMemberships": target_memberships[:50],
+        "memberRows": member_rows[:50],
         "inviteCount": len(invite_summaries),
         "invites": invite_summaries[:25],
         "recentActivity": recent_activity[:activity_limit],

@@ -29,3 +29,7 @@ assert.match(appSource, /adminAutoOptionalFailureBackoffMs/, "Slow optional Admi
 assert.match(appSource, /Export immediately from the current cached diagnostics snapshot/, "Load reports should not trigger slow global diagnostics refreshes.");
 assert.doesNotMatch(appSource, /testman21 memberships/, "Admin global diagnostics should not render a hardcoded test-user card.");
 assert.doesNotMatch(appSource, /targetEmail: appOwnerDiagnosticsTargetEmail\(\)/, "Global diagnostics should not hardcode a target test email in normal Admin.");
+
+assert.match(appSource, /ownerActivityAutoRefreshEnabled = false/, "Owner Activity should be manual/cached and must not auto-hammer Render.");
+assert.match(appSource, /limit: 30, includeMetadata: false/, "Owner Activity requests should be lightweight by default. ");
+assert.doesNotMatch(appSource, /targetMemberships/, "Frontend should use generic memberRows instead of the old targeted membership debug field.");
