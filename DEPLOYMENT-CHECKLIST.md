@@ -1,4 +1,3 @@
-- 2026-06-21 20:45 UTC: v391 Backend app context pass 4 moves startup/auth/cloud loading toward one sync lane: app context loads before normal state load, fresh backend context is reused during normalized loads, and startup/auth no longer schedule separate workspace-list RPC refreshes before context is known.
 - 2026-06-21 20:25 UTC: v390 Backend app context pass 3 makes workspace switching backend-context-driven, prioritizes selected/preferred workspace ids over legacy/default ledger ids, and keeps state-load on the active backend-confirmed workspace.
 - Backend app context pass 1: Render `/api/app/context` now returns the canonical signed-in user/workspace/permissions snapshot, and startup state load consumes it before browser workspace inference.
 - 2026-06-21 19:25 UTC: v387 Vehicle lookup status is request-scoped; plate changes clear stale saved messages, lookup diagnostics record requested/returned plates, and mismatched/stale results are ignored instead of showing the wrong vehicle.
@@ -33,16 +32,11 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-
-These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
-
-- Backend app context now runs as the first step of normal startup/auth/cloud sync before state load.
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v391`
-- `fuel-ledger-v391` - Startup/auth/cloud loading now asks `/api/app/context` before normal state loads.
-- `fuel-ledger-v391` - Normalized state load reuses fresh backend context instead of refetching or guessing from URL/local cache.
-- Updated at: `2026-06-21T20:45:00.000Z`
-- Top release note: Backend app context pass 4 moves startup/auth/cloud loading toward one sync lane: the frontend now asks /api/app/context before normal state loads, reuses fresh backend context during normalized loads, and stops running separate startup/auth workspace-list RPC refreshes before backend context is known.
+- Service-worker cache: `fuel-ledger-v392`
+- Updated at: `2026-06-21T21:05:00.000Z`
+- Top release note: Backend app context pass 5 separates Admin/owner diagnostics from the normal app sync lane: Admin now shows backend context workspace/permission truth, optional owner/global routes do not auto-run, and load reports expose the separated admin diagnostics lane.
+
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -643,3 +637,12 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 - Normalized state load reuses a fresh backend app context instead of refetching or guessing from URL/local cache.
 - Separate startup/auth workspace-list RPC refreshes are no longer scheduled before backend context is known.
 - Guardrail: `node tools/test-backend-app-context-pass4.mjs`.
+
+
+### Backend app context pass 5 - v392
+- Runtime cache: `fuel-ledger-v392`.
+- Admin/owner diagnostics are separated from the normal app sync lane; opening Admin no longer auto-runs owner/global routes or decides core workspace state.
+- Admin now renders a backend `/api/app/context` workspace/permission summary so the panel sees the active workspace even when optional global diagnostics have not been loaded.
+- Empty owner/global snapshots are labeled as explicit-only optional diagnostics instead of warning-looking zero-data cards.
+- Load reports include `adminDiagnosticsLane` for debugging the separated Admin lane.
+- Guardrail: `node tools/test-backend-app-context-pass5.mjs`.

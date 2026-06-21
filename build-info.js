@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T20:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v391",
+    updatedAt: "2026-06-21T21:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v392",
     releaseNotes: Object.freeze([
+      "Backend app context pass 5 separates Admin/owner diagnostics from the normal app sync lane: Admin now shows backend context workspace/permission truth, optional owner/global routes do not auto-run, and load reports expose the separated admin diagnostics lane.",
       "Backend app context pass 4 moves startup/auth/cloud loading toward one sync lane: the frontend now asks /api/app/context before normal state loads, reuses fresh backend context during normalized loads, and stops running separate startup/auth workspace-list RPC refreshes before backend context is known.",
       "Backend app context pass 3 makes workspace switching backend-context-driven: /api/app/context now prefers explicit selected/preferred workspace ids before legacy/default ledger ids, state load uses the active workspace as preferred context, and workspace switches block unless Render confirms the target workspace is linked and active.",
       "Backend app context pass 2 makes permissions and vehicle lookup consume the backend app context: active member/admin permissions now come from /api/app/context when available, vehicle lookup asks for backend context before workspace recovery, and reports expose backend vehicle permission state.",

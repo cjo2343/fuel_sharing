@@ -2465,6 +2465,15 @@ let appBackendContextStatus = {
   activeWorkspaceId: "",
   decision: "not-checked"
 };
+let adminDiagnosticsLaneStatus = {
+  mode: "backend-context-separated",
+  checked: false,
+  ok: false,
+  loading: false,
+  lastReason: "not-checked",
+  checkedAt: "",
+  message: "Admin diagnostics are separated from normal workspace sync and load only from backend-approved context."
+};
 const backendAppContextFreshMs = 45000;
 let backendAppContextSyncPromise = null;
 let workspaceMembershipProbeStatus = {
@@ -3395,7 +3404,7 @@ function setActiveView(view) {
   localStorage.setItem(viewStorageKey, activeView);
   render();
   if (activeView === "admin") {
-    startAdminAutoRefresh("admin-tab-open");
+    startAdminDiagnosticsLane("admin-tab-open");
   } else {
     stopAdminAutoRefresh("view-change");
   }
@@ -4180,7 +4189,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     stopAdminAutoRefresh("hidden");
   } else if (activeView === "admin") {
-    startAdminAutoRefresh("visible-admin");
+    startAdminDiagnosticsLane("visible-admin");
   }
 });
 
@@ -5097,6 +5106,7 @@ function buildSupabaseLoadReport() {
     workspaceResolution: updateWorkspaceResolutionDebug(lastWorkspaceResolution.decision || "observed", lastWorkspaceResolution.detail || "Current workspace resolution snapshot exported.", { reason: "load-report" }),
     workspaceMembershipProbe: workspaceMembershipProbeStatus,
     appBackendContext: appBackendContextStatus,
+    adminDiagnosticsLane: adminDiagnosticsLaneStatus,
     appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsReportStatus(),
     vehicleLookupReadiness: getVehicleLookupReadinessSnapshot(),
     summary,
@@ -5318,7 +5328,9 @@ function adminOptionalStatusFailedRecently(status = {}, referenceTime = Date.now
 }
 
 function isAdminAutoRefreshActive() {
-  return activeView === "admin" && canUseGlobalAdminTools() && Boolean(currentSession);
+  // Optional owner/global diagnostics are no longer part of the normal app sync lane.
+  // They run only from explicit Admin buttons/protected actions after backend context confirms permission.
+  return false;
 }
 
 function dueAdminAutoRefreshTasks(referenceTime = Date.now()) {
@@ -5350,12 +5362,15 @@ function chooseAdminAutoRefreshTask(tasks = []) {
 }
 
 function adminAutoRefreshStatusSummary() {
-  if (!canUseGlobalAdminTools()) return { title: "Off", detail: "Global Admin tools are not available for this account.", level: "warning" };
-  if (activeView !== "admin") return { title: "Idle", detail: "Open Admin to start calm automatic refreshes.", level: "ok" };
-  if (!currentSession) return { title: "Waiting", detail: "Sign in before Admin can auto-refresh.", level: "warning" };
-  if (adminAutoRefreshInFlight) return { title: "Refreshing", detail: "Updating Admin status now.", level: "warning" };
-  const last = lastAdminAutoRefreshTickAt ? formatAdminTimestamp(new Date(lastAdminAutoRefreshTickAt).toISOString()) : "Not yet";
-  return { title: "On", detail: `Quiet background checks use lightweight ping/cached global snapshots only. Full Render admin health is passive and runs only from deep diagnostics or protected admin actions. Last run: ${last}.`, level: "ok" };
+  if (activeView !== "admin") return { title: "Separated", detail: "Admin diagnostics are outside the normal app sync lane.", level: "ok" };
+  if (!currentSession) return { title: "Waiting", detail: "Sign in before Admin can read backend context.", level: "warning" };
+  if (adminDiagnosticsLaneStatus.loading) return { title: "Context", detail: "Checking backend app context for Admin permissions only.", level: "warning" };
+  const last = adminDiagnosticsLaneStatus.checkedAt ? formatAdminTimestamp(adminDiagnosticsLaneStatus.checkedAt) : "Not yet";
+  return {
+    title: "Separated",
+    detail: `Admin/owner diagnostics no longer auto-refresh or decide workspace state. Normal app sync uses /api/app/context; owner/global diagnostics run only from explicit Admin actions. Last context check: ${last}.`,
+    level: adminDiagnosticsLaneStatus.ok || !adminDiagnosticsLaneStatus.checked ? "ok" : "warning"
+  };
 }
 
 function renderAdminAutoRefreshCard() {
@@ -5372,12 +5387,65 @@ function renderAdminAutoRefreshCard() {
 
 function startAdminAutoRefresh(reason = "admin") {
   markOptionalAdminPanelsReadyForManualRefresh(reason);
-  if (!isAdminAutoRefreshActive()) {
+  stopAdminAutoRefresh(`${reason}-separated`);
+  renderSupabaseLoadMonitor();
+}
+
+async function startAdminDiagnosticsLane(reason = "admin") {
+  markOptionalAdminPanelsReadyForManualRefresh(reason);
+  stopAdminAutoRefresh(`${reason}-separated`);
+  if (!currentSession) {
+    adminDiagnosticsLaneStatus = {
+      ...adminDiagnosticsLaneStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      lastReason: reason,
+      checkedAt: new Date().toISOString(),
+      message: "Admin diagnostics are waiting for sign-in; no owner/global routes were called."
+    };
     renderSupabaseLoadMonitor();
-    return;
+    return null;
   }
-  if (adminAutoRefreshTimer) window.clearTimeout(adminAutoRefreshTimer);
-  runAdminAutoRefreshTick(reason).catch((error) => console.warn("Admin auto-refresh failed", error));
+  adminDiagnosticsLaneStatus = {
+    ...adminDiagnosticsLaneStatus,
+    checked: adminDiagnosticsLaneStatus.checked,
+    loading: true,
+    lastReason: reason,
+    message: "Checking backend app context for Admin permissions only."
+  };
+  renderSupabaseLoadMonitor();
+  try {
+    const context = await ensureBackendAppContextForSyncLane(`admin-diagnostics:${String(reason || "admin")}`);
+    const isOwner = Boolean(context?.permissions?.canUseAppOwnerDiagnostics);
+    adminDiagnosticsLaneStatus = {
+      ...adminDiagnosticsLaneStatus,
+      checked: true,
+      ok: Boolean(context),
+      loading: false,
+      lastReason: reason,
+      checkedAt: new Date().toISOString(),
+      message: context
+        ? (isOwner
+          ? "Admin is using backend app context. Owner/global diagnostics remain explicit actions and do not drive workspace sync."
+          : "Admin is using backend app context. This account can manage its workspace but cannot run app-owner global diagnostics.")
+        : "Backend app context was unavailable; Admin diagnostics are separated and did not run owner/global routes."
+    };
+    renderSupabaseLoadMonitor();
+    return context;
+  } catch (error) {
+    adminDiagnosticsLaneStatus = {
+      ...adminDiagnosticsLaneStatus,
+      checked: true,
+      ok: false,
+      loading: false,
+      lastReason: reason,
+      checkedAt: new Date().toISOString(),
+      message: `Backend app context check failed for Admin: ${error?.message || error}`
+    };
+    renderSupabaseLoadMonitor();
+    return null;
+  }
 }
 
 function stopAdminAutoRefresh(reason = "stop") {
@@ -5450,11 +5518,13 @@ function renderOwnerGlobalDiagnosticsCard() {
   const status = ownerGlobalDiagnosticsReportStatus();
   const summary = summarizeOwnerGlobalDiagnostics(status);
   const hasSnapshot = summary.workspaceCount > 0 || summary.memberRowCount > 0 || summary.vehicleActivityCount > 0 || summary.recentActivityCount > 0;
-  const cardClass = hasSnapshot || status.checked || !status.loading ? "ok" : "warning";
-  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : status.checked ? (summary.workspaceCount ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Quiet") : "Quiet";
+  const cardClass = status.loading ? "warning" : "ok";
+  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : status.checked ? (summary.workspaceCount ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Explicit only") : "Explicit only";
   const detail = status.staleHealthy
     ? "Optional global diagnostics are showing the last good cached snapshot. Core workspace data and live sync are still running."
-    : status.message || "Global app-owner diagnostics are optional and cached; slow checks should not block workspace use.";
+    : hasSnapshot
+      ? (status.message || "Global app-owner diagnostics are cached and separate from workspace sync.")
+      : "Global app-owner diagnostics are not part of normal app sync. Use the explicit refresh action only when you need cross-workspace audit data.";
   const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No cached global workspace snapshot yet.</li>`;
   const vehicleList = summary.latestVehicleActivity.length ? summary.latestVehicleActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}${row.resultCode ? ` · ${escapeHtml(row.resultCode)}` : ""}</li>`).join("") : `<li>No cached recent vehicle lookup activity yet.</li>`;
   const activityList = summary.latestActivity.length ? summary.latestActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)} · ${escapeHtml(row.action)}</li>`).join("") : `<li>No cached recent global activity yet.</li>`;
@@ -5467,11 +5537,13 @@ function renderOwnerGlobalDiagnosticsCard() {
     </article>
     <details class="admin-diagnostics-section">
       <summary>App-owner global diagnostics</summary>
-      <div class="admin-diagnostics-dashboard">
-        <article class="admin-metric-card ${summary.workspaceCount ? "ok" : "warning"}"><span>Global workspaces</span><strong>${summary.workspaceCount}</strong><small>Cached owner snapshot</small><ul class="test-lab-check-list readable-activity-list">${workspaceList}</ul></article>
-        <article class="admin-metric-card ${summary.vehicleActivityCount ? "ok" : "warning"}"><span>Recent vehicle lookups</span><strong>${summary.vehicleActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${vehicleList}</ul></article>
-        <article class="admin-metric-card ${summary.recentActivityCount ? "ok" : "warning"}"><span>Recent global activity</span><strong>${summary.recentActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${activityList}</ul></article>
-      </div>
+      ${hasSnapshot ? `
+        <div class="admin-diagnostics-dashboard">
+          <article class="admin-metric-card ${summary.workspaceCount ? "ok" : "warning"}"><span>Global workspaces</span><strong>${summary.workspaceCount}</strong><small>Cached owner snapshot</small><ul class="test-lab-check-list readable-activity-list">${workspaceList}</ul></article>
+          <article class="admin-metric-card ${summary.vehicleActivityCount ? "ok" : "warning"}"><span>Recent vehicle lookups</span><strong>${summary.vehicleActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${vehicleList}</ul></article>
+          <article class="admin-metric-card ${summary.recentActivityCount ? "ok" : "warning"}"><span>Recent global activity</span><strong>${summary.recentActivityCount}</strong><small>Owner activity log</small><ul class="test-lab-check-list readable-activity-list">${activityList}</ul></article>
+        </div>
+      ` : `<p class="entry-meta">No owner/global snapshot has been loaded in this session. This is intentional: Admin global audit is separate from normal workspace sync. The Backend app context card above shows the active workspace and permissions.</p>`}
     </details>
   `;
 }
@@ -5861,6 +5933,52 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
   return renderAdminHealthStatus;
 }
 
+function summarizeBackendAppContextForAdmin() {
+  const context = getBackendAppContext() || {};
+  const workspaces = Array.isArray(context.linkedWorkspaces) ? context.linkedWorkspaces : [];
+  const activeWorkspace = context.activeWorkspace || {};
+  const permissions = context.permissions || {};
+  return {
+    checked: Boolean(appBackendContextStatus.checked),
+    ok: Boolean(appBackendContextStatus.ok),
+    loading: Boolean(appBackendContextStatus.loading || adminDiagnosticsLaneStatus.loading),
+    activeWorkspaceId: String(activeWorkspace.ledgerId || activeWorkspace.ledger_id || appBackendContextStatus.activeWorkspaceId || getActiveLedgerId() || ""),
+    activeWorkspaceLabel: String(activeWorkspace.label || activeWorkspace.name || getCurrentWorkspaceLabel() || "Workspace"),
+    linkedWorkspaceCount: workspaces.length,
+    workspaceLabels: workspaces.slice(0, 6).map((row) => String(row.label || row.name || row.ledgerId || row.ledger_id || "Workspace")),
+    canManageSettings: Boolean(permissions.canManageSettings),
+    canLookupVehicle: Boolean(permissions.canLookupVehicle),
+    canUseAppOwnerDiagnostics: Boolean(permissions.canUseAppOwnerDiagnostics),
+    decision: String(context.resolution?.decision || appBackendContextStatus.decision || "not-checked"),
+    message: adminDiagnosticsLaneStatus.message || appBackendContextStatus.error || "Backend context has not been loaded yet."
+  };
+}
+
+function renderBackendAppContextCard() {
+  const summary = summarizeBackendAppContextForAdmin();
+  const cardClass = summary.loading ? "warning" : summary.ok ? "ok" : summary.checked ? "warning" : "warning";
+  const title = summary.loading ? "Checking" : summary.ok ? "Backend context" : summary.checked ? "Context delayed" : "Context pending";
+  const workspaceItems = summary.workspaceLabels.length
+    ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("")
+    : `<li>No backend-linked workspace list is available yet.</li>`;
+  return `
+    <article class="admin-metric-card ${cardClass}">
+      <span>Backend app context</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(summary.activeWorkspaceLabel)} · ${summary.linkedWorkspaceCount} linked workspace${summary.linkedWorkspaceCount === 1 ? "" : "s"}</small>
+      <p>${escapeHtml(summary.message)}</p>
+    </article>
+    <details class="admin-diagnostics-section">
+      <summary>Backend context workspace/permission summary</summary>
+      <div class="admin-diagnostics-dashboard">
+        <article class="admin-metric-card ${summary.ok ? "ok" : "warning"}"><span>Active workspace</span><strong>${escapeHtml(summary.activeWorkspaceId || "Unknown")}</strong><small>${escapeHtml(summary.decision)}</small><p>${escapeHtml(summary.activeWorkspaceLabel)}</p></article>
+        <article class="admin-metric-card ${summary.linkedWorkspaceCount ? "ok" : "warning"}"><span>Linked workspaces</span><strong>${summary.linkedWorkspaceCount}</strong><small>From /api/app/context</small><ul class="test-lab-check-list readable-activity-list">${workspaceItems}</ul></article>
+        <article class="admin-metric-card ${summary.canManageSettings ? "ok" : "warning"}"><span>Workspace permissions</span><strong>${summary.canManageSettings ? "Admin" : "Member"}</strong><small>Vehicle lookup: ${summary.canLookupVehicle ? "allowed" : "not allowed"}</small><p>App-owner diagnostics: ${summary.canUseAppOwnerDiagnostics ? "allowed" : "not allowed"}</p></article>
+      </div>
+    </details>
+  `;
+}
+
 function renderRenderAdminHealthCard() {
   const status = renderAdminHealthStatus || {};
   const checks = Array.isArray(status.checks) ? status.checks : [];
@@ -5930,6 +6048,7 @@ function renderSupabaseLoadMonitor() {
         <small>${latestDataIoOp ? escapeHtml(formatDataIoOperationLine(latestDataIoOp)) : "No operation yet"}</small>
         <p>This card ignores optional Admin panels such as workspace/invite refresh and owner audit refresh; those details stay in their sections below.</p>
       </article>
+      ${renderBackendAppContextCard()}
       ${renderRenderAdminHealthCard()}
       ${canUseGlobalAdminTools() ? renderOwnerGlobalDiagnosticsCard() : ""}
       ${canUseGlobalAdminTools() ? renderOwnerActivityCard() : ""}

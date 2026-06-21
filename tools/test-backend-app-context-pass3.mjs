@@ -17,6 +17,6 @@ assert(app.includes('preferredWorkspaceId = ""') && app.includes('preferredWorks
 assert(app.includes('workspace-switch:${source}') && app.includes('WORKSPACE_SWITCH_BACKEND_CONTEXT_BLOCKED'), "workspace switch asks backend context and blocks unconfirmed switches");
 assert(app.includes('let ledgerId = getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig);'), "state load uses active workspace before configured default ledger");
 assert(app.includes('getRenderAppContext({ ledgerId, preferredWorkspaceId: ledgerId, reason: "state-load" })'), "state load sends active workspace as preferred backend context");
-assert(build.includes("fuel-ledger-v391") && sw.includes("fuel-ledger-v391"), "runtime cache bumped to v390");
+assert(build.includes("fuel-ledger-v392") && sw.includes("fuel-ledger-v392"), "runtime cache bumped to v390");
 
 console.log("Backend app context pass 3 guardrail passed.");
