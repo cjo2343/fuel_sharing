@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T11:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v371",
+    updatedAt: "2026-06-21T11:50:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v372",
     releaseNotes: Object.freeze([
+      "Vehicle lookup provider failures now return safe specific result codes such as auth failed, rate limited, no match, bad response, or timeout; Render admin health reports provider configuration, and app-owner global diagnostics are trimmed to avoid huge timeout-prone reports.",
       "Hotfix: app-owner global diagnostics status is initialized before Admin/Data I/O renders, so the global diagnostics card fails closed instead of crashing startup with ownerGlobalDiagnosticsStatus ReferenceError.",
       "App-owner global diagnostics now use a dedicated Render owner route so the app owner can see all workspaces, target-user memberships such as testman21 across test1/test2, and recent vehicle lookup activity without being a member of each workspace.",
       "Workspace refresh is now authoritative on Account open/manual refreshes, one-row workspace lists no longer get freshness-skipped, load reports export the visible selector and current-email membership probe, and vehicle lookup readiness remains visible so hidden test1 membership issues can be diagnosed.",

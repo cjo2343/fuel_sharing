@@ -316,9 +316,12 @@ def list_owner_activity_as_service(payload=None):
 
 def list_owner_global_diagnostics_as_service(payload=None):
     payload = payload if isinstance(payload, dict) else {}
-    activity_limit = safe_int(payload.get("activityLimit"), 80, minimum=1, maximum=250)
-    member_limit = safe_int(payload.get("memberLimit"), 500, minimum=1, maximum=1000)
-    workspace_limit = safe_int(payload.get("workspaceLimit"), 200, minimum=1, maximum=500)
+    # Keep the app-owner report useful but bounded: full recent activity made reports
+    # enormous and could push the route past the browser timeout even after the
+    # important workspace/member/vehicle evidence had loaded.
+    activity_limit = safe_int(payload.get("activityLimit"), 24, minimum=1, maximum=80)
+    member_limit = safe_int(payload.get("memberLimit"), 300, minimum=1, maximum=600)
+    workspace_limit = safe_int(payload.get("workspaceLimit"), 80, minimum=1, maximum=200)
     target_email = str(payload.get("targetEmail") or payload.get("target_email") or "").strip().lower()
     target_ledger = str(payload.get("targetLedgerId") or payload.get("target_ledger_id") or "").strip()
 
@@ -415,11 +418,16 @@ def list_owner_global_diagnostics_as_service(payload=None):
         "workspaces": workspace_summaries,
         "memberRowCount": len(members),
         "targetEmail": target_email,
-        "targetMemberships": target_memberships[:100],
+        "targetMemberships": target_memberships[:50],
         "inviteCount": len(invite_summaries),
-        "invites": invite_summaries[:100],
-        "recentActivity": recent_activity,
-        "recentVehicleActivity": recent_vehicle_activity,
+        "invites": invite_summaries[:25],
+        "recentActivity": recent_activity[:activity_limit],
+        "recentVehicleActivity": recent_vehicle_activity[:activity_limit],
+        "truncated": {
+            "invites": len(invite_summaries) > 25,
+            "recentActivity": len(recent_activity) > activity_limit,
+            "recentVehicleActivity": len(recent_vehicle_activity) > activity_limit,
+        },
     }
 
 def fetch_fuel_price(path):
@@ -1528,6 +1536,7 @@ def build_render_admin_health(ledger_id, user, user_token):
         {"id": "workspace-admin", "ok": bool(context.get("canAdmin")), "label": "Signed-in user is workspace admin", "detail": str(context.get("role") or "")},
         {"id": "open-period", "ok": bool(context.get("openPeriodId")), "label": "Open settlement period is available", "detail": str(context.get("openPeriodId") or "")},
         {"id": "server-rate-limits", "ok": not rate_limit_disabled(), "label": "Server-side route rate limits are enabled", "detail": "Admin, generated test data, retention, backup, and write routes are guarded by per-user/per-ledger in-memory limits."},
+        {"id": "vehicle-provider-config", "ok": bool(vehicle_provider_config_status().get("configured")), "label": "Vehicle lookup provider is configured", "detail": "Provider URL is configured; API key present: " + ("yes" if vehicle_provider_config_status().get("hasApiKey") else "no")},
     ]
     checks.extend(build_render_admin_route_health(ledger_id, context))
     return {
@@ -1767,6 +1776,48 @@ def sanitize_vehicle_lookup_response(raw, plate, source_label):
     return {key: value for key, value in vehicle.items() if value not in (None, "")}
 
 
+def vehicle_provider_config_status():
+    api_url = env_value("VEHICLE_LOOKUP_API_URL")
+    api_key = env_value("VEHICLE_LOOKUP_API_KEY")
+    return {
+        "configured": bool(api_url),
+        "hasApiKey": bool(api_key),
+        "urlTemplateConfigured": bool(api_url),
+        "sourceLabel": env_value("VEHICLE_LOOKUP_SOURCE_LABEL", "Configured vehicle lookup API"),
+        "keyHeader": env_value("VEHICLE_LOOKUP_API_KEY_HEADER", "Authorization") or "Authorization",
+        "timeoutSeconds": safe_int(env_value("VEHICLE_LOOKUP_TIMEOUT_SECONDS", "8"), 8, minimum=2, maximum=15),
+    }
+
+
+def classify_vehicle_provider_http_error(status, body):
+    status = safe_int(status, 0, minimum=0)
+    text = str(body or "")[:500]
+    lowered = text.lower()
+    if status in (401, 403) or any(term in lowered for term in ("invalid api key", "invalid token", "unauthorized", "forbidden", "authentication", "auth")):
+        return "VEHICLE_LOOKUP_PROVIDER_AUTH_FAILED", "Vehicle lookup provider rejected the configured API key or credentials."
+    if status == 404 or any(term in lowered for term in ("not found", "no match", "no vehicle", "notfound")):
+        return "VEHICLE_LOOKUP_NO_MATCH", "Vehicle lookup provider did not find that plate."
+    if status == 429 or "rate limit" in lowered or "too many" in lowered:
+        return "VEHICLE_LOOKUP_PROVIDER_RATE_LIMITED", "Vehicle lookup provider rate-limited the request."
+    if 500 <= status <= 599:
+        return "VEHICLE_LOOKUP_PROVIDER_SERVER_ERROR", "Vehicle lookup provider returned a server error."
+    if status:
+        return "VEHICLE_LOOKUP_PROVIDER_HTTP_ERROR", "Vehicle lookup provider returned an HTTP error."
+    return "VEHICLE_LOOKUP_PROVIDER_ERROR", "Vehicle lookup provider returned an unexpected error."
+
+
+def safe_vehicle_provider_error_metadata(status=None, body="", extra=None):
+    # Never store provider tokens or full raw payloads. A small body sample is enough
+    # to distinguish auth/rate/no-match/schema problems during beta testing.
+    metadata = {
+        "providerStatus": safe_int(status, 0, minimum=0),
+        "providerBodySample": str(body or "")[:180],
+    }
+    if isinstance(extra, dict):
+        metadata.update({k: v for k, v in extra.items() if k not in ("apiKey", "token", "authorization")})
+    return metadata
+
+
 def vehicle_lookup_url_for_plate(plate):
     template = env_value("VEHICLE_LOOKUP_API_URL")
     if not template:
@@ -1780,8 +1831,9 @@ def vehicle_lookup_url_for_plate(plate):
 
 def fetch_vehicle_lookup(plate):
     url = vehicle_lookup_url_for_plate(plate)
+    config = vehicle_provider_config_status()
     if not url:
-        return {"ok": False, "code": "VEHICLE_LOOKUP_NOT_CONFIGURED", "message": "Vehicle lookup API is not configured on Render. Keep using manual fuel settings."}, 200
+        return {"ok": False, "code": "VEHICLE_LOOKUP_NOT_CONFIGURED", "message": "Vehicle lookup API is not configured on Render. Keep using manual fuel settings.", "provider": config}, 200
     headers = {"Accept": "application/json", "User-Agent": "FuelLedger/1.0"}
     api_key = env_value("VEHICLE_LOOKUP_API_KEY")
     if api_key:
@@ -1794,13 +1846,37 @@ def fetch_vehicle_lookup(plate):
     except (TypeError, ValueError):
         provider_timeout = 8
     provider_timeout = max(2, min(provider_timeout, 15))
-    with urllib.request.urlopen(request, timeout=provider_timeout) as response:
-        raw = response.read()
-        if response.headers.get("Content-Encoding", "").lower() == "gzip":
-            raw = gzip.decompress(raw)
-        data = json.loads(raw.decode("utf-8-sig", errors="replace")) if raw else {}
+    try:
+        with urllib.request.urlopen(request, timeout=provider_timeout) as response:
+            raw = response.read()
+            if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                raw = gzip.decompress(raw)
+            text = raw.decode("utf-8-sig", errors="replace") if raw else "{}"
+            try:
+                data = json.loads(text) if text else {}
+            except json.JSONDecodeError:
+                return {
+                    "ok": False,
+                    "code": "VEHICLE_LOOKUP_PROVIDER_BAD_RESPONSE",
+                    "message": "Vehicle lookup provider returned non-JSON data.",
+                    "provider": {**config, **safe_vehicle_provider_error_metadata(getattr(response, "status", 200), text)},
+                }, 200
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        code, message = classify_vehicle_provider_http_error(error.code, body)
+        return {"ok": False, "code": code, "message": message, "provider": {**config, **safe_vehicle_provider_error_metadata(error.code, body)}}, 200
+    except socket.timeout as error:
+        return {"ok": False, "code": "VEHICLE_LOOKUP_TIMEOUT", "message": "Vehicle lookup provider timed out.", "provider": {**config, "providerStatus": 0, "timeoutSeconds": provider_timeout}}, 200
+    except urllib.error.URLError as error:
+        reason = getattr(error, "reason", error)
+        if isinstance(reason, socket.timeout):
+            return {"ok": False, "code": "VEHICLE_LOOKUP_TIMEOUT", "message": "Vehicle lookup provider timed out.", "provider": {**config, "providerStatus": 0, "timeoutSeconds": provider_timeout}}, 200
+        return {"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", "message": "Vehicle lookup provider could not be reached.", "provider": {**config, "providerStatus": 0, "errorSample": str(reason)[:160]}}, 200
     source = env_value("VEHICLE_LOOKUP_SOURCE_LABEL", "Configured vehicle lookup API")
-    return {"ok": True, "code": "VEHICLE_LOOKUP_OK", "vehicle": sanitize_vehicle_lookup_response(data, plate, source), "message": "Vehicle lookup completed."}, 200
+    vehicle = sanitize_vehicle_lookup_response(data, plate, source)
+    if not vehicle or len(vehicle.keys()) <= 2:
+        return {"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_BAD_RESPONSE", "message": "Vehicle lookup provider response did not include usable vehicle details.", "provider": {**config, "providerStatus": 200, "responseKeys": list(data.keys())[:20] if isinstance(data, dict) else []}}, 200
+    return {"ok": True, "code": "VEHICLE_LOOKUP_OK", "vehicle": vehicle, "message": "Vehicle lookup completed.", "provider": {**config, "providerStatus": 200}}, 200
 
 def build_write_context_backend_payload(payload, user):
     if not isinstance(payload, dict):
@@ -3838,7 +3914,8 @@ class Handler(SimpleHTTPRequestHandler):
             context = get_member_context_as_service_fast(ledger_id, user, timeout=3)
             result, response_status = fetch_vehicle_lookup(plate)
             result_code = result.get("code") or ("VEHICLE_LOOKUP_OK" if result.get("ok") else "VEHICLE_LOOKUP_FAILED")
-            record_lookup_activity(bool(result.get("ok")), result_code, response_status, f"Vehicle lookup for {plate}.", {"providerStatus": response_status})
+            provider_meta = result.get("provider") if isinstance(result.get("provider"), dict) else {"providerStatus": response_status}
+            record_lookup_activity(bool(result.get("ok")), result_code, response_status, f"Vehicle lookup for {plate}.", provider_meta)
             self.send_response(response_status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
@@ -3849,10 +3926,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_BAD_REQUEST", "message": str(error)}, status=400)
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
-            # Provider problems are expected lookup outcomes, not app-backend failures.
+            code, message = classify_vehicle_provider_http_error(error.code, detail)
             response_status = 200
-            record_lookup_activity(False, "VEHICLE_LOOKUP_PROVIDER_ERROR", 200, f"Vehicle lookup provider error for {plate}.")
-            self.send_json({"ok": False, "code": "VEHICLE_LOOKUP_PROVIDER_ERROR", "message": detail or str(error)}, status=200)
+            record_lookup_activity(False, code, 200, f"Vehicle lookup provider error for {plate}.", safe_vehicle_provider_error_metadata(error.code, detail))
+            self.send_json({"ok": False, "code": code, "message": message, "provider": safe_vehicle_provider_error_metadata(error.code, detail)}, status=200)
         except urllib.error.URLError as error:
             response_status = 200
             record_lookup_activity(False, "VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE", 200, f"Vehicle lookup provider unavailable for {plate}.")

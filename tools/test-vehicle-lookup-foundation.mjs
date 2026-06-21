@@ -27,10 +27,11 @@ assert.doesNotMatch(index, /nummerplade-tjek\.dk[\s\S]{0,160}nofollow/, 'vehicle
 assert.match(server, /if self\.path == "\/api\/vehicle\/lookup"/, 'server must mount /api/vehicle/lookup');
 assert.match(server, /def lookup_vehicle_backend\(self\):/, 'server must implement vehicle lookup handler');
 assert.match(server, /current_supabase_user\(self\)/, 'server lookup must verify Supabase auth');
-assert.match(server, /get_member_context_as_service_fast\(ledger_id, user, timeout=5\)/, 'server lookup must verify active workspace membership through the fast lookup context');
+assert.match(server, /get_member_context_as_service_fast\(ledger_id, user, timeout=3\)/, 'server lookup must verify active workspace membership through the fast lookup context');
 assert.match(server, /VEHICLE_LOOKUP_API_KEY/, 'server must keep vehicle API key in environment');
 assert.match(server, /VEHICLE_LOOKUP_PROVIDER_UNAVAILABLE/, 'server must convert provider network failures to a safe lookup result code');
-assert.match(server, /send_json\(\{\"ok\": False, \"code\": \"VEHICLE_LOOKUP_PROVIDER_ERROR\"[\s\S]*status=200/, 'provider HTTP errors must not return browser-visible 5xx statuses');
+assert.match(server, /classify_vehicle_provider_http_error/, 'provider HTTP errors must be safely classified.');
+assert.match(server, /self\.send_json\(\{"ok": False, "code": code[\s\S]*status=200/, 'provider HTTP errors must not return browser-visible 5xx statuses');
 assert.match(server, /sanitize_vehicle_lookup_response/, 'server must sanitize provider response');
 assert.doesNotMatch(app, /VEHICLE_LOOKUP_API_KEY/, 'browser app must not reference vehicle API keys');
 assert.match(env, /VEHICLE_LOOKUP_API_URL=/, 'env example must document vehicle lookup URL');
