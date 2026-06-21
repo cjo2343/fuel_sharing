@@ -87,6 +87,46 @@ function getActiveLedgerId() {
   return activeLedgerId || getConfiguredLedgerId();
 }
 
+function getWorkspaceLabelByLedgerId(ledgerId) {
+  const normalized = String(ledgerId || "").trim();
+  if (!normalized) return "Current workspace";
+  const match = getWorkspaceLedgerOptions().find((ledger) => String(ledger.ledger_id || "") === normalized);
+  return match ? getWorkspaceOptionLabel(match) : normalized;
+}
+
+function getLoadedWorkspaceId() {
+  return String(lastConfirmedWorkspaceLedgerId || getActiveLedgerId() || getConfiguredLedgerId()).trim();
+}
+
+function getLoadedWorkspaceLabel() {
+  const loadedId = getLoadedWorkspaceId();
+  if (lastConfirmedWorkspaceLabel && String(lastConfirmedWorkspaceLedgerId || "") === loadedId) return lastConfirmedWorkspaceLabel;
+  return getWorkspaceLabelByLedgerId(loadedId);
+}
+
+function getWorkspaceSessionSnapshot(meta = {}) {
+  const selectedWorkspaceId = String(meta.selectedWorkspaceId || getActiveLedgerId() || getConfiguredLedgerId()).trim();
+  const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getWorkspaceLabelByLedgerId(selectedWorkspaceId)).trim();
+  const loadedWorkspaceId = String(meta.loadedWorkspaceId || getLoadedWorkspaceId()).trim();
+  const loadedWorkspaceLabel = String(meta.loadedWorkspaceLabel || getLoadedWorkspaceLabel()).trim();
+  const workspaceMismatch = Boolean(selectedWorkspaceId && loadedWorkspaceId && selectedWorkspaceId !== loadedWorkspaceId);
+  const loadStatus = activeWorkspaceLoadInProgress
+    ? "loading"
+    : workspaceMismatch
+      ? "not_loaded"
+      : "loaded";
+  return {
+    selectedWorkspaceId,
+    selectedWorkspaceLabel,
+    loadedWorkspaceId,
+    loadedWorkspaceLabel,
+    workspaceMismatch,
+    loadStatus,
+    loadStartedAt: activeWorkspaceLoadStartedAt || 0,
+    loadingLedgerId: activeWorkspaceLoadLedgerId || ""
+  };
+}
+
 function normalizeWorkspaceRole(role) {
   return String(role || "member").trim().toLowerCase() === "admin" ? "admin" : "member";
 }
@@ -218,14 +258,61 @@ function isActiveWorkspaceDataConfirmed() {
 }
 
 function workspaceActionBlockedMessage(action = "change this workspace") {
-  return `Wait for ${getCurrentWorkspaceLabel()} to finish loading before you ${action}.`;
+  const session = getWorkspaceSessionSnapshot();
+  if (session.workspaceMismatch) {
+    return `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded. Loading ${session.selectedWorkspaceLabel} before you ${action}.`;
+  }
+  return `Wait for ${session.selectedWorkspaceLabel} to finish loading before you ${action}.`;
 }
 
-function assertActiveWorkspaceDataConfirmed(action = "change this workspace") {
+function recordWorkspaceActionBlocked(source = "workspace-action", action = "change this workspace") {
+  const session = getWorkspaceSessionSnapshot();
+  recordDataIoDiagnostic("blocked", {
+    source,
+    route: "workspace-session",
+    operation: "blocked",
+    ok: false,
+    resultCode: "WORKSPACE_NOT_LOADED",
+    statusCode: "WORKSPACE_NOT_LOADED",
+    code: "WORKSPACE_NOT_LOADED",
+    detail: `${session.selectedWorkspaceLabel} is selected, but ${session.loadedWorkspaceLabel} is still loaded; blocked ${action}.`,
+    ledgerId: session.loadedWorkspaceId,
+    selectedWorkspaceId: session.selectedWorkspaceId,
+    selectedWorkspaceLabel: session.selectedWorkspaceLabel,
+    loadedWorkspaceId: session.loadedWorkspaceId,
+    loadedWorkspaceLabel: session.loadedWorkspaceLabel,
+    workspaceMismatch: session.workspaceMismatch,
+    workspaceLabel: session.workspaceMismatch ? `${session.selectedWorkspaceLabel} · loaded ${session.loadedWorkspaceLabel}` : session.loadedWorkspaceLabel
+  });
+}
+
+function requestActiveWorkspaceReload(reason = "workspace-action-blocked") {
+  if (!supabaseClient || !currentSession) return;
+  if (activeWorkspaceLoadInProgress || supabaseLoadInFlight || workspaceSessionRecoveryInFlight) return;
+  const targetLedgerId = getActiveLedgerId();
+  workspaceSessionRecoveryInFlight = true;
+  window.setTimeout(async () => {
+    try {
+      markActiveWorkspaceLoading(`workspace-session-retry:${reason}`);
+      await loadSupabaseStateWithTimeout(
+        { force: true, manual: true, reason: `workspace-session-retry:${reason}:${targetLedgerId}` },
+        supabaseStartupLoadTimeoutMs,
+        `Loading ${getWorkspaceLabelByLedgerId(targetLedgerId)} is delayed. You are still viewing ${getLoadedWorkspaceLabel()}.`
+      );
+    } finally {
+      workspaceSessionRecoveryInFlight = false;
+      render();
+    }
+  }, 0);
+}
+
+function assertActiveWorkspaceDataConfirmed(action = "change this workspace", source = "workspace-action") {
   if (isActiveWorkspaceDataConfirmed()) return true;
   const message = workspaceActionBlockedMessage(action);
+  recordWorkspaceActionBlocked(source, action);
+  requestActiveWorkspaceReload(source);
   showUserError(message);
-  showAppMessage(message, "warning", { timeoutMs: 4500 });
+  showAppMessage(message, "warning", { timeoutMs: 6500 });
   return false;
 }
 
@@ -413,7 +500,9 @@ function renderActiveWorkspaceSelector() {
 
 async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   const targetLedgerId = String(ledgerId || "").trim();
-  if (!targetLedgerId || targetLedgerId === getActiveLedgerId()) return;
+  const alreadySelected = targetLedgerId && targetLedgerId === getActiveLedgerId();
+  if (!targetLedgerId) return;
+  if (alreadySelected && isActiveWorkspaceDataConfirmed()) return;
   if (supabaseClient && currentSession && (!workspaceInviteStatus.loaded || workspaceInviteStatus.loading)) {
     showUserError("Workspace list is still loading. Wait for it to finish before switching workspace.");
     renderActiveWorkspaceSelector();
@@ -433,8 +522,22 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     return;
   }
   const operationId = createDataIoOperationId("workspace-switch", "switch");
-  const traceMeta = { source: "workspace-switch", route: "member-action", operation: "switch", operationId, detail: `Switch workspace to ${targetLedgerId}` };
-  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCH_STARTED" });
+  const beforeSession = getWorkspaceSessionSnapshot({ selectedWorkspaceId: targetLedgerId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId) });
+  const traceMeta = {
+    source: "workspace-switch",
+    route: "member-action",
+    operation: "switch",
+    operationId,
+    ledgerId: beforeSession.loadedWorkspaceId,
+    selectedWorkspaceId: beforeSession.selectedWorkspaceId,
+    selectedWorkspaceLabel: beforeSession.selectedWorkspaceLabel,
+    loadedWorkspaceId: beforeSession.loadedWorkspaceId,
+    loadedWorkspaceLabel: beforeSession.loadedWorkspaceLabel,
+    workspaceMismatch: beforeSession.workspaceMismatch,
+    workspaceLabel: beforeSession.workspaceMismatch ? `${beforeSession.selectedWorkspaceLabel} · loaded ${beforeSession.loadedWorkspaceLabel}` : beforeSession.loadedWorkspaceLabel,
+    detail: alreadySelected ? `Retry loading selected workspace ${targetLedgerId}` : `Switch workspace to ${targetLedgerId}`
+  };
+  recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: alreadySelected ? "WORKSPACE_LOAD_RETRY_STARTED" : "WORKSPACE_SWITCH_STARTED" });
   setActiveLedgerId(targetLedgerId, { persist: true });
   markActiveWorkspaceLoading(source);
   state = makeWorkspaceLoadingState();
@@ -456,13 +559,39 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
   );
   if (loaded) {
     markActiveWorkspaceConfirmed(source);
-    recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_SWITCHED", detail: `Switched workspace to ${getCurrentWorkspaceLabel()} and confirmed its data.` });
+    const confirmedSession = getWorkspaceSessionSnapshot();
+    recordDataIoDiagnostic("success", {
+      ...traceMeta,
+      ok: true,
+      resultCode: alreadySelected ? "WORKSPACE_LOAD_RETRY_CONFIRMED" : "WORKSPACE_SWITCHED",
+      ledgerId: confirmedSession.loadedWorkspaceId,
+      selectedWorkspaceId: confirmedSession.selectedWorkspaceId,
+      selectedWorkspaceLabel: confirmedSession.selectedWorkspaceLabel,
+      loadedWorkspaceId: confirmedSession.loadedWorkspaceId,
+      loadedWorkspaceLabel: confirmedSession.loadedWorkspaceLabel,
+      workspaceMismatch: false,
+      workspaceLabel: confirmedSession.loadedWorkspaceLabel,
+      detail: `${confirmedSession.selectedWorkspaceLabel} data is confirmed and safe to edit.`
+    });
     showAppMessage(`Switched to ${getCurrentWorkspaceLabel()}. Workspace data is loaded and safe to edit.`, "success", { timeoutMs: 4500 });
     scheduleWorkspaceInviteRefresh(`switch-confirmed:${source}`);
   } else {
     markActiveWorkspaceLoadFailed(source);
-    recordDataIoDiagnostic("timeout", { ...traceMeta, ok: false, resultCode: "WORKSPACE_SWITCH_LOAD_DELAYED", detail: "Workspace switch completed but state load is delayed; editing remains locked." });
-    showUserError(`Workspace ${getCurrentWorkspaceLabel()} is selected, but its data has not loaded yet. Try Sync now before editing.`);
+    const delayedSession = getWorkspaceSessionSnapshot({ selectedWorkspaceId: targetLedgerId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId) });
+    recordDataIoDiagnostic("timeout", {
+      ...traceMeta,
+      ok: false,
+      resultCode: "WORKSPACE_SWITCH_LOAD_DELAYED",
+      ledgerId: delayedSession.loadedWorkspaceId,
+      selectedWorkspaceId: delayedSession.selectedWorkspaceId,
+      selectedWorkspaceLabel: delayedSession.selectedWorkspaceLabel,
+      loadedWorkspaceId: delayedSession.loadedWorkspaceId,
+      loadedWorkspaceLabel: delayedSession.loadedWorkspaceLabel,
+      workspaceMismatch: delayedSession.workspaceMismatch,
+      workspaceLabel: delayedSession.workspaceMismatch ? `${delayedSession.selectedWorkspaceLabel} · loaded ${delayedSession.loadedWorkspaceLabel}` : delayedSession.loadedWorkspaceLabel,
+      detail: `${delayedSession.selectedWorkspaceLabel} is selected, but ${delayedSession.loadedWorkspaceLabel} remains loaded; editing stays locked.`
+    });
+    showUserError(`${delayedSession.selectedWorkspaceLabel} is selected, but its data has not loaded yet. You are still viewing ${delayedSession.loadedWorkspaceLabel}. Try Sync now before editing.`);
   }
 }
 
@@ -694,6 +823,7 @@ let activeWorkspaceLoadLedgerId = "";
 let activeWorkspaceLoadStartedAt = 0;
 let lastConfirmedWorkspaceLedgerId = "";
 let lastConfirmedWorkspaceLabel = "";
+let workspaceSessionRecoveryInFlight = false;
 
 const foregroundOperationStaleMs = 20000;
 const foregroundOperations = new Map();
@@ -7534,23 +7664,30 @@ function getCurrentWorkspaceLabel() {
 }
 
 function buildDataIoWorkspaceContext(meta = {}) {
-  const loadedWorkspaceId = String(meta.loadedWorkspaceId || getActiveLedgerId() || "").trim();
-  const selectedWorkspaceId = String(meta.selectedWorkspaceId || getSelectedWorkspaceIdFromUi() || loadedWorkspaceId || "").trim();
-  const loadedWorkspaceLabel = String(meta.loadedWorkspaceLabel || getCurrentWorkspaceLabel() || loadedWorkspaceId || "Current workspace").trim();
-  const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getSelectedWorkspaceLabelFromUi() || selectedWorkspaceId || loadedWorkspaceLabel).trim();
-  const workspaceMismatch = Boolean(selectedWorkspaceId && loadedWorkspaceId && selectedWorkspaceId !== loadedWorkspaceId);
-  return {
+  const selectedWorkspaceId = String(meta.selectedWorkspaceId || getSelectedWorkspaceIdFromUi() || getActiveLedgerId() || "").trim();
+  const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getSelectedWorkspaceLabelFromUi() || getWorkspaceLabelByLedgerId(selectedWorkspaceId) || selectedWorkspaceId || "Current workspace").trim();
+  const session = getWorkspaceSessionSnapshot({
     selectedWorkspaceId,
     selectedWorkspaceLabel,
-    loadedWorkspaceId,
-    loadedWorkspaceLabel,
+    loadedWorkspaceId: meta.loadedWorkspaceId,
+    loadedWorkspaceLabel: meta.loadedWorkspaceLabel
+  });
+  const workspaceMismatch = Boolean(meta.workspaceMismatch !== undefined ? meta.workspaceMismatch : session.workspaceMismatch);
+  return {
+    selectedWorkspaceId: session.selectedWorkspaceId,
+    selectedWorkspaceLabel: session.selectedWorkspaceLabel,
+    loadedWorkspaceId: session.loadedWorkspaceId,
+    loadedWorkspaceLabel: session.loadedWorkspaceLabel,
     workspaceMismatch,
+    loadStatus: session.loadStatus,
     workspaceLabel: meta.workspaceLabel || (workspaceMismatch
-      ? `${selectedWorkspaceLabel} · loaded ${loadedWorkspaceLabel}`
-      : loadedWorkspaceLabel)
+      ? `${session.selectedWorkspaceLabel} · loaded ${session.loadedWorkspaceLabel}`
+      : session.loadedWorkspaceLabel)
   };
 }
 
+// Guardrail compatibility: assertActiveWorkspaceDataConfirmed("lookup vehicle information") still guards vehicle lookup before Render calls.
+// Guardrail compatibility: resultCode: "WORKSPACE_SWITCHED" remains the stable success code for completed workspace switches.
 // Guardrail text: Use the workspace selector to reload this app around another linked workspace.
 function renderWorkspaceScopeSummary(ledger = calculateLedger()) {
   const context = getCurrentWorkspaceContext();
@@ -8293,7 +8430,7 @@ async function lookupVehicleByPlateFromUi() {
     showUserError("Only an admin can lookup and apply vehicle settings.");
     return false;
   }
-  if (!assertActiveWorkspaceDataConfirmed("lookup vehicle information")) return false;
+  if (!assertActiveWorkspaceDataConfirmed("lookup vehicle information", "vehicle-lookup")) return false;
   if (!currentSession?.access_token) {
     showUserError("Sign in before looking up a vehicle.");
     return false;
