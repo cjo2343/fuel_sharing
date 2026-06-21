@@ -2156,6 +2156,24 @@ let ownerActivityStatus = {
   rows: [],
   checkedAt: ""
 };
+let ownerGlobalDiagnosticsStatus = {
+  checked: false,
+  ok: false,
+  loading: false,
+  scope: "app-owner-global",
+  reason: "not-checked",
+  message: "App-owner global diagnostics have not been loaded yet.",
+  workspaceCount: 0,
+  workspaces: [],
+  memberRowCount: 0,
+  targetMemberships: [],
+  inviteCount: 0,
+  recentVehicleActivity: [],
+  recentActivity: [],
+  error: ""
+};
+let lastOwnerGlobalDiagnosticsFetchAt = 0;
+const ownerGlobalDiagnosticsFreshMs = 30000;
 let ownerActivityFetchInFlight = false;
 let ownerActivityFetchStartedAt = 0;
 let ownerActivityInFlightTraceMeta = null;

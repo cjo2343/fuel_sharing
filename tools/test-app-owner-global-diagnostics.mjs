@@ -6,8 +6,8 @@ const server = fs.readFileSync('server.py', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v370"/, 'build-info should point to v370 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v370"/, 'service worker cache should be bumped to v370.');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v371"/, 'build-info should point to v371 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v371"/, 'service worker cache should be bumped to v371.');
 
 assert.ok(app.includes('const renderOwnerGlobalDiagnosticsUrl = "/api/owner/global-diagnostics";'), 'frontend should define the app-owner global diagnostics endpoint.');
 assert.ok(app.includes('appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsStatus'), 'load reports should include app-owner global diagnostics.');

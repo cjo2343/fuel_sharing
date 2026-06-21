@@ -72,6 +72,7 @@ const scripts = [
   "node tools/test-workspace-switch-safety.mjs",
   "node tools/test-workspace-selector-dedup.mjs",
   "node tools/test-workspace-authoritative-refresh-and-membership-probe.mjs",
+  "node tools/test-owner-global-diagnostics-status-initialized.mjs",
   "node tools/test-workspace-selection-repair.mjs",
   "node tools/test-startup-workspace-diagnostics-ux.mjs",
   "node tools/test-owner-activity-admin-ui-calm.mjs",
