@@ -10,6 +10,7 @@ const pendingLoginEmailKey = "car-share-pending-login-email";
 const rememberedLoginEmailKey = "car-share-remembered-login-email";
 const pendingWorkspaceInviteCodeKey = "fuel-ledger-pending-workspace-invite-code";
 const inviteDeepLinkParamNames = Object.freeze(["invite", "invite_code", "workspaceInvite", "workspace_invite"]);
+const workspaceUrlParamNames = Object.freeze(["workspace", "ledger"]);
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
 const apiStateUrl = "/api/state";
 const pushConfigUrl = "/api/push-config";
@@ -54,7 +55,7 @@ const supabaseHelpers = window.FuelSupabaseHelpers;
 const supabaseConfig = supabaseHelpers.getSupabaseConfig();
 const configuredLedgerId = supabaseHelpers.getLedgerId(supabaseConfig);
 const activeWorkspaceStorageKey = "fuel-ledger-active-workspace-id";
-let activeLedgerId = localStorage.getItem(activeWorkspaceStorageKey) || configuredLedgerId;
+let activeLedgerId = readActiveWorkspaceIdFromCurrentUrl() || localStorage.getItem(activeWorkspaceStorageKey) || configuredLedgerId;
 supabaseConfig.activeLedgerId = activeLedgerId;
 const hasSupabaseConfig = supabaseHelpers.hasUsableSupabaseConfig(supabaseConfig);
 const supabaseClient = supabaseHelpers.createSupabaseClient(supabaseConfig);
@@ -81,6 +82,45 @@ function optionalRecordValue(record, key) {
 
 function getConfiguredLedgerId() {
   return configuredLedgerId || "main-car";
+}
+
+function normalizeWorkspaceUrlId(value) {
+  return String(value || "").trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
+}
+
+function readActiveWorkspaceIdFromCurrentUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    for (const name of workspaceUrlParamNames) {
+      const value = normalizeWorkspaceUrlId(params.get(name) || "");
+      if (value) return value;
+    }
+  } catch (error) {
+    console.warn("Could not read workspace from URL", error);
+  }
+  return "";
+}
+
+function writeActiveWorkspaceToCurrentUrl(ledgerId) {
+  if (!window.history || !window.history.replaceState) return;
+  const normalized = normalizeWorkspaceUrlId(ledgerId || getConfiguredLedgerId());
+  if (!normalized) return;
+  try {
+    const url = new URL(window.location.href);
+    const currentWorkspace = workspaceUrlParamNames.map((name) => normalizeWorkspaceUrlId(url.searchParams.get(name) || "")).find(Boolean) || "";
+    workspaceUrlParamNames.forEach((name) => url.searchParams.delete(name));
+    url.searchParams.set("workspace", normalized);
+    if (currentWorkspace !== normalized || !window.location.search.includes(`workspace=${encodeURIComponent(normalized)}`)) {
+      window.history.replaceState(window.history.state, document.title, url.toString());
+    }
+  } catch (error) {
+    console.warn("Could not write workspace to URL", error);
+  }
+}
+
+function removeWorkspaceScopeFromUrlObject(url) {
+  workspaceUrlParamNames.forEach((name) => url.searchParams.delete(name));
+  return url;
 }
 
 function getActiveLedgerId() {
@@ -215,11 +255,12 @@ function isLedgerLinkedToCurrentUser(ledgerId) {
   return getWorkspaceLedgerOptions().some((ledger) => String(ledger.ledger_id || "") === normalized);
 }
 
-function setActiveLedgerId(ledgerId, { persist = true } = {}) {
+function setActiveLedgerId(ledgerId, { persist = true, updateUrl = true } = {}) {
   const normalized = String(ledgerId || getConfiguredLedgerId()).trim() || getConfiguredLedgerId();
   activeLedgerId = normalized;
   supabaseConfig.activeLedgerId = normalized;
   if (persist) localStorage.setItem(activeWorkspaceStorageKey, normalized);
+  if (updateUrl) writeActiveWorkspaceToCurrentUrl(normalized);
   return activeLedgerId;
 }
 
@@ -412,7 +453,8 @@ function reconcileActiveLedgerSelection({ allowWhileLoading = false, reason = "w
   if (supabaseClient && currentSession && ledgers.length) {
     const currentMatch = ledgers.find((ledger) => String(ledger.ledger_id || "") === String(activeLedgerId || ""));
     if (!currentMatch) {
-      const preferred = ledgers.find((ledger) => String(ledger.ledger_id || "") === String(getConfiguredLedgerId() || "")) || ledgers[0];
+      const lastConfirmedMatch = ledgers.find((ledger) => String(ledger.ledger_id || "") === String(lastConfirmedWorkspaceLedgerId || ""));
+      const preferred = lastConfirmedMatch || ledgers[0];
       const previousLedgerId = activeLedgerId;
       setActiveLedgerId(preferred.ledger_id, { persist: true });
       if (activeWorkspaceLoadInProgress && String(activeWorkspaceLoadLedgerId || "") === String(previousLedgerId || "")) {
@@ -14140,6 +14182,7 @@ function buildWorkspaceInviteLink(inviteCode) {
   const url = new URL(window.location.href);
   url.hash = "";
   inviteDeepLinkParamNames.forEach((name) => url.searchParams.delete(name));
+  removeWorkspaceScopeFromUrlObject(url);
   url.searchParams.set("invite", code);
   return url.toString();
 }
@@ -14153,14 +14196,20 @@ function describeInviteRedeemError(error) {
   return message;
 }
 
-async function refreshLinkedWorkspacesAfterInvite() {
+async function refreshLinkedWorkspacesAfterInvite(preferredLedgerId = "") {
   if (!supabaseClient || !currentSession) return [];
+  const preferred = String(preferredLedgerId || "").trim();
+  if (preferred) setActiveLedgerId(preferred, { persist: true });
   const { data, error } = await supabaseClient.rpc("list_my_ledgers");
   if (error) throw error;
   workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(data);
   workspaceInviteStatus.loaded = true;
   lastWorkspaceInviteRefreshAt = Date.now();
-  reconcileActiveLedgerSelection();
+  if (preferred && workspaceInviteStatus.ledgers.some((ledger) => String(ledger.ledger_id || "") === preferred)) {
+    setActiveLedgerId(preferred, { persist: true });
+  } else {
+    reconcileActiveLedgerSelection();
+  }
   renderActiveWorkspaceSelector();
   return workspaceInviteStatus.ledgers;
 }
@@ -14197,7 +14246,8 @@ async function redeemWorkspaceInvite(inviteCodeOverride = "") {
     if (error) throw error;
     const result = Array.isArray(data) ? data[0] : data;
     const joinedLedgerId = String(result?.ledger_id || "").trim();
-    const ledgers = await refreshLinkedWorkspacesAfterInvite();
+    if (joinedLedgerId) setActiveLedgerId(joinedLedgerId, { persist: true });
+    const ledgers = await refreshLinkedWorkspacesAfterInvite(joinedLedgerId);
     const targetLedger = joinedLedgerId || String(ledgers[0]?.ledger_id || getActiveLedgerId());
     if (targetLedger && isLedgerLinkedToCurrentUser(targetLedger)) {
       setRedeemInviteMessage("Invite accepted. Switching workspace...", "success");
@@ -14483,10 +14533,11 @@ async function createPrivateWorkspaceFromUi() {
     if (response.error) throw response.error;
     const result = Array.isArray(response.data) ? response.data[0] : response.data;
     const newLedgerId = result && result.ledger_id ? result.ledger_id : slug;
+    setActiveLedgerId(newLedgerId, { persist: true });
     if (els.newWorkspaceName) els.newWorkspaceName.value = "";
     if (els.newWorkspaceSlug) els.newWorkspaceSlug.value = "";
     workspaceInviteStatus.loaded = false;
-    await refreshLinkedWorkspacesAfterInvite().catch((error) => console.warn("Workspace list refresh after create failed", error));
+    await refreshLinkedWorkspacesAfterInvite(newLedgerId).catch((error) => console.warn("Workspace list refresh after create failed", error));
     await switchActiveWorkspace(newLedgerId, "create-workspace");
     setCreateWorkspaceMessage(`Created ${result && result.name ? result.name : name}. You are admin of this private workspace. Create invite codes here to add other people.`, "success");
     recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "WORKSPACE_CREATED", detail: `Created private workspace ${result && result.name ? result.name : name}` });
@@ -14543,6 +14594,7 @@ async function reconcileWorkspaceCreateAfterTimeout({ name, slug, traceMeta }) {
       workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);
       workspaceInviteStatus.loaded = true;
       const newLedgerId = match.ledger_id || match.id || slug;
+      setActiveLedgerId(newLedgerId, { persist: true });
       recordDataIoDiagnostic("success", {
         ...verifyMeta,
         ok: true,

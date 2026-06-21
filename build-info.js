@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.257",
     buildLabel: "render-admin-report-save-route",
-    updatedAt: "2026-06-21T09:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v364",
+    updatedAt: "2026-06-21T10:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v365",
     releaseNotes: Object.freeze([
+      "Workspace identity is now URL-backed and create/join/switch flows preserve the intended workspace through refreshes, so secondary workspaces such as test1 no longer drift back to main-car after list refresh or reload.",
       "Settings lock diagnostics now use the canonical active workspace instead of stale selector DOM: when settings/vehicle lookup is blocked by a workspace that is still loading, Data I/O records settings-edit and vehicle-lookup WORKSPACE_NOT_LOADED rows with selected-vs-loaded workspace IDs and retries stale loading locks.",
       "Workspace session state now separates selected and loaded workspaces: switches and blocked actions record selected-vs-loaded IDs, vehicle lookup records WORKSPACE_NOT_LOADED when settings are locked, and the app retries loading the selected workspace instead of silently reporting only the previous workspace.",
       "Latest Data I/O diagnostics now use the same global-vs-optional filtering as the operation card, while Owner Activity refresh disables while loading and duplicate clicks no longer add skipped Data I/O noise.",

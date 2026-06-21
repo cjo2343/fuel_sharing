@@ -23,9 +23,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 These values are checked by `npm run release:check`. When a runtime release changes `build-info.js` or `service-worker.js`, update this block in the same patch so the deployment checklist cannot drift from the app version shown in Admin -> Version & update status.
 
 - Version: `2026.06.18.257`
-- Service-worker cache: `fuel-ledger-v364`
-- Updated at: `2026-06-21T09:45:00.000Z`
-- Top release note: Settings lock diagnostics now use the canonical active workspace instead of stale selector DOM: when settings/vehicle lookup is blocked by a workspace that is still loading, Data I/O records settings-edit and vehicle-lookup WORKSPACE_NOT_LOADED rows with selected-vs-loaded workspace IDs and retries stale loading locks.
+- Service-worker cache: `fuel-ledger-v365`
+- Updated at: `2026-06-21T10:05:00.000Z`
+- Top release note: Workspace identity is now URL-backed and create/join/switch flows preserve the intended workspace through refreshes, so secondary workspaces such as test1 no longer drift back to main-car after list refresh or reload.
 ## Invite beta readiness: member action Data I/O
 
 - Admin diagnostics now groups Data I/O into Admin actions, Member actions, Sync/load/write actions, and Background diagnostics.
@@ -608,4 +608,5 @@ Admin diagnostics now includes a Render admin health check (`POST /api/admin/hea
 
 - 2026-06-21 09:00 UTC — Optional admin panel noise patch: workspace/invite refresh and owner-audit refresh no longer auto-run on Admin open or dominate Latest Data I/O; skipped rows are counted separately from failures; runtime cache `fuel-ledger-v361`.
 
-- 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v364`.
+- 2026-06-21 10:05 UTC — URL-backed workspace identity patch: workspace selection now reads/writes ?workspace=, create/join flows preserve the intended workspace through list refresh, invite links strip workspace URL state, and runtime cache is `fuel-ledger-v365`.
+- 2026-06-21 09:45 UTC — Settings workspace-lock diagnostics patch: settings/vehicle lookup lock now records selected-vs-loaded WORKSPACE_NOT_LOADED rows from the render path, prefers canonical active workspace over stale selector DOM, retries stale loading locks, and runtime cache is `fuel-ledger-v365`.
