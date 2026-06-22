@@ -248,9 +248,9 @@
 
   function serviceWorkerStatus(serviceWorkerInfo = null) {
     if (!("serviceWorker" in navigator)) return "Not supported in this browser";
-    if (serviceWorkerInfo?.source === "active-uncontrolled") return "Active worker found; attaching page control automatically.";
-    if (serviceWorkerInfo?.source === "registration") return "Registered worker found; attaching page control automatically.";
-    if (!navigator.serviceWorker.controller) return "Starting automatic app cache control.";
+    if (serviceWorkerInfo?.source === "active-uncontrolled") return "Active worker is installed; the page will attach on the next normal navigation.";
+    if (serviceWorkerInfo?.source === "registration") return "Registered worker found; waiting for normal page control.";
+    if (!navigator.serviceWorker.controller) return "App cache is installed but this page is not controlled yet.";
     return "Active on this page.";
   }
 
@@ -355,15 +355,14 @@
     try {
       const registration = await navigator.serviceWorker.register("/service-worker.js");
       if (forceUpdate) await registration.update();
-      if (registration.waiting || registration.installing) {
-        await activateWaitingServiceWorker(registration);
-      }
       if (!navigator.serviceWorker.controller && registration.active) {
         const reloadKey = `fuel-ledger-sw-control-reload:${BUILD_INFO.expectedServiceWorkerCache}`;
-        const alreadyReloaded = window.sessionStorage?.getItem(reloadKey) === "1";
-        if (!alreadyReloaded) {
+        const alreadyRecorded = window.sessionStorage?.getItem(reloadKey) === "1";
+        if (!alreadyRecorded) {
+          // Record the condition for diagnostics, but do not reload. The app-level
+          // update toast owns activation/reload so foreground actions are never
+          // interrupted by build-info polling.
           try { window.sessionStorage?.setItem(reloadKey, "1"); } catch (error) {}
-          reloadWhenSafe();
         }
       }
       return registration;
@@ -424,14 +423,14 @@
     const updatePending = pageIsOlderThanDeploy || (cacheMatchesLoadedPage === false && cacheMatchesDeploy === true);
     const cacheClass = updatePending || serviceWorkerMissing ? "warning" : cacheMatchesLoadedPage === false ? "warning" : "ok";
     const cacheNote = updatePending
-      ? "Automatic update handoff in progress; the app will activate and reload once it is safe."
+      ? "New version available; use the update prompt when you are ready. No automatic refresh will run."
       : serviceWorkerMissing
         ? "Waiting for service-worker status; the app keeps checking in the background."
         : cacheMatchesLoadedPage === false
-          ? "Automatic cache handoff in progress."
+          ? "A newer cache is ready; use the manual update prompt when it appears."
           : cacheMatchesLoadedPage === true
             ? "Cache matches this loaded build."
-            : "Checking app cache automatically.";
+            : "Checking app cache status.";
     const latestDeployLabel = deployedInfo?.buildLabel || BUILD_INFO.buildLabel;
     const latestDeployCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
     const latestDeployVersion = deployedInfo?.version || BUILD_INFO.version;
@@ -486,12 +485,12 @@
     });
   }
 
-  async function refreshBuildInfo({ activateUpdates = true } = {}) {
+  async function refreshBuildInfo({ activateUpdates = false } = {}) {
     try {
       renderBuildInfo(lastRenderedServiceWorkerInfo, lastRenderedDeployedInfo);
-      if (activateUpdates) {
-        await ensureAutomaticServiceWorkerControl({ forceUpdate: false });
-      }
+      const registration = activateUpdates || !lastRenderedServiceWorkerInfo
+        ? await ensureAutomaticServiceWorkerControl({ forceUpdate: Boolean(activateUpdates) })
+        : null;
       const [serviceWorkerInfo, deployedInfo] = await Promise.all([
         requestServiceWorkerInfo().catch(() => null),
         requestLatestDeployedBuildInfo().catch(() => null)
@@ -500,21 +499,10 @@
       lastRenderedDeployedInfo = deployedInfo;
       renderBuildInfo(serviceWorkerInfo, deployedInfo);
 
-      if (activateUpdates && "serviceWorker" in navigator) {
-        try {
-          const registration = await ensureAutomaticServiceWorkerControl({ forceUpdate: true }) || await navigator.serviceWorker.ready;
-          const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
-          const loadedCache = BUILD_INFO.expectedServiceWorkerCache;
-          const serviceWorkerCache = serviceWorkerInfo?.cacheName || "";
-          const pageIsBehind = Boolean(deployedCache && deployedCache !== loadedCache);
-          const workerIsBehind = Boolean(deployedCache && serviceWorkerCache && serviceWorkerCache !== deployedCache);
-          if (registration.waiting || registration.installing || pageIsBehind || workerIsBehind) {
-            const activated = await activateWaitingServiceWorker(registration);
-            if (activated || pageIsBehind) reloadWhenSafe();
-          }
-        } catch (error) {
-          // The next automatic poll will retry; never require a user-facing button.
-        }
+      if (registration?.waiting || registration?.installing) {
+        // Deliberately do not call activateWaitingServiceWorker or reloadWhenSafe here.
+        // app.js owns the bottom-right manual update toast and sends SKIP_WAITING
+        // only after the user clicks Update now.
       }
 
       return { serviceWorkerInfo, deployedInfo };
@@ -534,7 +522,7 @@
     if (autoUpdatePollTimer) return;
     autoUpdatePollTimer = window.setInterval(() => {
       if (document.hidden) return;
-      scheduleBuildInfoRefresh({ activateUpdates: true });
+      scheduleBuildInfoRefresh({ activateUpdates: false });
     }, 5000);
   }
 
@@ -548,18 +536,17 @@
     ensureAutomaticServiceWorkerControl
   };
 
-  scheduleBuildInfoRefresh({ activateUpdates: true });
+  scheduleBuildInfoRefresh({ activateUpdates: false });
   startAutoBuildInfoRefresh();
-  window.addEventListener("load", () => scheduleBuildInfoRefresh({ activateUpdates: true }));
-  window.addEventListener("pageshow", () => scheduleBuildInfoRefresh({ activateUpdates: true }));
+  window.addEventListener("load", () => scheduleBuildInfoRefresh({ activateUpdates: false }));
+  window.addEventListener("pageshow", () => scheduleBuildInfoRefresh({ activateUpdates: false }));
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) scheduleBuildInfoRefresh({ activateUpdates: true });
+    if (!document.hidden) scheduleBuildInfoRefresh({ activateUpdates: false });
   });
-  window.addEventListener("popstate", () => scheduleBuildInfoRefresh({ activateUpdates: true }));
+  window.addEventListener("popstate", () => scheduleBuildInfoRefresh({ activateUpdates: false }));
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       scheduleBuildInfoRefresh({ activateUpdates: false });
-      reloadWhenSafe();
     });
   }
 })();

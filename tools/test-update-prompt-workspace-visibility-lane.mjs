@@ -5,6 +5,7 @@ const app = fs.readFileSync('app.js', 'utf8');
 const index = fs.readFileSync('index.html', 'utf8');
 const styles = fs.readFileSync('styles.css', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
+const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 
 function assertIncludes(haystack, needle, message) {
   assert.ok(haystack.includes(needle), message || `Expected to find ${needle}`);
@@ -24,6 +25,16 @@ assertIncludes(app, 'User clicked Update now.', 'Manual update activation must b
 assertIncludes(app, 'registration.waiting && navigator.serviceWorker.controller', 'Existing waiting service workers must surface the manual prompt on startup.');
 assertNotIncludes(app, 'newWorker.postMessage({ type: "SKIP_WAITING" });\n          }\n        });\n      });', 'New service workers must not be activated automatically from updatefound.');
 assertIncludes(serviceWorker, 'type === "SKIP_WAITING"', 'Waiting worker must still support explicit skipWaiting from Update now.');
+
+const refreshBuildInfoBody = buildInfo.slice(
+  buildInfo.indexOf('async function refreshBuildInfo'),
+  buildInfo.indexOf('function scheduleBuildInfoRefresh')
+);
+assertIncludes(buildInfo, 'scheduleBuildInfoRefresh({ activateUpdates: false });', 'Build-info polling must check status without activating updates.');
+assertNotIncludes(buildInfo, 'scheduleBuildInfoRefresh({ activateUpdates: true });', 'Build-info polling must not auto-activate update checks.');
+assertNotIncludes(refreshBuildInfoBody, 'activateWaitingServiceWorker(registration)', 'Build-info refresh must not send SKIP_WAITING automatically.');
+assertNotIncludes(refreshBuildInfoBody, 'reloadWhenSafe();', 'Build-info refresh must not reload the app automatically.');
+assertNotIncludes(buildInfo, 'Automatic update handoff in progress', 'Build-info copy must not promise automatic update handoff.');
 
 assertIncludes(app, 'linkedWorkspaceVisibilityStatus', 'Admin backend context must expose linked-workspace visibility truth.');
 assertIncludes(app, 'Linked-workspace visibility', 'Admin UI must label linked workspace visibility explicitly.');

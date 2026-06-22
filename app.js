@@ -189,11 +189,23 @@ function getWorkspaceIdentityValues(ledger = {}) {
     .filter((value, index, values) => values.indexOf(value) === index);
 }
 
+function getWorkspaceIdentityLookupKeys(value) {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return [];
+  const urlValue = normalizeWorkspaceUrlId(rawValue);
+  return [rawValue, normalizeWorkspaceIdentifier(rawValue), urlValue, normalizeWorkspaceIdentifier(urlValue)]
+    .map((key) => String(key || "").trim())
+    .filter(Boolean)
+    .filter((key, index, keys) => keys.indexOf(key) === index);
+}
+
 function buildWorkspaceIdentityLookup(ledgers = []) {
   const lookup = new Map();
   ledgers.forEach((ledger) => {
     getWorkspaceIdentityValues(ledger).forEach((value) => {
-      if (!lookup.has(value)) lookup.set(value, ledger);
+      getWorkspaceIdentityLookupKeys(value).forEach((key) => {
+        if (!lookup.has(key)) lookup.set(key, ledger);
+      });
     });
   });
   return lookup;
@@ -202,7 +214,10 @@ function buildWorkspaceIdentityLookup(ledgers = []) {
 function resolveWorkspaceIdentityToLedgerId(value, ledgers = getWorkspaceLedgerOptions()) {
   const normalized = normalizeWorkspaceUrlId(value || "");
   if (!normalized) return "";
-  const match = buildWorkspaceIdentityLookup(ledgers).get(normalized);
+  const lookup = buildWorkspaceIdentityLookup(ledgers);
+  const match = getWorkspaceIdentityLookupKeys(value || normalized)
+    .map((key) => lookup.get(key))
+    .find(Boolean);
   return String(match?.ledger_id || match?.ledgerId || match?.id || normalized).trim();
 }
 
@@ -15990,7 +16005,7 @@ function getWorkspaceUrlLedgerId() {
   }
 }
 
-function applyBackendAppContext(context, { persist = true, reason = "app-context" } = {}) {
+function applyBackendAppContext(context, { persist = true, reason = "app-context", expectedWorkspaceId = "" } = {}) {
   if (!context || typeof context !== "object") return "";
   const linked = Array.isArray(context.linkedWorkspaces) ? context.linkedWorkspaces : [];
   if (linked.length) {
@@ -16004,9 +16019,33 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
   }
   const active = context.activeWorkspace || {};
   const activeId = String(active.ledgerId || active.ledger_id || "").trim();
-  if (activeId && activeId !== getActiveLedgerId()) {
-    setActiveLedgerId(activeId, { persist, updateUrl: true });
-    recordSupabaseLoadEvent("backend-app-context-workspace", `${reason}: ${activeId}`);
+  const linkedLedgers = workspaceInviteStatus.ledgers.length ? workspaceInviteStatus.ledgers : normalizeWorkspaceLedgerList(linked);
+  const selectedBeforeApply = getActiveLedgerId();
+  const activeCanonicalId = activeId ? resolveWorkspaceIdentityToLedgerId(activeId, linkedLedgers) : "";
+  const expectedCanonicalId = expectedWorkspaceId ? resolveWorkspaceIdentityToLedgerId(expectedWorkspaceId, linkedLedgers) : "";
+  const selectedCanonicalId = selectedBeforeApply ? resolveWorkspaceIdentityToLedgerId(selectedBeforeApply, linkedLedgers) : "";
+  const selectedWorkspaceStillLinked = Boolean(selectedBeforeApply && buildWorkspaceIdentityLookup(linkedLedgers).get(selectedBeforeApply));
+  const backendDecision = context.resolution?.decision || "backend-context";
+  const lateResponseForPreviousSelection = Boolean(
+    expectedCanonicalId
+    && selectedCanonicalId
+    && expectedCanonicalId !== selectedCanonicalId
+    && activeCanonicalId
+    && activeCanonicalId === expectedCanonicalId
+  );
+  const backendDefaultConflictsWithSelectedWorkspace = Boolean(
+    selectedWorkspaceStillLinked
+    && selectedCanonicalId
+    && activeCanonicalId
+    && activeCanonicalId !== selectedCanonicalId
+    && /default|first|fallback/i.test(backendDecision)
+  );
+  const staleForCurrentSelection = lateResponseForPreviousSelection || backendDefaultConflictsWithSelectedWorkspace;
+  if (activeCanonicalId && activeCanonicalId !== selectedBeforeApply && !staleForCurrentSelection) {
+    setActiveLedgerId(activeCanonicalId, { persist, updateUrl: true });
+    recordSupabaseLoadEvent("backend-app-context-workspace", `${reason}: ${activeCanonicalId}`);
+  } else if (staleForCurrentSelection) {
+    recordSupabaseLoadEvent("backend-app-context-stale", `${reason}: ignored stale context for ${activeCanonicalId}; selected workspace is ${selectedBeforeApply || "none"}`);
   }
   appBackendContextStatus = {
     checked: true,
@@ -16015,20 +16054,24 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
     error: "",
     checkedAt: new Date().toISOString(),
     context,
-    activeWorkspaceId: activeId || getActiveLedgerId(),
-    decision: context.resolution?.decision || "backend-context"
+    activeWorkspaceId: activeCanonicalId || activeId || getActiveLedgerId(),
+    decision: staleForCurrentSelection ? "stale-backend-context-ignored" : backendDecision
   };
-  updateWorkspaceResolutionDebug(appBackendContextStatus.decision, "Backend app context selected the active workspace.", {
+  updateWorkspaceResolutionDebug(appBackendContextStatus.decision, staleForCurrentSelection ? "Ignored a stale backend context for a workspace that is no longer selected." : "Backend app context selected the active workspace.", {
     reason,
-    selectedWorkspaceId: activeId || getActiveLedgerId(),
+    selectedWorkspaceId: getActiveLedgerId(),
+    backendWorkspaceId: activeCanonicalId || activeId,
+    expectedWorkspaceId: expectedCanonicalId || expectedWorkspaceId,
     linkedWorkspaceCount: linked.length
   });
   renderActiveWorkspaceSelector();
-  return activeId;
+  return staleForCurrentSelection ? "" : activeCanonicalId || activeId;
 }
 
 async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWorkspaceId = "", reason = "app-context", timeoutMs = 8000 } = {}) {
   if (!currentSession || typeof fetch !== "function") return null;
+  const selectedWorkspaceIdAtRequest = getActiveLedgerId();
+  const preferredWorkspaceIdAtRequest = String(preferredWorkspaceId || ledgerId || selectedWorkspaceIdAtRequest || getConfiguredLedgerId()).trim();
   const operationId = createDataIoOperationId("app-context", "load");
   const traceMeta = { source: "app-context", route: "render-api", endpoint: renderAppContextUrl, operation: "load", operationId };
   let controller = null;
@@ -16051,8 +16094,8 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
       headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         ledgerId,
-        preferredWorkspaceId: preferredWorkspaceId || ledgerId || getActiveLedgerId(),
-        selectedWorkspaceId: getActiveLedgerId(),
+        preferredWorkspaceId: preferredWorkspaceIdAtRequest,
+        selectedWorkspaceId: selectedWorkspaceIdAtRequest,
         loadedWorkspaceId: getLoadedWorkspaceId(),
         urlWorkspaceId: getWorkspaceUrlLedgerId(),
         reason
@@ -16064,7 +16107,7 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
     let result = null;
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
     if (response.ok && result?.ok && result?.context) {
-      const activeId = applyBackendAppContext(result.context, { reason });
+      const activeId = applyBackendAppContext(result.context, { reason, expectedWorkspaceId: preferredWorkspaceIdAtRequest });
       recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "APP_CONTEXT_LOADED", detail: `Backend context loaded ${activeId || getActiveLedgerId()}` });
       return result.context;
     }
@@ -16737,7 +16780,7 @@ async function reconcileWorkspaceCreateAfterTimeout({ name, slug, traceMeta }) {
     await new Promise((resolve) => window.setTimeout(resolve, 1200));
     const result = await refreshWorkspaceToolsViaRender("workspace-create-verify");
     const context = result?.context || null;
-    if (context) applyBackendAppContext(context, { reason: "workspace-create-verify" });
+    if (context) applyBackendAppContext(context, { reason: "workspace-create-verify", expectedWorkspaceId: slug || name });
     const ledgers = Array.isArray(result?.linkedWorkspaces) ? result.linkedWorkspaces : Array.isArray(context?.linkedWorkspaces) ? context.linkedWorkspaces : [];
     const match = ledgers.find((ledger) => {
       const ledgerId = String(ledger.ledger_id || ledger.ledgerId || ledger.id || "").toLowerCase();
@@ -17069,7 +17112,7 @@ async function refreshWorkspaceInvites({ reason = "manual" } = {}) {
   try {
     const result = await refreshWorkspaceToolsViaRender(reason);
     const context = result?.context || null;
-    if (context) applyBackendAppContext(context, { reason: `workspace-tools:${reason}` });
+    if (context) applyBackendAppContext(context, { reason: `workspace-tools:${reason}`, expectedWorkspaceId: getActiveLedgerId() });
     const ledgers = Array.isArray(result?.linkedWorkspaces) ? result.linkedWorkspaces : Array.isArray(context?.linkedWorkspaces) ? context.linkedWorkspaces : [];
     workspaceInviteStatus.rawLedgers = ledgers;
     workspaceInviteStatus.ledgers = normalizeWorkspaceLedgerList(ledgers);

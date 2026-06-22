@@ -2135,11 +2135,29 @@ def workspace_identity_values(row):
     return values
 
 
+def normalize_workspace_identity(value):
+    raw = str(value or "").strip().lower()
+    return re.sub(r"[^a-z0-9_-]+", "-", raw).strip("-")
+
+
+def workspace_identity_lookup_values(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    candidates = [raw, raw.lower(), normalize_workspace_identity(raw)]
+    values = []
+    for candidate in candidates:
+        if candidate and candidate not in values:
+            values.append(candidate)
+    return values
+
+
 def build_workspace_identity_index(workspaces):
     index = {}
     for row in workspaces:
         for value in workspace_identity_values(row):
-            index.setdefault(value, row)
+            for lookup_value in workspace_identity_lookup_values(value):
+                index.setdefault(lookup_value, row)
     return index
 
 
@@ -2149,10 +2167,13 @@ def choose_app_context_workspace(workspaces, requested_ids, user):
         requested = str(requested or "").strip()
         if requested and requested in by_identity:
             return by_identity[requested], "requested-linked"
+        requested_normalized = normalize_workspace_identity(requested)
+        if requested_normalized and requested_normalized in by_identity:
+            return by_identity[requested_normalized], "requested-linked-normalized"
     if len(workspaces) == 1:
         return workspaces[0], "single-linked-workspace"
     configured = by_identity.get("main-car")
-    non_default = [row for row in workspaces if "main-car" not in workspace_identity_values(row)]
+    non_default = [row for row in workspaces if "main-car" not in {normalize_workspace_identity(value) for value in workspace_identity_values(row)}]
     if non_default and not is_configured_app_owner(user):
         return non_default[0], "member-non-default-workspace"
     if configured:
