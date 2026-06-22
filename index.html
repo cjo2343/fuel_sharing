@@ -154,6 +154,15 @@
 
         <section id="syncHealthBanner" class="sync-health-banner hidden" aria-live="polite"></section>
 
+        <aside id="appUpdateToast" class="app-update-toast hidden" role="status" aria-live="polite">
+          <div>
+            <strong>New version available</strong>
+            <span>Update when you are ready. The app will not refresh by itself.</span>
+          </div>
+          <button id="appUpdateNow" class="primary-button compact-button" type="button">Update now</button>
+          <button id="appUpdateDismiss" class="subtle-button compact-button" type="button" aria-label="Dismiss update notice">Later</button>
+        </aside>
+
         <section id="bookingPanel" class="panel primary-panel booking-panel" data-view="book" aria-labelledby="bookingHeading">
           <div class="panel-header">
             <div>

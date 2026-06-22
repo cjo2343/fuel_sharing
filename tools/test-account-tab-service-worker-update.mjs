@@ -25,10 +25,10 @@ assert(app.includes('document.querySelectorAll(".account-current-workspace-invit
 assert(app.includes('card.classList.toggle("hidden", !isCurrentWorkspaceAdmin)'), "Current workspace invite management remains admin-only.");
 assert(app.includes('return Boolean(currentSession);'), "Workspace list refresh can run for signed-in regular members through Render.");
 assert(app.includes('includeInvites: canManageSettings()') && app.includes('workspaceInviteStatus.invites = Array.isArray(result?.invites) ? result.invites : [];'), "Invite list loads only through the Render workspace-tools lane while regular members still get workspace list.");
-assert(serviceWorker.includes('self.skipWaiting();'), "Service worker requests immediate activation.");
+assert(serviceWorker.includes('Do not call skipWaiting here'), "Service worker waits for explicit user update instead of activating on install.");
 assert(serviceWorker.includes('self.clients.claim()'), "Service worker claims clients after activation.");
-assert(app.includes('newWorker.postMessage({ type: "SKIP_WAITING" });'), "App tells waiting service worker to activate.");
-assert(app.includes('window.location.reload()'), "App performs one controlled reload after controllerchange.");
-assert(buildInfo.includes('Automatic update handoff in progress') || buildInfo.includes('waiting service workers activate themselves'), "Build-info copy describes automatic update handoff without manual refresh buttons.");
+assert(app.includes('activateReadyAppUpdate') && app.includes('appUpdateWaitingWorker.postMessage({ type: "SKIP_WAITING" });'), "App activates waiting service worker only after Update now is clicked.");
+assert(app.includes('User-requested service-worker update activated; reloading page.') && app.includes('window.location.reload()'), "App performs one controlled reload only after user-requested controllerchange.");
+assert(buildInfo.includes('New version available') || buildInfo.includes('manual update prompt') || buildInfo.includes('Update prompt'), "Build-info copy describes manual update prompt behavior.");
 
 console.log("Account tab and service-worker update guardrails passed.");

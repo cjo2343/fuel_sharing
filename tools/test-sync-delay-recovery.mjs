@@ -109,20 +109,20 @@ assert.match(
 
 assert.match(
   appSource,
-  /recordSyncDiagnostic\("service-worker-controllerchange", "App update activated; reloading once so page files and the service-worker cache use the same build\."\)/,
-  "service worker controller changes should explain the automatic version handoff"
+  /recordSyncDiagnostic\("service-worker-controllerchange", "App update activated after user request; reloading once so page files and the service-worker cache use the same build\."\)/,
+  "service worker controller changes should explain the user-requested version handoff"
 );
 
 assert.match(
   appSource,
-  /service-worker-update-ready[\s\S]*Waiting service worker requested to activate immediately\./,
-  "service worker updates should request immediate activation instead of requiring close/reopen"
+  /service-worker-update-ready[\s\S]*New app version is ready\. Showing manual update prompt instead of auto-refreshing during use\./,
+  "service worker updates should show a manual update prompt instead of immediate activation"
 );
 
 assert.match(
   appSource,
-  /controllerchange[\s\S]*!state\.pendingLocalChanges && !hasForegroundWriteInFlight\(\)[\s\S]*window\.location\.reload\(\)/,
-  "service worker controller changes should reload only when no local changes or foreground writes are pending"
+  /controllerchange[\s\S]*window\.location\.reload\(\)[\s\S]*activateReadyAppUpdate[\s\S]*hasForegroundWriteInFlight\(\)[\s\S]*appUpdateWaitingWorker\.postMessage\(\{ type: "SKIP_WAITING" \}\)/,
+  "service worker updates should activate only from the manual update prompt, then reload on controllerchange"
 );
 
 assert.match(

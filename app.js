@@ -1830,6 +1830,10 @@ let lastAuthCloudSyncEventAt = 0;
 const supabaseStaleLoadMs = 45000;
 let periodCloseRpcArmUntil = 0;
 let deferredInstallPrompt = null;
+let appUpdateRegistration = null;
+let appUpdateWaitingWorker = null;
+let appUpdateReady = false;
+let appUpdateInstalling = false;
 let pushSupported = false;
 let pushEnabled = false;
 let latestFuelPrice = null;
@@ -2855,6 +2859,9 @@ const els = {
   syncDetail: document.querySelector("#syncDetail"),
   syncNow: document.querySelector("#syncNow"),
   syncHealthBanner: document.querySelector("#syncHealthBanner"),
+  appUpdateToast: document.querySelector("#appUpdateToast"),
+  appUpdateNow: document.querySelector("#appUpdateNow"),
+  appUpdateDismiss: document.querySelector("#appUpdateDismiss"),
   tripDriver: document.querySelector("#tripDriver"),
   bookingMember: document.querySelector("#bookingMember"),
   fuelPayer: document.querySelector("#fuelPayer"),
@@ -3116,6 +3123,15 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const globalRefreshButton = event.target.closest("[data-owner-global-refresh]");
+  if (globalRefreshButton) {
+    event.preventDefault();
+    if (!requireGlobalAdminToolsPermission("Refresh global workspace view")) return;
+    refreshOwnerGlobalDiagnostics({ force: true, silent: false, reason: "manual-global-refresh" }).catch((error) => {
+      setDataToolsMessage(`Global workspace view refresh failed: ${error?.message || error}`);
+    });
+    return;
+  }
   const scopeButton = event.target.closest("[data-owner-activity-scope]");
   if (scopeButton) {
     event.preventDefault();
@@ -4621,6 +4637,12 @@ els.toggleLiveSync?.addEventListener("click", async () => {
   render();
 });
 
+els.appUpdateNow?.addEventListener("click", () => activateReadyAppUpdate("toast-button"));
+els.appUpdateDismiss?.addEventListener("click", () => {
+  if (els.appUpdateToast) els.appUpdateToast.classList.add("hidden");
+  recordSyncDiagnostic("service-worker-update-dismissed", "User dismissed the app update prompt. The waiting update remains available.");
+});
+
 els.exportSupabaseLoadReport?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await downloadSupabaseLoadReport();
@@ -5438,6 +5460,13 @@ function buildSupabaseLoadReport() {
     createdAt: new Date().toISOString(),
     buildInfo: window.FUEL_LEDGER_BUILD || null,
     browser: navigator.userAgent,
+    appUpdateLifecycle: {
+      updateReady: Boolean(appUpdateReady),
+      installing: Boolean(appUpdateInstalling),
+      hasWaitingWorker: Boolean(appUpdateWaitingWorker),
+      promptVisible: Boolean(els.appUpdateToast && !els.appUpdateToast.classList.contains("hidden")),
+      mode: "manual-prompt"
+    },
     appState: {
       hasSupabaseClient: Boolean(supabaseClient),
       hasSession: Boolean(currentSession),
@@ -5912,13 +5941,18 @@ function renderOwnerGlobalDiagnosticsCard() {
   const status = ownerGlobalDiagnosticsReportStatus();
   const summary = summarizeOwnerGlobalDiagnostics(status);
   const hasSnapshot = summary.workspaceCount > 0 || summary.memberRowCount > 0 || summary.vehicleActivityCount > 0 || summary.recentActivityCount > 0;
-  const cardClass = status.loading ? "warning" : "ok";
-  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : status.checked ? (summary.workspaceCount ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : "Explicit only") : "Explicit only";
+  const globalVisibilityStatus = status.loading ? "loading" : status.checked ? (status.ok ? (summary.workspaceCount ? "loaded" : "empty") : "failed") : "not-checked";
+  const cardClass = status.loading ? "warning" : status.checked ? (status.ok ? (summary.workspaceCount ? "ok" : "warning") : "issue") : "warning";
+  const title = status.loading ? "Checking" : status.staleHealthy ? `${summary.workspaceCount} cached` : globalVisibilityStatus === "loaded" ? `${summary.workspaceCount} workspace${summary.workspaceCount === 1 ? "" : "s"}` : globalVisibilityStatus === "empty" ? "0 loaded" : globalVisibilityStatus === "failed" ? "Failed" : "Not checked";
   const detail = status.staleHealthy
     ? "Optional global diagnostics are showing the last good cached snapshot. Core workspace data and live sync are still running."
-    : hasSnapshot
-      ? (status.message || "Global app-owner diagnostics are cached and separate from workspace sync.")
-      : "Global app-owner diagnostics are not part of normal app sync. Use the explicit refresh action only when you need cross-workspace audit data.";
+    : globalVisibilityStatus === "not-checked"
+      ? "App-owner global visibility has not been checked in this session. Click Refresh global workspace view to ask the owner-only Render route for all workspaces/activity."
+      : globalVisibilityStatus === "empty"
+        ? "The owner-only global route returned successfully, but no global workspaces were included in the response."
+        : hasSnapshot
+          ? (status.message || "Global app-owner diagnostics are cached and separate from workspace sync.")
+          : (status.message || "Global app-owner diagnostics are separate from normal workspace sync.");
   const workspaceList = summary.workspaceLabels.length ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("") : `<li>No cached global workspace snapshot yet.</li>`;
   const vehicleList = summary.latestVehicleActivity.length ? summary.latestVehicleActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)}${row.resultCode ? ` · ${escapeHtml(row.resultCode)}` : ""}</li>`).join("") : `<li>No cached recent vehicle lookup activity yet.</li>`;
   const activityList = summary.latestActivity.length ? summary.latestActivity.map((row) => `<li><span class="status-chip ${row.ok ? "paid" : "requested"}">${row.ok ? "OK" : "Issue"}</span> ${escapeHtml(row.actor)} · ${escapeHtml(row.workspace)} · ${escapeHtml(row.action)}</li>`).join("") : `<li>No cached recent global activity yet.</li>`;
@@ -5926,11 +5960,13 @@ function renderOwnerGlobalDiagnosticsCard() {
     <article class="admin-metric-card ${cardClass}">
       <span>App-owner global scope</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>${summary.memberRowCount} member row${summary.memberRowCount === 1 ? "" : "s"} · ${summary.vehicleActivityCount} vehicle lookup row${summary.vehicleActivityCount === 1 ? "" : "s"}</small>
+      <small>${escapeHtml(globalVisibilityStatus)} · ${summary.memberRowCount} member row${summary.memberRowCount === 1 ? "" : "s"} · ${summary.vehicleActivityCount} vehicle lookup row${summary.vehicleActivityCount === 1 ? "" : "s"}</small>
       <p>${escapeHtml(detail)}</p>
+      <button type="button" class="secondary small-button" data-owner-global-refresh ${status.loading ? `disabled aria-disabled="true"` : ""}>${status.loading ? "Refreshing global view…" : "Refresh global workspace view"}</button>
     </article>
     <details class="admin-diagnostics-section">
       <summary>App-owner global diagnostics</summary>
+      <p class="entry-meta">Visibility status: <strong>${escapeHtml(globalVisibilityStatus)}</strong>. Active workspace data is separate from this owner-only global snapshot.</p>
       ${hasSnapshot ? `
         <div class="admin-diagnostics-dashboard">
           <article class="admin-metric-card ${summary.workspaceCount ? "ok" : "warning"}"><span>Global workspaces</span><strong>${summary.workspaceCount}</strong><small>Cached owner snapshot</small><ul class="test-lab-check-list readable-activity-list">${workspaceList}</ul></article>
@@ -6341,7 +6377,8 @@ function summarizeBackendAppContextForAdmin() {
     activeWorkspaceId: String(activeWorkspace.ledgerId || activeWorkspace.ledger_id || appBackendContextStatus.activeWorkspaceId || getActiveLedgerId() || ""),
     activeWorkspaceLabel: String(activeWorkspace.label || activeWorkspace.name || getCurrentWorkspaceLabel() || "Workspace"),
     linkedWorkspaceCount: workspaces.length,
-    workspaceLabels: workspaces.slice(0, 6).map((row) => String(row.label || row.name || row.ledgerId || row.ledger_id || "Workspace")),
+    linkedWorkspaceVisibilityStatus: !appBackendContextStatus.checked ? "not-checked" : appBackendContextStatus.loading ? "loading" : appBackendContextStatus.ok ? (workspaces.length ? "loaded" : "empty") : "failed",
+    workspaceLabels: workspaces.slice(0, 12).map((row) => String(row.label || row.name || row.ledgerId || row.ledger_id || "Workspace")),
     canManageSettings: Boolean(permissions.canManageSettings),
     canLookupVehicle: Boolean(permissions.canLookupVehicle),
     canUseAppOwnerDiagnostics: Boolean(permissions.canUseAppOwnerDiagnostics),
@@ -6357,6 +6394,15 @@ function renderBackendAppContextCard() {
   const workspaceItems = summary.workspaceLabels.length
     ? summary.workspaceLabels.map((label) => `<li>${escapeHtml(label)}</li>`).join("")
     : `<li>No backend-linked workspace list is available yet.</li>`;
+  const visibilityCopy = summary.linkedWorkspaceVisibilityStatus === "loaded"
+    ? `Backend context loaded ${summary.linkedWorkspaceCount} workspace${summary.linkedWorkspaceCount === 1 ? "" : "s"} for this signed-in user.`
+    : summary.linkedWorkspaceVisibilityStatus === "empty"
+      ? "Backend context loaded, but it returned zero linked workspaces for this user."
+      : summary.linkedWorkspaceVisibilityStatus === "failed"
+        ? "Backend context failed, so the app cannot prove linked workspace visibility."
+        : summary.linkedWorkspaceVisibilityStatus === "loading"
+          ? "Backend context is loading linked workspace visibility."
+          : "Backend context has not checked linked workspace visibility yet.";
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>Backend app context</span>
@@ -6368,7 +6414,7 @@ function renderBackendAppContextCard() {
       <summary>Backend context workspace/permission summary</summary>
       <div class="admin-diagnostics-dashboard">
         <article class="admin-metric-card ${summary.ok ? "ok" : "warning"}"><span>Active workspace</span><strong>${escapeHtml(summary.activeWorkspaceId || "Unknown")}</strong><small>${escapeHtml(summary.decision)}</small><p>${escapeHtml(summary.activeWorkspaceLabel)}</p></article>
-        <article class="admin-metric-card ${summary.linkedWorkspaceCount ? "ok" : "warning"}"><span>Linked workspaces</span><strong>${summary.linkedWorkspaceCount}</strong><small>From /api/app/context</small><ul class="test-lab-check-list readable-activity-list">${workspaceItems}</ul></article>
+        <article class="admin-metric-card ${summary.linkedWorkspaceVisibilityStatus === "loaded" ? "ok" : "warning"}"><span>Linked-workspace visibility</span><strong>${escapeHtml(summary.linkedWorkspaceVisibilityStatus)}</strong><small>From /api/app/context</small><p>${escapeHtml(visibilityCopy)}</p><ul class="test-lab-check-list readable-activity-list">${workspaceItems}</ul></article>
         <article class="admin-metric-card ${summary.canManageSettings ? "ok" : "warning"}"><span>Workspace permissions</span><strong>${summary.canManageSettings ? "Admin" : "Member"}</strong><small>Vehicle lookup: ${summary.canLookupVehicle ? "allowed" : "not allowed"}</small><p>App-owner diagnostics: ${summary.canUseAppOwnerDiagnostics ? "allowed" : "not allowed"}</p></article>
       </div>
     </details>
@@ -18575,30 +18621,29 @@ async function initializePwa() {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         if (serviceWorkerControllerChanged) return;
         serviceWorkerControllerChanged = true;
-        recordSyncDiagnostic("service-worker-controllerchange", "App update activated; reloading once so page files and the service-worker cache use the same build.");
-        recordSupabaseLoadEvent("service-worker-controllerchange", "Service-worker update activated; one controlled reload will complete the handoff.");
+        recordSyncDiagnostic("service-worker-controllerchange", "App update activated after user request; reloading once so page files and the service-worker cache use the same build.");
+        recordSupabaseLoadEvent("service-worker-controllerchange", "User-requested service-worker update activated; reloading page.");
         recoverInteractiveActionControls("service-worker-controllerchange");
-        const reloadWhenSafe = (attempt = 0) => {
-          if (!state.pendingLocalChanges && !hasForegroundWriteInFlight()) {
-            window.setTimeout(() => window.location.reload(), 250);
-            return;
-          }
-          if (attempt < 20) {
-            window.setTimeout(() => reloadWhenSafe(attempt + 1), 1000);
-          }
-        };
-        reloadWhenSafe();
+        window.setTimeout(() => window.location.reload(), 250);
       });
 
       const registration = await navigator.serviceWorker.register("/service-worker.js");
+      appUpdateRegistration = registration;
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        markAppUpdateReady(registration.waiting, registration, "waiting-on-startup");
+      }
       registration.addEventListener("updatefound", () => {
         const newWorker = registration.installing;
         if (!newWorker) return;
+        appUpdateInstalling = true;
+        renderAppUpdateToast("updatefound");
         newWorker.addEventListener("statechange", () => {
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            recordSyncDiagnostic("service-worker-update-ready", "New app shell is ready; activating it now and reloading once if no local changes are pending.");
-            recordSupabaseLoadEvent("service-worker-update-ready", "Waiting service worker requested to activate immediately.");
-            newWorker.postMessage({ type: "SKIP_WAITING" });
+            markAppUpdateReady(newWorker, registration, "installed");
+          }
+          if (newWorker.state === "redundant") {
+            appUpdateInstalling = false;
+            renderAppUpdateToast("redundant");
           }
         });
       });
@@ -18616,6 +18661,40 @@ async function refreshPushState() {
   pushEnabled = await notifications.refreshPushState(pushSupported);
 }
 
+function renderAppUpdateToast(reason = "render") {
+  if (!els.appUpdateToast) return;
+  const show = Boolean(appUpdateReady && appUpdateWaitingWorker);
+  els.appUpdateToast.classList.toggle("hidden", !show);
+  els.appUpdateToast.dataset.reason = reason;
+}
+
+function markAppUpdateReady(worker, registration, reason = "service-worker-update-ready") {
+  if (!worker) return;
+  appUpdateWaitingWorker = worker;
+  appUpdateRegistration = registration || appUpdateRegistration;
+  appUpdateReady = true;
+  appUpdateInstalling = false;
+  recordSyncDiagnostic("service-worker-update-ready", "New app version is ready. Showing manual update prompt instead of auto-refreshing during use.");
+  recordSupabaseLoadEvent("service-worker-update-ready", "New app version available; manual update prompt shown.");
+  renderAppUpdateToast(reason);
+}
+
+function activateReadyAppUpdate(reason = "manual-update") {
+  if (!appUpdateWaitingWorker) {
+    showAppMessage("No app update is waiting yet.", "info", { timeoutMs: 3500 });
+    renderAppUpdateToast(reason);
+    return;
+  }
+  if (hasForegroundWriteInFlight() || state.pendingLocalChanges || pendingLocalChanges) {
+    showAppMessage("Finish saving/syncing before updating the app.", "warning", { timeoutMs: 6000 });
+    recordSyncDiagnostic("service-worker-update-deferred", "Manual update deferred because a save or local change is still active.", { reason, pendingLocalChanges, foreground: foregroundOperationSummary() });
+    return;
+  }
+  recordSyncDiagnostic("service-worker-update-accepted", "User accepted the app update prompt; activating waiting service worker.", { reason });
+  recordSupabaseLoadEvent("service-worker-update-accepted", "User clicked Update now.");
+  appUpdateWaitingWorker.postMessage({ type: "SKIP_WAITING" });
+}
+
 function updatePwaUi() {
   if (isStartupHydrating()) {
     if (els.pwaPanel) els.pwaPanel.classList.add("hidden");
@@ -18628,6 +18707,7 @@ function updatePwaUi() {
     pushSupported,
     pushEnabled
   });
+  renderAppUpdateToast("pwa-ui");
 }
 
 async function enablePushNotifications() {

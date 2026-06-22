@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.268",
-    buildLabel: "general-action-route-timing-lane",
-    updatedAt: "2026-06-22T10:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v409",
+    version: "2026.06.18.269",
+    buildLabel: "update-prompt-workspace-visibility-lane",
+    updatedAt: "2026-06-22T11:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v410",
     releaseNotes: Object.freeze([
+      "Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.",
       "General member action routes now return after the primary write and make owner activity/audit logging best-effort; booking/trip/fuel/payment routes include server timing breadcrumbs, frontend Data I/O stores routeTiming details, and booking submit catches unexpected promise errors so actions do not become stale after a timeout.",
       "Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.",
       "Interactive action recovery now rebinds critical controls after render, focus/visibility return, workspace switch, and service-worker deploy handoff; stale foreground/Data I/O latches are finished with recovery diagnostics, and cancel booking no longer crashes on an out-of-scope bookingPayload.",

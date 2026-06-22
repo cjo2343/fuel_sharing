@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v409";
-const BUILD_LABEL = "general-action-route-timing-lane";
-const BUILD_UPDATED_AT = "2026-06-22T10:55:00.000Z";
+const CACHE_NAME = "fuel-ledger-v410";
+const BUILD_LABEL = "update-prompt-workspace-visibility-lane";
+const BUILD_UPDATED_AT = "2026-06-22T11:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -38,7 +38,7 @@ const CORE_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  self.skipWaiting();
+  // Do not call skipWaiting here. A new worker should wait until the user clicks Update now.
   event.waitUntil(
     caches
       .open(CACHE_NAME)
