@@ -12588,6 +12588,7 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
         ok: true,
         message: "Closed the normalized settlement period through the database transaction RPC and opened a fresh period. JSON will be updated as backup."
       };
+      setSyncStatus("Tables");
       return true;
     }
 
@@ -12603,6 +12604,7 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
       ok: true,
       message: "Closed the normalized settlement period with guarded table updates. Apply the latest Supabase schema to use the transaction RPC."
     };
+    setSyncStatus("Tables");
     return true;
   } catch (error) {
     console.warn("Table-primary period close failed", error);
@@ -18377,6 +18379,58 @@ function getFuelFallbackPriceForState(saved) {
 window.FuelLedgerApp = window.FuelLedgerApp || {};
 window.FuelLedgerApp.hasPendingLocalChanges = () => Boolean(state.pendingLocalChanges);
 window.FuelLedgerApp.hasForegroundWriteInFlight = () => hasForegroundWriteInFlight();
+window.FuelLedgerApp.getNoRefreshActionDebugState = () => {
+  const now = Date.now();
+  const foreground = foregroundOperationList(now);
+  const activeDataIo = latestDataIoOperations(30).filter((operation) => operation.status === "active");
+  const workspaceContext = buildDataIoWorkspaceContext();
+  return {
+    okToClickNextAction: !foreground.length
+      && !pendingSettlementRequestKeys.size
+      && !hasActiveDataIoOperation(now, dataIoOperationStaleMs)
+      && !supabaseLoadInFlight
+      && !isStartupHydrating(),
+    foregroundOperationCount: foreground.length,
+    foregroundOperations: foreground.map((operation) => ({
+      id: operation.id,
+      source: operation.source,
+      detail: operation.detail,
+      ageMs: now - Number(operation.startedAt || now)
+    })),
+    foregroundSummary: foregroundOperationSummary(now),
+    activeDataIoOperationCount: activeDataIo.length,
+    activeDataIoOperations: activeDataIo.map((operation) => ({
+      source: operation.latest?.source || operation.start?.source || "",
+      route: operation.latest?.route || operation.start?.route || "",
+      endpoint: operation.latest?.endpoint || operation.start?.endpoint || "",
+      operation: operation.latest?.operation || operation.start?.operation || "",
+      startedAtMs: operation.startedAtMs || 0,
+      ageMs: now - Number(operation.startedAtMs || now)
+    })),
+    pendingSettlementRequestCount: pendingSettlementRequestKeys.size,
+    visibleSavingActive: Boolean(visibleSavingStartedAt),
+    visibleSavingSource,
+    visibleSyncingActive: Boolean(visibleSyncingStartedAt),
+    visibleSyncingSource,
+    supabaseLoadInFlight,
+    startupHydrationActive: isStartupHydrating(),
+    appStartupGate: {
+      phase: appStartupGateState.phase,
+      ready: Boolean(appStartupGateState.ready),
+      loading: Boolean(appStartupGateState.loading),
+      error: appStartupGateState.error || ""
+    },
+    selectedWorkspaceId: workspaceContext.selectedWorkspaceId,
+    loadedWorkspaceId: workspaceContext.loadedWorkspaceId,
+    backendActiveWorkspaceId: appBackendContextStatus.activeWorkspaceId || "",
+    visibleWorkspaceSelectorId: String(els.activeWorkspace?.value || ""),
+    workspaceMismatch: Boolean(workspaceContext.workspaceMismatch),
+    vehicleLookup: getVehicleLookupReadinessSnapshot(),
+    pendingLocalChanges,
+    syncStatus: els.syncStatus?.dataset?.status || "",
+    syncStatusText: els.syncStatus?.textContent || ""
+  };
+};
 
 async function initializePwa() {
   pushSupported = notifications.isPushSupported();

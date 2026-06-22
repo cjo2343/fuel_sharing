@@ -30,5 +30,5 @@ assert.match(app, /vehicleLookupReadiness: getVehicleLookupReadinessSnapshot\(\)
 
 assert.match(app, /Workspace session[\s\S]*URL \$\{escapeHtml\(readActiveWorkspaceIdFromCurrentUrl\(\) \|\| "none"\)\}/, 'workspace scope summary should expose a temporary workspace session debug card.');
 
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)"/, 'build-info should point to v381 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)"/, 'service worker cache should be bumped to v365.');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403)"/, 'build-info should point to v381 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403)"/, 'service worker cache should be bumped to v365.');

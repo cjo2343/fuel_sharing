@@ -33,10 +33,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.263`
-- Service-worker cache: `fuel-ledger-v402`
-- Updated at: `2026-06-22T01:45:00.000Z`
-- Top release note: Post-action unblock lane clears foreground save/action latches after booking and period-close normalized writes, preserves typed vehicle plate drafts across renders, and prevents completed member actions from blocking the next booking, Admin action, or vehicle lookup until a browser refresh.
+- Version: `2026.06.18.264`
+- Service-worker cache: `fuel-ledger-v403`
+- Updated at: `2026-06-22T07:05:00.000Z`
+- Top release note: No-refresh action-chain lane adds grounded browser/debug tests for repeated booking, Admin open, and vehicle lookup without refresh; runtime reports now expose stale foreground/Data I/O/workspace/vehicle latches, and period close returns the sync badge to healthy Tables state after successful normalized writes.
 
 ## Invite beta readiness: member action Data I/O
 

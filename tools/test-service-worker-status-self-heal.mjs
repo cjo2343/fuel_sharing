@@ -5,9 +5,9 @@ const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const checklist = fs.readFileSync('DEPLOYMENT-CHECKLIST.md', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)"/, 'build-info should expect v382 cache');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)"/, 'service worker should publish v382 cache');
-assert.match(checklist, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)/, 'deployment checklist should document v382 cache');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403)"/, 'build-info should expect v382 cache');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403)"/, 'service worker should publish v382 cache');
+assert.match(checklist, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403)/, 'deployment checklist should document v382 cache');
 assert.match(buildInfo, /function getServiceWorkerRegistration\(\)/, 'build-info should inspect existing service-worker registrations');
 assert.match(buildInfo, /registration\?\.active/, 'build-info should read active worker status even before page control attaches');
 assert.match(buildInfo, /active-uncontrolled/, 'build-info should label active but uncontrolled workers for self-heal status');

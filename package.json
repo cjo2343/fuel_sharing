@@ -11,7 +11,8 @@
     "release:check": "npm run validate && node tools/check-release-readiness.mjs",
     "hooks:install": "git config core.hooksPath .githooks",
     "start": "python3 server.py",
-    "prepush:e2e": "npm run release:check && npm run test:e2e"
+    "prepush:e2e": "npm run release:check && npm run test:e2e",
+    "test:no-refresh-action-chain": "playwright test tests/smoke.spec.js -g \"no-refresh action chain\""
   },
   "devDependencies": {
     "@playwright/test": "1.60.0"

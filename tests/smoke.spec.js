@@ -1259,3 +1259,60 @@ test("fuel log is blocked when it would overfill estimated tank level", async ({
     return saved.fuel.length;
   }).toBe(1);
 });
+
+async function expectNoStaleActionLatch(page, label) {
+  const debug = await page.evaluate(() => window.FuelLedgerApp?.getNoRefreshActionDebugState?.() || null);
+  expect(debug, `${label}: getNoRefreshActionDebugState() should be exposed`).toBeTruthy();
+  expect(debug.foregroundOperationCount, `${label}: foreground operations should be idle; debug=${JSON.stringify(debug)}`).toBe(0);
+  expect(debug.activeDataIoOperationCount, `${label}: Data I/O operations should not remain active; debug=${JSON.stringify(debug)}`).toBe(0);
+  expect(debug.supabaseLoadInFlight, `${label}: state load should not remain in flight; debug=${JSON.stringify(debug)}`).toBeFalsy();
+  expect(debug.visibleSavingActive, `${label}: visible Saving latch should be clear; debug=${JSON.stringify(debug)}`).toBeFalsy();
+  expect(debug.workspaceMismatch, `${label}: selected and loaded workspace should match; debug=${JSON.stringify(debug)}`).toBeFalsy();
+}
+
+async function createNoRefreshBooking(page, { start, end, purpose }) {
+  await openBookView(page);
+  await chooseFirstSelectOption(page.locator("#bookingMember"));
+  await page.locator("#bookingStart").fill(start);
+  await page.locator("#bookingEnd").fill(end);
+  await page.locator("#bookingPurpose").fill(purpose);
+  await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#bookingCalendar")).toContainText(purpose, { timeout: 10000 });
+}
+
+test("no-refresh action chain keeps buttons usable and exposes stale latch diagnostics", async ({ page }) => {
+  await openLocalApp(page);
+  await expectNoStaleActionLatch(page, "startup ready before chain");
+
+  // make booking #1, then make another booking without a browser refresh
+  await createNoRefreshBooking(page, {
+    start: "2026-06-20T08:00",
+    end: "2026-06-20T09:00",
+    purpose: "No refresh chain booking one"
+  });
+  await expectNoStaleActionLatch(page, "after make booking one");
+
+  // make another booking immediately; this catches stale booking-save foreground latches
+  await createNoRefreshBooking(page, {
+    start: "2026-06-20T10:00",
+    end: "2026-06-20T11:00",
+    purpose: "No refresh chain booking two"
+  });
+  await expectNoStaleActionLatch(page, "after make another booking");
+
+  await page.locator('[data-view-tab="admin"]').click();
+  await expect(page.locator("#adminHomeHeading")).toBeVisible({ timeout: 10000 });
+  await expectNoStaleActionLatch(page, "after opening Admin without refresh");
+
+  // vehicle lookup click readiness: local smoke mode is signed out, so the grounded
+  // expectation is a clean Sign in guard, not a stuck Preparing lookup state.
+  await page.locator("#vehiclePlate").fill("AB12345");
+  await page.locator("#vehicleLookupButton").click();
+  await expect(page.locator("#vehicleLookupStatus")).toContainText(/sign in/i, { timeout: 10000 });
+  await expectNoStaleActionLatch(page, "after vehicle lookup guard without refresh");
+
+  await page.locator("#vehiclePlate").fill("CD67890");
+  await page.locator("#vehicleLookupButton").click();
+  await expect(page.locator("#vehicleLookupStatus")).toContainText(/sign in/i, { timeout: 10000 });
+  await expectNoStaleActionLatch(page, "after second vehicle lookup guard without refresh");
+});

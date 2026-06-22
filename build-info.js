@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.263",
-    buildLabel: "post-action-unblock-lane",
-    updatedAt: "2026-06-22T01:45:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v402",
+    version: "2026.06.18.264",
+    buildLabel: "no-refresh-action-chain-lane",
+    updatedAt: "2026-06-22T07:05:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v403",
     releaseNotes: Object.freeze([
+      "No-refresh action-chain lane adds grounded browser/debug tests for repeated booking, Admin open, and vehicle lookup without refresh; runtime reports now expose stale foreground/Data I/O/workspace/vehicle latches, and period close returns the sync badge to healthy Tables state after successful normalized writes.",
       "Post-action unblock lane clears foreground save/action latches after booking and period-close normalized writes, preserves typed vehicle plate drafts across renders, and prevents completed member actions from blocking the next booking, Admin action, or vehicle lookup until a browser refresh.",
       "Multi-workspace authority lane separates the active workspace from app-owner global audit: workspace switches only unlock after selected, backend, and loaded workspace all match, while app-owner Owner activity defaults to all workspaces through the owner-only Render route without changing the active workspace.",
       "Admin now opens with a calmer workspace-admin overview, keeps routine owner backups/exports separate, and collapses raw Data I/O, Test Lab, health checks, and repair tools into a Diagnostics Lab drawer so hotfix/debug UI no longer crowds normal admin work.",
