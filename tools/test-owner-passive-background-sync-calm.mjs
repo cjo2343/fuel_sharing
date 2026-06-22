@@ -41,6 +41,6 @@ assert.match(
   "quiet passive background incomplete loads should be diagnostics, not global Cloud delayed banners"
 );
 
-assert.match(buildInfo, /2026\.06\.18\.276/);
-assert.match(buildInfo, /fuel-ledger-v417/);
-assert.match(serviceWorker, /fuel-ledger-v417/);
+assert.match(buildInfo, /2026\.06\.18\.277/);
+assert.match(buildInfo, /fuel-ledger-v418/);
+assert.match(serviceWorker, /fuel-ledger-v418/);

@@ -18,7 +18,7 @@ assert.match(app, /async function checkForReadyAppUpdate[\s\S]{0,220}const force
 assert.match(buildInfo, /data-build-info-update-now>Update now/, 'About/Admin version panel should expose a user-triggered update fallback button');
 assert.match(headers, /\/service-worker\.js[\s\S]*Cache-Control: no-cache, no-store, must-revalidate/, 'service-worker.js should be served with no-cache headers');
 assert.match(headers, /\/build-info\.js[\s\S]*Cache-Control: no-cache, no-store, must-revalidate/, 'build-info.js should be served with no-cache headers');
-assert.match(buildInfo, /fuel-ledger-v417/, 'build-info should publish v414');
-assert.match(serviceWorker, /fuel-ledger-v417/, 'service worker should publish v414');
+assert.match(buildInfo, /fuel-ledger-v418/, 'build-info should publish v414');
+assert.match(serviceWorker, /fuel-ledger-v418/, 'service worker should publish v414');
 
 console.log('Update prompt discovery bridge guardrail passed.');

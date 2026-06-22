@@ -1,3 +1,4 @@
+- 2026-06-22T14:55:00.000Z — `2026.06.18.277` / `workspace-action-authority-lane` / `fuel-ledger-v418`: Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.
 - 2026-06-22T14:35:00.000Z — `2026.06.18.276` / `owner-passive-background-sync-calm-lane` / `fuel-ledger-v417`: Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.
 - 2026-06-22T14:18:00.000Z — `2026.06.18.275` / `render-api-client-extraction-lane` / `fuel-ledger-v416`: Render API calls now have their first dedicated runtime client: backend endpoint names, JSON parsing, auth-header merging, and timeout/abort behavior live in render-api-client.js while app.js delegates the state-load, write-context, booking, trip, and fuel paths through one request helper.
 ## Recent runtime patch notes
@@ -45,10 +46,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.276`
-- Service-worker cache: `fuel-ledger-v417`
-- Updated at: `2026-06-22T14:35:00.000Z`
-- Top release note: Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.
+- Version: `2026.06.18.277`
+- Service-worker cache: `fuel-ledger-v418`
+- Updated at: `2026-06-22T14:55:00.000Z`
+- Top release note: Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.
 
 ## Invite beta readiness: member action Data I/O
 

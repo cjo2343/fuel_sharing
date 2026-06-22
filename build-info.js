@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.276",
-    buildLabel: "owner-passive-background-sync-calm-lane",
-    updatedAt: "2026-06-22T14:35:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v417",
+    version: "2026.06.18.277",
+    buildLabel: "workspace-action-authority-lane",
+    updatedAt: "2026-06-22T14:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v418",
     releaseNotes: Object.freeze([
+      "Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.",
       "Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.",
       "Render API calls now have their first dedicated runtime client: backend endpoint names, JSON parsing, auth-header merging, and timeout/abort behavior live in render-api-client.js while app.js delegates the state-load, write-context, booking, trip, and fuel paths through one request helper.",
       "Workspace session authority now has its first dedicated runtime module: identity alias lookup, workspace row normalization, selected-vs-loaded snapshots, and write-scope checks live in workspace-session.js while app.js keeps thin compatibility wrappers.",

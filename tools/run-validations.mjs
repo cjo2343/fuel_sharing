@@ -16,6 +16,7 @@ const scripts = [
   "node tools/test-fuel-price-helpers.mjs",
   "node tools/test-sync-delay-recovery.mjs",
   "node tools/test-owner-passive-background-sync-calm.mjs",
+  "node tools/test-workspace-action-authority-lane.mjs",
   "node tools/test-location-privacy-helpers.mjs",
   "node tools/test-ledger-model.mjs",
   "node tools/test-supabase-schema-hardening.mjs",

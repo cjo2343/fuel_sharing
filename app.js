@@ -255,6 +255,15 @@ function chooseWorkspaceFromMembership({ reason = "workspace-resolution", prefer
     rejectedWorkspaceId = explicitPreferred;
   }
 
+  const activeBeforeWorkspace = activeBefore ? linkedIdentityLookup.get(activeBefore) : null;
+  if (!target && activeBeforeWorkspace) {
+    target = String(activeBeforeWorkspace.ledger_id || activeBeforeWorkspace.ledgerId || activeBeforeWorkspace.id || activeBefore).trim();
+    decision = "current-active-linked";
+    detail = urlWorkspaceId && normalizeWorkspaceUrlId(urlWorkspaceId) !== normalizeWorkspaceUrlId(target)
+      ? `Current in-app workspace ${target} is linked; ignoring stale URL workspace ${urlWorkspaceId}.`
+      : `Current active workspace ${activeBefore} is linked; keeping it.`;
+  }
+
   const urlWorkspace = urlWorkspaceId ? linkedIdentityLookup.get(urlWorkspaceId) : null;
   if (!target && urlWorkspace) {
     target = String(urlWorkspace.ledger_id || urlWorkspace.ledgerId || urlWorkspace.id || urlWorkspaceId).trim();
@@ -296,13 +305,6 @@ function chooseWorkspaceFromMembership({ reason = "workspace-resolution", prefer
     target = legacyRememberedLedgerId;
     decision = "legacy-remembered-linked";
     detail = `Using legacy remembered workspace ${legacyRememberedWorkspaceId}.`;
-  }
-
-  const activeBeforeWorkspace = activeBefore ? linkedIdentityLookup.get(activeBefore) : null;
-  if (!target && activeBeforeWorkspace) {
-    target = String(activeBeforeWorkspace.ledger_id || activeBeforeWorkspace.ledgerId || activeBeforeWorkspace.id || activeBefore).trim();
-    decision = "current-active-linked";
-    detail = `Current active workspace ${activeBefore} is linked; keeping it.`;
   }
 
   if (!target && ledgers.length === 1) {
@@ -10040,11 +10042,12 @@ function applyVehicleLookupToSettings(vehicle, options = {}) {
 
 async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
   const dom = getVehicleLookupDomSnapshot();
-  const requestedWorkspaceId = String(readActiveWorkspaceIdFromCurrentUrl() || getActiveLedgerId() || getConfiguredLedgerId()).trim();
+  const urlWorkspaceId = String(readActiveWorkspaceIdFromCurrentUrl() || "").trim();
+  const requestedWorkspaceId = String(getActiveLedgerId() || urlWorkspaceId || getConfiguredLedgerId()).trim();
   const automaticRetry = Boolean(options?.automaticRetry);
   const workspaceRetry = Number(options?.workspaceContextRetry || 0);
   const beforeContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: requestedWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(requestedWorkspaceId) });
-  const backendContext = await getRenderAppContext({ ledgerId: requestedWorkspaceId, reason: "vehicle-lookup", timeoutMs: 6000 });
+  const backendContext = await getRenderAppContext({ ledgerId: requestedWorkspaceId, preferredWorkspaceId: requestedWorkspaceId, reason: "vehicle-lookup", timeoutMs: 6000 });
   const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
   if (backendWorkspaceId && backendWorkspaceId !== String(getActiveLedgerId() || "")) {
     setActiveLedgerId(backendWorkspaceId, { persist: true, updateUrl: true });
@@ -10078,7 +10081,6 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
   }
 
   const activeWorkspaceId = String(getActiveLedgerId() || "").trim();
-  const urlWorkspaceId = String(readActiveWorkspaceIdFromCurrentUrl() || "").trim();
   const activeLinked = isLedgerLinkedToCurrentUser(activeWorkspaceId);
   if (!activeLinked && supabaseClient && currentSession) {
     try {
@@ -16165,7 +16167,15 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
     && activeCanonicalId !== selectedCanonicalId
     && /default|first|fallback/i.test(backendDecision)
   );
-  const staleForCurrentSelection = lateResponseForPreviousSelection || backendDefaultConflictsWithSelectedWorkspace;
+  const backendActiveConflictsWithExpectedWorkspace = Boolean(
+    expectedCanonicalId
+    && selectedCanonicalId
+    && expectedCanonicalId === selectedCanonicalId
+    && activeCanonicalId
+    && activeCanonicalId !== expectedCanonicalId
+    && selectedWorkspaceStillLinked
+  );
+  const staleForCurrentSelection = lateResponseForPreviousSelection || backendDefaultConflictsWithSelectedWorkspace || backendActiveConflictsWithExpectedWorkspace;
   if (activeCanonicalId && activeCanonicalId !== selectedBeforeApply && !staleForCurrentSelection) {
     setActiveLedgerId(activeCanonicalId, { persist, updateUrl: true });
     recordSupabaseLoadEvent("backend-app-context-workspace", `${reason}: ${activeCanonicalId}`);
@@ -16237,9 +16247,9 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
     if (response.ok && result?.ok && result?.context) {
       const activeId = applyBackendAppContext(result.context, { reason, expectedWorkspaceId: preferredWorkspaceIdAtRequest });
-      const appliedContext = appBackendContextStatus?.decision === "stale-backend-context-ignored" ? getBackendAppContext() : result.context;
-      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: appBackendContextStatus?.decision === "stale-backend-context-ignored" ? "APP_CONTEXT_STALE_IGNORED" : "APP_CONTEXT_LOADED", detail: `Backend context loaded ${activeId || getActiveLedgerId()}` });
-      return appliedContext;
+      const staleContextIgnored = appBackendContextStatus?.decision === "stale-backend-context-ignored";
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: staleContextIgnored ? "APP_CONTEXT_STALE_IGNORED" : "APP_CONTEXT_LOADED", detail: `Backend context loaded ${activeId || getActiveLedgerId()}` });
+      return staleContextIgnored ? null : result.context;
     }
     const message = result?.message || result?.error || text || `Backend app context failed (${response.status})`;
     const error = new Error(message);
