@@ -1145,6 +1145,7 @@ async function switchActiveWorkspace(ledgerId, source = "workspace-selector") {
     showAppMessage(`Switched to ${getCurrentWorkspaceLabel()}. Workspace data is loaded and safe to edit.`, "success", { timeoutMs: 4500 });
     scheduleWorkspaceInviteRefresh(`switch-confirmed:${source}`);
     render();
+    recoverInteractiveActionControls(`workspace-switch-confirmed:${source}`);
   } else {
     markActiveWorkspaceLoadFailed(source);
     const delayedSession = getWorkspaceSessionSnapshot({ selectedWorkspaceId: targetLedgerId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(targetLedgerId) });
@@ -1606,6 +1607,7 @@ async function ensureAppStartupWakeGate(reason = "startup", { force = false } = 
       clearSyncDelay(`startup-gate-ready:${normalizedReason}`);
       updateAuthUi();
       render();
+      recoverInteractiveActionControls(`startup-gate-ready:${normalizedReason}`);
       return true;
     } catch (error) {
       setAppStartupGatePhase("failed", error?.message || "Startup gate failed before workspace state loaded.", { reason: normalizedReason, error });
@@ -1740,6 +1742,79 @@ function purgeStaleForegroundOperations(reason = "stale", referenceTime = Date.n
   });
   if (cleared) scheduleForegroundOperationWatchdog();
   return cleared;
+}
+
+function finishActiveDataIoOperationsBySource(source = "", reason = "interactive-action-recovery", referenceTime = Date.now()) {
+  const normalizedSource = String(source || "").trim();
+  if (!normalizedSource) return 0;
+  let finished = 0;
+  latestDataIoOperations(80).forEach((operation) => {
+    if (operation.status !== "active") return;
+    const start = operation.start || operation.latest || {};
+    if (String(start.source || "") !== normalizedSource) return;
+    recordDataIoDiagnostic("skip", {
+      ...start,
+      ok: true,
+      resultCode: "INTERACTIVE_ACTION_RECOVERED",
+      statusCode: "INTERACTIVE_ACTION_RECOVERED",
+      detail: `${normalizedSource} was recovered after ${reason}; stale action latch cleared without refresh.`,
+      staleAfterMs: start.staleAfterMs || dataIoOperationStaleMs
+    });
+    finished += 1;
+  });
+  if (finished) {
+    recordSupabaseLoadEvent("interactive-action-dataio-recovered", `${normalizedSource}; ${finished}; ${reason}`);
+    recordSyncDiagnostic("interactive-action-dataio-recovered", `${finished} active ${normalizedSource} Data I/O operation(s) were finished during recovery.`, { source: normalizedSource, reason, referenceTime });
+  }
+  return finished;
+}
+
+function finishRetryableInteractiveDataIoOperations(reason = "interactive-action-recovery") {
+  const retryableSources = [
+    "vehicle-lookup-click",
+    "booking-save",
+    "trip-save",
+    "fuel-save",
+    "booking-delete",
+    "period-close",
+    "settings-save"
+  ];
+  return retryableSources.reduce((count, source) => count + finishActiveDataIoOperationsBySource(source, reason), 0);
+}
+
+function bindInteractiveActionControl(control, handler, marker = "interactiveBound") {
+  if (!control || typeof control.addEventListener !== "function" || typeof handler !== "function") return false;
+  const key = `fuel${marker.charAt(0).toUpperCase()}${marker.slice(1)}`;
+  if (control.dataset && control.dataset[key] === "true") return false;
+  control.addEventListener("click", handler);
+  if (control.dataset) control.dataset[key] = "true";
+  return true;
+}
+
+function recoverInteractiveActionControls(reason = "recover") {
+  const normalizedReason = String(reason || "recover");
+  purgeStaleForegroundOperations(`interactive:${normalizedReason}`);
+  const recoveredDataIo = finishRetryableInteractiveDataIoOperations(normalizedReason);
+  if (visibleSavingStartedAt && !hasActiveForegroundOperation()) {
+    clearStaleVisibleSavingStatus(`interactive:${normalizedReason}`);
+  }
+
+  const vehicleButton = document.querySelector("#vehicleLookupButton");
+  if (vehicleButton) {
+    markVehicleLookupButtonBound(vehicleButton);
+    bindInteractiveActionControl(vehicleButton, handleVehicleLookupButtonClick, "vehicleLookupBound");
+    if (vehicleButton.disabled && canManageSettings() && currentSession && !supabaseLoadInFlight && !isStartupHydrating()) {
+      vehicleButton.disabled = false;
+    }
+  }
+
+  const cancelBookingButton = document.querySelector("#cancelBookingEdit");
+  if (cancelBookingButton) {
+    bindInteractiveActionControl(cancelBookingButton, handleCancelBookingEditClick, "cancelBookingBound");
+  }
+
+  recordSyncDiagnostic("interactive-action-controls-recovered", `Interactive controls recovered after ${normalizedReason}.`, { reason: normalizedReason, recoveredDataIo });
+  return { recoveredDataIo };
 }
 function recordBlockedVisibleSyncStatus(label, source, options = {}) {
   const normalizedSource = normalizeVisibleSyncSource(source, label);
@@ -3894,7 +3969,7 @@ function handleVehicleLookupButtonClick(event = null) {
 
 if (els.vehicleLookupButton) {
   markVehicleLookupButtonBound(els.vehicleLookupButton);
-  els.vehicleLookupButton.addEventListener("click", handleVehicleLookupButtonClick);
+  bindInteractiveActionControl(els.vehicleLookupButton, handleVehicleLookupButtonClick, "vehicleLookupBound");
 }
 
 document.addEventListener("click", (event) => {
@@ -8068,16 +8143,25 @@ els.tripCorrectionPanel?.addEventListener("click", (event) => {
   control?.addEventListener("change", clearTripCorrectionPanel);
 });
 
+function handleCancelBookingEditClick(event) {
+  event?.preventDefault?.();
+  const existingBooking = editingBookingId
+    ? state.bookings.find((booking) => booking.id === editingBookingId)
+    : null;
+  const fallbackStart = normalizeBookingDateTime(els.bookingStart?.value || "");
+  setBookingCalendarAnchor(existingBooking?.start || fallbackStart || new Date().toISOString());
+  editingBookingId = null;
+  tripPlannerBookingDraft = null;
+  els.bookingForm?.reset();
+  setDefaultBookingTimes();
+  renderBookingConflictNotice(null);
+  clearBookingAvailabilityPreview("Booking edit cancelled. Choose another time to check availability.");
+  updateEditUi();
+  render();
+}
+
 if (els.cancelBookingEdit) {
-  els.cancelBookingEdit.addEventListener("click", () => {
-    setBookingCalendarAnchor(bookingPayload.start);
-    editingBookingId = null;
-    els.bookingForm.reset();
-    setDefaultBookingTimes();
-    renderBookingConflictNotice(null);
-    updateEditUi();
-    render();
-  });
+  bindInteractiveActionControl(els.cancelBookingEdit, handleCancelBookingEditClick, "cancelBookingBound");
 }
 
 if (els.cancelFuelEdit) {
@@ -9148,6 +9232,7 @@ function render() {
   if (els.workspaceInvitesPanel) els.workspaceInvitesPanel.classList.toggle("hidden", !currentSession);
   renderSectionNavigation();
   updateEditUi();
+  recoverInteractiveActionControls("render");
 }
 
 
@@ -9348,6 +9433,7 @@ function markCloudSyncDidNotComplete(message = "Cloud sync did not complete.") {
 
 
 window.addEventListener("focus", () => {
+  recoverInteractiveActionControls("window-focus");
   if (supabaseClient && currentSession && isAppStartupGateReady()) scheduleRenderBackendWake("window-focus");
   if (!supabaseClient || !currentSession || liveSyncEnabled) return;
   if (shouldDelayOptionalStartupLane("window-focus")) {
@@ -9387,6 +9473,7 @@ window.addEventListener("focus", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) recoverInteractiveActionControls("visibility-return");
   handleRealtimeVisibilityChange();
 });
 
@@ -18452,6 +18539,7 @@ window.FuelLedgerApp.getNoRefreshActionDebugState = () => {
     backendActiveWorkspaceId: appBackendContextStatus.activeWorkspaceId || "",
     visibleWorkspaceSelectorId: String(els.activeWorkspace?.value || ""),
     workspaceMismatch: Boolean(workspaceContext.workspaceMismatch),
+    interactiveRecoveryAvailable: typeof recoverInteractiveActionControls === "function",
     vehicleLookup: getVehicleLookupReadinessSnapshot(),
     pendingLocalChanges,
     syncStatus: els.syncStatus?.dataset?.status || "",
@@ -18476,6 +18564,7 @@ async function initializePwa() {
         serviceWorkerControllerChanged = true;
         recordSyncDiagnostic("service-worker-controllerchange", "App update activated; reloading once so page files and the service-worker cache use the same build.");
         recordSupabaseLoadEvent("service-worker-controllerchange", "Service-worker update activated; one controlled reload will complete the handoff.");
+        recoverInteractiveActionControls("service-worker-controllerchange");
         const reloadWhenSafe = (attempt = 0) => {
           if (!state.pendingLocalChanges && !hasForegroundWriteInFlight()) {
             window.setTimeout(() => window.location.reload(), 250);
