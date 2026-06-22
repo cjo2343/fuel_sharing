@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.264",
-    buildLabel: "no-refresh-action-chain-lane",
-    updatedAt: "2026-06-22T09:10:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v404",
+    version: "2026.06.18.265",
+    buildLabel: "write-context-fast-fail-lane",
+    updatedAt: "2026-06-22T09:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v405",
     releaseNotes: Object.freeze([
+      "Write-context setup now fails fast and clears action latches when Render is waking, deploying, or offline: booking/trip/fuel saves require backend-owned write context instead of falling into browser Supabase setup, and the service worker can fall back to an older cached app shell during deploy handoff so ?workspace pages do not return Offline 503.",
       "Vehicle lookup click diagnostics now finish immediately after the DOM click is handed to the lookup guard, so blocked sign-in/backend guards cannot leave an active Data I/O click operation that prevents the next no-refresh action.",
       "No-refresh action-chain lane adds grounded browser/debug tests for repeated booking, Admin open, and vehicle lookup without refresh; runtime reports now expose stale foreground/Data I/O/workspace/vehicle latches, and period close returns the sync badge to healthy Tables state after successful normalized writes.",
       "Post-action unblock lane clears foreground save/action latches after booking and period-close normalized writes, preserves typed vehicle plate drafts across renders, and prevents completed member actions from blocking the next booking, Admin action, or vehicle lookup until a browser refresh.",

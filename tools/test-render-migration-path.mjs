@@ -22,7 +22,7 @@ assert.ok(app.includes("async function saveBookingViaRender"), "booking saves mu
 assert.ok(app.includes("async function softDeleteBookingViaRender"), "booking deletes must prefer a Render backend helper");
 assert.ok(app.includes('route: "render-api", endpoint: renderBookingUpsertUrl'), "booking save diagnostics must identify the Render route");
 assert.ok(app.includes('route: "render-api", endpoint: renderBookingDeleteUrl'), "booking delete diagnostics must identify the Render route");
-assert.ok(app.includes('withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save" }), "booking-save")'), "booking saves must time-bound pre-backend normalized context setup");
+assert.ok(app.includes('withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save", requireRenderContext: true }), "booking-save")'), "booking saves must time-bound pre-backend normalized context setup");
 
 assert.ok(server.includes('if self.path == "/api/bookings/upsert":'), "server must route booking upserts through Render");
 assert.ok(server.includes('if self.path == "/api/bookings/delete":'), "server must route booking deletes through Render");

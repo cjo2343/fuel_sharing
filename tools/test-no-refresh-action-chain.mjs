@@ -75,6 +75,14 @@ for (const check of chainSources) {
   assertMatches(body, check.healthy, `${check.source}: ${check.userStep} must leave the visible sync state healthy on success.`);
 }
 
+
+assertMatches(app, /function normalizedWriteContextUnavailableError[\s\S]*WRITE_CONTEXT_UNAVAILABLE/, 'normal user actions must have a clear write-context unavailable error instead of hanging until refresh.');
+assertMatches(app, /function requiresBackendWriteContext[\s\S]*booking-save[\s\S]*trip-save[\s\S]*fuel-save/, 'booking/trip/fuel saves must require Render write context instead of falling into direct browser Supabase setup after deploy/offline races.');
+assertMatches(app, /getNormalizedWriteContext\(\{ source: "booking-save", requireRenderContext: true \}\)/, 'booking saves must require backend-owned write context so setup failures fail fast and clear latches.');
+assertMatches(app, /getNormalizedWriteContext\(\{ source: "trip-save", requireRenderContext: true \}\)/, 'trip saves must require backend-owned write context so setup failures fail fast and clear latches.');
+assertMatches(app, /getNormalizedWriteContext\(\{ source: "fuel-save", requireRenderContext: true \}\)/, 'fuel saves must require backend-owned write context so setup failures fail fast and clear latches.');
+assertMatches(app, /WRITE_CONTEXT_UNAVAILABLE[\s\S]*try Book again without refreshing/, 'booking write-context failures must show an in-app retry message, not leave the user thinking a browser refresh is required.');
+
 const vehicleClick = findFunctionBody(app, 'handleVehicleLookupButtonClick');
 assertMatches(vehicleClick, /const plate = normalizeVehiclePlateInput\(dom\.plateInput\?\.value \|\| state\.vehiclePlate \|\| ""\);[\s\S]*if \(plate\) state\.vehiclePlate = plate;/,
   'vehicle lookup: clicking lookup must lock the newly typed plate before async checks can render stale saved plate text.');
@@ -89,6 +97,10 @@ assertMatches(vehicleLookup, /const plate = normalizeVehiclePlateInput\(options\
   'vehicle lookup: async lookup must prefer the request-scoped plate passed from the click handler.');
 assertMatches(vehicleLookup, /finally\s*\{[\s\S]*if \(dom\.button\) dom\.button\.disabled = !canManageSettings\(\) \|\| !currentSession;[\s\S]*\}/,
   'vehicle lookup: the lookup button must be re-enabled in finally after success, error, timeout, or stale response.');
+
+
+const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
+assertMatches(serviceWorker, /async function matchNavigationShell[\s\S]*caches\.keys\([\s\S]*fallbackCache\.match\("\/index\.html"\)/, 'service worker navigation fallback must search older caches so deploy handoff/offline races do not return 503 for ?workspace pages.');
 
 const debugExport = /window\.FuelLedgerApp\.getNoRefreshActionDebugState\s*=\s*\(\)\s*=>\s*\{[\s\S]*okToClickNextAction:[\s\S]*foregroundOperationCount:[\s\S]*activeDataIoOperationCount:[\s\S]*selectedWorkspaceId:[\s\S]*loadedWorkspaceId:[\s\S]*vehicleLookup:/;
 assertMatches(app, debugExport, 'runtime must expose getNoRefreshActionDebugState() so E2E failures can say exactly which latch/workspace/lookup state is stuck.');

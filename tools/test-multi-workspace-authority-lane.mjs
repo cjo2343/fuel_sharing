@@ -6,9 +6,9 @@ const server = fs.readFileSync('server.py', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(buildInfo, /buildLabel:\s*"(?:no-refresh-action-chain-lane|no-refresh-action-chain-lane|post-action-unblock-lane|multi-workspace-authority-lane)"/, 'build-info should use the multi-workspace authority label');
-assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:no-refresh-action-chain-lane|no-refresh-action-chain-lane|post-action-unblock-lane|multi-workspace-authority-lane)"/, 'service worker should use the multi-workspace authority label');
-assert.match(serviceWorker, /CACHE_NAME\s*=\s*"(?:fuel-ledger-v404|fuel-ledger-v404|fuel-ledger-v403|fuel-ledger-v402)"/, 'service worker cache should be v402');
+assert.match(buildInfo, /buildLabel:\s*"(?:write-context-fast-fail-lane|no-refresh-action-chain-lane|no-refresh-action-chain-lane|post-action-unblock-lane|multi-workspace-authority-lane)"/, 'build-info should use the multi-workspace authority label');
+assert.match(serviceWorker, /BUILD_LABEL\s*=\s*"(?:write-context-fast-fail-lane|no-refresh-action-chain-lane|no-refresh-action-chain-lane|post-action-unblock-lane|multi-workspace-authority-lane)"/, 'service worker should use the multi-workspace authority label');
+assert.match(serviceWorker, /CACHE_NAME\s*=\s*"(?:fuel-ledger-v405|fuel-ledger-v404|fuel-ledger-v403|fuel-ledger-v402)"/, 'service worker cache should be v402');
 
 assert.ok(app.includes('function isWorkspaceSwitchCommitConfirmed(targetLedgerId)'), 'workspace switch must have a hard commit confirmation helper');
 assert.ok(app.includes('WORKSPACE_SWITCH_COMMIT_CONFIRMED'), 'workspace switch commit success must be diagnosed');

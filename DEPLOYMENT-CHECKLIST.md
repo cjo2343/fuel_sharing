@@ -34,10 +34,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.264`
-- Service-worker cache: `fuel-ledger-v404`
-- Updated at: `2026-06-22T09:10:00.000Z`
-- Top release note: Vehicle lookup click diagnostics now finish immediately after the DOM click is handed to the lookup guard, so blocked sign-in/backend guards cannot leave an active Data I/O click operation that prevents the next no-refresh action.
+- Version: `2026.06.18.265`
+- Service-worker cache: `fuel-ledger-v405`
+- Updated at: `2026-06-22T09:25:00.000Z`
+- Top release note: Write-context setup now fails fast and clears action latches when Render is waking, deploying, or offline: booking/trip/fuel saves require backend-owned write context instead of falling into browser Supabase setup, and the service worker can fall back to an older cached app shell during deploy handoff so ?workspace pages do not return Offline 503.
 
 ## Invite beta readiness: member action Data I/O
 

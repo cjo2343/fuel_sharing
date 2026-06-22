@@ -13281,6 +13281,20 @@ function paymentActionTimeoutError(label, timeoutMs) {
   return error;
 }
 
+function normalizedWriteContextUnavailableError(source = "normalized-write-context", reason = "unavailable") {
+  const error = new Error("Could not prepare the backend write context. The backend may still be waking up or deploying; try the action again without refreshing.");
+  error.name = "NormalizedWriteContextUnavailableError";
+  error.code = "WRITE_CONTEXT_UNAVAILABLE";
+  error.resultCode = "WRITE_CONTEXT_UNAVAILABLE";
+  error.source = source;
+  error.reason = reason;
+  return error;
+}
+
+function requiresBackendWriteContext(source = "") {
+  return new Set(["booking-save", "trip-save", "fuel-save"]).has(String(source || ""));
+}
+
 
 async function withNormalizedWriteContextTimeout(actionPromise, source, timeoutMs = normalizedWriteContextTimeoutMs) {
   let timeoutId = null;
@@ -18964,13 +18978,42 @@ async function ensureOpenSettlementPeriod(ledgerId) {
 }
 
 async function getNormalizedWriteContext(options = {}) {
+  const source = options.source || "normalized-write-context";
+  const mustUseBackendContext = options.requireRenderContext === true || requiresBackendWriteContext(source);
   if (!supabaseClient || !currentSession) return null;
-  if (!(await hasFreshSupabaseSession())) return null;
+  if (!(await hasFreshSupabaseSession())) {
+    if (mustUseBackendContext) {
+      const error = normalizedWriteContextUnavailableError(source, "session-not-fresh");
+      recordDataIoDiagnostic("blocked", {
+        source,
+        route: "render-api",
+        endpoint: renderWriteContextUrl,
+        operation: "prepare",
+        error,
+        resultCode: "WRITE_CONTEXT_SESSION_NOT_READY",
+        detail: "Blocked the write before local state changed because the signed-in session was not ready."
+      });
+      throw error;
+    }
+    return null;
+  }
 
   const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-  const source = options.source || "normalized-write-context";
   const renderContext = await getRenderWriteContext({ ledgerId, source });
   if (renderContext) return renderContext;
+  if (mustUseBackendContext) {
+    const error = normalizedWriteContextUnavailableError(source, "render-write-context-unavailable");
+    recordDataIoDiagnostic("blocked", {
+      source,
+      route: "render-api",
+      endpoint: renderWriteContextUrl,
+      operation: "prepare",
+      error,
+      resultCode: "WRITE_CONTEXT_UNAVAILABLE",
+      detail: "Render write context was unavailable; browser direct-table fallback is disabled for this user action so the app can retry cleanly without refresh."
+    });
+    throw error;
+  }
 
   const syncDirectory = options.syncDirectory !== false;
 
@@ -19417,7 +19460,7 @@ async function saveTripToNormalizedTablesFirst(trip) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "trip-save" });
-    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "trip-save" }), "trip-save");
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "trip-save", requireRenderContext: true }), "trip-save");
     if (!context) return true;
     const payload = {
       legacy_id: trip.id,
@@ -19705,7 +19748,7 @@ async function saveFuelToNormalizedTablesFirst(fuel) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "fuel-save" });
-    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "fuel-save" }), "fuel-save");
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "fuel-save", requireRenderContext: true }), "fuel-save");
     if (!context) return true;
     const liters = nullableNumber(fuel.liters);
     const amount = Number(fuel.amount || 0);
@@ -19964,7 +20007,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
   let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "booking-save" });
-    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save" }), "booking-save");
+    const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save", requireRenderContext: true }), "booking-save");
     if (!context) return true;
     const payload = {
       legacy_id: booking.id,
@@ -20021,9 +20064,11 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       };
       return true;
     }
-    const message = isBookingOverlapError(error)
-      ? "The car is already booked for that time. Refresh the calendar and choose another slot."
-      : `Could not save booking to normalized tables, so JSON was not changed: ${error.message || error}`;
+    const message = error?.code === "WRITE_CONTEXT_UNAVAILABLE" || error?.name === "NormalizedWriteContextUnavailableError"
+      ? "Could not prepare the backend booking save yet. The backend may still be waking up or deploying; try Book again without refreshing."
+      : isBookingOverlapError(error)
+        ? "The car is already booked for that time. Refresh the calendar and choose another slot."
+        : `Could not save booking to normalized tables, so JSON was not changed: ${error.message || error}`;
     normalizedTableStatus = {
       checked: true,
       ok: false,

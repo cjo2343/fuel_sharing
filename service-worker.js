@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v404";
-const BUILD_LABEL = "no-refresh-action-chain-lane";
-const BUILD_UPDATED_AT = "2026-06-22T09:10:00.000Z";
+const CACHE_NAME = "fuel-ledger-v405";
+const BUILD_LABEL = "write-context-fast-fail-lane";
+const BUILD_UPDATED_AT = "2026-06-22T09:25:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -92,7 +92,19 @@ function isCoreAssetRequest(request) {
 }
 
 async function matchNavigationShell(cache) {
-  return (await cache.match("/index.html")) || (await cache.match("/"));
+  const current = cache ? ((await cache.match("/index.html")) || (await cache.match("/"))) : null;
+  if (current) return current;
+  try {
+    const keys = await caches.keys();
+    for (const key of keys) {
+      const fallbackCache = await caches.open(key);
+      const shell = (await fallbackCache.match("/index.html")) || (await fallbackCache.match("/"));
+      if (shell) return shell;
+    }
+  } catch (error) {
+    console.warn("navigation-shell-fallback-failure", error);
+  }
+  return null;
 }
 
 async function cacheFirstCoreAsset(request) {
