@@ -13,7 +13,7 @@ assert.match(app, /renderBackendAppContextCard\(\)/, 'Admin panel should render 
 assert.match(app, /Backend context workspace\/permission summary/, 'Admin should show backend workspace and permission summary');
 assert.match(app, /adminDiagnosticsLane: adminDiagnosticsLaneStatus/, 'load reports should include separated admin diagnostics lane state');
 assert.match(app, /No owner\/global snapshot has been loaded in this session[\s\S]*Backend app context card above/, 'empty owner/global snapshots should point to backend context instead of showing scary zero cards');
-assert.match(build, /fuel-ledger-v(?:394|395|396|397|398|399|400|401)/, 'build-info expected cache should be v392');
-assert.match(sw, /fuel-ledger-v(?:394|395|396|397|398|399|400|401)/, 'service worker cache should be v392');
+assert.match(build, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)/, 'build-info expected cache should be v392');
+assert.match(sw, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402)/, 'service worker cache should be v392');
 
 console.log('backend app context pass 5 guardrails passed');

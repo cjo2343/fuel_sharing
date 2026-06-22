@@ -3834,6 +3834,7 @@ function getSavedVehicleInfoForCurrentInput() {
 
 function clearVehicleLookupForPlateChange() {
   const plate = getVehicleLookupInputPlate();
+  if (plate) state.vehiclePlate = plate;
   const info = normalizeVehicleInfo(state.vehicleInfo);
   if (info?.plate && plate && info.plate !== plate) {
     state.vehicleInfo = null;
@@ -3856,6 +3857,7 @@ function handleVehicleLookupButtonClick(event = null) {
   }
   const dom = getVehicleLookupDomSnapshot();
   const plate = normalizeVehiclePlateInput(dom.plateInput?.value || state.vehiclePlate || "");
+  if (plate) state.vehiclePlate = plate;
   const context = buildDataIoWorkspaceContext({ selectedWorkspaceId: getActiveLedgerId(), selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(getActiveLedgerId()) });
   recordDataIoDiagnostic("start", {
     source: "vehicle-lookup-click",
@@ -12612,6 +12614,9 @@ async function closeNormalizedPeriodFirst(periodSnapshot) {
     showUserError("Could not close this period in the normalized database. The period was not archived. Check the console for details.");
     render();
     return false;
+  } finally {
+    finishForegroundOperationsBySource("period-close", "period-close-normalized-write-ended");
+    clearVisibleSavingFailsafe();
   }
 }
 
@@ -19890,6 +19895,7 @@ async function softDeleteBookingViaRender(context, legacyBookingId) {
 async function saveBookingToNormalizedTablesFirst(booking) {
   recordSupabaseLoadEvent("booking-table-write", booking?.id ? `booking ${String(booking.id).slice(0, 8)}` : "booking");
   if (!supabaseClient || !currentSession) return true;
+  let savedThroughNormalizedTables = false;
   try {
     setSyncStatus("Saving", { source: "booking-save" });
     const context = await withNormalizedWriteContextTimeout(getNormalizedWriteContext({ source: "booking-save" }), "booking-save");
@@ -19909,6 +19915,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
     const rpcResult = await saveBookingRpc(context, payload);
 
     if (rpcResult.ok) {
+      savedThroughNormalizedTables = true;
       normalizedTableStatus = {
         checked: true,
         ok: true,
@@ -19919,6 +19926,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       if (rpcResult.backend === "supabase-rpc") {
         recordDataIoDiagnostic("success", { source: "booking-save", route: "supabase-rpc", rpc: "upsert_car_booking", operation: "save", ok: true });
       }
+      setSyncStatus("Tables");
       return true;
     }
 
@@ -19926,6 +19934,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
 
     console.warn("Booking transaction RPC is unavailable; falling back to direct table write. Apply the latest supabase-schema.sql to enable hardened booking writes.", rpcResult.error);
     await saveBookingWithGuardedTableUpdate(payload);
+    savedThroughNormalizedTables = true;
     recordDataIoDiagnostic("success", { source: "booking-save", route: "direct-table", table: "car_bookings", operation: "upsert", ok: true, detail: "Saved through guarded table fallback." });
 
     normalizedTableStatus = {
@@ -19933,6 +19942,7 @@ async function saveBookingToNormalizedTablesFirst(booking) {
       ok: true,
       message: "Table-primary write saved the booking with direct table update. Apply the latest Supabase schema to use the transaction RPC."
     };
+    setSyncStatus("Tables");
     return true;
   } catch (error) {
     recordDataIoDiagnostic("error", { source: "booking-save", route: "normalized-write", operation: "save", error });
@@ -19956,6 +19966,9 @@ async function saveBookingToNormalizedTablesFirst(booking) {
     showUserError(message);
     render();
     return false;
+  } finally {
+    finishForegroundOperationsBySource("booking-save", savedThroughNormalizedTables ? "booking-save-normalized-write-saved" : "booking-save-normalized-write-ended");
+    clearVisibleSavingFailsafe();
   }
 }
 

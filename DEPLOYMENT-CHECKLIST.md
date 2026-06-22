@@ -1,3 +1,4 @@
+- 2026-06-22 01:45 UTC: v402 Post-action unblock lane clears stale foreground save/action latches after booking/period-close writes, preserves typed vehicle plate drafts across renders, and keeps subsequent member/Admin/vehicle actions from needing a browser refresh.
 - 2026-06-21 20:25 UTC: v390 Backend app context pass 3 makes workspace switching backend-context-driven, prioritizes selected/preferred workspace ids over legacy/default ledger ids, and keeps state-load on the active backend-confirmed workspace.
 - Backend app context pass 1: Render `/api/app/context` now returns the canonical signed-in user/workspace/permissions snapshot, and startup state load consumes it before browser workspace inference.
 - 2026-06-21 19:25 UTC: v387 Vehicle lookup status is request-scoped; plate changes clear stale saved messages, lookup diagnostics record requested/returned plates, and mismatched/stale results are ignored instead of showing the wrong vehicle.
@@ -32,10 +33,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.262`
-- Service-worker cache: `fuel-ledger-v401`
-- Updated at: `2026-06-22T01:15:00.000Z`
-- Top release note: Multi-workspace authority lane separates the active workspace from app-owner global audit: workspace switches only unlock after selected, backend, and loaded workspace all match, while app-owner Owner activity defaults to all workspaces through the owner-only Render route without changing the active workspace.
+- Version: `2026.06.18.263`
+- Service-worker cache: `fuel-ledger-v402`
+- Updated at: `2026-06-22T01:45:00.000Z`
+- Top release note: Post-action unblock lane clears foreground save/action latches after booking and period-close normalized writes, preserves typed vehicle plate drafts across renders, and prevents completed member actions from blocking the next booking, Admin action, or vehicle lookup until a browser refresh.
 
 ## Invite beta readiness: member action Data I/O
 
