@@ -72,6 +72,11 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
