@@ -19,6 +19,6 @@ assert(app.includes('const backendPermission = getBackendAppContextPermission("c
 assert(app.includes('const backendOwnerPermission = getBackendAppContextPermission("canUseAppOwnerDiagnostics")'), "global admin permission prefers backend context");
 assert(app.includes('reason: "vehicle-lookup"') && app.includes('VEHICLE_LOOKUP_BACKEND_CONTEXT_DENIED'), "vehicle lookup refreshes backend context before running");
 assert(app.includes('backendCanLookupVehicle: getBackendAppContextPermission("canLookupVehicle")'), "vehicle readiness report exports backend vehicle permission");
-assert((/fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419)/.test(build) && /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419)/.test(sw)), "runtime cache bumped to v389");
+assert((/fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420)/.test(build) && /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420)/.test(sw)), "runtime cache bumped to v389");
 
 console.log("Backend app context pass 2 guardrail passed.");

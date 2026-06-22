@@ -9682,6 +9682,54 @@ window.setInterval(() => {
   if (liveSyncEnabled && isAppStartupGateReady()) scheduleRenderBackendWake("visible-live-sync-keepalive");
 }, 45 * 1000);
 
+// Proactive recovery for stuck "in-flight" latches. Historically the only failsafe ran when the
+// visible "syncing" badge happened to be showing (clearStaleVisibleSyncingStatus), so any other
+// badge state left a hung load/workspace/hydration latch set and buttons dead until a refresh.
+// This watchdog drives the existing clear-primitives on a timer regardless of badge state, then
+// re-enables interactive controls so the user never has to refresh to recover.
+const interactiveLatchWatchdogIntervalMs = 5000;
+
+function runInteractiveLatchWatchdog() {
+  const now = Date.now();
+  let clearedHardLatch = false;
+
+  if (supabaseClient && currentSession) {
+    if (supabaseLoadInFlight) {
+      const loadAgeMs = supabaseLoadStartedAt ? now - Number(supabaseLoadStartedAt) : supabaseStaleLoadMs;
+      if (loadAgeMs >= supabaseStaleLoadMs) {
+        markSupabaseLoadTimedOut(`watchdog-stale-load:${Math.round(loadAgeMs / 1000)}s`);
+        clearedHardLatch = true;
+      }
+    }
+    if (!supabaseLoadInFlight && activeWorkspaceLoadInProgress) {
+      const workspaceAgeMs = activeWorkspaceLoadStartedAt ? now - Number(activeWorkspaceLoadStartedAt) : supabaseStaleLoadMs;
+      if (workspaceAgeMs >= supabaseStaleLoadMs) {
+        markActiveWorkspaceLoadFailed(`watchdog-stale-workspace-load:${Math.round(workspaceAgeMs / 1000)}s`);
+        clearedHardLatch = true;
+      }
+    }
+    if (!supabaseLoadInFlight && startupHydrationActive) {
+      const hydrationAgeMs = startupHydrationStartedAt ? now - Number(startupHydrationStartedAt) : startupHydrationGraceMs;
+      if (hydrationAgeMs >= startupHydrationGraceMs) {
+        finishStartupHydration(`watchdog-stale-hydration:${Math.round(hydrationAgeMs / 1000)}s`);
+        clearedHardLatch = true;
+      }
+    }
+  }
+
+  const recovered = recoverStaleInteractiveActionState("watchdog");
+
+  if (clearedHardLatch || (recovered && recovered.total)) {
+    recordSupabaseLoadEvent("interactive-latch-watchdog", clearedHardLatch
+      ? "stale load/workspace/hydration latch cleared"
+      : `${recovered.total} stale action latch(es) cleared`);
+    recoverInteractiveActionControls("watchdog");
+    render();
+  }
+}
+
+window.setInterval(runInteractiveLatchWatchdog, interactiveLatchWatchdogIntervalMs);
+
 function getPendingLoginInviteCode() {
   return normalizeInviteCodeInput(els.loginInviteCode?.value || localStorage.getItem(pendingWorkspaceInviteCodeKey) || "");
 }
@@ -18904,6 +18952,10 @@ function getFuelFallbackPriceForState(saved) {
 window.FuelLedgerApp = window.FuelLedgerApp || {};
 window.FuelLedgerApp.hasPendingLocalChanges = () => Boolean(state.pendingLocalChanges);
 window.FuelLedgerApp.hasForegroundWriteInFlight = () => hasForegroundWriteInFlight();
+// Read-only snapshot of the live in-memory ledger state for diagnostics and smoke tests.
+// Local persistence moved to IndexedDB (localforage) with workspace-scoped keys, so tests
+// must read state through this accessor instead of the legacy localStorage["car-share-ledger-v1"].
+window.FuelLedgerApp.getState = () => JSON.parse(JSON.stringify(state));
 window.FuelLedgerApp.getNoRefreshActionDebugState = () => {
   const now = Date.now();
   const foreground = foregroundOperationList(now);
@@ -21713,7 +21765,7 @@ async function loadRemoteState() {
     const response = await fetch(apiStateUrl);
     if (!response.ok) throw new Error("State request failed");
     const remoteState = normalizeState(await response.json());
-    const localState = loadState();
+    const localState = await loadState();
     const localHasData = hasLedgerData(localState);
     const remoteHasData = hasLedgerData(remoteState);
     const localIsNewer = localHasData && stateUpdatedMs(localState) > stateUpdatedMs(remoteState);
@@ -21768,6 +21820,12 @@ function markSupabaseLoadTimedOut(reason = "load-timeout") {
   supabaseLoadInFlight = false;
   supabaseLoadStartedAt = 0;
   supabaseLoadToken += 1;
+  // A timed-out load never reaches markActiveWorkspaceConfirmed/Failed or finishStartupHydration
+  // inside loadSupabaseState, because the inner promise is still hanging. Release the workspace-load
+  // and startup-hydration latches it would otherwise orphan; leaving them set keeps
+  // isActiveWorkspaceDataConfirmed() false and locks editing until the user refreshes.
+  if (activeWorkspaceLoadInProgress) markActiveWorkspaceLoadFailed(`load-timeout:${reason}`);
+  if (startupHydrationActive) finishStartupHydration(`load-timeout:${reason}`);
   recordSupabaseLoadEvent("supabase-load-timeout", reason);
   renderSupabaseLoadMonitor();
 }

@@ -70,6 +70,21 @@ async function openLocalApp(page) {
 }
 
 
+// openLocalApp renders local-first, then loadRemoteState() pulls the seeded /api/state
+// asynchronously (it is not awaited before the app reports ready). Tests that depend on
+// seeded baseline data (tank range, overfill, planner history) must wait until that server
+// state has actually been merged into app state before interacting.
+async function waitForSeededLedgerState(page) {
+  await page.waitForFunction(() => {
+    const s = window.FuelLedgerApp?.getState?.();
+    return Boolean(s) && (
+      (Array.isArray(s.fuel) && s.fuel.length > 0)
+      || (Array.isArray(s.trips) && s.trips.length > 0)
+      || (Array.isArray(s.bookings) && s.bookings.length > 0)
+    );
+  }, null, { timeout: 10000 });
+}
+
 async function openBookView(page) {
   await page.locator('[data-view-tab="book"]').click();
   await expect(page.locator("#tripEstimateDistance")).toBeVisible({ timeout: 10000 });
@@ -197,6 +212,22 @@ async function openLocalAppAsEmilieWithChristianEntries(page) {
     body: "window.supabase = window.__TEST_SUPABASE__;"
   }));
 
+  // The app now loads workspace state through the Render backend API (/api/state/load)
+  // and no longer reads car_share_ledgers directly in the browser, so the supabase mock
+  // alone is not enough. Mock the Render endpoints the startup load path touches so the
+  // seeded workspace state reaches the app.
+  await page.route("**/api/ping", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true })
+  }));
+  await page.route("**/api/state/load", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      ok: true,
+      stateRows: { jsonMirror: { state: seededState, updated_at: "2026-06-11T00:00:00.000Z" } }
+    })
+  }));
+
   await page.addInitScript(({ seededState, session }) => {
     class QueryMock {
       constructor(table) {
@@ -301,7 +332,7 @@ async function openClosedPeriodCard(card) {
 
 async function waitForPaymentRequestSaved(page, { timeout = 10000 } = {}) {
   await expect.poll(async () => {
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}"));
+    const saved = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}));
     const statuses = Object.values(saved.paymentStatuses || {});
     const auditEntries = Array.isArray(saved.auditLog) ? saved.auditLog : [];
     const hasRequestedStatus = statuses.includes("requested");
@@ -402,7 +433,7 @@ test("booking IDs are visible on booking cards, month chips, and save feedback",
   await page.locator("#bookingPurpose").fill("Booking ref visibility regression");
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
 
-  const booking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings?.[0]);
+  const booking = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}).bookings?.[0]);
   const bookingRef = typedRefFromEntry(booking, "booking");
   await expect(page.locator("#appMessageToast")).toContainText(`Car booked as ${bookingRef}.`);
   await expect(page.locator("#bookingCalendar")).toContainText(bookingRef);
@@ -423,7 +454,7 @@ test("booking-to-trip linkage shows booking and trip IDs in log context and pend
   await page.locator("#bookingPurpose").fill("Booking ref linkage regression");
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
 
-  const booking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings?.[0]);
+  const booking = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}).bookings?.[0]);
   const bookingRef = typedRefFromEntry(booking, "booking");
   await page.locator(`[data-convert-booking-to-trip="${booking.id}"]`).click();
   await expect(page.locator('[data-view="log"]#tripLogPanel')).toBeVisible();
@@ -435,13 +466,13 @@ test("booking-to-trip linkage shows booking and trip IDs in log context and pend
   await page.locator("#tripForm").evaluate((form) => form.requestSubmit());
 
   await expect.poll(async () => page.evaluate((bookingId) => {
-    const parsed = JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}");
+    const parsed = (window.FuelLedgerApp.getState() || {});
     const trip = (parsed.trips || []).find((entry) => entry.sourceBookingId === bookingId);
     return trip?.id || "";
   }, booking.id), { timeout: 10000 }).not.toBe("");
 
   const trip = await page.evaluate((bookingId) => {
-    const parsed = JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}");
+    const parsed = (window.FuelLedgerApp.getState() || {});
     return (parsed.trips || []).find((entry) => entry.sourceBookingId === bookingId) || null;
   }, booking.id);
   const tripRef = typedRefFromEntry(trip, "trip");
@@ -466,7 +497,7 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   await expect(page.locator("#bookingCalendar")).toContainText("Airport pickup");
   await expect(page.locator("#bookingCalendar")).toContainText("Christian");
 
-  const afterBooking = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+  const afterBooking = await page.evaluate(() => window.FuelLedgerApp.getState());
   const createdBooking = afterBooking.bookings.find(
     (booking) => booking.purpose === "Airport pickup" && booking.start === "2026-06-12T09:00" && booking.end === "2026-06-12T11:00"
   );
@@ -501,12 +532,12 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
 
   await expect
     .poll(async () => {
-      const state = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+      const state = await page.evaluate(() => window.FuelLedgerApp.getState());
       return state.bookings.filter((booking) => booking.purpose === "Overlapping booking").length;
     })
     .toBe(0);
 
-  const afterOverlap = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+  const afterOverlap = await page.evaluate(() => window.FuelLedgerApp.getState());
   expect(afterOverlap.bookings.some((booking) => booking.purpose === "Overlapping booking")).toBe(false);
   expect(afterOverlap.bookings.some((booking) => booking.id === bookingId)).toBe(true);
 
@@ -526,7 +557,7 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   await expect(deleteButton).toHaveCount(1);
   await deleteButton.click();
   await expect(page.locator("#bookingCalendar")).not.toContainText("Airport pickup updated");
-  const afterDelete = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+  const afterDelete = await page.evaluate(() => window.FuelLedgerApp.getState());
   expect(afterDelete.bookings.some((booking) => booking.id === bookingId)).toBe(false);
 });
 
@@ -535,7 +566,7 @@ test("create trip and fuel log, then refresh with data still visible", async ({ 
 
   await createBasicTripAndFuel(page);
 
-  const beforeReload = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+  const beforeReload = await page.evaluate(() => window.FuelLedgerApp.getState());
   expect(beforeReload.trips).toHaveLength(1);
   expect(beforeReload.fuel).toHaveLength(1);
 
@@ -677,7 +708,7 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await expect(page.locator("#bookingCalendar")).toContainText("Required fuel regression");
 
   const bookingId = await page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem("car-share-ledger-v1"));
+    const state = window.FuelLedgerApp.getState();
     const booking = state.bookings.find((item) =>
       item.purpose === "Required fuel regression"
       && item.start === "2026-06-10T21:00"
@@ -714,7 +745,7 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   await page.locator("#fuelForm").evaluate((form) => form.requestSubmit());
   await expect(page.locator("#fuelList")).toContainText("444,00 DKK");
   await expect.poll(async () => {
-    const state = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1")));
+    const state = await page.evaluate(() => window.FuelLedgerApp.getState());
     const linkedTrip = state.trips.find((trip) => trip.sourceBookingId === bookingId || trip.note === "Required fuel regression");
     const linkedFuel = state.fuel.find((fuel) =>
       fuel.fullTank === true
@@ -811,7 +842,7 @@ test("payment status actions do not mutate booking records or emit normalized sy
   await expect(page.locator("#tripForm")).toBeVisible();
   await createBasicTripAndFuel(page, { note: "Payment action should not mutate bookings", fuelAmount: "222.22" });
 
-  const beforeBookings = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings || []);
+  const beforeBookings = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}).bookings || []);
   expect(beforeBookings).toHaveLength(1);
 
   await page.locator('[data-view-tab="settle"]').click();
@@ -827,7 +858,7 @@ test("payment status actions do not mutate booking records or emit normalized sy
   await requestButton.evaluate((button) => button.click());
   await waitForPaymentActionToSettle();
 
-  const savedAfterRequest = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").paymentStatuses || {});
+  const savedAfterRequest = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}).paymentStatuses || {});
   if (Object.values(savedAfterRequest).some((status) => status === "requested")) {
     const reopenButton = page.locator('button[data-payment-status="open"]').first();
     await expect(reopenButton).toHaveCount(1);
@@ -835,7 +866,7 @@ test("payment status actions do not mutate booking records or emit normalized sy
     await waitForPaymentActionToSettle();
   }
 
-  const afterBookings = await page.evaluate(() => JSON.parse(localStorage.getItem("car-share-ledger-v1") || "{}").bookings || []);
+  const afterBookings = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}).bookings || []);
   expect(afterBookings).toEqual(beforeBookings);
 
   const noisyOutput = consoleMessages.join("\n");
@@ -887,7 +918,11 @@ test("critical runtime modules are loaded before app.js", async ({ page }) => {
 
 test("build info is visible to all users in About and admin panels", async ({ page }) => {
   await openLocalApp(page);
-  await page.evaluate(() => window.FuelBuildInfo?.refreshBuildInfo?.());
+  // Trigger a refresh the same fire-and-forget way the app does. We must NOT await the
+  // returned promise: refreshBuildInfo() awaits service-worker control, and the smoke
+  // config sets serviceWorkers:"block", so that promise never resolves under test. The
+  // build-info panels are rendered synchronously from BUILD_INFO regardless.
+  await page.evaluate(() => { window.FuelBuildInfo?.refreshBuildInfo?.(); });
 
   const expectedBuildInfo = await page.evaluate(() => window.FuelBuildInfo?.BUILD_INFO);
   expect(expectedBuildInfo).toMatchObject({
@@ -987,6 +1022,7 @@ test("trip planner subtracts planned distance from full-tank baseline without st
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
+  await waitForSeededLedgerState(page);
   await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("366");
   await page.locator("#tripEstimatorParticipants input").first().check();
@@ -1027,6 +1063,7 @@ test("trip planner warns when planned trip crosses configured tank range thresho
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
+  await waitForSeededLedgerState(page);
   await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("200");
   await page.locator("#tripEstimatorParticipants input").first().check();
@@ -1056,6 +1093,7 @@ test("trip save is blocked when estimated tank range would go negative", async (
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
+  await waitForSeededLedgerState(page);
   await page.locator('[data-view-tab="log"]').click();
   await expect(page.locator("#tripForm")).toBeVisible();
   await page.locator("#tripDriver").selectOption("Christian");
@@ -1103,6 +1141,7 @@ test("smart tank range uses actual data, not unsaved plan estimate", async ({ pa
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
+  await waitForSeededLedgerState(page);
   await openBookView(page);
   await page.locator("#tripEstimateDistance").fill("366");
   await page.locator("#tripEstimatorParticipants input").first().check();
@@ -1196,6 +1235,8 @@ test("fuel log is blocked when liters exceed configured tank capacity", async ({
   seeded.fuelConsumption = 5.4;
   await request.put("/api/state", { data: seeded });
 
+  // This test only exercises the liters-vs-configured-capacity guard, which needs no
+  // seeded fuel baseline, so it does not wait for seeded ledger rows (there are none).
   await openLocalApp(page);
   await page.locator('[data-view-tab="log"]').click();
   await expect(page.locator("#fuelForm")).toBeVisible();
@@ -1235,6 +1276,7 @@ test("fuel log is blocked when it would overfill estimated tank level", async ({
   await request.put("/api/state", { data: seeded });
 
   await openLocalApp(page);
+  await waitForSeededLedgerState(page);
   await page.locator('[data-view-tab="log"]').click();
   await expect(page.locator("#fuelForm")).toBeVisible();
   await page.locator("#fuelPayer").selectOption("Christian");
