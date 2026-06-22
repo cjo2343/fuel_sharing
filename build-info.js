@@ -3,9 +3,10 @@
     appName: "Fuel Ledger",
     version: "2026.06.18.264",
     buildLabel: "no-refresh-action-chain-lane",
-    updatedAt: "2026-06-22T07:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v403",
+    updatedAt: "2026-06-22T09:10:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v404",
     releaseNotes: Object.freeze([
+      "Vehicle lookup click diagnostics now finish immediately after the DOM click is handed to the lookup guard, so blocked sign-in/backend guards cannot leave an active Data I/O click operation that prevents the next no-refresh action.",
       "No-refresh action-chain lane adds grounded browser/debug tests for repeated booking, Admin open, and vehicle lookup without refresh; runtime reports now expose stale foreground/Data I/O/workspace/vehicle latches, and period close returns the sync badge to healthy Tables state after successful normalized writes.",
       "Post-action unblock lane clears foreground save/action latches after booking and period-close normalized writes, preserves typed vehicle plate drafts across renders, and prevents completed member actions from blocking the next booking, Admin action, or vehicle lookup until a browser refresh.",
       "Multi-workspace authority lane separates the active workspace from app-owner global audit: workspace switches only unlock after selected, backend, and loaded workspace all match, while app-owner Owner activity defaults to all workspaces through the owner-only Render route without changing the active workspace.",

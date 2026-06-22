@@ -3859,23 +3859,35 @@ function handleVehicleLookupButtonClick(event = null) {
   const plate = normalizeVehiclePlateInput(dom.plateInput?.value || state.vehiclePlate || "");
   if (plate) state.vehiclePlate = plate;
   const context = buildDataIoWorkspaceContext({ selectedWorkspaceId: getActiveLedgerId(), selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(getActiveLedgerId()) });
-  recordDataIoDiagnostic("start", {
+  const clickOperationId = createDataIoOperationId("vehicle-lookup-click");
+  const clickDiagnosticContext = {
     source: "vehicle-lookup-click",
     route: "dom-event",
     operation: "click",
+    operationId: clickOperationId,
     ok: true,
-    resultCode: "VEHICLE_LOOKUP_CLICKED",
-    statusCode: "VEHICLE_LOOKUP_CLICKED",
     ledgerId: context.loadedWorkspaceId,
     selectedWorkspaceId: context.selectedWorkspaceId,
     selectedWorkspaceLabel: context.selectedWorkspaceLabel,
     loadedWorkspaceId: context.loadedWorkspaceId,
     loadedWorkspaceLabel: context.loadedWorkspaceLabel,
-    workspaceMismatch: context.workspaceMismatch,
+    workspaceMismatch: context.workspaceMismatch
+  };
+  recordDataIoDiagnostic("start", {
+    source: "vehicle-lookup-click",
+    ...clickDiagnosticContext,
+    resultCode: "VEHICLE_LOOKUP_CLICKED",
+    statusCode: "VEHICLE_LOOKUP_CLICKED",
     detail: `Lookup vehicle button clicked${plate ? ` for ${plate}` : ""}.`
   });
   setVehicleLookupStatus("Vehicle lookup click received. Checking workspace and backend…", { plate, phase: "clicked" });
   setVehicleLookupSummary(plate ? `Preparing lookup for ${plate}…` : "Preparing vehicle lookup…", { plate, phase: "clicked" });
+  recordDataIoDiagnostic("success", {
+    ...clickDiagnosticContext,
+    resultCode: "VEHICLE_LOOKUP_CLICK_HANDLED",
+    statusCode: "VEHICLE_LOOKUP_CLICK_HANDLED",
+    detail: `Vehicle lookup click handed to lookup guard${plate ? ` for ${plate}` : ""}.`
+  });
   lookupVehicleByPlateFromUi({ trigger: "button-click", requestedPlate: plate });
 }
 

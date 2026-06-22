@@ -81,6 +81,9 @@ assertMatches(vehicleClick, /const plate = normalizeVehiclePlateInput\(dom\.plat
 assertMatches(vehicleClick, /setVehicleLookupSummary\(plate \? `Preparing lookup for \$\{plate\}…`/,
   'vehicle lookup: preparing text must use the requested plate, not a previous saved plate.');
 
+assertMatches(vehicleClick, /const clickOperationId = createDataIoOperationId\("vehicle-lookup-click"\);[\s\S]*operationId: clickOperationId[\s\S]*recordDataIoDiagnostic\("start",[\s\S]*recordDataIoDiagnostic\("success",[\s\S]*VEHICLE_LOOKUP_CLICK_HANDLED/,
+  'vehicle lookup: the DOM click Data I/O start must be immediately matched with a handled finish so blocked guards do not leave active click operations.');
+
 const vehicleLookup = findFunctionBody(app, 'lookupVehicleByPlateFromUi');
 assertMatches(vehicleLookup, /const plate = normalizeVehiclePlateInput\(options\.requestedPlate \|\| dom\.plateInput\?\.value \|\| els\.vehiclePlate\?\.value \|\| state\.vehiclePlate \|\| ""\);/,
   'vehicle lookup: async lookup must prefer the request-scoped plate passed from the click handler.');
