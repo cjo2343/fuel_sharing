@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v407";
-const BUILD_LABEL = "interactive-action-recovery-lane";
-const BUILD_UPDATED_AT = "2026-06-22T10:05:00.000Z";
+const CACHE_NAME = "fuel-ledger-v408";
+const BUILD_LABEL = "action-session-cache-shell-lane";
+const BUILD_UPDATED_AT = "2026-06-22T10:20:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -49,12 +49,30 @@ self.addEventListener("install", (event) => {
   );
 });
 
+async function currentCacheHasNavigationShell() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    return Boolean((await cache.match("/index.html")) || (await cache.match("/")));
+  } catch (error) {
+    console.warn("navigation-shell-verify-failure", error);
+    return false;
+  }
+}
+
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const hasShell = await currentCacheHasNavigationShell();
+    const keys = await caches.keys();
+    if (hasShell) {
+      await Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
+    } else {
+      // During deploy/network handoff, install can finish without a cached app shell.
+      // Keep older runtime caches so ?workspace navigations can still load the app
+      // instead of returning a service-worker generated 503 Offline page.
+      console.warn("keeping-old-caches-without-current-navigation-shell", CACHE_NAME);
+    }
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("message", (event) => {

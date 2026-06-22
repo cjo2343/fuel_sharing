@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.266",
-    buildLabel: "interactive-action-recovery-lane",
-    updatedAt: "2026-06-22T10:05:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v407",
+    version: "2026.06.18.267",
+    buildLabel: "action-session-cache-shell-lane",
+    updatedAt: "2026-06-22T10:20:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v408",
     releaseNotes: Object.freeze([
+      "Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.",
       "Interactive action recovery now rebinds critical controls after render, focus/visibility return, workspace switch, and service-worker deploy handoff; stale foreground/Data I/O latches are finished with recovery diagnostics, and cancel booking no longer crashes on an out-of-scope bookingPayload.",
       "Write-context setup now bounds the Supabase session/header step itself: booking, trip, and fuel actions fail cleanly after a short session timeout instead of waiting the old 10-second setup timeout when auth/service-worker/deploy handoff stalls before Render write-context can start.",
       "Write-context setup now fails fast and clears action latches when Render is waking, deploying, or offline: booking/trip/fuel saves require backend-owned write context instead of falling into browser Supabase setup, and the service worker can fall back to an older cached app shell during deploy handoff so ?workspace pages do not return Offline 503.",

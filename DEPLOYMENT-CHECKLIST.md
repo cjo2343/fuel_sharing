@@ -1,4 +1,4 @@
-- 2026-06-22 10:05 UTC: v407 Interactive action recovery now rebinds critical controls after render, focus/visibility return, workspace switch, and service-worker deploy handoff; stale foreground/Data I/O latches are finished with recovery diagnostics, and cancel booking no longer crashes on an out-of-scope bookingPayload.
+- 2026-06-22 10:20 UTC: v408 Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.
 - 2026-06-22 09:35 UTC: v406 Write-context setup now bounds the Supabase session/header step itself: booking, trip, and fuel actions fail cleanly after a short session timeout instead of waiting the old 10-second setup timeout when auth/service-worker/deploy handoff stalls before Render write-context can start.
 - 2026-06-22 09:10 UTC: v404 Vehicle lookup click diagnostics now finish immediately after the DOM click is handed to the lookup guard, so blocked sign-in/backend guards cannot leave an active Data I/O click operation that prevents the next no-refresh action.
 - 2026-06-22 01:45 UTC: v402 Post-action unblock lane clears stale foreground save/action latches after booking/period-close writes, preserves typed vehicle plate drafts across renders, and keeps subsequent member/Admin/vehicle actions from needing a browser refresh.
@@ -36,10 +36,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.266`
-- Service-worker cache: `fuel-ledger-v407`
-- Updated at: `2026-06-22T10:05:00.000Z`
-- Top release note: Interactive action recovery now rebinds critical controls after render, focus/visibility return, workspace switch, and service-worker deploy handoff; stale foreground/Data I/O latches are finished with recovery diagnostics, and cancel booking no longer crashes on an out-of-scope bookingPayload.
+- Version: `2026.06.18.267`
+- Service-worker cache: `fuel-ledger-v408`
+- Updated at: `2026-06-22T10:20:00.000Z`
+- Top release note: Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.
 
 ## Invite beta readiness: member action Data I/O
 

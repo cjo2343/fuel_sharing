@@ -34,12 +34,20 @@ assertMatches(app, /function createSessionTimeoutError[\s\S]*SESSION_TIMEOUT/, '
 assertMatches(app, /async function getFreshSessionWithTimeout[\s\S]*Promise\.race\(\[sessionPromise, timeoutPromise\]\)/, 'Supabase auth session lookup must be raced against a timeout for user actions.');
 assertMatches(app, /WRITE_CONTEXT_SESSION_TIMEOUT[\s\S]*failing this action cleanly so it can be retried without refreshing/, 'session timeout diagnostic must say the action can retry without refresh.');
 
+const cachedBody = findFunctionBody(app, 'getCachedActionSession');
+assertMatches(app, /function getCachedActionSession\(\{ source = \"session\", allowExpired = false \} = \{\}\)/, 'cached action session helper must accept an explicit allowExpired option for click-time write-context setup.');
+assertMatches(cachedBody, /currentSession\?\.access_token/, 'cached action session helper must prefer the already-hydrated access token before calling auth.getSession.');
+assertMatches(cachedBody, /WRITE_CONTEXT_CURRENT_SESSION_TOKEN_USED/, 'using the current action token must be visible in diagnostics.');
+assertMatches(cachedBody, /auth\.getSession\(\) during deploy\/session handoff/, 'diagnostic copy must explain why click-time getSession is avoided.');
+const freshSessionBody = findFunctionBody(app, 'getFreshSessionWithTimeout');
+assertMatches(freshSessionBody, /getCachedActionSession\(\{ source, allowExpired: true \}\)/, 'preferCached interactive action setup must use currentSession access token even when near expiry instead of waiting on auth.getSession.');
+
 const getContext = findFunctionBody(app, 'getNormalizedWriteContext');
-assertMatches(getContext, /hasFreshSupabaseSession\(\{ timeoutMs: mustUseBackendContext \? writeContextSessionTimeoutMs : 0,[\s\S]*source \}\)/, 'backend-required booking/trip/fuel write context must use the bounded session check before setup can hang.');
+assertMatches(getContext, /hasFreshSupabaseSession\(\{ timeoutMs: mustUseBackendContext \? writeContextSessionTimeoutMs : 0,[\s\S]*source,[\s\S]*preferCached: mustUseBackendContext \}\)/, 'backend-required booking/trip/fuel write context must use the bounded cached-session-aware check before setup can hang.');
 assertMatches(getContext, /normalizedWriteContextUnavailableError\(source, "session-not-fresh"\)/, 'missing or stale session must fail closed before local JSON/state changes.');
 
 const renderContext = findFunctionBody(app, 'getRenderWriteContext');
-assertMatches(renderContext, /buildRenderRequestHeaders\(\{ "Content-Type": "application\/json" \}, \{ timeoutMs: writeContextSessionTimeoutMs,[\s\S]*timeoutLabel: `\$\{source\} Render session`[\s\S]*source \}\)/, 'Render write-context headers must also use bounded session lookup, not an unbounded auth promise.');
+assertMatches(renderContext, /buildRenderRequestHeaders\(\{ "Content-Type": "application\/json" \}, \{ timeoutMs: writeContextSessionTimeoutMs,[\s\S]*timeoutLabel: `\$\{source\} Render session`[\s\S]*source,[\s\S]*preferCached: true \}\)/, 'Render write-context headers must use bounded cached-session-aware lookup, not an unbounded auth promise.');
 assertMatches(renderContext, /paymentActionTimeoutError\("Render write context API", writeContextActionTimeoutMs\)/, 'Render write context fetch itself must stay bounded.');
 
 const booking = findFunctionBody(app, 'saveBookingToNormalizedTablesFirst');

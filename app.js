@@ -18735,8 +18735,41 @@ function createSessionTimeoutError(label = "Supabase session", timeoutMs = write
   return error;
 }
 
-async function getFreshSessionWithTimeout({ timeoutMs = 0, label = "Supabase session", source = "session" } = {}) {
+function isUsableCachedSession(session, { minTtlSeconds = 30 } = {}) {
+  if (!session?.access_token) return false;
+  const expiresAt = Number(session.expires_at || 0);
+  if (!expiresAt) return true;
+  return expiresAt - Math.floor(Date.now() / 1000) > minTtlSeconds;
+}
+
+function getCachedActionSession({ source = "session", allowExpired = false } = {}) {
+  // Interactive actions already have a hydrated app session/backend context.
+  // Do not block a user click on a fresh supabase.auth.getSession() call just
+  // because the cached token is near expiry; let Render reject/refresh on the
+  // bounded backend call instead of freezing booking/trip/fuel setup in the
+  // browser. A stale token can fail fast with 401, while auth.getSession() has
+  // been observed to hang during deploy/service-worker handoff.
+  if (!currentSession?.access_token) return null;
+  if (!allowExpired && !isUsableCachedSession(currentSession)) return null;
+  recordDataIoDiagnostic("skip", {
+    source,
+    route: "supabase-auth",
+    operation: "get-session",
+    ok: true,
+    resultCode: allowExpired ? "WRITE_CONTEXT_CURRENT_SESSION_TOKEN_USED" : "WRITE_CONTEXT_SESSION_CACHE_USED",
+    detail: allowExpired
+      ? "Used the already-hydrated Supabase access token for an interactive action instead of blocking the click on auth.getSession() during deploy/session handoff."
+      : "Used the already-hydrated Supabase session for an interactive action instead of blocking the click on a fresh auth.getSession() call."
+  });
+  return currentSession;
+}
+
+async function getFreshSessionWithTimeout({ timeoutMs = 0, label = "Supabase session", source = "session", preferCached = false } = {}) {
   if (!supabaseClient) return null;
+  if (preferCached) {
+    const cached = getCachedActionSession({ source, allowExpired: true });
+    if (cached) return cached;
+  }
   if (!timeoutMs || timeoutMs <= 0) return supabaseHelpers.getFreshSession(supabaseClient);
   const setTimer = typeof window !== "undefined" && window.setTimeout ? window.setTimeout.bind(window) : setTimeout;
   const clearTimer = typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout.bind(window) : clearTimeout;
@@ -18769,7 +18802,8 @@ async function hasFreshSupabaseSession(options = {}) {
   const session = await getFreshSessionWithTimeout({
     timeoutMs: Number(options.timeoutMs || 0),
     label: options.timeoutLabel || "Supabase session",
-    source: options.source || "session"
+    source: options.source || "session",
+    preferCached: options.preferCached === true
   });
   if (!session) {
     currentSession = null;
@@ -18785,7 +18819,8 @@ async function getFreshRenderAccessToken(options = {}) {
   const session = await getFreshSessionWithTimeout({
     timeoutMs: Number(options.timeoutMs || 0),
     label: options.timeoutLabel || "Render backend session",
-    source: options.source || "render-api"
+    source: options.source || "render-api",
+    preferCached: options.preferCached === true
   });
   if (!session?.access_token) {
     currentSession = null;
@@ -19116,7 +19151,7 @@ async function getNormalizedWriteContext(options = {}) {
   const source = options.source || "normalized-write-context";
   const mustUseBackendContext = options.requireRenderContext === true || requiresBackendWriteContext(source);
   if (!supabaseClient || !currentSession) return null;
-  if (!(await hasFreshSupabaseSession({ timeoutMs: mustUseBackendContext ? writeContextSessionTimeoutMs : 0, timeoutLabel: `${source} session`, source }))) {
+  if (!(await hasFreshSupabaseSession({ timeoutMs: mustUseBackendContext ? writeContextSessionTimeoutMs : 0, timeoutLabel: `${source} session`, source, preferCached: mustUseBackendContext }))) {
     if (mustUseBackendContext) {
       const error = normalizedWriteContextUnavailableError(source, "session-not-fresh");
       recordDataIoDiagnostic("blocked", {
@@ -19280,7 +19315,7 @@ async function getRenderWriteContext({ ledgerId, source = "normalized-write-cont
     const fetchPromise = fetch(renderWriteContextUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }, { timeoutMs: writeContextSessionTimeoutMs, timeoutLabel: `${source} Render session`, source }),
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }, { timeoutMs: writeContextSessionTimeoutMs, timeoutLabel: `${source} Render session`, source, preferCached: true }),
       body: JSON.stringify({ ledgerId })
     });
 

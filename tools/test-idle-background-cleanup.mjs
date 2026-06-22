@@ -7,9 +7,9 @@ const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 const index = fs.readFileSync('index.html', 'utf8');
 const checklist = fs.readFileSync('DEPLOYMENT-CHECKLIST.md', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407)"/, 'build-info should expect v386 cache');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407)"/, 'service worker should publish v386 cache');
-assert.match(checklist, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407)/, 'deployment checklist should document v386 cache');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)"/, 'build-info should expect v386 cache');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)"/, 'service worker should publish v386 cache');
+assert.match(checklist, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)/, 'deployment checklist should document v386 cache');
 assert.match(buildInfo, /function scheduleBuildInfoRefresh/, 'build-info should wrap background refresh calls');
 assert.match(buildInfo, /requestServiceWorkerInfo\(\)\.catch\(\(\) => null\)/, 'service-worker status polling should be best-effort');
 assert.match(buildInfo, /channel\.port1\.onmessageerror = \(\) => settle\(null\)/, 'message-channel errors should resolve quietly');
