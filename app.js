@@ -59,6 +59,7 @@ const generatedTestMarker = "[AUTO TEST]";
 const supabaseHelpers = window.FuelSupabaseHelpers;
 const supabaseConfig = supabaseHelpers.getSupabaseConfig();
 const configuredLedgerId = supabaseHelpers.getLedgerId(supabaseConfig);
+const workspaceSession = window.FuelWorkspaceSession || {};
 const activeWorkspaceStorageKey = "fuel-ledger-active-workspace-id";
 const activeWorkspaceStorageKeyPrefix = `${activeWorkspaceStorageKey}:user:`;
 let activeLedgerId = readActiveWorkspaceIdFromCurrentUrl() || localStorage.getItem(activeWorkspaceStorageKey) || configuredLedgerId;
@@ -99,6 +100,7 @@ function getConfiguredLedgerId() {
 }
 
 function normalizeWorkspaceUrlId(value) {
+  if (workspaceSession.normalizeWorkspaceUrlId) return workspaceSession.normalizeWorkspaceUrlId(value);
   return String(value || "").trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
 }
 
@@ -183,6 +185,7 @@ function isConfiguredAppOwnerEmail(email = getLoggedInEmail()) {
 }
 
 function getWorkspaceIdentityValues(ledger = {}) {
+  if (workspaceSession.getWorkspaceIdentityValues) return workspaceSession.getWorkspaceIdentityValues(ledger);
   return [ledger.ledger_id, ledger.ledgerId, ledger.id, ledger.slug]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
@@ -190,6 +193,7 @@ function getWorkspaceIdentityValues(ledger = {}) {
 }
 
 function getWorkspaceIdentityLookupKeys(value) {
+  if (workspaceSession.getWorkspaceIdentityLookupKeys) return workspaceSession.getWorkspaceIdentityLookupKeys(value);
   const rawValue = String(value || "").trim();
   if (!rawValue) return [];
   const urlValue = normalizeWorkspaceUrlId(rawValue);
@@ -200,6 +204,7 @@ function getWorkspaceIdentityLookupKeys(value) {
 }
 
 function buildWorkspaceIdentityLookup(ledgers = []) {
+  if (workspaceSession.buildWorkspaceIdentityLookup) return workspaceSession.buildWorkspaceIdentityLookup(ledgers);
   const lookup = new Map();
   ledgers.forEach((ledger) => {
     getWorkspaceIdentityValues(ledger).forEach((value) => {
@@ -212,6 +217,7 @@ function buildWorkspaceIdentityLookup(ledgers = []) {
 }
 
 function resolveWorkspaceIdentityToLedgerId(value, ledgers = getWorkspaceLedgerOptions()) {
+  if (workspaceSession.resolveWorkspaceIdentityToLedgerId) return workspaceSession.resolveWorkspaceIdentityToLedgerId(value, ledgers);
   const normalized = normalizeWorkspaceUrlId(value || "");
   if (!normalized) return "";
   const lookup = buildWorkspaceIdentityLookup(ledgers);
@@ -385,6 +391,17 @@ function getWorkspaceSessionSnapshot(meta = {}) {
   const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getWorkspaceLabelByLedgerId(selectedWorkspaceId)).trim();
   const loadedWorkspaceId = String(meta.loadedWorkspaceId || getLoadedWorkspaceId()).trim();
   const loadedWorkspaceLabel = String(meta.loadedWorkspaceLabel || getLoadedWorkspaceLabel()).trim();
+  if (workspaceSession.createWorkspaceSessionSnapshot) {
+    return workspaceSession.createWorkspaceSessionSnapshot({
+      selectedWorkspaceId,
+      selectedWorkspaceLabel,
+      loadedWorkspaceId,
+      loadedWorkspaceLabel,
+      activeWorkspaceLoadInProgress,
+      activeWorkspaceLoadStartedAt,
+      activeWorkspaceLoadLedgerId
+    });
+  }
   const workspaceMismatch = Boolean(selectedWorkspaceId && loadedWorkspaceId && selectedWorkspaceId !== loadedWorkspaceId);
   const loadStatus = activeWorkspaceLoadInProgress
     ? "loading"
@@ -404,18 +421,22 @@ function getWorkspaceSessionSnapshot(meta = {}) {
 }
 
 function normalizeWorkspaceRole(role) {
+  if (workspaceSession.normalizeWorkspaceRole) return workspaceSession.normalizeWorkspaceRole(role);
   return String(role || "member").trim().toLowerCase() === "admin" ? "admin" : "member";
 }
 
 function workspaceRoleRank(role) {
+  if (workspaceSession.workspaceRoleRank) return workspaceSession.workspaceRoleRank(role);
   return normalizeWorkspaceRole(role) === "admin" ? 2 : 1;
 }
 
 function normalizeWorkspaceIdentifier(value) {
+  if (workspaceSession.normalizeWorkspaceIdentifier) return workspaceSession.normalizeWorkspaceIdentifier(value);
   return String(value || "").trim().toLowerCase();
 }
 
 function getWorkspaceLedgerIdentityKey(ledger = {}) {
+  if (workspaceSession.getWorkspaceLedgerIdentityKey) return workspaceSession.getWorkspaceLedgerIdentityKey(ledger);
   const directLedgerId = String(ledger.ledger_id || ledger.ledgerId || ledger.workspace_id || ledger.workspaceId || "").trim();
   const slug = String(ledger.slug || ledger.ledger_slug || ledger.workspace_slug || "").trim();
   const name = String(ledger.name || ledger.ledger_name || ledger.workspace_name || "").trim();
@@ -427,6 +448,7 @@ function getWorkspaceLedgerIdentityKey(ledger = {}) {
 }
 
 function normalizeWorkspaceLedgerRow(ledger = {}) {
+  if (workspaceSession.normalizeWorkspaceLedgerRow) return workspaceSession.normalizeWorkspaceLedgerRow(ledger);
   const ledgerId = getWorkspaceLedgerIdentityKey(ledger);
   if (!ledgerId) return null;
   const slug = String(ledger.slug || ledger.ledger_slug || ledger.workspace_slug || ledgerId).trim();
@@ -443,6 +465,7 @@ function normalizeWorkspaceLedgerRow(ledger = {}) {
 }
 
 function mergeWorkspaceLedgerRows(existing, candidate) {
+  if (workspaceSession.mergeWorkspaceLedgerRows) return workspaceSession.mergeWorkspaceLedgerRows(existing, candidate);
   if (!existing) return candidate;
   const existingRank = workspaceRoleRank(existing.role);
   const candidateRank = workspaceRoleRank(candidate.role);
@@ -460,6 +483,7 @@ function mergeWorkspaceLedgerRows(existing, candidate) {
 }
 
 function normalizeWorkspaceLedgerList(ledgers = []) {
+  if (workspaceSession.normalizeWorkspaceLedgerList) return workspaceSession.normalizeWorkspaceLedgerList(ledgers, { configuredLedgerId: getConfiguredLedgerId() });
   const byKey = new Map();
   (Array.isArray(ledgers) ? ledgers : []).forEach((rawLedger) => {
     const ledger = normalizeWorkspaceLedgerRow(rawLedger);
@@ -472,7 +496,13 @@ function normalizeWorkspaceLedgerList(ledgers = []) {
     mergedKeys.forEach((mergedKey) => byKey.set(mergedKey, merged));
     byKey.set(key, merged);
   });
-  return Array.from(new Set(Array.from(byKey.values()))).sort((a, b) => {
+  const uniqueByLedgerId = new Map();
+  Array.from(byKey.values()).forEach((ledger) => {
+    const canonicalKey = normalizeWorkspaceIdentifier(ledger.ledger_id || ledger.slug);
+    if (!canonicalKey) return;
+    uniqueByLedgerId.set(canonicalKey, mergeWorkspaceLedgerRows(uniqueByLedgerId.get(canonicalKey), ledger));
+  });
+  return Array.from(uniqueByLedgerId.values()).sort((a, b) => {
     const aPrimary = a.ledger_id === getConfiguredLedgerId() ? 0 : 1;
     const bPrimary = b.ledger_id === getConfiguredLedgerId() ? 0 : 1;
     if (aPrimary !== bPrimary) return aPrimary - bPrimary;

@@ -20,6 +20,7 @@ const extraSourcePaths = [
   'notifications.js',
   'admin-tools.js',
   'permission-helpers.js',
+  'workspace-session.js',
   'build-info.js'
 ]
   .map((name) => path.join(process.cwd(), name))
@@ -43,6 +44,7 @@ const requiredRuntimeFiles = [
   'notifications.js',
   'admin-tools.js',
   'permission-helpers.js',
+  'workspace-session.js',
   'build-info.js',
   'booking-calendar.js',
   'app.js'

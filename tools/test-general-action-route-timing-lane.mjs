@@ -6,7 +6,7 @@ const server = readFileSync('server.py', 'utf8');
 const buildInfo = readFileSync('build-info.js', 'utf8');
 
 assert.match(buildInfo, /buildLabel:\s*"update-prompt-bridge-workspace-retention-lane|update-prompt-workspace-visibility-lane|general-action-route-timing-lane"/, 'build label should describe the general action route timing lane');
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:409|410|411|412|413|414)"/, 'service worker cache must be bumped for runtime changes');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:409|410|411|412|413|414|415)"/, 'service worker cache must be bumped for runtime changes');
 
 assert.match(server, /def action_timing_mark\(/, 'server should expose action timing breadcrumbs for action routes');
 assert.match(server, /def best_effort_owner_activity_as_service\(/, 'owner activity logging should be isolated as best-effort work');
