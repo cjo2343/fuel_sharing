@@ -1,3 +1,4 @@
+- 2026-06-22 09:35 UTC: v406 Write-context setup now bounds the Supabase session/header step itself: booking, trip, and fuel actions fail cleanly after a short session timeout instead of waiting the old 10-second setup timeout when auth/service-worker/deploy handoff stalls before Render write-context can start.
 - 2026-06-22 09:10 UTC: v404 Vehicle lookup click diagnostics now finish immediately after the DOM click is handed to the lookup guard, so blocked sign-in/backend guards cannot leave an active Data I/O click operation that prevents the next no-refresh action.
 - 2026-06-22 01:45 UTC: v402 Post-action unblock lane clears stale foreground save/action latches after booking/period-close writes, preserves typed vehicle plate drafts across renders, and keeps subsequent member/Admin/vehicle actions from needing a browser refresh.
 - 2026-06-21 20:25 UTC: v390 Backend app context pass 3 makes workspace switching backend-context-driven, prioritizes selected/preferred workspace ids over legacy/default ledger ids, and keeps state-load on the active backend-confirmed workspace.
@@ -35,9 +36,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 
 ## Current release target
 - Version: `2026.06.18.265`
-- Service-worker cache: `fuel-ledger-v405`
-- Updated at: `2026-06-22T09:25:00.000Z`
-- Top release note: Write-context setup now fails fast and clears action latches when Render is waking, deploying, or offline: booking/trip/fuel saves require backend-owned write context instead of falling into browser Supabase setup, and the service worker can fall back to an older cached app shell during deploy handoff so ?workspace pages do not return Offline 503.
+- Service-worker cache: `fuel-ledger-v406`
+- Updated at: `2026-06-22T09:35:00.000Z`
+- Top release note: Write-context setup now bounds the Supabase session/header step itself: booking, trip, and fuel actions fail cleanly after a short session timeout instead of waiting the old 10-second setup timeout when auth/service-worker/deploy handoff stalls before Render write-context can start.
 
 ## Invite beta readiness: member action Data I/O
 

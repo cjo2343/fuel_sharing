@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 const app = readFileSync("app.js", "utf8");
 
-assert.ok(app.includes("const normalizedWriteContextTimeoutMs = 10000;"), "normalized write context timeout must be shorter than the visible Saving stale failsafe");
+assert.ok(app.includes("const normalizedWriteContextTimeoutMs = 6000;"), "normalized write context timeout must be shorter than the visible Saving stale failsafe");
 assert.ok(app.includes("async function withNormalizedWriteContextTimeout"), "app must expose a timeout wrapper for pre-backend normalized write setup");
 assert.ok(app.includes("isNormalizedWriteContextTimeout"), "timeout wrapper must mark normalized context timeouts for diagnostics");
 assert.ok(app.includes('recordDataIoDiagnostic("timeout", {'), "timeout wrapper must record a Data I/O timeout diagnostic");

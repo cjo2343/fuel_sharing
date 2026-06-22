@@ -46,8 +46,9 @@ const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
 const bookingSaveActionTimeoutMs = 15000;
-const writeContextActionTimeoutMs = 6000;
-const normalizedWriteContextTimeoutMs = 10000;
+const writeContextActionTimeoutMs = 4500;
+const normalizedWriteContextTimeoutMs = 6000;
+const writeContextSessionTimeoutMs = 2500;
 const paymentStatusActionTimeoutMs = 15000;
 const paymentStatusActionNormalizedTimeoutMs = 45000;
 const paymentStatusActionBackendStartTimeoutMs = 10000;
@@ -18638,8 +18639,49 @@ async function sendPaymentCloseNoticePush(settlement, metadata = {}) {
 
 
 
-async function hasFreshSupabaseSession() {
-  const session = await supabaseHelpers.getFreshSession(supabaseClient);
+function createSessionTimeoutError(label = "Supabase session", timeoutMs = writeContextSessionTimeoutMs) {
+  const error = paymentActionTimeoutError(label, timeoutMs);
+  error.code = "SESSION_TIMEOUT";
+  error.resultCode = "SESSION_TIMEOUT";
+  return error;
+}
+
+async function getFreshSessionWithTimeout({ timeoutMs = 0, label = "Supabase session", source = "session" } = {}) {
+  if (!supabaseClient) return null;
+  if (!timeoutMs || timeoutMs <= 0) return supabaseHelpers.getFreshSession(supabaseClient);
+  const setTimer = typeof window !== "undefined" && window.setTimeout ? window.setTimeout.bind(window) : setTimeout;
+  const clearTimer = typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout.bind(window) : clearTimeout;
+  let timeoutId = 0;
+  const sessionPromise = supabaseHelpers.getFreshSession(supabaseClient);
+  if (sessionPromise && typeof sessionPromise.catch === "function") sessionPromise.catch(() => {});
+  try {
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimer(() => reject(createSessionTimeoutError(label, timeoutMs)), timeoutMs);
+    });
+    return await Promise.race([sessionPromise, timeoutPromise]);
+  } catch (error) {
+    if (error?.code === "SESSION_TIMEOUT" || error?.isPaymentActionTimeout) {
+      recordDataIoDiagnostic("timeout", {
+        source,
+        route: "supabase-auth",
+        operation: "get-session",
+        error,
+        resultCode: "WRITE_CONTEXT_SESSION_TIMEOUT",
+        detail: `${label} did not return before the user action setup timeout; failing this action cleanly so it can be retried without refreshing.`
+      });
+    }
+    throw error;
+  } finally {
+    if (timeoutId) clearTimer(timeoutId);
+  }
+}
+
+async function hasFreshSupabaseSession(options = {}) {
+  const session = await getFreshSessionWithTimeout({
+    timeoutMs: Number(options.timeoutMs || 0),
+    label: options.timeoutLabel || "Supabase session",
+    source: options.source || "session"
+  });
   if (!session) {
     currentSession = null;
     updateAuthUi();
@@ -18649,9 +18691,13 @@ async function hasFreshSupabaseSession() {
   return true;
 }
 
-async function getFreshRenderAccessToken() {
+async function getFreshRenderAccessToken(options = {}) {
   if (!supabaseClient) return "";
-  const session = await supabaseHelpers.getFreshSession(supabaseClient);
+  const session = await getFreshSessionWithTimeout({
+    timeoutMs: Number(options.timeoutMs || 0),
+    label: options.timeoutLabel || "Render backend session",
+    source: options.source || "render-api"
+  });
   if (!session?.access_token) {
     currentSession = null;
     updateAuthUi();
@@ -18661,8 +18707,8 @@ async function getFreshRenderAccessToken() {
   return session.access_token;
 }
 
-async function buildRenderRequestHeaders(extraHeaders = {}) {
-  const accessToken = await getFreshRenderAccessToken();
+async function buildRenderRequestHeaders(extraHeaders = {}, options = {}) {
+  const accessToken = await getFreshRenderAccessToken(options);
   if (!accessToken) {
     const error = new Error("Sign in before calling the Render backend.");
     error.code = "AUTH_REQUIRED";
@@ -18981,7 +19027,7 @@ async function getNormalizedWriteContext(options = {}) {
   const source = options.source || "normalized-write-context";
   const mustUseBackendContext = options.requireRenderContext === true || requiresBackendWriteContext(source);
   if (!supabaseClient || !currentSession) return null;
-  if (!(await hasFreshSupabaseSession())) {
+  if (!(await hasFreshSupabaseSession({ timeoutMs: mustUseBackendContext ? writeContextSessionTimeoutMs : 0, timeoutLabel: `${source} session`, source }))) {
     if (mustUseBackendContext) {
       const error = normalizedWriteContextUnavailableError(source, "session-not-fresh");
       recordDataIoDiagnostic("blocked", {
@@ -19145,7 +19191,7 @@ async function getRenderWriteContext({ ledgerId, source = "normalized-write-cont
     const fetchPromise = fetch(renderWriteContextUrl, {
       method: "POST",
       signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }, { timeoutMs: writeContextSessionTimeoutMs, timeoutLabel: `${source} Render session`, source }),
       body: JSON.stringify({ ledgerId })
     });
 
@@ -19166,12 +19212,12 @@ async function getRenderWriteContext({ ledgerId, source = "normalized-write-cont
     const message = result?.message || result?.error || text || `Render write context failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
-    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; falling back to direct Supabase context.` });
+    recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; Render write context was unavailable before the backend write started; browser direct Supabase setup is disabled for booking/trip/fuel actions.` });
     return null;
   } catch (error) {
     const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render write context API", writeContextActionTimeoutMs);
-    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Falling back to direct Supabase context." });
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Render write context was unavailable before the backend write started; browser direct Supabase setup is disabled for booking/trip/fuel actions." });
     return null;
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
