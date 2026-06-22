@@ -16,8 +16,8 @@ for (const endpoint of [
   assert.ok(pathDoc.includes(endpoint), `Render endpoint ${endpoint} must be documented in the migration path`);
 }
 
-assert.ok(app.includes("const renderBookingUpsertUrl = \"/api/bookings/upsert\";"), "booking saves must have a Render API endpoint constant");
-assert.ok(app.includes("const renderBookingDeleteUrl = \"/api/bookings/delete\";"), "booking deletes must have a Render API endpoint constant");
+assert.match(app, /const\s+renderBookingUpsertUrl\s*=\s*renderApiEndpoints\.bookingUpsert\s*\|\|\s*"\/api\/bookings\/upsert"/, "booking saves must have a Render API endpoint constant");
+assert.match(app, /const\s+renderBookingDeleteUrl\s*=\s*renderApiEndpoints\.bookingDelete\s*\|\|\s*"\/api\/bookings\/delete"/, "booking deletes must have a Render API endpoint constant");
 assert.ok(app.includes("async function saveBookingViaRender"), "booking saves must prefer a Render backend helper");
 assert.ok(app.includes("async function softDeleteBookingViaRender"), "booking deletes must prefer a Render backend helper");
 assert.ok(app.includes('route: "render-api", endpoint: renderBookingUpsertUrl'), "booking save diagnostics must identify the Render route");

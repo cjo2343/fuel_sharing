@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const app = readFileSync('app.js', 'utf8');
 const server = readFileSync('server.py', 'utf8');
 
-assert.match(app, /const renderMemberManagementUrl = "\/api\/members\/manage";/, 'frontend should define the backend-owned member-management route');
+assert.match(app, /const\s+renderMemberManagementUrl\s*=\s*renderApiEndpoints\.memberManagement\s*\|\|\s*"\/api\/members\/manage"/, 'frontend should define the backend-owned member-management route');
 assert.match(app, /async function callMemberManagementRoute\(action, payload = \{\}\)/, 'frontend should call one Render member-management helper');
 assert.match(app, /callMemberManagementRoute\("list"\)/, 'member refresh should load through Render');
 assert.match(app, /async function upsertManagedMemberRpc\(payload\)[\s\S]*callMemberManagementRoute\("upsert"/, 'member add/edit should save through Render');

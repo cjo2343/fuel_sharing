@@ -5,7 +5,7 @@ const app = readFileSync("app.js", "utf8");
 const server = readFileSync("server.py", "utf8");
 const migrations = readFileSync("supabase/migrations/038_vehicle_settings_columns.sql", "utf8");
 
-assert.match(app, /const renderSettingsSaveUrl = "\/api\/settings\/save"/, "frontend should define the dedicated settings-save route");
+assert.match(app, /const\s+renderSettingsSaveUrl\s*=\s*renderApiEndpoints\.settingsSave\s*\|\|\s*"\/api\/settings\/save"/, "frontend should define the dedicated settings-save route");
 assert.match(app, /async function saveSettingsViaRender/, "frontend should save settings through Render");
 assert.match(app, /settingsSaveResult = await saveSettingsViaRender\(\{ traceMeta: settingsTraceMeta \}\)/, "settings form should call the backend settings save route and keep the result");
 assert.doesNotMatch(app, /await saveSupabaseState\(\{ reason: "group-settings" \}\)/, "settings save must not use broad full-state Supabase save");

@@ -20,12 +20,12 @@ assert.match(app, /resultCode: "SETTINGS_SAVE_STARTED"/, 'group settings save sh
 assert.match(app, /resultCode: "SETTINGS_SAVED"/, 'group settings save should record a success result code');
 assert.match(app, /type: "settings_saved"/, 'group settings save should add a persistent audit breadcrumb');
 
-assert.match(app, /resultCode: "TRIP_SAVE_STARTED"/, 'trip save should expose a started Data I/O result code');
-assert.match(app, /resultCode: "TRIP_SAVED"/, 'trip save should expose a success Data I/O result code');
+assert.match(app, /(?:resultCode|startResultCode): "TRIP_SAVE_STARTED"/, 'trip save should expose a started Data I/O result code');
+assert.match(app, /(?:resultCode|successResultCode): "TRIP_SAVED"/, 'trip save should expose a success Data I/O result code');
 assert.match(app, /type: wasEditingTrip \? "trip_updated" : "trip_created"/, 'trip create/update should remain persistently audited');
 
-assert.match(app, /resultCode: "FUEL_SAVE_STARTED"/, 'fuel save should expose a started Data I/O result code');
-assert.match(app, /resultCode: "FUEL_SAVED"/, 'fuel save should expose a success Data I/O result code');
+assert.match(app, /(?:resultCode|startResultCode): "FUEL_SAVE_STARTED"/, 'fuel save should expose a started Data I/O result code');
+assert.match(app, /(?:resultCode|successResultCode): "FUEL_SAVED"/, 'fuel save should expose a success Data I/O result code');
 assert.match(app, /type: wasEditingFuel \? "fuel_updated" : "fuel_created"/, 'fuel create/update should remain persistently audited');
 
 assert.match(app, /resultCode: "ENTRY_DELETE_STARTED"/, 'entry soft-delete should expose a started Data I/O result code');

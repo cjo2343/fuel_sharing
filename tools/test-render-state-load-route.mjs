@@ -11,7 +11,7 @@ function assert(condition, message) {
   }
 }
 
-assert(app.includes('const renderStateLoadUrl = "/api/state/load";'), "app should define the Render state-load URL");
+assert(/const\s+renderStateLoadUrl\s*=\s*renderApiEndpoints\.stateLoad\s*\|\|\s*"\/api\/state\/load"/.test(app), "app should define the Render state-load URL");
 assert(app.includes("async function getRenderNormalizedStateRows"), "app should have a Render state-load helper");
 assert(app.includes("async function getFreshRenderAccessToken"), "app should refresh the Supabase session before Render calls");
 assert(app.includes("isRenderAuthRejected(response, result, text)"), "Render state load should detect auth-not-ready responses");

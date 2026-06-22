@@ -34,6 +34,24 @@ Guardrails strengthened:
 - `tools/test-workspace-identity-hardening.mjs` now checks frontend and backend normalized alias handling.
 - `tools/test-backend-app-context-pass3.mjs` now checks request-scoped app-context preferences and stale-context protection.
 
+
+### Workspace session module extraction started
+
+The first architecture-cleanup slice is now in place. `workspace-session.js` owns pure workspace-session logic for identity alias lookup, workspace row normalization/deduplication, selected-vs-loaded session snapshots, and write-scope alignment checks. `app.js` still keeps compatibility wrapper names for existing guardrails and call sites, but those wrappers now delegate to the focused module. This makes the next extraction safer because workspace authority can be tested without loading the full 22k-line app controller.
+
+This also fixes a subtle duplicate-workspace edge case in the extracted normalizer: when two rows share the same ledger id but different slug aliases, all old and new alias keys are now remapped to the merged strongest-role row, instead of leaving one stale duplicate object in the returned workspace list.
+
+### Render API client extraction started
+
+The second architecture-cleanup slice is now in place. `render-api-client.js` owns the frontend/backend endpoint directory plus the shared JSON request primitives: auth-header merging, object-body serialization, timeout/abort handling, and response text/JSON parsing. `app.js` now binds those endpoints from the module and routes the main Render-owned paths through a compatibility wrapper instead of repeating fetch/AbortController/JSON parsing in each action.
+
+The first migrated paths are the ones that most often affect workspace stability and user actions: Render state load, Render write context, trip upsert, fuel upsert, booking upsert, and booking delete. The older `callRenderJson` helper remains as the compatibility entry point for settings/admin/owner/vehicle calls, but it now delegates through the shared Render JSON wrapper.
+
+Guardrails added:
+
+- `tools/test-render-api-client-module-extraction.mjs` verifies the module export, endpoint ownership, script/cache loading, runtime request behavior, and app.js delegation.
+- `tools/check-runtime-assets.mjs` and `tools/check-build-info.mjs` now treat `render-api-client.js` as a required runtime asset.
+
 ## Critical remaining recommendations
 
 ### 1. Create a single workspace session owner

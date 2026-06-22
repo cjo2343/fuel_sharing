@@ -12,36 +12,38 @@ const pendingWorkspaceInviteCodeKey = "fuel-ledger-pending-workspace-invite-code
 const inviteDeepLinkParamNames = Object.freeze(["invite", "invite_code", "workspaceInvite", "workspace_invite"]);
 const workspaceUrlParamNames = Object.freeze(["workspace", "ledger"]);
 const loginRequestedFromUrl = new URLSearchParams(window.location.search).has("login");
-const apiStateUrl = "/api/state";
-const pushConfigUrl = "/api/push-config";
-const fuelPriceUrl = "/api/fuel-price";
-const pushSubscriptionsUrl = "/api/push-subscriptions";
-const sendPushUrl = "/api/send-push";
-const paymentActionUrl = "/api/payment-action";
-const renderPaymentStatusActionUrl = "/api/payments/status-action";
-const renderTripUpsertUrl = "/api/trips/upsert";
-const renderFuelUpsertUrl = "/api/fuel/upsert";
-const renderBookingUpsertUrl = "/api/bookings/upsert";
-const renderBookingDeleteUrl = "/api/bookings/delete";
-const renderWriteContextUrl = "/api/context/write";
-const renderStateLoadUrl = "/api/state/load";
-const renderAppContextUrl = "/api/app/context";
-const renderWorkspaceToolsUrl = "/api/workspace/tools";
-const renderSettingsSaveUrl = "/api/settings/save";
-const renderMemberManagementUrl = "/api/members/manage";
-const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";
-const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";
-const renderAdminTestDataCreateUrl = "/api/admin/test-data/create";
-const renderAdminTestDataCleanupUrl = "/api/admin/test-data/cleanup";
-const renderRetentionPreviewUrl = "/api/admin/retention/preview";
-const renderRetentionCleanupUrl = "/api/admin/retention/cleanup";
-const renderAdminHealthUrl = "/api/admin/health";
-const renderAdminReportSaveUrl = "/api/admin/reports/save";
-const renderAdminSecurityHealthUrl = "/api/admin/security-health";
-const renderOwnerActivityUrl = "/api/owner/activity";
-const renderOwnerGlobalDiagnosticsUrl = "/api/owner/global-diagnostics";
-const renderVehicleLookupUrl = "/api/vehicle/lookup";
-const renderBackendPingUrl = "/api/ping";
+const renderApiClient = window.FuelRenderApiClient || {};
+const renderApiEndpoints = renderApiClient.ENDPOINTS || {};
+const apiStateUrl = renderApiEndpoints.legacyState || "/api/state";
+const pushConfigUrl = renderApiEndpoints.pushConfig || "/api/push-config";
+const fuelPriceUrl = renderApiEndpoints.fuelPrice || "/api/fuel-price";
+const pushSubscriptionsUrl = renderApiEndpoints.pushSubscriptions || "/api/push-subscriptions";
+const sendPushUrl = renderApiEndpoints.sendPush || "/api/send-push";
+const paymentActionUrl = renderApiEndpoints.legacyPaymentAction || "/api/payment-action";
+const renderPaymentStatusActionUrl = renderApiEndpoints.paymentStatusAction || "/api/payments/status-action";
+const renderTripUpsertUrl = renderApiEndpoints.tripUpsert || "/api/trips/upsert";
+const renderFuelUpsertUrl = renderApiEndpoints.fuelUpsert || "/api/fuel/upsert";
+const renderBookingUpsertUrl = renderApiEndpoints.bookingUpsert || "/api/bookings/upsert";
+const renderBookingDeleteUrl = renderApiEndpoints.bookingDelete || "/api/bookings/delete";
+const renderWriteContextUrl = renderApiEndpoints.writeContext || "/api/context/write";
+const renderStateLoadUrl = renderApiEndpoints.stateLoad || "/api/state/load";
+const renderAppContextUrl = renderApiEndpoints.appContext || "/api/app/context";
+const renderWorkspaceToolsUrl = renderApiEndpoints.workspaceTools || "/api/workspace/tools";
+const renderSettingsSaveUrl = renderApiEndpoints.settingsSave || "/api/settings/save";
+const renderMemberManagementUrl = renderApiEndpoints.memberManagement || "/api/members/manage";
+const renderLedgerDirectorySyncUrl = renderApiEndpoints.ledgerDirectorySync || "/api/ledgers/sync";
+const renderJsonMirrorBackupUrl = renderApiEndpoints.jsonMirrorBackup || "/api/backups/json-mirror";
+const renderAdminTestDataCreateUrl = renderApiEndpoints.adminTestDataCreate || "/api/admin/test-data/create";
+const renderAdminTestDataCleanupUrl = renderApiEndpoints.adminTestDataCleanup || "/api/admin/test-data/cleanup";
+const renderRetentionPreviewUrl = renderApiEndpoints.retentionPreview || "/api/admin/retention/preview";
+const renderRetentionCleanupUrl = renderApiEndpoints.retentionCleanup || "/api/admin/retention/cleanup";
+const renderAdminHealthUrl = renderApiEndpoints.adminHealth || "/api/admin/health";
+const renderAdminReportSaveUrl = renderApiEndpoints.adminReportSave || "/api/admin/reports/save";
+const renderAdminSecurityHealthUrl = renderApiEndpoints.adminSecurityHealth || "/api/admin/security-health";
+const renderOwnerActivityUrl = renderApiEndpoints.ownerActivity || "/api/owner/activity";
+const renderOwnerGlobalDiagnosticsUrl = renderApiEndpoints.ownerGlobalDiagnostics || "/api/owner/global-diagnostics";
+const renderVehicleLookupUrl = renderApiEndpoints.vehicleLookup || "/api/vehicle/lookup";
+const renderBackendPingUrl = renderApiEndpoints.backendPing || "/api/ping";
 const testLabReportCloudSaveTimeoutMs = 35000;
 const tripSaveActionTimeoutMs = 15000;
 const fuelSaveActionTimeoutMs = 15000;
@@ -100,8 +102,9 @@ function getConfiguredLedgerId() {
 }
 
 function normalizeWorkspaceUrlId(value) {
-  if (workspaceSession.normalizeWorkspaceUrlId) return workspaceSession.normalizeWorkspaceUrlId(value);
-  return String(value || "").trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
+  return workspaceSession.normalizeWorkspaceUrlId
+    ? workspaceSession.normalizeWorkspaceUrlId(value)
+    : String(value || "").trim().replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
 }
 
 function readActiveWorkspaceIdFromCurrentUrl() {
@@ -185,11 +188,12 @@ function isConfiguredAppOwnerEmail(email = getLoggedInEmail()) {
 }
 
 function getWorkspaceIdentityValues(ledger = {}) {
-  if (workspaceSession.getWorkspaceIdentityValues) return workspaceSession.getWorkspaceIdentityValues(ledger);
-  return [ledger.ledger_id, ledger.ledgerId, ledger.id, ledger.slug]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .filter((value, index, values) => values.indexOf(value) === index);
+  return workspaceSession.getWorkspaceIdentityValues
+    ? workspaceSession.getWorkspaceIdentityValues(ledger)
+    : [ledger.ledger_id, ledger.ledgerId, ledger.id, ledger.slug]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .filter((value, index, values) => values.indexOf(value) === index);
 }
 
 function getWorkspaceIdentityLookupKeys(value) {
@@ -217,14 +221,9 @@ function buildWorkspaceIdentityLookup(ledgers = []) {
 }
 
 function resolveWorkspaceIdentityToLedgerId(value, ledgers = getWorkspaceLedgerOptions()) {
-  if (workspaceSession.resolveWorkspaceIdentityToLedgerId) return workspaceSession.resolveWorkspaceIdentityToLedgerId(value, ledgers);
-  const normalized = normalizeWorkspaceUrlId(value || "");
-  if (!normalized) return "";
-  const lookup = buildWorkspaceIdentityLookup(ledgers);
-  const match = getWorkspaceIdentityLookupKeys(value || normalized)
-    .map((key) => lookup.get(key))
-    .find(Boolean);
-  return String(match?.ledger_id || match?.ledgerId || match?.id || normalized).trim();
+  return workspaceSession.resolveWorkspaceIdentityToLedgerId
+    ? workspaceSession.resolveWorkspaceIdentityToLedgerId(value, ledgers)
+    : String(value || "").trim();
 }
 
 function chooseWorkspaceFromMembership({ reason = "workspace-resolution", preferredLedgerId = "" } = {}) {
@@ -387,127 +386,67 @@ function getLoadedWorkspaceLabel() {
 }
 
 function getWorkspaceSessionSnapshot(meta = {}) {
-  const selectedWorkspaceId = String(meta.selectedWorkspaceId || getActiveLedgerId() || getConfiguredLedgerId()).trim();
-  const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getWorkspaceLabelByLedgerId(selectedWorkspaceId)).trim();
-  const loadedWorkspaceId = String(meta.loadedWorkspaceId || getLoadedWorkspaceId()).trim();
-  const loadedWorkspaceLabel = String(meta.loadedWorkspaceLabel || getLoadedWorkspaceLabel()).trim();
-  if (workspaceSession.createWorkspaceSessionSnapshot) {
-    return workspaceSession.createWorkspaceSessionSnapshot({
-      selectedWorkspaceId,
-      selectedWorkspaceLabel,
-      loadedWorkspaceId,
-      loadedWorkspaceLabel,
-      activeWorkspaceLoadInProgress,
-      activeWorkspaceLoadStartedAt,
-      activeWorkspaceLoadLedgerId
-    });
+  if (!workspaceSession.createWorkspaceSnapshot) {
+    const selectedWorkspaceId = String(meta.selectedWorkspaceId || getActiveLedgerId() || getConfiguredLedgerId()).trim();
+    const selectedWorkspaceLabel = String(meta.selectedWorkspaceLabel || getWorkspaceLabelByLedgerId(selectedWorkspaceId)).trim();
+    const loadedWorkspaceId = String(meta.loadedWorkspaceId || getLoadedWorkspaceId()).trim();
+    const loadedWorkspaceLabel = String(meta.loadedWorkspaceLabel || getLoadedWorkspaceLabel()).trim();
+    const workspaceMismatch = Boolean(selectedWorkspaceId && loadedWorkspaceId && selectedWorkspaceId !== loadedWorkspaceId);
+    const loadStatus = activeWorkspaceLoadInProgress ? "loading" : workspaceMismatch ? "not_loaded" : "loaded";
+    return { selectedWorkspaceId, selectedWorkspaceLabel, loadedWorkspaceId, loadedWorkspaceLabel, workspaceMismatch, loadStatus, loadStartedAt: activeWorkspaceLoadStartedAt || 0, loadingLedgerId: activeWorkspaceLoadLedgerId || "" };
   }
-  const workspaceMismatch = Boolean(selectedWorkspaceId && loadedWorkspaceId && selectedWorkspaceId !== loadedWorkspaceId);
-  const loadStatus = activeWorkspaceLoadInProgress
-    ? "loading"
-    : workspaceMismatch
-      ? "not_loaded"
-      : "loaded";
-  return {
-    selectedWorkspaceId,
-    selectedWorkspaceLabel,
-    loadedWorkspaceId,
-    loadedWorkspaceLabel,
-    workspaceMismatch,
-    loadStatus,
+  return workspaceSession.createWorkspaceSnapshot({
+    ...meta,
+    selectedWorkspaceId: meta.selectedWorkspaceId || getActiveLedgerId() || getConfiguredLedgerId(),
+    selectedWorkspaceLabel: meta.selectedWorkspaceLabel || getWorkspaceLabelByLedgerId(meta.selectedWorkspaceId || getActiveLedgerId() || getConfiguredLedgerId()),
+    loadedWorkspaceId: meta.loadedWorkspaceId || getLoadedWorkspaceId(),
+    loadedWorkspaceLabel: meta.loadedWorkspaceLabel || getLoadedWorkspaceLabel(),
+    activeWorkspaceLoadInProgress,
     loadStartedAt: activeWorkspaceLoadStartedAt || 0,
     loadingLedgerId: activeWorkspaceLoadLedgerId || ""
-  };
+  });
 }
 
 function normalizeWorkspaceRole(role) {
-  if (workspaceSession.normalizeWorkspaceRole) return workspaceSession.normalizeWorkspaceRole(role);
-  return String(role || "member").trim().toLowerCase() === "admin" ? "admin" : "member";
+  return workspaceSession.normalizeWorkspaceRole
+    ? workspaceSession.normalizeWorkspaceRole(role)
+    : String(role || "member").trim().toLowerCase() === "admin" ? "admin" : "member";
 }
 
 function workspaceRoleRank(role) {
-  if (workspaceSession.workspaceRoleRank) return workspaceSession.workspaceRoleRank(role);
-  return normalizeWorkspaceRole(role) === "admin" ? 2 : 1;
+  return workspaceSession.workspaceRoleRank
+    ? workspaceSession.workspaceRoleRank(role)
+    : normalizeWorkspaceRole(role) === "admin" ? 2 : 1;
 }
 
 function normalizeWorkspaceIdentifier(value) {
-  if (workspaceSession.normalizeWorkspaceIdentifier) return workspaceSession.normalizeWorkspaceIdentifier(value);
-  return String(value || "").trim().toLowerCase();
+  return workspaceSession.normalizeWorkspaceIdentifier
+    ? workspaceSession.normalizeWorkspaceIdentifier(value)
+    : String(value || "").trim().toLowerCase();
 }
 
 function getWorkspaceLedgerIdentityKey(ledger = {}) {
-  if (workspaceSession.getWorkspaceLedgerIdentityKey) return workspaceSession.getWorkspaceLedgerIdentityKey(ledger);
-  const directLedgerId = String(ledger.ledger_id || ledger.ledgerId || ledger.workspace_id || ledger.workspaceId || "").trim();
-  const slug = String(ledger.slug || ledger.ledger_slug || ledger.workspace_slug || "").trim();
-  const name = String(ledger.name || ledger.ledger_name || ledger.workspace_name || "").trim();
-  const fallbackId = String(ledger.id || "").trim();
-  if (directLedgerId) return directLedgerId;
-  if (slug) return slug;
-  if (fallbackId && (name || slug || ledger.role || ledger.member_id)) return fallbackId;
-  return "";
+  return workspaceSession.getWorkspaceLedgerIdentityKey
+    ? workspaceSession.getWorkspaceLedgerIdentityKey(ledger)
+    : String(ledger.ledger_id || ledger.ledgerId || ledger.workspace_id || ledger.workspaceId || ledger.slug || "").trim();
 }
 
 function normalizeWorkspaceLedgerRow(ledger = {}) {
-  if (workspaceSession.normalizeWorkspaceLedgerRow) return workspaceSession.normalizeWorkspaceLedgerRow(ledger);
-  const ledgerId = getWorkspaceLedgerIdentityKey(ledger);
-  if (!ledgerId) return null;
-  const slug = String(ledger.slug || ledger.ledger_slug || ledger.workspace_slug || ledgerId).trim();
-  const name = String(ledger.name || ledger.ledger_name || ledger.workspace_name || slug || ledgerId).trim();
-  const memberId = String(ledger.member_id || ledger.memberId || ledger.ledger_member_id || "").trim();
-  return {
-    ...ledger,
-    ledger_id: ledgerId,
-    slug,
-    name,
-    role: normalizeWorkspaceRole(ledger.role),
-    member_id: memberId
-  };
+  return workspaceSession.normalizeWorkspaceLedgerRow
+    ? workspaceSession.normalizeWorkspaceLedgerRow(ledger)
+    : null;
 }
 
 function mergeWorkspaceLedgerRows(existing, candidate) {
-  if (workspaceSession.mergeWorkspaceLedgerRows) return workspaceSession.mergeWorkspaceLedgerRows(existing, candidate);
-  if (!existing) return candidate;
-  const existingRank = workspaceRoleRank(existing.role);
-  const candidateRank = workspaceRoleRank(candidate.role);
-  const winner = candidateRank > existingRank ? candidate : existing;
-  const loser = winner === candidate ? existing : candidate;
-  return {
-    ...loser,
-    ...winner,
-    ledger_id: winner.ledger_id || loser.ledger_id,
-    slug: winner.slug || loser.slug,
-    name: winner.name || loser.name,
-    role: candidateRank > existingRank ? candidate.role : existing.role,
-    member_id: winner.member_id || loser.member_id || ""
-  };
+  return workspaceSession.mergeWorkspaceLedgerRows
+    ? workspaceSession.mergeWorkspaceLedgerRows(existing, candidate)
+    : candidate || existing;
 }
 
 function normalizeWorkspaceLedgerList(ledgers = []) {
-  if (workspaceSession.normalizeWorkspaceLedgerList) return workspaceSession.normalizeWorkspaceLedgerList(ledgers, { configuredLedgerId: getConfiguredLedgerId() });
-  const byKey = new Map();
-  (Array.isArray(ledgers) ? ledgers : []).forEach((rawLedger) => {
-    const ledger = normalizeWorkspaceLedgerRow(rawLedger);
-    if (!ledger) return;
-    const identityParts = [ledger.ledger_id, ledger.slug].map(normalizeWorkspaceIdentifier).filter(Boolean);
-    const key = identityParts.find((part) => byKey.has(part)) || normalizeWorkspaceIdentifier(ledger.ledger_id || ledger.slug);
-    if (!key) return;
-    const merged = mergeWorkspaceLedgerRows(byKey.get(key), ledger);
-    const mergedKeys = [merged.ledger_id, merged.slug].map(normalizeWorkspaceIdentifier).filter(Boolean);
-    mergedKeys.forEach((mergedKey) => byKey.set(mergedKey, merged));
-    byKey.set(key, merged);
-  });
-  const uniqueByLedgerId = new Map();
-  Array.from(byKey.values()).forEach((ledger) => {
-    const canonicalKey = normalizeWorkspaceIdentifier(ledger.ledger_id || ledger.slug);
-    if (!canonicalKey) return;
-    uniqueByLedgerId.set(canonicalKey, mergeWorkspaceLedgerRows(uniqueByLedgerId.get(canonicalKey), ledger));
-  });
-  return Array.from(uniqueByLedgerId.values()).sort((a, b) => {
-    const aPrimary = a.ledger_id === getConfiguredLedgerId() ? 0 : 1;
-    const bPrimary = b.ledger_id === getConfiguredLedgerId() ? 0 : 1;
-    if (aPrimary !== bPrimary) return aPrimary - bPrimary;
-    return String(a.name || a.slug || a.ledger_id).localeCompare(String(b.name || b.slug || b.ledger_id));
-  });
+  return workspaceSession.normalizeWorkspaceLedgerList
+    ? workspaceSession.normalizeWorkspaceLedgerList(ledgers, { configuredLedgerId: getConfiguredLedgerId() })
+    : [];
 }
 
 function getWorkspaceLedgerOptions() {
@@ -13473,6 +13412,135 @@ function paymentActionTimeoutError(label, timeoutMs) {
   return error;
 }
 
+async function requestRenderJson(endpoint, options = {}) {
+  if (renderApiClient && typeof renderApiClient.requestJson === "function") {
+    return renderApiClient.requestJson(endpoint, {
+      method: options.method || "POST",
+      headers: options.headers || {},
+      body: options.body,
+      timeoutMs: Number(options.timeoutMs || 0),
+      timeoutLabel: options.timeoutLabel || "Render API",
+      timeoutErrorFactory: paymentActionTimeoutError,
+      contentType: options.contentType === undefined ? "application/json" : options.contentType
+    });
+  }
+
+  if (typeof fetch !== "function") {
+    const error = new Error("Browser fetch is unavailable.");
+    error.code = "FETCH_UNAVAILABLE";
+    throw error;
+  }
+
+  let controller = null;
+  let timeoutId = 0;
+  try {
+    controller = new AbortController();
+    const fetchOptions = {
+      method: options.method || "POST",
+      signal: controller.signal,
+      headers: options.headers || {}
+    };
+    if (options.body !== undefined) fetchOptions.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
+
+    const timeoutMs = Number(options.timeoutMs || 0);
+    const fetchPromise = fetch(endpoint, fetchOptions);
+    const response = timeoutMs > 0
+      ? await Promise.race([fetchPromise, new Promise((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            if (controller) controller.abort();
+            reject(paymentActionTimeoutError(options.timeoutLabel || "Render API", timeoutMs));
+          }, timeoutMs);
+        })])
+      : await fetchPromise;
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      timeoutId = 0;
+    }
+    const text = await response.text();
+    let result = null;
+    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    return { response, text, result, status: response.status, ok: response.ok };
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+async function callRenderActionMutation({
+  endpoint,
+  payload,
+  timeoutMs,
+  timeoutLabel,
+  traceMeta,
+  authErrorMessage,
+  startResultCode = "RENDER_ACTION_STARTED",
+  successEvent = "render-action-save",
+  successEventDetail = "saved via Render backend API",
+  successResultCode = "RENDER_ACTION_SAVED",
+  errorResultCode = "RENDER_ACTION_ERROR",
+  timeoutResultCode = "RENDER_ACTION_TIMEOUT",
+  missingRouteFallback = true
+} = {}) {
+  if (!currentSession?.access_token) {
+    const error = new Error(authErrorMessage || "No active Supabase session for Render API.");
+    recordDataIoDiagnostic("error", { ...traceMeta, error });
+    return { ok: false, shouldFallback: true, backend: "render-api", error };
+  }
+
+  let finished = false;
+  const finishDiagnostic = (phase, meta = {}) => {
+    if (finished) return;
+    finished = true;
+    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
+  };
+
+  try {
+    const startMeta = { ...traceMeta, ok: true };
+    if (startResultCode) startMeta.resultCode = startResultCode;
+    recordDataIoDiagnostic("start", startMeta);
+    const { response, text, result } = await requestRenderJson(endpoint, {
+      method: "POST",
+      timeoutMs,
+      timeoutLabel,
+      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
+      body: payload
+    });
+
+    if (response.ok && result?.ok) {
+      recordSupabaseLoadEvent(successEvent, successEventDetail);
+      const successMeta = { ok: true, routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] };
+      if (successResultCode) successMeta.resultCode = successResultCode;
+      finishDiagnostic("success", successMeta);
+      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
+    }
+
+    const message = result?.message || result?.error || text || `Render API call failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    const errorMeta = { error, detail: `HTTP ${response.status}` };
+    if (errorResultCode) errorMeta.resultCode = errorResultCode;
+    finishDiagnostic("error", errorMeta);
+    return {
+      ok: false,
+      error,
+      shouldFallback: Boolean(missingRouteFallback && (response.status === 404 || response.status === 405 || response.status === 501)),
+      backend: "render-api"
+    };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || error?.name === "RenderApiTimeoutError";
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError(timeoutLabel || "Render API", timeoutMs || 0);
+    const finishMeta = { error };
+    const finishResultCode = timedOut ? timeoutResultCode : errorResultCode;
+    if (finishResultCode) finishMeta.resultCode = finishResultCode;
+    finishDiagnostic(timedOut ? "timeout" : "exception", finishMeta);
+    console.warn(`${timeoutLabel || "Render API"} failed`, error);
+    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
+  } finally {
+    if (!finished) {
+      finishDiagnostic("exception", { error: new Error(`${timeoutLabel || "Render API"} ended without a recorded finish diagnostic.`) });
+    }
+  }
+}
+
 function normalizedWriteContextUnavailableError(source = "normalized-write-context", reason = "unavailable") {
   const error = new Error("Could not prepare the backend write context. The backend may still be waking up or deploying; try the action again without refreshing.");
   error.name = "NormalizedWriteContextUnavailableError";
@@ -16230,15 +16298,13 @@ async function resolveActiveWorkspaceStateScope({ reason = "state-scope", operat
 }
 
 function isWorkspaceWriteScopeAllowed(scope = {}, reason = "save") {
-  const ledgerId = String(scope.ledgerId || "").trim();
-  const selectedWorkspaceId = String(getActiveLedgerId() || "").trim();
-  const loadedWorkspaceId = String(getLoadedWorkspaceId() || "").trim();
-  if (!ledgerId) return false;
-  if (selectedWorkspaceId && selectedWorkspaceId !== ledgerId) return false;
-  if (loadedWorkspaceId && loadedWorkspaceId !== ledgerId && !/member-bootstrap|json mirror backup|audit JSON mirror backup|safety backup|backup/i.test(String(reason || ""))) {
-    return false;
-  }
-  return true;
+  return workspaceSession.isWorkspaceWriteScopeAllowed
+    ? workspaceSession.isWorkspaceWriteScopeAllowed({
+      ...scope,
+      selectedWorkspaceId: getActiveLedgerId(),
+      loadedWorkspaceId: getLoadedWorkspaceId()
+    }, { reason })
+    : Boolean(scope.ledgerId);
 }
 
 async function requireActiveWorkspaceWriteScope({ reason = "save", forceHydrate = false } = {}) {
@@ -19163,35 +19229,18 @@ async function callRenderJson(endpoint, options = {}) {
   const timeoutMs = Number(options.timeoutMs || 12000);
   const timeoutLabel = options.timeoutLabel || `Render API ${endpoint}`;
   const allowResultOkFalse = options.allowResultOkFalse === true;
-  const setTimer = typeof window !== "undefined" && window.setTimeout ? window.setTimeout.bind(window) : setTimeout;
-  const clearTimer = typeof window !== "undefined" && window.clearTimeout ? window.clearTimeout.bind(window) : clearTimeout;
-  let controller = null;
-  let timeoutId = 0;
   try {
-    const requestAndReadPromise = (async () => {
-      const headers = await buildRenderRequestHeaders({
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      });
-      controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-      const response = await fetch(endpoint, {
-        method,
-        signal: controller ? controller.signal : undefined,
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body)
-      });
-      const text = await response.text();
-      return { response, text };
-    })();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimer(() => {
-        if (controller) controller.abort();
-        reject(createRenderApiTimeoutError(timeoutLabel, timeoutMs));
-      }, timeoutMs);
+    const headers = await buildRenderRequestHeaders({
+      "Content-Type": "application/json",
+      ...(options.headers || {})
     });
-    const { response, text } = await Promise.race([requestAndReadPromise, timeoutPromise]);
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+    const { response, text, result } = await requestRenderJson(endpoint, {
+      method,
+      timeoutMs,
+      timeoutLabel,
+      headers,
+      body: options.body
+    });
     if (!response.ok || (!allowResultOkFalse && !result?.ok)) {
       const message = result?.message || result?.error || text || `Render API call failed (${response.status})`;
       const error = new Error(message);
@@ -19203,10 +19252,8 @@ async function callRenderJson(endpoint, options = {}) {
     }
     return { response, text, result };
   } catch (error) {
-    if (error?.name === "AbortError") throw createRenderApiTimeoutError(timeoutLabel, timeoutMs);
+    if (error?.name === "AbortError" || error?.name === "RenderApiTimeoutError") throw createRenderApiTimeoutError(timeoutLabel, timeoutMs);
     throw error;
-  } finally {
-    if (timeoutId) clearTimer(timeoutId);
   }
 }
 
@@ -19454,8 +19501,6 @@ async function getRenderNormalizedStateRows(ledgerId) {
   const traceMeta = { source: "state-load", route: "render-api", endpoint: renderStateLoadUrl, operation: "load", operationId };
   if (!ledgerId || typeof fetch !== "function") return null;
 
-  let controller = null;
-  let timeoutId = 0;
   try {
     const accessToken = await getFreshRenderAccessToken();
     if (!accessToken) {
@@ -19469,27 +19514,15 @@ async function getRenderNormalizedStateRows(ledgerId) {
     }
 
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render state load API", 12000));
-      }, 12000);
-    });
-    const fetchPromise = fetch(renderStateLoadUrl, {
+    const { response, text, result } = await requestRenderJson(renderStateLoadUrl, {
       method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ ledgerId })
+      timeoutMs: 12000,
+      timeoutLabel: "Render state load API",
+      headers: renderApiClient?.makeHeaders
+        ? renderApiClient.makeHeaders({}, { accessToken })
+        : { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
+      body: { ledgerId }
     });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
 
     if (response.ok && result?.ok && result?.stateRows) {
       recordSupabaseLoadEvent("render-state-load", "normalized state via Render backend API");
@@ -19512,12 +19545,10 @@ async function getRenderNormalizedStateRows(ledgerId) {
     recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; Render-owned state load failed; browser table fallback is disabled for normal app UX.` });
     return null;
   } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || error?.name === "RenderApiTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render state load API", 12000);
     recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Render-owned state load failed; browser table fallback is disabled for normal app UX." });
     return null;
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
   }
 }
 
@@ -19525,31 +19556,19 @@ async function getRenderWriteContext({ ledgerId, source = "normalized-write-cont
   const traceMeta = { source, route: "render-api", endpoint: renderWriteContextUrl, operation: "prepare" };
   if (!currentSession?.access_token || !ledgerId) return null;
 
-  let controller = null;
-  let timeoutId = 0;
   try {
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render write context API", writeContextActionTimeoutMs));
-      }, writeContextActionTimeoutMs);
-    });
-    const fetchPromise = fetch(renderWriteContextUrl, {
+    const headers = await buildRenderRequestHeaders(
+      { "Content-Type": "application/json" },
+      { timeoutMs: writeContextSessionTimeoutMs, timeoutLabel: `${source} Render session`, source, preferCached: true }
+    );
+    const { response, text, result } = await requestRenderJson(renderWriteContextUrl, {
       method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }, { timeoutMs: writeContextSessionTimeoutMs, timeoutLabel: `${source} Render session`, source, preferCached: true }),
-      body: JSON.stringify({ ledgerId })
+      timeoutMs: writeContextActionTimeoutMs,
+      timeoutLabel: "Render write context API",
+      headers,
+      body: { ledgerId }
     });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
 
     if (response.ok && result?.ok && result?.context?.ledgerId && result?.context?.openPeriodId) {
       recordSupabaseLoadEvent("render-write-context", "write context via Render backend API");
@@ -19563,12 +19582,10 @@ async function getRenderWriteContext({ ledgerId, source = "normalized-write-cont
     recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}; Render write context was unavailable before the backend write started; browser direct Supabase setup is disabled for booking/trip/fuel actions.` });
     return null;
   } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || error?.name === "RenderApiTimeoutError";
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render write context API", writeContextActionTimeoutMs);
     recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error, detail: "Render write context was unavailable before the backend write started; browser direct Supabase setup is disabled for booking/trip/fuel actions." });
     return null;
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
   }
 }
 
@@ -19933,77 +19950,24 @@ async function saveTripWithParticipantsRpc(context, payload, participantMemberId
 async function saveTripWithParticipantsViaRender(context, payload, participantMemberIds) {
   const operationId = createDataIoOperationId("trip-save");
   const traceMeta = { source: "trip-save", route: "render-api", endpoint: renderTripUpsertUrl, operation: "upsert", operationId };
-  if (!currentSession?.access_token) {
-    const error = new Error("No active Supabase session for Render trip save API.");
-    recordDataIoDiagnostic("error", { ...traceMeta, error });
-    return { ok: false, shouldFallback: true, backend: "render-api", error };
-  }
-
-  let controller = null;
-  let timeoutId = 0;
-  let finished = false;
-  const finishTripRenderDiagnostic = (phase, meta = {}) => {
-    if (finished) return;
-    finished = true;
-    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
-  };
-
-  try {
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "TRIP_SAVE_STARTED" });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs));
-      }, tripSaveActionTimeoutMs);
-    });
-    const fetchPromise = fetch(renderTripUpsertUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
-        trip: payload,
-        participantMemberIds
-      })
-    });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-
-    if (response.ok && result?.ok) {
-      recordSupabaseLoadEvent("render-trip-save", "upsert via Render backend API");
-      finishTripRenderDiagnostic("success", { ok: true, resultCode: "TRIP_SAVED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
-      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
-    }
-
-    const message = result?.message || result?.error || text || `Render trip save failed (${response.status})`;
-    const error = new Error(message);
-    error.status = response.status;
-    finishTripRenderDiagnostic("error", { error, detail: `HTTP ${response.status}`, resultCode: "TRIP_SAVE_ERROR" });
-    return {
-      ok: false,
-      error,
-      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
-      backend: "render-api"
-    };
-  } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
-    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render trip save API", tripSaveActionTimeoutMs);
-    finishTripRenderDiagnostic(timedOut ? "timeout" : "exception", { error, resultCode: timedOut ? "TRIP_SAVE_TIMEOUT" : "TRIP_SAVE_ERROR" });
-    console.warn("Render trip save API failed", error);
-    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
-    if (!finished) {
-      finishTripRenderDiagnostic("exception", { error: new Error("Render trip save ended without a recorded finish diagnostic.") });
-    }
-  }
+  return callRenderActionMutation({
+    endpoint: renderTripUpsertUrl,
+    payload: {
+      context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
+      trip: payload,
+      participantMemberIds
+    },
+    timeoutMs: tripSaveActionTimeoutMs,
+    timeoutLabel: "Render trip save API",
+    traceMeta,
+    authErrorMessage: "No active Supabase session for Render trip save API.",
+    startResultCode: "TRIP_SAVE_STARTED",
+    successEvent: "render-trip-save",
+    successEventDetail: "upsert via Render backend API",
+    successResultCode: "TRIP_SAVED",
+    errorResultCode: "TRIP_SAVE_ERROR",
+    timeoutResultCode: "TRIP_SAVE_TIMEOUT"
+  });
 }
 
 function isMissingTripTransactionRpcError(error) {
@@ -20051,76 +20015,23 @@ async function saveFuelPaymentRpc(context, payload) {
 async function saveFuelPaymentViaRender(context, payload) {
   const operationId = createDataIoOperationId("fuel-save");
   const traceMeta = { source: "fuel-save", route: "render-api", endpoint: renderFuelUpsertUrl, operation: "upsert", operationId };
-  if (!currentSession?.access_token) {
-    const error = new Error("No active Supabase session for Render fuel save API.");
-    recordDataIoDiagnostic("error", { ...traceMeta, error });
-    return { ok: false, shouldFallback: true, backend: "render-api", error };
-  }
-
-  let controller = null;
-  let timeoutId = 0;
-  let finished = false;
-  const finishFuelRenderDiagnostic = (phase, meta = {}) => {
-    if (finished) return;
-    finished = true;
-    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
-  };
-
-  try {
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "FUEL_SAVE_STARTED" });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render fuel save API", fuelSaveActionTimeoutMs));
-      }, fuelSaveActionTimeoutMs);
-    });
-    const fetchPromise = fetch(renderFuelUpsertUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
-        fuel: payload
-      })
-    });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-
-    if (response.ok && result?.ok) {
-      recordSupabaseLoadEvent("render-fuel-save", "upsert via Render backend API");
-      finishFuelRenderDiagnostic("success", { ok: true, resultCode: "FUEL_SAVED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
-      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
-    }
-
-    const message = result?.message || result?.error || text || `Render fuel save failed (${response.status})`;
-    const error = new Error(message);
-    error.status = response.status;
-    finishFuelRenderDiagnostic("error", { error, detail: `HTTP ${response.status}`, resultCode: "FUEL_SAVE_ERROR" });
-    return {
-      ok: false,
-      error,
-      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
-      backend: "render-api"
-    };
-  } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
-    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render fuel save API", fuelSaveActionTimeoutMs);
-    finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception", { error, resultCode: timedOut ? "FUEL_SAVE_TIMEOUT" : "FUEL_SAVE_ERROR" });
-    console.warn("Render fuel save API failed", error);
-    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
-    if (!finished) {
-      finishFuelRenderDiagnostic("exception", { error: new Error("Render fuel save ended without a recorded finish diagnostic.") });
-    }
-  }
+  return callRenderActionMutation({
+    endpoint: renderFuelUpsertUrl,
+    payload: {
+      context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
+      fuel: payload
+    },
+    timeoutMs: fuelSaveActionTimeoutMs,
+    timeoutLabel: "Render fuel save API",
+    traceMeta,
+    authErrorMessage: "No active Supabase session for Render fuel save API.",
+    startResultCode: "FUEL_SAVE_STARTED",
+    successEvent: "render-fuel-save",
+    successEventDetail: "upsert via Render backend API",
+    successResultCode: "FUEL_SAVED",
+    errorResultCode: "FUEL_SAVE_ERROR",
+    timeoutResultCode: "FUEL_SAVE_TIMEOUT"
+  });
 }
 
 function isMissingFuelPaymentRpcError(error) {
@@ -20223,76 +20134,23 @@ async function saveBookingRpc(context, payload) {
 async function saveBookingViaRender(context, payload) {
   const operationId = createDataIoOperationId("booking-save");
   const traceMeta = { source: "booking-save", route: "render-api", endpoint: renderBookingUpsertUrl, operation: "upsert", operationId };
-  if (!currentSession?.access_token) {
-    const error = new Error("No active Supabase session for Render booking save API.");
-    recordDataIoDiagnostic("error", { ...traceMeta, error });
-    return { ok: false, shouldFallback: true, backend: "render-api", error };
-  }
-
-  let controller = null;
-  let timeoutId = 0;
-  let finished = false;
-  const finishBookingRenderDiagnostic = (phase, meta = {}) => {
-    if (finished) return;
-    finished = true;
-    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
-  };
-
-  try {
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render booking save API", bookingSaveActionTimeoutMs));
-      }, bookingSaveActionTimeoutMs);
-    });
-    const fetchPromise = fetch(renderBookingUpsertUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        context: { ledgerId: context.ledgerId },
-        booking: payload
-      })
-    });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-
-    if (response.ok && result?.ok) {
-      recordSupabaseLoadEvent("render-booking-save", "upsert via Render backend API");
-      finishBookingRenderDiagnostic("success", { ok: true, resultCode: "BOOKING_SAVED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
-      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
-    }
-
-    const message = result?.message || result?.error || text || `Render booking save failed (${response.status})`;
-    const error = new Error(message);
-    error.status = response.status;
-    finishBookingRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
-    return {
-      ok: false,
-      error,
-      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
-      backend: "render-api"
-    };
-  } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
-    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render booking save API", bookingSaveActionTimeoutMs);
-    finishBookingRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
-    console.warn("Render booking save API failed", error);
-    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
-    if (!finished) {
-      finishBookingRenderDiagnostic("exception", { error: new Error("Render booking save ended without a recorded finish diagnostic.") });
-    }
-  }
+  return callRenderActionMutation({
+    endpoint: renderBookingUpsertUrl,
+    payload: {
+      context: { ledgerId: context.ledgerId },
+      booking: payload
+    },
+    timeoutMs: bookingSaveActionTimeoutMs,
+    timeoutLabel: "Render booking save API",
+    traceMeta,
+    authErrorMessage: "No active Supabase session for Render booking save API.",
+    startResultCode: "",
+    successEvent: "render-booking-save",
+    successEventDetail: "upsert via Render backend API",
+    successResultCode: "BOOKING_SAVED",
+    errorResultCode: "",
+    timeoutResultCode: ""
+  });
 }
 
 function isMissingBookingTransactionRpcError(error) {
@@ -20323,76 +20181,23 @@ async function softDeleteBookingRpc(context, legacyBookingId) {
 async function softDeleteBookingViaRender(context, legacyBookingId) {
   const operationId = createDataIoOperationId("booking-delete");
   const traceMeta = { source: "booking-delete", route: "render-api", endpoint: renderBookingDeleteUrl, operation: "delete", operationId };
-  if (!currentSession?.access_token) {
-    const error = new Error("No active Supabase session for Render booking delete API.");
-    recordDataIoDiagnostic("error", { ...traceMeta, error });
-    return { ok: false, shouldFallback: true, backend: "render-api", error };
-  }
-
-  let controller = null;
-  let timeoutId = 0;
-  let finished = false;
-  const finishBookingDeleteRenderDiagnostic = (phase, meta = {}) => {
-    if (finished) return;
-    finished = true;
-    recordDataIoDiagnostic(phase, { ...traceMeta, ...meta });
-  };
-
-  try {
-    recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render booking delete API", bookingSaveActionTimeoutMs));
-      }, bookingSaveActionTimeoutMs);
-    });
-    const fetchPromise = fetch(renderBookingDeleteUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        context: { ledgerId: context.ledgerId },
-        legacyBookingId
-      })
-    });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-
-    if (response.ok && result?.ok) {
-      recordSupabaseLoadEvent("render-booking-delete", "soft delete via Render backend API");
-      finishBookingDeleteRenderDiagnostic("success", { ok: true, resultCode: "BOOKING_DELETED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
-      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
-    }
-
-    const message = result?.message || result?.error || text || `Render booking delete failed (${response.status})`;
-    const error = new Error(message);
-    error.status = response.status;
-    finishBookingDeleteRenderDiagnostic("error", { error, detail: `HTTP ${response.status}` });
-    return {
-      ok: false,
-      error,
-      shouldFallback: response.status === 404 || response.status === 405 || response.status === 501,
-      backend: "render-api"
-    };
-  } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
-    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render booking delete API", bookingSaveActionTimeoutMs);
-    finishBookingDeleteRenderDiagnostic(timedOut ? "timeout" : "exception", { error });
-    console.warn("Render booking delete API failed", error);
-    return { ok: false, error, shouldFallback: !timedOut, backend: "render-api" };
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
-    if (!finished) {
-      finishBookingDeleteRenderDiagnostic("exception", { error: new Error("Render booking delete ended without a recorded finish diagnostic.") });
-    }
-  }
+  return callRenderActionMutation({
+    endpoint: renderBookingDeleteUrl,
+    payload: {
+      context: { ledgerId: context.ledgerId },
+      legacyBookingId
+    },
+    timeoutMs: bookingSaveActionTimeoutMs,
+    timeoutLabel: "Render booking delete API",
+    traceMeta,
+    authErrorMessage: "No active Supabase session for Render booking delete API.",
+    startResultCode: "",
+    successEvent: "render-booking-delete",
+    successEventDetail: "soft delete via Render backend API",
+    successResultCode: "BOOKING_DELETED",
+    errorResultCode: "",
+    timeoutResultCode: ""
+  });
 }
 
 async function saveBookingToNormalizedTablesFirst(booking) {

@@ -1,5 +1,6 @@
+- 2026-06-22T14:18:00.000Z — `2026.06.18.275` / `render-api-client-extraction-lane` / `fuel-ledger-v416`: Render API calls now have their first dedicated runtime client: backend endpoint names, JSON parsing, auth-header merging, and timeout/abort behavior live in render-api-client.js while app.js delegates the state-load, write-context, booking, trip, and fuel paths through one request helper.
 ## Recent runtime patch notes
-- 2026-06-22T13:36:00.000Z — `2026.06.18.274` / `update-prompt-bridge-workspace-retention-lane` / `fuel-ledger-v415`: Workspace session refactor pass 1 extracts the pure workspace identity, alias lookup, member-list normalization, and selected-vs-loaded snapshot helpers into workspace-session.js so app.js can delegate the riskiest workspace authority logic to a focused runtime module.
+- 2026-06-22T13:47:00.000Z — `2026.06.18.274` / `update-prompt-bridge-workspace-retention-lane` / `fuel-ledger-v415`: Workspace session authority now has its first dedicated runtime module: identity alias lookup, workspace row normalization, selected-vs-loaded snapshots, and write-scope checks live in workspace-session.js while app.js keeps thin compatibility wrappers.
 - 2026-06-22T13:24:00.000Z — `2026.06.18.273` / `update-prompt-bridge-workspace-retention-lane` / `fuel-ledger-v414`: Service-worker startup registration no longer references the manual force option before it exists, so v413 pages avoid the console ReferenceError while still checking for updates without auto-refreshing.
 - 2026-06-22T12:55:21.000Z — `2026.06.18.272` / `update-prompt-bridge-workspace-retention-lane` / `fuel-ledger-v413`: Update handoff fallback makes the About/Admin version card notify the app update controller when a newer deployed cache is detected, adds a manual Update now fallback button, and keeps activation user-triggered instead of auto-refreshing.
 - 2026-06-22T12:40:48.000Z — `2026.06.18.270` / `update-prompt-workspace-visibility-lane` / `fuel-ledger-v411`: Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.
@@ -43,10 +44,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.274`
-- Service-worker cache: `fuel-ledger-v415`
-- Updated at: `2026-06-22T13:36:00.000Z`
-- Top release note: Workspace session refactor pass 1 extracts the pure workspace identity, alias lookup, member-list normalization, and selected-vs-loaded snapshot helpers into workspace-session.js so app.js can delegate the riskiest workspace authority logic to a focused runtime module.
+- Version: `2026.06.18.275`
+- Service-worker cache: `fuel-ledger-v416`
+- Updated at: `2026-06-22T14:18:00.000Z`
+- Top release note: Render API calls now have their first dedicated runtime client: backend endpoint names, JSON parsing, auth-header merging, and timeout/abort behavior live in render-api-client.js while app.js delegates the state-load, write-context, booking, trip, and fuel paths through one request helper.
 
 ## Invite beta readiness: member action Data I/O
 

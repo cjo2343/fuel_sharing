@@ -18,6 +18,7 @@ const runtimeFiles = new Set([
   "admin-tools.js",
   "permission-helpers.js",
   "workspace-session.js",
+  "render-api-client.js",
   "booking-calendar.js",
   "app.js",
   "server.py",

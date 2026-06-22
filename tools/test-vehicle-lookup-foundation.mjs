@@ -6,7 +6,7 @@ const server = fs.readFileSync('server.py', 'utf8');
 const index = fs.readFileSync('index.html', 'utf8');
 const env = fs.readFileSync('.env.example', 'utf8');
 
-assert.match(app, /const renderVehicleLookupUrl = "\/api\/vehicle\/lookup";/, 'app must call the Render vehicle lookup route');
+assert.match(app, /const\s+renderVehicleLookupUrl\s*=\s*renderApiEndpoints\.vehicleLookup\s*\|\|\s*"\/api\/vehicle\/lookup"/, 'app must call the Render vehicle lookup route');
 assert.match(app, /source: "vehicle-lookup"/, 'vehicle lookup must be recorded in Data I/O');
 assert.match(app, /VEHICLE_LOOKUP_STARTED/, 'vehicle lookup start code must be present');
 assert.match(app, /VEHICLE_LOOKUP_OK/, 'vehicle lookup success code must be present');

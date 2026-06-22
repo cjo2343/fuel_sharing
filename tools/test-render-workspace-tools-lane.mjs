@@ -4,7 +4,7 @@ import fs from 'node:fs';
 const app = fs.readFileSync('app.js', 'utf8');
 const server = fs.readFileSync('server.py', 'utf8');
 
-assert.match(app, /const renderWorkspaceToolsUrl = "\/api\/workspace\/tools"/, 'frontend should define a Render workspace tools route');
+assert.match(app, /const\s+renderWorkspaceToolsUrl\s*=\s*renderApiEndpoints\.workspaceTools\s*\|\|\s*"\/api\/workspace\/tools"/, 'frontend should define a Render workspace tools route');
 assert.match(app, /async function refreshWorkspaceToolsViaRender/, 'workspace tools refresh should use a Render helper');
 assert.match(app, /callRenderJson\(renderWorkspaceToolsUrl/, 'workspace tools refresh should call Render, not Supabase directly');
 assert.match(app, /workspaceInviteStatus\.rawLedgers = ledgers/, 'workspace panel should store the backend linked-workspaces rows before normalization');

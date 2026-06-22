@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const app = fs.readFileSync('app.js', 'utf8');
+const workspaceSession = fs.readFileSync('workspace-session.js', 'utf8');
+const appAndWorkspaceSession = `${app}\n${workspaceSession}`;
 const migration = fs.readFileSync('supabase/migrations/039_list_my_ledgers_dedup.sql', 'utf8');
 
 function mustInclude(source, text, label = text) {
@@ -11,8 +13,8 @@ function mustInclude(source, text, label = text) {
 mustInclude(app, 'function normalizeWorkspaceLedgerList', 'workspace ledger list normalizer');
 mustInclude(app, 'function mergeWorkspaceLedgerRows', 'duplicate workspace rows are merged through strongest-role helper');
 
-mustInclude(app, 'const identityParts = [ledger.ledger_id, ledger.slug]', 'workspace ledger dedup must use ledger id/slug, not the display name');
-assert.ok(!app.includes('[ledger.ledger_id, ledger.slug, ledger.name].map(normalizeWorkspaceIdentifier)'), 'workspaces with the same display name must not be merged together');
+mustInclude(appAndWorkspaceSession, 'const identityParts = [ledger.ledger_id, ledger.slug]', 'workspace ledger dedup must use ledger id/slug, not the display name');
+assert.ok(!appAndWorkspaceSession.includes('[ledger.ledger_id, ledger.slug, ledger.name].map(normalizeWorkspaceIdentifier)'), 'workspaces with the same display name must not be merged together');
 mustInclude(app, 'getWorkspaceOptionLabel(ledger)', 'workspace overview should show slug/id-disambiguated labels');
 mustInclude(app, 'return normalized === getConfiguredLedgerId();', 'default ledger is only implicitly linked outside signed-in workspace mode');
 mustInclude(app, 'if (workspaceListStillLoading && !targetLinkedFromCachedList)', 'workspace switch waits only when the target is not in the cached authoritative workspace list');

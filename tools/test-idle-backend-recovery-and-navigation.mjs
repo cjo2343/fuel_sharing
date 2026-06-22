@@ -5,7 +5,7 @@ const app = fs.readFileSync('app.js', 'utf8');
 const sw = fs.readFileSync('service-worker.js', 'utf8');
 const server = fs.readFileSync('server.py', 'utf8');
 
-assert(app.includes('const renderBackendPingUrl = "/api/ping"'), 'app should define a lightweight Render backend ping route');
+assert.match(app, /const\s+renderBackendPingUrl\s*=\s*renderApiEndpoints\.backendPing\s*\|\|\s*"\/api\/ping"/, 'app should define a lightweight Render backend ping route');
 assert(app.includes('ensureRenderBackendReadyForUserAction'), 'app should have a backend readiness helper for idle recovery');
 assert(app.includes('pingRenderBackend'), 'app should ping Render before sensitive actions after idle');
 assert(app.includes('Checking backend connection before vehicle lookup'), 'vehicle lookup should visibly wait for backend recovery before the provider call');

@@ -17,13 +17,13 @@ assert.match(server, /def owner_activity_backend\(self\):/, "server should expos
 assert.match(server, /if self\.path == "\/api\/owner\/activity":\n\s+self\.owner_activity_backend\(\)/, "server should mount /api/owner/activity");
 assert.match(server, /is_configured_app_owner\(user\)/, "owner activity endpoint should be app-owner only");
 assert.match(server, /record_owner_activity_as_service\(ledger\.get\("id"\), user, action="settings-save"/, "settings save should record server-owned activity");
-assert.match(server, /record_owner_activity_as_service\(rpc_payload\.get\("target_ledger_id"\), user, action="trip-upsert"/, "trip saves should record server-owned activity");
-assert.match(server, /record_owner_activity_as_service\(rpc_payload\.get\("target_ledger_id"\), user, action="fuel-upsert"/, "fuel saves should record server-owned activity");
+assert.match(server, /(?:record_owner_activity_as_service|best_effort_owner_activity_as_service)\(rpc_payload\.get\("target_ledger_id"\), user, action="trip-upsert"/, "trip saves should record server-owned activity");
+assert.match(server, /(?:record_owner_activity_as_service|best_effort_owner_activity_as_service)\(rpc_payload\.get\("target_ledger_id"\), user, action="fuel-upsert"/, "fuel saves should record server-owned activity");
 assert.match(server, /def record_lookup_activity\(/, "vehicle lookups should use the guaranteed owner-activity recorder");
 assert.match(server, /record_owner_activity_as_service\(\s*ledger_id,\s*user,[\s\S]*action="vehicle-lookup"/, "vehicle lookups should record server-owned activity");
 assert.match(server, /safe_owner_activity_metadata/, "owner activity should use redacted metadata");
 
-assert.match(app, /const renderOwnerActivityUrl = "\/api\/owner\/activity"/, "frontend should know the owner activity endpoint");
+assert.match(app, /const\s+renderOwnerActivityUrl\s*=\s*renderApiEndpoints\.ownerActivity\s*\|\|\s*"\/api\/owner\/activity"/, "frontend should know the owner activity endpoint");
 assert.match(app, /async function refreshOwnerActivity/, "frontend should load owner activity");
 assert.match(app, /function renderOwnerActivityCard/, "frontend should render owner activity in Admin diagnostics");
 assert.match(app, /Owner activity · global audit/, "owner activity should be labeled as a global audit view");

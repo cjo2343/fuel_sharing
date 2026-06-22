@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const app = readFileSync("app.js", "utf8");
 const server = readFileSync("server.py", "utf8");
 
-assert.ok(app.includes('const renderWriteContextUrl = "/api/context/write";'), "app must declare the Render write-context route");
+assert.match(app, /const\s+renderWriteContextUrl\s*=\s*renderApiEndpoints\.writeContext\s*\|\|\s*"\/api\/context\/write"/, "app must declare the Render write-context route");
 assert.ok(app.includes("const writeContextActionTimeoutMs = 4500;"), "Render write context must time out before the outer normalized context guard");
 assert.ok(app.includes("async function getRenderWriteContext"), "app must prefer a Render write-context helper");
 assert.ok(app.includes('recordSupabaseLoadEvent("render-write-context"'), "Render write context success must be visible in load diagnostics");

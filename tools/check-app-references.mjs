@@ -20,7 +20,6 @@ const extraSourcePaths = [
   'notifications.js',
   'admin-tools.js',
   'permission-helpers.js',
-  'workspace-session.js',
   'build-info.js'
 ]
   .map((name) => path.join(process.cwd(), name))
@@ -44,7 +43,6 @@ const requiredRuntimeFiles = [
   'notifications.js',
   'admin-tools.js',
   'permission-helpers.js',
-  'workspace-session.js',
   'build-info.js',
   'booking-calendar.js',
   'app.js'
@@ -238,11 +236,15 @@ if (tripRenderCallIndex < 0 || tripFallbackBlockIndex < 0 || tripDirectRpcIndex 
 }
 
 const tripRenderBody = extractFunctionBody(source, 'saveTripWithParticipantsViaRender') || '';
-if (!tripRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])')) {
-  console.error('Regression guard failed: trip Render saves must use Promise.race so the frontend cannot hang forever waiting for fetch/abort cleanup.');
+const renderActionMutationBody = extractFunctionBody(source, 'callRenderActionMutation') || '';
+const renderRequestBody = extractFunctionBody(source, 'requestRenderJson') || '';
+const sharedRenderActionIsBounded = renderActionMutationBody.includes('requestRenderJson(') && /Promise\.race\(\[fetchPromise[\s\S]*paymentActionTimeoutError/.test(renderRequestBody);
+const sharedRenderActionFinishes = renderActionMutationBody.includes('finishDiagnostic("success"') && renderActionMutationBody.includes('finishDiagnostic(timedOut ? "timeout" : "exception"');
+if (!tripRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])') && !(tripRenderBody.includes('callRenderActionMutation({') && sharedRenderActionIsBounded)) {
+  console.error('Regression guard failed: trip Render saves must use bounded Render API request handling so the frontend cannot hang forever waiting for fetch/abort cleanup.');
   process.exit(1);
 }
-if (!tripRenderBody.includes('finishTripRenderDiagnostic("success"') || !tripRenderBody.includes('finishTripRenderDiagnostic(timedOut ? "timeout" : "exception"')) {
+if ((!tripRenderBody.includes('finishTripRenderDiagnostic("success"') || !tripRenderBody.includes('finishTripRenderDiagnostic(timedOut ? "timeout" : "exception"')) && !(tripRenderBody.includes('callRenderActionMutation({') && sharedRenderActionFinishes && tripRenderBody.includes('successResultCode: "TRIP_SAVED"'))) {
   console.error('Regression guard failed: trip Render saves must always record a matched finish diagnostic for success, timeout, and exception paths.');
   process.exit(1);
 }
@@ -276,11 +278,11 @@ if (fuelRenderCallIndex < 0 || fuelFallbackBlockIndex < 0 || fuelDirectRpcIndex 
 }
 
 const fuelRenderBody = extractFunctionBody(source, 'saveFuelPaymentViaRender') || '';
-if (!fuelRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])')) {
-  console.error('Regression guard failed: fuel Render saves must use Promise.race so the frontend cannot hang forever waiting for fetch/abort cleanup.');
+if (!fuelRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])') && !(fuelRenderBody.includes('callRenderActionMutation({') && sharedRenderActionIsBounded)) {
+  console.error('Regression guard failed: fuel Render saves must use bounded Render API request handling so the frontend cannot hang forever waiting for fetch/abort cleanup.');
   process.exit(1);
 }
-if (!fuelRenderBody.includes('finishFuelRenderDiagnostic("success"') || !fuelRenderBody.includes('finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception"')) {
+if ((!fuelRenderBody.includes('finishFuelRenderDiagnostic("success"') || !fuelRenderBody.includes('finishFuelRenderDiagnostic(timedOut ? "timeout" : "exception"')) && !(fuelRenderBody.includes('callRenderActionMutation({') && sharedRenderActionFinishes && fuelRenderBody.includes('successResultCode: "FUEL_SAVED"'))) {
   console.error('Regression guard failed: fuel Render saves must always record a matched finish diagnostic for success, timeout, and exception paths.');
   process.exit(1);
 }

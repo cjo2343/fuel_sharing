@@ -62,6 +62,7 @@ for (const helper of [
   "admin-tools.js",
   "permission-helpers.js",
   "workspace-session.js",
+  "render-api-client.js",
   "build-info.js",
   "booking-calendar.js",
   "trip-actions.js",

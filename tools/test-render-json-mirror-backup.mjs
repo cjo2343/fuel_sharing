@@ -11,7 +11,7 @@ function assert(condition, message) {
   }
 }
 
-assert(app.includes('const renderJsonMirrorBackupUrl = "/api/backups/json-mirror";'), 'app should define Render JSON mirror backup URL');
+assert(/const\s+renderJsonMirrorBackupUrl\s*=\s*renderApiEndpoints\.jsonMirrorBackup\s*\|\|\s*"\/api\/backups\/json-mirror"/.test(app), 'app should define Render JSON mirror backup URL');
 assert(app.includes('async function saveJsonMirrorBackupViaRender'), 'app should include Render JSON mirror helper');
 assert(app.includes('source: "json-mirror-backup", route: "render-api", endpoint: renderJsonMirrorBackupUrl'), 'helper should record Render Data I/O diagnostics');
 assert(app.includes('recordSupabaseLoadEvent("render-json-mirror-backup"'), 'Render JSON mirror success should be visible in load monitor');

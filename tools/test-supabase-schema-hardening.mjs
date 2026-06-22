@@ -51,7 +51,7 @@ function testSettlementRequestTransactionRpcExists() {
   assert.match(app, /saveSettlementRequestStatusRpc/);
   assert.match(app, /isMissingSettlementRequestStatusRpcError/);
   assert.match(app, /currentSettlementPairKeys/);
-  assert.match(app, /renderPaymentStatusActionUrl = "\/api\/payments\/status-action"/);
+  assert.match(app, /renderPaymentStatusActionUrl\s*=\s*renderApiEndpoints\.paymentStatusAction\s*\|\|\s*"\/api\/payments\/status-action"/);
   assert.match(app, /async function applyPaymentStatusActionViaRender/);
   assert.match(app, /buildRenderRequestHeaders\(/);
   assert.doesNotMatch(app, /Authorization": `Bearer \${currentSession\.access_token}`/);
@@ -584,7 +584,7 @@ function testInviteOnboardingFoundationExists() {
   assert.match(app, /supabaseClient\.rpc\("redeem_ledger_invite"/);
   assert.match(app, /describeInviteRedeemError/);
   assert.match(app, /switchActiveWorkspace\(targetLedger, "invite-redemption"\)/);
-  assert.match(app, /renderWorkspaceToolsUrl = "\/api\/workspace\/tools"/);
+  assert.match(app, /renderWorkspaceToolsUrl\s*=\s*renderApiEndpoints\.workspaceTools\s*\|\|\s*"\/api\/workspace\/tools"/);
   assert.match(index, /Codes are shown once, stored hashed in Supabase, and are not emailed automatically/);
   console.log("ok - testInviteOnboardingFoundationExists");
 }

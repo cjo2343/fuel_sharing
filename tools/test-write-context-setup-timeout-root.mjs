@@ -47,7 +47,7 @@ assertMatches(getContext, /hasFreshSupabaseSession\(\{ timeoutMs: mustUseBackend
 assertMatches(getContext, /normalizedWriteContextUnavailableError\(source, "session-not-fresh"\)/, 'missing or stale session must fail closed before local JSON/state changes.');
 
 const renderContext = findFunctionBody(app, 'getRenderWriteContext');
-assertMatches(renderContext, /buildRenderRequestHeaders\(\{ "Content-Type": "application\/json" \}, \{ timeoutMs: writeContextSessionTimeoutMs,[\s\S]*timeoutLabel: `\$\{source\} Render session`[\s\S]*source,[\s\S]*preferCached: true \}\)/, 'Render write-context headers must use bounded cached-session-aware lookup, not an unbounded auth promise.');
+assertMatches(renderContext, /buildRenderRequestHeaders\(\s*\{ "Content-Type": "application\/json" \},\s*\{\s*timeoutMs: writeContextSessionTimeoutMs,[\s\S]*timeoutLabel: `\$\{source\} Render session`[\s\S]*source,[\s\S]*preferCached: true\s*\}\s*\)/, 'Render write-context headers must use bounded cached-session-aware lookup, not an unbounded auth promise.');
 assertMatches(renderContext, /paymentActionTimeoutError\("Render write context API", writeContextActionTimeoutMs\)/, 'Render write context fetch itself must stay bounded.');
 
 const booking = findFunctionBody(app, 'saveBookingToNormalizedTablesFirst');

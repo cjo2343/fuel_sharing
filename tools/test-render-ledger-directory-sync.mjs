@@ -11,7 +11,7 @@ function assert(condition, message) {
   }
 }
 
-assert(app.includes('const renderLedgerDirectorySyncUrl = "/api/ledgers/sync";'), 'app should define Render ledger-directory sync URL');
+assert(/const\s+renderLedgerDirectorySyncUrl\s*=\s*renderApiEndpoints\.ledgerDirectorySync\s*\|\|\s*"\/api\/ledgers\/sync"/.test(app), 'app should define Render ledger-directory sync URL');
 assert(app.includes('async function syncLedgerDirectoryViaRender'), 'app should include Render ledger-directory helper');
 assert(app.includes('source, route: "render-api", endpoint: renderLedgerDirectorySyncUrl'), 'helper should record Render Data I/O diagnostics');
 assert(app.includes('recordSupabaseLoadEvent("render-ledger-directory-sync"'), 'Render ledger-directory success should be visible in load monitor');

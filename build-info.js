@@ -1,12 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.274",
-    buildLabel: "update-prompt-bridge-workspace-retention-lane",
-    updatedAt: "2026-06-22T13:36:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v415",
+    version: "2026.06.18.275",
+    buildLabel: "render-api-client-extraction-lane",
+    updatedAt: "2026-06-22T14:18:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v416",
     releaseNotes: Object.freeze([
-      "Workspace session refactor pass 1 extracts the pure workspace identity, alias lookup, member-list normalization, and selected-vs-loaded snapshot helpers into workspace-session.js so app.js can delegate the riskiest workspace authority logic to a focused runtime module.",
+      "Render API calls now have their first dedicated runtime client: backend endpoint names, JSON parsing, auth-header merging, and timeout/abort behavior live in render-api-client.js while app.js delegates the state-load, write-context, booking, trip, and fuel paths through one request helper.",
+      "Workspace session authority now has its first dedicated runtime module: identity alias lookup, workspace row normalization, selected-vs-loaded snapshots, and write-scope checks live in workspace-session.js while app.js keeps thin compatibility wrappers.",
       "Service-worker startup registration no longer references the manual force option before it exists, so v413 pages avoid the console ReferenceError while still checking for updates without auto-refreshing.",
       "Update handoff fallback makes the About/Admin version card notify the app update controller when a newer deployed cache is detected, adds a manual Update now fallback button, and keeps activation user-triggered instead of auto-refreshing.",
       "Workspace stale-context retention prevents ignored backend responses from being stored as the active app session, so non-default workspace writes such as booking/trip/fuel keep using the selected workspace after rapid switches or slow backend responses.",

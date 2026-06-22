@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v415";
-const BUILD_LABEL = "update-prompt-bridge-workspace-retention-lane";
-const BUILD_UPDATED_AT = "2026-06-22T13:36:00.000Z";
+const CACHE_NAME = "fuel-ledger-v416";
+const BUILD_LABEL = "render-api-client-extraction-lane";
+const BUILD_UPDATED_AT = "2026-06-22T14:18:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -26,6 +26,7 @@ const CORE_ASSETS = [
   "/admin-tools.js",
   "/permission-helpers.js",
   "/workspace-session.js",
+  "/render-api-client.js",
   "/booking-calendar.js",
   "/trip-actions.js",
   "/trip-rendering.js",
