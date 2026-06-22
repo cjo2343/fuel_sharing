@@ -1,4 +1,5 @@
 ## Recent runtime patch notes
+- 2026-06-22T12:55:21.000Z — `2026.06.18.272` / `update-prompt-bridge-workspace-retention-lane` / `fuel-ledger-v413`: Update handoff fallback makes the About/Admin version card notify the app update controller when a newer deployed cache is detected, adds a manual Update now fallback button, and keeps activation user-triggered instead of auto-refreshing.
 - 2026-06-22T12:40:48.000Z — `2026.06.18.270` / `update-prompt-workspace-visibility-lane` / `fuel-ledger-v411`: Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.
 
 - 2026-06-22 10:55 UTC: v409 General member action routes return immediately after primary writes, optional owner activity is best-effort, action responses expose routeTiming breadcrumbs, and booking submit catches unexpected promise errors without requiring refresh.
@@ -40,10 +41,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.270`
-- Service-worker cache: `fuel-ledger-v411`
-- Updated at: `2026-06-22T12:40:48.000Z`
-- Top release note: Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.
+- Version: `2026.06.18.272`
+- Service-worker cache: `fuel-ledger-v413`
+- Updated at: `2026-06-22T12:55:21.000Z`
+- Top release note: Update handoff fallback makes the About/Admin version card notify the app update controller when a newer deployed cache is detected, adds a manual Update now fallback button, and keeps activation user-triggered instead of auto-refreshing.
 
 ## Invite beta readiness: member action Data I/O
 

@@ -16020,11 +16020,12 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
   const active = context.activeWorkspace || {};
   const activeId = String(active.ledgerId || active.ledger_id || "").trim();
   const linkedLedgers = workspaceInviteStatus.ledgers.length ? workspaceInviteStatus.ledgers : normalizeWorkspaceLedgerList(linked);
+  const linkedIdentityLookup = buildWorkspaceIdentityLookup(linkedLedgers);
   const selectedBeforeApply = getActiveLedgerId();
   const activeCanonicalId = activeId ? resolveWorkspaceIdentityToLedgerId(activeId, linkedLedgers) : "";
   const expectedCanonicalId = expectedWorkspaceId ? resolveWorkspaceIdentityToLedgerId(expectedWorkspaceId, linkedLedgers) : "";
   const selectedCanonicalId = selectedBeforeApply ? resolveWorkspaceIdentityToLedgerId(selectedBeforeApply, linkedLedgers) : "";
-  const selectedWorkspaceStillLinked = Boolean(selectedBeforeApply && buildWorkspaceIdentityLookup(linkedLedgers).get(selectedBeforeApply));
+  const selectedWorkspaceStillLinked = Boolean(selectedBeforeApply && getWorkspaceIdentityLookupKeys(selectedBeforeApply).some((key) => linkedIdentityLookup.has(key)));
   const backendDecision = context.resolution?.decision || "backend-context";
   const lateResponseForPreviousSelection = Boolean(
     expectedCanonicalId
@@ -16047,14 +16048,18 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
   } else if (staleForCurrentSelection) {
     recordSupabaseLoadEvent("backend-app-context-stale", `${reason}: ignored stale context for ${activeCanonicalId}; selected workspace is ${selectedBeforeApply || "none"}`);
   }
+  const retainedContext = staleForCurrentSelection ? (appBackendContextStatus?.context || null) : context;
+  const retainedActiveWorkspaceId = staleForCurrentSelection
+    ? (selectedCanonicalId || selectedBeforeApply || appBackendContextStatus?.activeWorkspaceId || "")
+    : (activeCanonicalId || activeId || getActiveLedgerId());
   appBackendContextStatus = {
     checked: true,
-    ok: true,
+    ok: staleForCurrentSelection ? Boolean(retainedContext && retainedActiveWorkspaceId) : true,
     loading: false,
-    error: "",
+    error: staleForCurrentSelection && !retainedContext ? "Ignored stale backend app context; waiting for the selected workspace context." : "",
     checkedAt: new Date().toISOString(),
-    context,
-    activeWorkspaceId: activeCanonicalId || activeId || getActiveLedgerId(),
+    context: retainedContext,
+    activeWorkspaceId: retainedActiveWorkspaceId,
     decision: staleForCurrentSelection ? "stale-backend-context-ignored" : backendDecision
   };
   updateWorkspaceResolutionDebug(appBackendContextStatus.decision, staleForCurrentSelection ? "Ignored a stale backend context for a workspace that is no longer selected." : "Backend app context selected the active workspace.", {
@@ -16108,8 +16113,9 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
     try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
     if (response.ok && result?.ok && result?.context) {
       const activeId = applyBackendAppContext(result.context, { reason, expectedWorkspaceId: preferredWorkspaceIdAtRequest });
-      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: "APP_CONTEXT_LOADED", detail: `Backend context loaded ${activeId || getActiveLedgerId()}` });
-      return result.context;
+      const appliedContext = appBackendContextStatus?.decision === "stale-backend-context-ignored" ? getBackendAppContext() : result.context;
+      recordDataIoDiagnostic("success", { ...traceMeta, ok: true, resultCode: appBackendContextStatus?.decision === "stale-backend-context-ignored" ? "APP_CONTEXT_STALE_IGNORED" : "APP_CONTEXT_LOADED", detail: `Backend context loaded ${activeId || getActiveLedgerId()}` });
+      return appliedContext;
     }
     const message = result?.message || result?.error || text || `Backend app context failed (${response.status})`;
     const error = new Error(message);
@@ -18670,27 +18676,20 @@ async function initializePwa() {
         window.setTimeout(() => window.location.reload(), 250);
       });
 
-      const registration = await navigator.serviceWorker.register("/service-worker.js");
+      const registration = await navigator.serviceWorker.register("/service-worker.js", { updateViaCache: "none" });
       appUpdateRegistration = registration;
       if (registration.waiting && navigator.serviceWorker.controller) {
         markAppUpdateReady(registration.waiting, registration, "waiting-on-startup");
       }
       registration.addEventListener("updatefound", () => {
-        const newWorker = registration.installing;
-        if (!newWorker) return;
-        appUpdateInstalling = true;
-        renderAppUpdateToast("updatefound");
-        newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            markAppUpdateReady(newWorker, registration, "installed");
-          }
-          if (newWorker.state === "redundant") {
-            appUpdateInstalling = false;
-            renderAppUpdateToast("redundant");
-          }
-        });
+        watchInstallingAppUpdateWorker(registration.installing, registration, "updatefound");
       });
-      await registration.update();
+      if (force || !appUpdateReady) await registration.update();
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        markAppUpdateReady(registration.waiting, registration, "waiting-after-update-check");
+      } else if (registration.installing) {
+        watchInstallingAppUpdateWorker(registration.installing, registration, "installing-after-update-check");
+      }
     } catch (error) {
       console.warn("Service worker registration failed", error);
     }
@@ -18702,6 +18701,54 @@ async function initializePwa() {
 
 async function refreshPushState() {
   pushEnabled = await notifications.refreshPushState(pushSupported);
+}
+
+function watchInstallingAppUpdateWorker(newWorker, registration, reason = "installing") {
+  if (!newWorker) return;
+  appUpdateInstalling = true;
+  appUpdateRegistration = registration || appUpdateRegistration;
+  renderAppUpdateToast(reason);
+  const onStateChange = () => {
+    if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+      markAppUpdateReady(newWorker, registration, "installed");
+    }
+    if (newWorker.state === "redundant") {
+      appUpdateInstalling = false;
+      renderAppUpdateToast("redundant");
+    }
+  };
+  try { newWorker.addEventListener("statechange", onStateChange, { once: false }); } catch (error) {}
+  onStateChange();
+}
+
+async function checkForReadyAppUpdate(reason = "manual-check", options = {}) {
+  if (!("serviceWorker" in navigator)) return false;
+  const force = Boolean(options?.force);
+  try {
+    const registration = appUpdateRegistration || await navigator.serviceWorker.getRegistration("/");
+    if (!registration) return false;
+    appUpdateRegistration = registration;
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      markAppUpdateReady(registration.waiting, registration, `${reason}:waiting`);
+      return true;
+    }
+    if (registration.installing) {
+      watchInstallingAppUpdateWorker(registration.installing, registration, `${reason}:installing`);
+      return Boolean(appUpdateReady && appUpdateWaitingWorker);
+    }
+    if (force || !appUpdateReady) await registration.update();
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      markAppUpdateReady(registration.waiting, registration, `${reason}:updated-waiting`);
+      return true;
+    }
+    if (registration.installing) {
+      watchInstallingAppUpdateWorker(registration.installing, registration, `${reason}:updated-installing`);
+    }
+  } catch (error) {
+    recordSyncDiagnostic("service-worker-update-check-failed", "Manual update prompt check failed; build-info will retry without auto-refreshing.", { reason, error: error?.message || String(error) });
+  }
+  renderAppUpdateToast(reason);
+  return Boolean(appUpdateReady && appUpdateWaitingWorker);
 }
 
 function renderAppUpdateToast(reason = "render") {
@@ -18724,7 +18771,10 @@ function markAppUpdateReady(worker, registration, reason = "service-worker-updat
 
 function activateReadyAppUpdate(reason = "manual-update") {
   if (!appUpdateWaitingWorker) {
-    showAppMessage("No app update is waiting yet.", "info", { timeoutMs: 3500 });
+    showAppMessage("No app update is waiting yet. Checking the service worker again...", "info", { timeoutMs: 3500 });
+    checkForReadyAppUpdate(reason).then((ready) => {
+      if (ready) activateReadyAppUpdate(`${reason}:after-check`);
+    });
     renderAppUpdateToast(reason);
     return;
   }
@@ -18737,6 +18787,14 @@ function activateReadyAppUpdate(reason = "manual-update") {
   recordSupabaseLoadEvent("service-worker-update-accepted", "User clicked Update now.");
   appUpdateWaitingWorker.postMessage({ type: "SKIP_WAITING" });
 }
+
+window.addEventListener("fuel-ledger-build-update-available", (event) => {
+  checkForReadyAppUpdate(event?.detail?.reason || "build-info-newer-deploy");
+});
+
+window.FuelLedgerApp = window.FuelLedgerApp || {};
+window.FuelLedgerApp.checkForAppUpdate = checkForReadyAppUpdate;
+window.FuelLedgerApp.activateReadyAppUpdate = activateReadyAppUpdate;
 
 function updatePwaUi() {
   if (isStartupHydrating()) {

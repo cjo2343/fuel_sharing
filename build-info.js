@@ -1,11 +1,13 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.270",
-    buildLabel: "update-prompt-workspace-visibility-lane",
-    updatedAt: "2026-06-22T12:40:48.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v411",
+    version: "2026.06.18.272",
+    buildLabel: "update-prompt-bridge-workspace-retention-lane",
+    updatedAt: "2026-06-22T12:55:21.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v413",
     releaseNotes: Object.freeze([
+      "Update handoff fallback makes the About/Admin version card notify the app update controller when a newer deployed cache is detected, adds a manual Update now fallback button, and keeps activation user-triggered instead of auto-refreshing.",
+      "Workspace stale-context retention prevents ignored backend responses from being stored as the active app session, so non-default workspace writes such as booking/trip/fuel keep using the selected workspace after rapid switches or slow backend responses.",
       "Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.",
       "General member action routes now return after the primary write and make owner activity/audit logging best-effort; booking/trip/fuel/payment routes include server timing breadcrumbs, frontend Data I/O stores routeTiming details, and booking submit catches unexpected promise errors so actions do not become stale after a timeout.",
       "Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.",
@@ -245,6 +247,8 @@
   let autoReloadRequested = false;
   let lastRenderedServiceWorkerInfo = null;
   let lastRenderedDeployedInfo = null;
+  let lastUpdateDiscoveryCache = "";
+  let lastUpdateDiscoveryAt = 0;
 
   function serviceWorkerStatus(serviceWorkerInfo = null) {
     if (!("serviceWorker" in navigator)) return "Not supported in this browser";
@@ -353,7 +357,7 @@
   async function ensureAutomaticServiceWorkerControl({ forceUpdate = false } = {}) {
     if (!("serviceWorker" in navigator)) return null;
     try {
-      const registration = await navigator.serviceWorker.register("/service-worker.js");
+      const registration = await navigator.serviceWorker.register("/service-worker.js", { updateViaCache: "none" });
       if (forceUpdate) await registration.update();
       if (!navigator.serviceWorker.controller && registration.active) {
         const reloadKey = `fuel-ledger-sw-control-reload:${BUILD_INFO.expectedServiceWorkerCache}`;
@@ -408,19 +412,83 @@
       .replace(/'/g, "&#39;");
   }
 
-  function renderBuildInfoPanel(target, serviceWorkerInfo = null, deployedInfo = null) {
-    if (!target) return;
-    const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Checking automatically";
+  function computeUpdatePending(serviceWorkerInfo = null, deployedInfo = null) {
     const deployedCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
     const pageIsOlderThanDeploy = Boolean(deployedInfo?.expectedServiceWorkerCache && deployedInfo.expectedServiceWorkerCache !== BUILD_INFO.expectedServiceWorkerCache);
-    const serviceWorkerMissing = !serviceWorkerInfo?.cacheName;
     const cacheMatchesLoadedPage = serviceWorkerInfo?.cacheName
       ? serviceWorkerInfo.cacheName === BUILD_INFO.expectedServiceWorkerCache
       : null;
     const cacheMatchesDeploy = serviceWorkerInfo?.cacheName && deployedCache
       ? serviceWorkerInfo.cacheName === deployedCache
       : null;
-    const updatePending = pageIsOlderThanDeploy || (cacheMatchesLoadedPage === false && cacheMatchesDeploy === true);
+    return {
+      deployedCache,
+      pageIsOlderThanDeploy,
+      cacheMatchesLoadedPage,
+      cacheMatchesDeploy,
+      updatePending: Boolean(pageIsOlderThanDeploy || (cacheMatchesLoadedPage === false && cacheMatchesDeploy === true))
+    };
+  }
+
+  function notifyAppUpdateController(serviceWorkerInfo = null, deployedInfo = null, source = "build-info") {
+    const pending = computeUpdatePending(serviceWorkerInfo, deployedInfo);
+    if (!pending.updatePending) return;
+    try {
+      window.dispatchEvent(new CustomEvent("fuel-ledger-build-update-available", {
+        detail: {
+          source,
+          loadedBuild: BUILD_INFO,
+          serviceWorkerInfo,
+          deployedInfo,
+          pending
+        }
+      }));
+    } catch (error) {
+      // Best-effort handoff only; build-info never activates or reloads by itself.
+    }
+  }
+
+  function bindBuildInfoUpdateButton(target, serviceWorkerInfo = null, deployedInfo = null) {
+    target.querySelectorAll("[data-build-info-update-now]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "Checking...";
+        notifyAppUpdateController(serviceWorkerInfo, deployedInfo, "build-info-panel-button");
+        try {
+          const app = window.FuelLedgerApp || {};
+          let ready = false;
+          if (typeof app.checkForAppUpdate === "function") {
+            ready = await app.checkForAppUpdate("build-info-panel-button", { force: true });
+          } else {
+            const registration = await ensureAutomaticServiceWorkerControl({ forceUpdate: true });
+            ready = Boolean(registration?.waiting || registration?.installing);
+          }
+          if (ready && typeof app.activateReadyAppUpdate === "function") {
+            app.activateReadyAppUpdate("build-info-panel-button");
+            return;
+          }
+          button.textContent = "Still preparing";
+          window.setTimeout(() => scheduleBuildInfoRefresh({ activateUpdates: true }), 600);
+        } finally {
+          window.setTimeout(() => {
+            button.disabled = false;
+            button.textContent = originalText || "Update now";
+          }, 1800);
+        }
+      });
+    });
+  }
+
+  function renderBuildInfoPanel(target, serviceWorkerInfo = null, deployedInfo = null) {
+    if (!target) return;
+    const serviceWorkerCache = serviceWorkerInfo?.cacheName || "Checking automatically";
+    const pendingStatus = computeUpdatePending(serviceWorkerInfo, deployedInfo);
+    const deployedCache = pendingStatus.deployedCache;
+    const serviceWorkerMissing = !serviceWorkerInfo?.cacheName;
+    const cacheMatchesLoadedPage = pendingStatus.cacheMatchesLoadedPage;
+    const cacheMatchesDeploy = pendingStatus.cacheMatchesDeploy;
+    const updatePending = pendingStatus.updatePending;
     const cacheClass = updatePending || serviceWorkerMissing ? "warning" : cacheMatchesLoadedPage === false ? "warning" : "ok";
     const cacheNote = updatePending
       ? "New version available; use the update prompt when you are ready. No automatic refresh will run."
@@ -456,6 +524,7 @@
           <strong>Update status</strong>
           <p>${updatePending ? "Updating" : serviceWorkerMissing ? "Checking" : cacheMatchesLoadedPage === false ? "Handoff" : "Current"}</p>
           <small>${cacheNote}</small>
+          ${updatePending ? '<button class="subtle-button compact-button" type="button" data-build-info-update-now>Update now</button>' : ''}
         </article>
         <article class="diagnostic-card ok">
           <strong>Loaded page cache</strong>
@@ -477,12 +546,45 @@
         </article>
       </div>
     `;
+    bindBuildInfoUpdateButton(target, serviceWorkerInfo, deployedInfo);
   }
 
   function renderBuildInfo(serviceWorkerInfo = null, deployedInfo = null) {
     document.querySelectorAll("#buildInfoPanel, #aboutBuildInfoPanel").forEach((target) => {
       renderBuildInfoPanel(target, serviceWorkerInfo, deployedInfo);
     });
+  }
+
+  function dispatchBuildUpdateAvailable(deployedInfo = null, serviceWorkerInfo = null, reason = "newer-deploy") {
+    try {
+      window.dispatchEvent(new CustomEvent("fuel-ledger-build-update-available", {
+        detail: {
+          reason,
+          loadedCache: BUILD_INFO.expectedServiceWorkerCache,
+          deployedCache: deployedInfo?.expectedServiceWorkerCache || "",
+          serviceWorkerCache: serviceWorkerInfo?.cacheName || ""
+        }
+      }));
+    } catch (error) {}
+  }
+
+  async function discoverWaitingUpdateFromNewerDeploy(deployedInfo = null, serviceWorkerInfo = null, { force = false } = {}) {
+    const deployedCache = deployedInfo?.expectedServiceWorkerCache || "";
+    const loadedCache = BUILD_INFO.expectedServiceWorkerCache || "";
+    if (!deployedCache || !loadedCache || deployedCache === loadedCache) return null;
+    const now = Date.now();
+    if (!force && lastUpdateDiscoveryCache === deployedCache && now - lastUpdateDiscoveryAt < 30000) {
+      dispatchBuildUpdateAvailable(deployedInfo, serviceWorkerInfo, "newer-deploy-throttled");
+      return null;
+    }
+    lastUpdateDiscoveryCache = deployedCache;
+    lastUpdateDiscoveryAt = now;
+    const registration = await ensureAutomaticServiceWorkerControl({ forceUpdate: true });
+    dispatchBuildUpdateAvailable(deployedInfo, serviceWorkerInfo, "newer-deploy");
+    if (window.FuelLedgerApp?.checkForAppUpdate) {
+      try { await window.FuelLedgerApp.checkForAppUpdate("build-info-newer-deploy"); } catch (error) {}
+    }
+    return registration;
   }
 
   async function refreshBuildInfo({ activateUpdates = false } = {}) {
@@ -499,7 +601,12 @@
       lastRenderedDeployedInfo = deployedInfo;
       renderBuildInfo(serviceWorkerInfo, deployedInfo);
 
+      if (deployedInfo?.expectedServiceWorkerCache && deployedInfo.expectedServiceWorkerCache !== BUILD_INFO.expectedServiceWorkerCache) {
+        await discoverWaitingUpdateFromNewerDeploy(deployedInfo, serviceWorkerInfo, { force: Boolean(activateUpdates) });
+      }
+
       if (registration?.waiting || registration?.installing) {
+        dispatchBuildUpdateAvailable(deployedInfo, serviceWorkerInfo, "registration-waiting");
         // Deliberately do not call activateWaitingServiceWorker or reloadWhenSafe here.
         // app.js owns the bottom-right manual update toast and sends SKIP_WAITING
         // only after the user clicks Update now.

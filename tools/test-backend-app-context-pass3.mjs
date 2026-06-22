@@ -22,6 +22,6 @@ assert(server.includes('by_identity = build_workspace_identity_index(workspaces)
 assert(app.includes('function getWorkspaceIdentityValues(ledger = {})') && app.includes('function buildWorkspaceIdentityLookup(ledgers = [])'), "frontend workspace resolution indexes ledger ids and slugs");
 assert(app.includes('const linkedIdentityLookup = buildWorkspaceIdentityLookup(ledgers);') && app.includes('const urlWorkspace = urlWorkspaceId ? linkedIdentityLookup.get(urlWorkspaceId) : null;'), "frontend URL workspace resolution accepts slug aliases and stores canonical ledger ids");
 assert(app.includes('stale-backend-context-ignored') && app.includes('selectedWorkspaceIdAtRequest'), "frontend ignores late backend app-context responses for a workspace the user has already left");
-assert((/fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411)/.test(build) && /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411)/.test(sw)), "runtime cache bumped to v393");
+assert((/fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413)/.test(build) && /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413)/.test(sw)), "runtime cache bumped to v393");
 
 console.log("Backend app context pass 3 guardrail passed.");

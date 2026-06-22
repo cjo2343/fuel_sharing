@@ -9,3 +9,9 @@
   Cross-Origin-Resource-Policy: same-origin
   Origin-Agent-Cluster: ?1
   X-Permitted-Cross-Domain-Policies: none
+
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/build-info.js
+  Cache-Control: no-cache, no-store, must-revalidate

@@ -16,8 +16,8 @@ assert.match(app, /loadStateFromNormalizedTables\(jsonState, \{ reason, stateSco
 assert.match(app, /const stateScope = await requireActiveWorkspaceWriteScope\(\{ reason \}\)/, 'saveSupabaseState should validate write scope before writing');
 assert.match(app, /saveJsonMirrorBackupViaRender\(\{ force, reason, savedAt, stateScope \}\)/, 'JSON mirror backup should pass the canonical write scope to Render');
 assert.match(build, /update-prompt-workspace-visibility-lane|general-action-route-timing-lane|update-prompt-workspace-visibility-lane|general-action-route-timing-lane|action-session-cache-shell-lane|interactive-action-recovery-lane|write-context-fast-fail-lane|no-refresh-action-chain-lane|post-action-unblock-lane|multi-workspace-authority-lane|admin-panel-declutter-lane|workspace-switch-target-context-lane|startup-wake-gate-lane|render-workspace-tools-lane|render-owned-state-load-lane/, 'build label should describe the state scope lane');
-assert.match(build, /fuel-ledger-v(?:395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411)/, 'build-info expected cache should be v395 or later');
-assert.match(sw, /fuel-ledger-v(?:395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411)/, 'service worker cache should be v395 or later');
+assert.match(build, /fuel-ledger-v(?:395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413)/, 'build-info expected cache should be v395 or later');
+assert.match(sw, /fuel-ledger-v(?:395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413)/, 'service worker cache should be v395 or later');
 assert.match(checklist, /Current release target/, 'deployment checklist should document the Render-owned state load pass');
 
 console.log('workspace state scope lane guardrails passed');
