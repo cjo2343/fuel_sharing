@@ -2017,6 +2017,8 @@ function recordDataIoDiagnostic(phase, meta = {}) {
     workspaceLabel: workspaceContext.workspaceLabel,
     hasSession: Boolean(currentSession),
     pendingLocalChanges,
+    routeTiming: meta.routeTiming || null,
+    serverTimings: Array.isArray(meta.serverTimings) ? meta.serverTimings : [],
     error: summarizedError,
     staleAfterMs: normalizeDataIoOperationStaleMs(meta.staleAfterMs)
   };
@@ -3223,7 +3225,18 @@ if (els.bookingForm) {
       return;
     }
 
-    const normalizedBookingSaved = await saveBookingToNormalizedTablesFirst(bookingPayload);
+    let normalizedBookingSaved = false;
+    try {
+      normalizedBookingSaved = await saveBookingToNormalizedTablesFirst(bookingPayload);
+    } catch (error) {
+      recordDataIoDiagnostic("exception", { source: "booking-save", route: "frontend-action", operation: "submit", error, resultCode: "BOOKING_SAVE_UNCAUGHT_CAUGHT" });
+      console.warn("Booking submit caught an unexpected save error", error);
+      showUserError(`Could not save booking. Try again without refreshing. ${error?.message || error || ""}`.trim());
+      finishForegroundOperationsBySource("booking-save", "booking-save-submit-caught-error");
+      clearVisibleSavingFailsafe();
+      recoverInteractiveActionControls("booking-submit-catch");
+      return;
+    }
     if (!normalizedBookingSaved) return;
 
     const previousBooking = editingBookingId ? state.bookings.find((booking) => booking.id === editingBookingId) : null;
@@ -19754,8 +19767,8 @@ async function saveTripWithParticipantsViaRender(context, payload, participantMe
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-trip-save", "upsert via Render backend API");
-      finishTripRenderDiagnostic("success", { ok: true, resultCode: "TRIP_SAVED" });
-      return { ok: true, data: result.result, backend: "render-api" };
+      finishTripRenderDiagnostic("success", { ok: true, resultCode: "TRIP_SAVED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
+      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
     }
 
     const message = result?.message || result?.error || text || `Render trip save failed (${response.status})`;
@@ -19871,8 +19884,8 @@ async function saveFuelPaymentViaRender(context, payload) {
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-fuel-save", "upsert via Render backend API");
-      finishFuelRenderDiagnostic("success", { ok: true, resultCode: "FUEL_SAVED" });
-      return { ok: true, data: result.result, backend: "render-api" };
+      finishFuelRenderDiagnostic("success", { ok: true, resultCode: "FUEL_SAVED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
+      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
     }
 
     const message = result?.message || result?.error || text || `Render fuel save failed (${response.status})`;
@@ -20043,8 +20056,8 @@ async function saveBookingViaRender(context, payload) {
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-booking-save", "upsert via Render backend API");
-      finishBookingRenderDiagnostic("success", { ok: true });
-      return { ok: true, data: result.result, backend: "render-api" };
+      finishBookingRenderDiagnostic("success", { ok: true, resultCode: "BOOKING_SAVED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
+      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
     }
 
     const message = result?.message || result?.error || text || `Render booking save failed (${response.status})`;
@@ -20143,8 +20156,8 @@ async function softDeleteBookingViaRender(context, legacyBookingId) {
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-booking-delete", "soft delete via Render backend API");
-      finishBookingDeleteRenderDiagnostic("success", { ok: true });
-      return { ok: true, data: result.result, backend: "render-api" };
+      finishBookingDeleteRenderDiagnostic("success", { ok: true, resultCode: "BOOKING_DELETED", routeTiming: result.routeTiming || null, serverTimings: result.routeTiming?.timings || [] });
+      return { ok: true, data: result.result, backend: "render-api", routeTiming: result.routeTiming || null };
     }
 
     const message = result?.message || result?.error || text || `Render booking delete failed (${response.status})`;

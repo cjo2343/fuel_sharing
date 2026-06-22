@@ -295,6 +295,28 @@ def record_owner_activity_as_service(ledger_id, user, *, action, route, ok=True,
         return None
 
 
+
+def action_timing_mark(timings, label, started_at):
+    try:
+        timings.append({"phase": str(label), "elapsedMs": int((time.time() - started_at) * 1000)})
+    except Exception:
+        pass
+
+def best_effort_owner_activity_as_service(*args, **kwargs):
+    try:
+        return record_owner_activity_as_service(*args, **kwargs)
+    except Exception as error:
+        print(f"Owner activity best-effort write skipped: {error}")
+        return None
+
+def action_route_response(route_name, result_code, started_at, timings=None):
+    return {
+        "route": route_name,
+        "resultCode": result_code,
+        "durationMs": int((time.time() - started_at) * 1000),
+        "timings": timings or [],
+    }
+
 def list_owner_activity_as_service(payload=None):
     payload = payload if isinstance(payload, dict) else {}
     limit = safe_int(payload.get("limit"), OWNER_ACTIVITY_DEFAULT_LIMIT, minimum=1, maximum=OWNER_ACTIVITY_MAX_LIMIT)
@@ -3907,8 +3929,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_safe_internal_error(error)
             return
 
-        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="payment-status-action", route="/api/payments/status-action", ok=True, result_code="PAYMENT_STATUS_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Payment Status Action completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
-        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+        route_timing = action_route_response("/api/payments/status-action", "PAYMENT_STATUS_SAVED", started_at)
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email"), "routeTiming": route_timing})
+        best_effort_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="payment-status-action", route="/api/payments/status-action", ok=True, result_code="PAYMENT_STATUS_SAVED", status_code=200, duration_ms=route_timing.get("durationMs"), summary="Payment Status Action completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__, "routeTiming": route_timing}, context=context)
 
     def upsert_trip_backend(self):
         user = current_supabase_user(self)
@@ -3939,8 +3962,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_safe_internal_error(error)
             return
 
-        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="trip-upsert", route="/api/trips/upsert", ok=True, result_code="TRIP_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Trip Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
-        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+        route_timing = action_route_response("/api/trips/upsert", "TRIP_SAVED", started_at)
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email"), "routeTiming": route_timing})
+        best_effort_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="trip-upsert", route="/api/trips/upsert", ok=True, result_code="TRIP_SAVED", status_code=200, duration_ms=route_timing.get("durationMs"), summary="Trip Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__, "routeTiming": route_timing}, context=context)
 
     def upsert_fuel_backend(self):
         user = current_supabase_user(self)
@@ -3971,8 +3995,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_safe_internal_error(error)
             return
 
-        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="fuel-upsert", route="/api/fuel/upsert", ok=True, result_code="FUEL_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Fuel Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
-        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+        route_timing = action_route_response("/api/fuel/upsert", "FUEL_SAVED", started_at)
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email"), "routeTiming": route_timing})
+        best_effort_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="fuel-upsert", route="/api/fuel/upsert", ok=True, result_code="FUEL_SAVED", status_code=200, duration_ms=route_timing.get("durationMs"), summary="Fuel Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__, "routeTiming": route_timing}, context=context)
 
     def upsert_booking_backend(self):
         user = current_supabase_user(self)
@@ -3981,15 +4006,22 @@ class Handler(SimpleHTTPRequestHandler):
             return
         token = get_bearer_token(self)
         started_at = time.time()
+        timings = []
         context = None
         try:
             payload = read_request_body(self)
+            action_timing_mark(timings, "body-read", started_at)
             rpc_payload = build_booking_upsert_rpc_payload(payload)
+            action_timing_mark(timings, "payload-built", started_at)
             if not check_backend_rate_limit(self, "write", user=user, ledger_id=rpc_payload.get("target_ledger_id")):
                 return
+            action_timing_mark(timings, "rate-limit-ok", started_at)
             context = get_write_context_as_user(rpc_payload.get("target_ledger_id"), user, token)
+            action_timing_mark(timings, "write-context-ok", started_at)
             assert_member_scoped_write_allowed(context, rpc_payload.get("booking_member_id"), "booking member")
+            action_timing_mark(timings, "permission-ok", started_at)
             result = call_supabase_rpc_as_user("upsert_car_booking", rpc_payload, user_token=token)
+            action_timing_mark(timings, "primary-write-ok", started_at)
         except (ValueError, json.JSONDecodeError) as error:
             self.send_error(400, str(error))
             return
@@ -4003,8 +4035,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_safe_internal_error(error)
             return
 
-        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-upsert", route="/api/bookings/upsert", ok=True, result_code="BOOKING_SAVED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Booking Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
-        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+        route_timing = action_route_response("/api/bookings/upsert", "BOOKING_SAVED", started_at, timings)
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email"), "routeTiming": route_timing})
+        best_effort_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-upsert", route="/api/bookings/upsert", ok=True, result_code="BOOKING_SAVED", status_code=200, duration_ms=route_timing.get("durationMs"), summary="Booking Upsert completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__, "routeTiming": route_timing}, context=context)
 
     def delete_booking_backend(self):
         user = current_supabase_user(self)
@@ -4036,8 +4069,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_safe_internal_error(error)
             return
 
-        record_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-delete", route="/api/bookings/delete", ok=True, result_code="BOOKING_DELETED", status_code=200, duration_ms=(time.time() - started_at) * 1000, summary="Booking Delete completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__}, context=context)
-        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email")})
+        route_timing = action_route_response("/api/bookings/delete", "BOOKING_DELETED", started_at)
+        self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email"), "routeTiming": route_timing})
+        best_effort_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-delete", route="/api/bookings/delete", ok=True, result_code="BOOKING_DELETED", status_code=200, duration_ms=route_timing.get("durationMs"), summary="Booking Delete completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__, "routeTiming": route_timing}, context=context)
 
     def save_push_subscription(self):
         user = current_supabase_user(self)

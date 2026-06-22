@@ -1,3 +1,4 @@
+- 2026-06-22 10:55 UTC: v409 General member action routes return immediately after primary writes, optional owner activity is best-effort, action responses expose routeTiming breadcrumbs, and booking submit catches unexpected promise errors without requiring refresh.
 - 2026-06-22 10:20 UTC: v408 Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.
 - 2026-06-22 09:35 UTC: v406 Write-context setup now bounds the Supabase session/header step itself: booking, trip, and fuel actions fail cleanly after a short session timeout instead of waiting the old 10-second setup timeout when auth/service-worker/deploy handoff stalls before Render write-context can start.
 - 2026-06-22 09:10 UTC: v404 Vehicle lookup click diagnostics now finish immediately after the DOM click is handed to the lookup guard, so blocked sign-in/backend guards cannot leave an active Data I/O click operation that prevents the next no-refresh action.
@@ -36,10 +37,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.267`
-- Service-worker cache: `fuel-ledger-v408`
-- Updated at: `2026-06-22T10:20:00.000Z`
-- Top release note: Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.
+- Version: `2026.06.18.268`
+- Service-worker cache: `fuel-ledger-v409`
+- Updated at: `2026-06-22T10:55:00.000Z`
+- Top release note: General member action routes now return after the primary write and make owner activity/audit logging best-effort; booking/trip/fuel/payment routes include server timing breadcrumbs, frontend Data I/O stores routeTiming details, and booking submit catches unexpected promise errors so actions do not become stale after a timeout.
 
 ## Invite beta readiness: member action Data I/O
 

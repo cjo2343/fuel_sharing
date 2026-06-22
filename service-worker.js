@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v408";
-const BUILD_LABEL = "action-session-cache-shell-lane";
-const BUILD_UPDATED_AT = "2026-06-22T10:20:00.000Z";
+const CACHE_NAME = "fuel-ledger-v409";
+const BUILD_LABEL = "general-action-route-timing-lane";
+const BUILD_UPDATED_AT = "2026-06-22T10:55:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

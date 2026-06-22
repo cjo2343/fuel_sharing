@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.267",
-    buildLabel: "action-session-cache-shell-lane",
-    updatedAt: "2026-06-22T10:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v408",
+    version: "2026.06.18.268",
+    buildLabel: "general-action-route-timing-lane",
+    updatedAt: "2026-06-22T10:55:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v409",
     releaseNotes: Object.freeze([
+      "General member action routes now return after the primary write and make owner activity/audit logging best-effort; booking/trip/fuel/payment routes include server timing breadcrumbs, frontend Data I/O stores routeTiming details, and booking submit catches unexpected promise errors so actions do not become stale after a timeout.",
       "Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.",
       "Interactive action recovery now rebinds critical controls after render, focus/visibility return, workspace switch, and service-worker deploy handoff; stale foreground/Data I/O latches are finished with recovery diagnostics, and cancel booking no longer crashes on an out-of-scope bookingPayload.",
       "Write-context setup now bounds the Supabase session/header step itself: booking, trip, and fuel actions fail cleanly after a short session timeout instead of waiting the old 10-second setup timeout when auth/service-worker/deploy handoff stalls before Render write-context can start.",

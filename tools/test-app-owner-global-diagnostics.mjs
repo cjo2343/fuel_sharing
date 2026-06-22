@@ -6,8 +6,8 @@ const server = fs.readFileSync('server.py', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)"/, 'build-info should point to v381 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)"/, 'service worker cache should be bumped to v379.');
+assert.match(buildInfo, /expectedServiceWorkerCache:\s*"fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409)"/, 'build-info should point to v381 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409)"/, 'service worker cache should be bumped to v379.');
 
 assert.ok(app.includes('const renderOwnerGlobalDiagnosticsUrl = "/api/owner/global-diagnostics";'), 'frontend should define the app-owner global diagnostics endpoint.');
 assert.ok(app.includes('appOwnerGlobalDiagnostics: ownerGlobalDiagnosticsReportStatus()'), 'load reports should include cached app-owner global diagnostics.');

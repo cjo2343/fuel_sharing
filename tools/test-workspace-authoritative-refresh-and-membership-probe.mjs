@@ -5,8 +5,8 @@ const app = fs.readFileSync('app.js', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
 
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)"/, 'build-info should point to v381 cache.');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408)"/, 'service worker cache should be bumped to v371.');
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409)"/, 'build-info should point to v381 cache.');
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409)"/, 'service worker cache should be bumped to v371.');
 
 assert.match(app, /let workspaceMembershipProbeStatus = \{/, 'App should keep a current-user membership probe snapshot.');
 assert.match(app, /async function refreshWorkspaceMembershipProbe/, 'App should probe visible current-email membership rows.');
