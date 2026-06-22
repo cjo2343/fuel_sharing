@@ -19542,6 +19542,26 @@ async function callRenderJson(endpoint, options = {}) {
       body: options.body
     });
     if (!response.ok || (!allowResultOkFalse && !result?.ok)) {
+      // A 401 means the access token was rejected — usually a cached/expired session token after
+      // the tab sat idle. getFreshRenderAccessToken returns the cached (possibly expired) token via
+      // getSession(), so retrying on it loops forever (e.g. vehicle lookup stuck on "Preparing…").
+      // Force a real Supabase session refresh once, then retry with the fresh token.
+      if (response.status === 401 && options.__authRetried !== true && supabaseClient?.auth?.refreshSession) {
+        try {
+          const refreshed = await withSupabaseReadTimeout("Supabase session refresh", supabaseClient.auth.refreshSession(), authTimeoutMs);
+          if (refreshed?.data?.session?.access_token) currentSession = refreshed.data.session;
+        } catch (refreshError) {
+          recordDataIoDiagnostic("exception", {
+            source: options.source || "render-api",
+            route: "supabase-auth",
+            operation: "refresh-session",
+            ok: false,
+            resultCode: "RENDER_AUTH_REFRESH_FAILED",
+            detail: String(refreshError?.message || refreshError)
+          });
+        }
+        return callRenderJson(endpoint, { ...options, __authRetried: true, preferCachedSession: false });
+      }
       const message = result?.message || result?.error || text || `Render API call failed (${response.status})`;
       const error = new Error(message);
       error.status = response.status;

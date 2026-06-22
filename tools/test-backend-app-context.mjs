@@ -20,6 +20,6 @@ assert(app.includes("async function getRenderAppContext"), "frontend can load ba
 assert(app.includes("applyBackendAppContext"), "frontend applies backend app context");
 assert(app.includes('reason: "state-load"') && app.includes("backendWorkspaceId"), "state load asks backend context before loading rows");
 assert(app.includes("appBackendContext: appBackendContextStatus"), "load reports export backend app context status");
-assert((/fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421)/.test(build) && /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421)/.test(sw)), "runtime cache bumped to v388");
+assert((/fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421|422)/.test(build) && /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421|422)/.test(sw)), "runtime cache bumped to v388");
 
 console.log("Backend app context guardrail passed.");
