@@ -20,7 +20,7 @@ assert(app.includes('source: "state-load", route: "render-api", endpoint: render
 assert(app.includes('recordSupabaseLoadEvent("render-state-load"'), "Render state-load success should be visible in the load monitor");
 assert(app.includes("const renderStateRows = await getRenderNormalizedStateRows(ledgerId);"), "normalized table load should try Render before browser table reads");
 assert(app.includes("if (renderStateRows)"), "normalized table load should use Render rows when available");
-assert(app.includes("} else {\n    [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all"), "browser Supabase table load should remain as fallback only");
+assert(app.includes("} else {\n    [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await withSupabaseReadTimeout(\"Workspace tables read\", Promise.all"), "browser Supabase table load should remain as fallback only and time-bounded");
 assert(app.includes("participantResult = { data: renderStateRows.tripParticipants || [], error: null };"), "Render state load should include trip participants to avoid a follow-up browser read");
 
 assert(server.includes('if self.path == "/api/state/load":'), "server should route /api/state/load");

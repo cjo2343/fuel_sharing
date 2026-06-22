@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v420";
-const BUILD_LABEL = "stuck-latch-watchdog";
+const CACHE_NAME = "fuel-ledger-v421";
+const BUILD_LABEL = "bounded-supabase-reads";
 const BUILD_UPDATED_AT = "2026-06-22T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",

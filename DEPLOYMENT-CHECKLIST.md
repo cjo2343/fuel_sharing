@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.279`
-- Service-worker cache: `fuel-ledger-v420`
+- Version: `2026.06.18.280`
+- Service-worker cache: `fuel-ledger-v421`
 - Updated at: `2026-06-22T00:00:00.000Z`
-- Top release note: Buttons no longer require a page refresh after a slow/hung cloud load: a timed-out load now also releases the workspace-load and startup-hydration latches it used to orphan (which kept editing locked), and a new proactive latch watchdog clears any stuck load/workspace/hydration/action latch on a 5s timer regardless of sync-badge state, then re-enables interactive controls automatically.
+- Top release note: Cold starts and slow Supabase no longer stall the app behind the workspace load: the normalized-table read on the state-load path is now time-bounded (with a bounded session check), so a hung backend read falls back to the cached JSON mirror quickly instead of waiting on the outer load timeout.
 
 ## Invite beta readiness: member action Data I/O
 

@@ -23,9 +23,9 @@ assert.match(app, /const backendActiveConflictsWithExpectedWorkspace = Boolean\(
 assert.match(app, /lateResponseForPreviousSelection \|\| backendDefaultConflictsWithSelectedWorkspace \|\| backendActiveConflictsWithExpectedWorkspace/, 'explicit backend mismatches should be treated as stale instead of snapping active workspace back');
 assert.match(app, /const staleContextIgnored = appBackendContextStatus\?\.decision === "stale-backend-context-ignored";[\s\S]*return staleContextIgnored \? null : result\.context;/, 'stale backend context should not be returned to action guards as if it were current');
 
-assert.match(buildInfo, /version: "2026\.06\.18\.279"/);
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v420"/);
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v420"/);
+assert.match(buildInfo, /version: "2026\.06\.18\.280"/);
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v421"/);
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v421"/);
 assert.match(buildInfo, /Workspace actions now trust the selected in-app workspace over stale URL state/);
 
 console.log('workspace action authority guardrails passed.');

@@ -6,9 +6,9 @@ const renderClient = readFileSync(new URL('../render-api-client.js', import.meta
 const buildInfo = readFileSync(new URL('../build-info.js', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../service-worker.js', import.meta.url), 'utf8');
 
-assert.match(buildInfo, /version: "2026\.06\.18\.279"/);
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v420"/);
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v420"/);
+assert.match(buildInfo, /version: "2026\.06\.18\.280"/);
+assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v421"/);
+assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v421"/);
 assert.match(buildInfo, /Interactive actions no longer stall at Preparing\/Saving after idle\/session wake/);
 
 assert.match(renderClient, /const runRequest = async \(\) => \{[\s\S]*?const response = await fetch\(url, fetchOptions\);[\s\S]*?return parseJsonResponse\(response\);[\s\S]*?return await Promise\.race\(\[runRequest\(\), timeoutPromise\]\);/, 'Render API client timeout should cover both fetch and response-body parsing.');

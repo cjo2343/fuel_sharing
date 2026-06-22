@@ -19347,6 +19347,27 @@ async function getFreshSessionWithTimeout({ timeoutMs = 0, label = "Supabase ses
   }
 }
 
+// Bound a direct supabase-js read so a hung network call rejects instead of leaving the
+// awaiting load in flight indefinitely. The normalized-table reads run inside a try/catch
+// that falls back to the JSON mirror, so a timeout here degrades to cached data quickly
+// (important on cold starts) rather than waiting on the outer load timeout.
+async function withSupabaseReadTimeout(label, promise, timeoutMs = 10000) {
+  let timeoutId = null;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      const error = new Error(`${label} did not respond within ${Math.round(timeoutMs / 1000)} seconds`);
+      error.name = "SupabaseReadTimeout";
+      error.isSupabaseReadTimeout = true;
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function hasFreshSupabaseSession(options = {}) {
   const session = await getFreshSessionWithTimeout({
     timeoutMs: Number(options.timeoutMs || 0),
@@ -21332,7 +21353,7 @@ async function loadStateFromNormalizedTables(jsonFallbackState, options = {}) {
   } = options || {};
   recordSupabaseLoadEvent("normalized-table-load", reason);
   if (!supabaseClient || !currentSession) return null;
-  if (!(await hasFreshSupabaseSession())) return null;
+  if (!(await hasFreshSupabaseSession({ timeoutMs: 8000, source: "state-load-session" }))) return null;
 
   const scope = stateScope || await resolveActiveWorkspaceStateScope({ reason: "state-load", operation: "load" });
   const ledgerId = String(scope.ledgerId || getActiveLedgerId() || supabaseHelpers.getLedgerId(supabaseConfig)).trim();
@@ -21365,14 +21386,14 @@ async function loadStateFromNormalizedTables(jsonFallbackState, options = {}) {
     });
     return null;
   } else {
-    [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await Promise.all([
+    [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult] = await withSupabaseReadTimeout("Workspace tables read", Promise.all([
       supabaseClient.from("ledger_members").select("id,name,email,role,is_active,mobilepay_phone").eq("ledger_id", ledgerId).eq("is_active", true).order("created_at", { ascending: true }),
       supabaseClient.from("settlement_periods").select("id,status,label,closed_at,snapshot_json,created_at").eq("ledger_id", ledgerId).order("created_at", { ascending: true }),
       supabaseClient.from("trips").select("id,legacy_id,period_id,driver_member_id,trip_date,start_km,end_km,note,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("trip_date", { ascending: true }),
       supabaseClient.from("fuel_payments").select("id,legacy_id,period_id,payer_member_id,payment_date,amount,currency,liters,price_per_liter,odometer,station_name,station_brand,station_lat,station_lng,user_lat,user_lng,full_tank,deleted_at,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("payment_date", { ascending: true }),
       supabaseClient.from("car_bookings").select("id,legacy_id,member_id,start_at,end_at,purpose,deleted_at,created_by_member_id,created_at").eq("ledger_id", ledgerId).is("deleted_at", null).order("start_at", { ascending: true }),
       supabaseClient.from("settlement_requests").select("id,period_id,from_member_id,to_member_id,amount,currency,status").eq("ledger_id", ledgerId)
-    ]);
+    ]));
   }
 
   const firstError = [membersResult, periodsResult, tripsResult, fuelResult, bookingsResult, requestsResult, participantResult].find((result) => result.error)?.error;
