@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.272",
+    version: "2026.06.18.273",
     buildLabel: "update-prompt-bridge-workspace-retention-lane",
-    updatedAt: "2026-06-22T12:55:21.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v413",
+    updatedAt: "2026-06-22T13:24:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v414",
     releaseNotes: Object.freeze([
+      "Service-worker startup registration no longer references the manual force option before it exists, so v413 pages avoid the console ReferenceError while still checking for updates without auto-refreshing.",
       "Update handoff fallback makes the About/Admin version card notify the app update controller when a newer deployed cache is detected, adds a manual Update now fallback button, and keeps activation user-triggered instead of auto-refreshing.",
       "Workspace stale-context retention prevents ignored backend responses from being stored as the active app session, so non-default workspace writes such as booking/trip/fuel keep using the selected workspace after rapid switches or slow backend responses.",
       "Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.",

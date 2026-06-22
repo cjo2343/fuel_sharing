@@ -18684,7 +18684,7 @@ async function initializePwa() {
       registration.addEventListener("updatefound", () => {
         watchInstallingAppUpdateWorker(registration.installing, registration, "updatefound");
       });
-      if (force || !appUpdateReady) await registration.update();
+      if (!appUpdateReady) await registration.update();
       if (registration.waiting && navigator.serviceWorker.controller) {
         markAppUpdateReady(registration.waiting, registration, "waiting-after-update-check");
       } else if (registration.installing) {
