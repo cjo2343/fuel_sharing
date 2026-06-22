@@ -32,10 +32,13 @@ function assertMatches(text, regex, message) {
 }
 
 const recoverBody = findFunctionBody(app, 'recoverInteractiveActionControls');
-assertMatches(recoverBody, /purgeStaleForegroundOperations\(`interactive:\$\{normalizedReason\}`\)/,
-  'interactive recovery must purge stale foreground operations instead of requiring refresh.');
-assertMatches(recoverBody, /finishRetryableInteractiveDataIoOperations\(normalizedReason\)/,
-  'interactive recovery must finish stale retryable Data I/O operations.');
+assertMatches(recoverBody, /recoverStaleInteractiveActionState\(`controls:\$\{normalizedReason\}`\)/,
+  'interactive recovery must use the shared stale-action preflight instead of requiring refresh.');
+assertMatches(recoverBody, /const recoveredDataIo = recoveredStale\.clearedDataIo \|\| 0/,
+  'interactive recovery must report only stale Data I/O cleared by the preflight.');
+if (/finishRetryableInteractiveDataIoOperations\(normalizedReason\)/.test(recoverBody)) {
+  fail('interactive recovery must not clear fresh active Data I/O operations on every focus/render recovery.', recoverBody);
+}
 assertMatches(recoverBody, /#vehicleLookupButton[\s\S]*bindInteractiveActionControl\(vehicleButton, handleVehicleLookupButtonClick/,
   'vehicle lookup must be re-bound by the recovery pass after re-render/deploy handoff.');
 assertMatches(recoverBody, /#cancelBookingEdit[\s\S]*bindInteractiveActionControl\(cancelBookingButton, handleCancelBookingEditClick/,
@@ -44,7 +47,11 @@ assertMatches(recoverBody, /#cancelBookingEdit[\s\S]*bindInteractiveActionContro
 assertMatches(app, /function finishActiveDataIoOperationsBySource[\s\S]*INTERACTIVE_ACTION_RECOVERED/,
   'stale active Data I/O operations must be closed with an explicit recovery result code.');
 assertMatches(app, /function finishRetryableInteractiveDataIoOperations[\s\S]*vehicle-lookup-click[\s\S]*booking-save[\s\S]*trip-save[\s\S]*fuel-save[\s\S]*booking-delete[\s\S]*period-close/,
-  'retryable user actions must be included in stale Data I/O recovery.');
+  'retryable user actions must be listed for diagnostics compatibility.');
+assertMatches(app, /function finishStaleForegroundBlockingDataIoOperations[\s\S]*INTERACTIVE_ACTION_STALE_DATA_IO_CLEARED/,
+  'stale foreground-blocking Data I/O operations must be closed with a timeout result code.');
+assertMatches(app, /document\.addEventListener\("click", handleInteractiveActionPreflightEvent, true\)/,
+  'capture-phase click preflight must clear stale button latches before handlers run.');
 assertMatches(app, /function bindInteractiveActionControl[\s\S]*dataset[\s\S]*addEventListener\("click"/,
   'interactive controls must use idempotent delegated/recoverable binding.');
 

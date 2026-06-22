@@ -1758,14 +1758,120 @@ function finishActiveDataIoOperationsBySource(source = "", reason = "interactive
 function finishRetryableInteractiveDataIoOperations(reason = "interactive-action-recovery") {
   const retryableSources = [
     "vehicle-lookup-click",
+    "vehicle-lookup",
+    "vehicle-lookup-backend-context",
+    "vehicle-lookup-workspace-context",
     "booking-save",
     "trip-save",
     "fuel-save",
     "booking-delete",
     "period-close",
-    "settings-save"
+    "payment-status-action",
+    "settlement-request-save",
+    "settings-save",
+    "workspace-switch",
+    "workspace-create",
+    "workspace-invite-redeem",
+    "workspace-invite-create",
+    "member-profile-setup"
   ];
   return retryableSources.reduce((count, source) => count + finishActiveDataIoOperationsBySource(source, reason), 0);
+}
+
+function beginMemberActionOperation(source = "member-action") {
+  const normalizedSource = normalizeMemberActionSource(source);
+  activeMemberActionOperations.add(normalizedSource);
+  activeMemberActionOperationStartedAt.set(normalizedSource, Date.now());
+  return normalizedSource;
+}
+
+function finishMemberActionOperation(source = "member-action") {
+  const normalizedSource = normalizeMemberActionSource(source);
+  activeMemberActionOperations.delete(normalizedSource);
+  activeMemberActionOperationStartedAt.delete(normalizedSource);
+}
+
+function purgeStaleMemberActionOperations(reason = "interactive-action-recovery", referenceTime = Date.now()) {
+  let cleared = 0;
+  Array.from(activeMemberActionOperations.values()).forEach((source) => {
+    const startedAt = Number(activeMemberActionOperationStartedAt.get(source) || 0);
+    const ageMs = startedAt > 0 ? referenceTime - startedAt : memberActionOperationStaleMs;
+    if (ageMs < memberActionOperationStaleMs) return;
+    activeMemberActionOperations.delete(source);
+    activeMemberActionOperationStartedAt.delete(source);
+    cleared += 1;
+    recordDataIoDiagnostic("timeout", {
+      source,
+      route: "member-action",
+      operation: "run",
+      ok: false,
+      resultCode: "MEMBER_ACTION_STALE_LATCH_CLEARED",
+      statusCode: "MEMBER_ACTION_STALE_LATCH_CLEARED",
+      detail: `${source} stayed active for ${Math.round(ageMs / 1000)}s and was cleared before the next user action (${reason}).`,
+      staleAfterMs: memberActionOperationStaleMs
+    });
+  });
+  if (cleared) {
+    recordSupabaseLoadEvent("member-action-stale-latch-cleared", `${cleared}; ${reason}`);
+    recordSyncDiagnostic("member-action-stale-latch-cleared", `${cleared} stale member action latch(es) were cleared before the next user action.`, { reason, cleared });
+  }
+  return cleared;
+}
+
+function finishStaleForegroundBlockingDataIoOperations(reason = "interactive-action-recovery", referenceTime = Date.now()) {
+  let finished = 0;
+  latestDataIoOperations(40).forEach((operation) => {
+    if (operation.status !== "active") return;
+    if (!isForegroundBlockingDataIoOperation(operation)) return;
+    const start = operation.start || operation.latest || {};
+    const startedAtMs = Number(operation.startedAtMs || Date.parse(start.at || ""));
+    const staleAfterMs = normalizeDataIoOperationStaleMs(operation.staleAfterMs || start.staleAfterMs);
+    if (Number.isFinite(startedAtMs) && startedAtMs > 0 && referenceTime - startedAtMs < staleAfterMs) return;
+    recordDataIoDiagnostic("timeout", {
+      ...start,
+      ok: false,
+      resultCode: "INTERACTIVE_ACTION_STALE_DATA_IO_CLEARED",
+      statusCode: "INTERACTIVE_ACTION_STALE_DATA_IO_CLEARED",
+      detail: `${start.source || "interactive action"} did not finish before the next user action and was cleared (${reason}).`,
+      staleAfterMs
+    });
+    finished += 1;
+  });
+  if (finished) {
+    recordSupabaseLoadEvent("interactive-action-dataio-stale-cleared", `${finished}; ${reason}`);
+    recordSyncDiagnostic("interactive-action-dataio-stale-cleared", `${finished} stale foreground Data I/O operation(s) were cleared before the next user action.`, { reason, finished });
+  }
+  return finished;
+}
+
+function recoverStaleInteractiveActionState(reason = "interactive-action-preflight") {
+  const now = Date.now();
+  const clearedForeground = purgeStaleForegroundOperations(`interactive-preflight:${reason}`, now);
+  const clearedDataIo = finishStaleForegroundBlockingDataIoOperations(reason, now);
+  const clearedMemberActions = purgeStaleMemberActionOperations(reason, now);
+  if (visibleSavingStartedAt
+    && !hasActiveForegroundOperation(now)
+    && !pendingSettlementRequestKeys.size
+    && !hasActiveDataIoOperation(now, dataIoOperationStaleMs, { foregroundOnly: true })) {
+    clearStaleVisibleSavingStatus(`interactive-preflight:${reason}`);
+  }
+  const total = clearedForeground + clearedDataIo + clearedMemberActions;
+  if (total) {
+    recordSyncDiagnostic("interactive-action-preflight-recovered", `Recovered ${total} stale action latch(es) before user action.`, { reason, clearedForeground, clearedDataIo, clearedMemberActions });
+    renderSupabaseLoadMonitor();
+  }
+  return { total, clearedForeground, clearedDataIo, clearedMemberActions };
+}
+
+function shouldRunInteractiveActionPreflight(event = {}) {
+  const target = event.target;
+  if (!target || typeof target.closest !== "function") return false;
+  return Boolean(target.closest('button, input[type="button"], input[type="submit"], [role="button"], a[href], summary, select'));
+}
+
+function handleInteractiveActionPreflightEvent(event = {}) {
+  if (!shouldRunInteractiveActionPreflight(event)) return;
+  recoverStaleInteractiveActionState(`event:${event.type || "action"}`);
 }
 
 function bindInteractiveActionControl(control, handler, marker = "interactiveBound") {
@@ -1780,8 +1886,9 @@ function bindInteractiveActionControl(control, handler, marker = "interactiveBou
 function recoverInteractiveActionControls(reason = "recover") {
   const normalizedReason = String(reason || "recover");
   purgeStaleForegroundOperations(`interactive:${normalizedReason}`);
-  const recoveredDataIo = finishRetryableInteractiveDataIoOperations(normalizedReason);
-  if (visibleSavingStartedAt && !hasActiveForegroundOperation()) {
+  const recoveredStale = recoverStaleInteractiveActionState(`controls:${normalizedReason}`);
+  const recoveredDataIo = recoveredStale.clearedDataIo || 0;
+  if (visibleSavingStartedAt && !hasForegroundWriteInFlight()) {
     clearStaleVisibleSavingStatus(`interactive:${normalizedReason}`);
   }
 
@@ -1799,7 +1906,7 @@ function recoverInteractiveActionControls(reason = "recover") {
     bindInteractiveActionControl(cancelBookingButton, handleCancelBookingEditClick, "cancelBookingBound");
   }
 
-  recordSyncDiagnostic("interactive-action-controls-recovered", `Interactive controls recovered after ${normalizedReason}.`, { reason: normalizedReason, recoveredDataIo });
+  recordSyncDiagnostic("interactive-action-controls-recovered", `Interactive controls recovered after ${normalizedReason}.`, { reason: normalizedReason, recoveredDataIo, recoveredStale });
   return { recoveredDataIo };
 }
 function recordBlockedVisibleSyncStatus(label, source, options = {}) {
@@ -2140,11 +2247,11 @@ async function traceMemberActionOperation(source, detail, action, { operation = 
     if (typeof showUserWarning === "function") showUserWarning("That action is already running. Wait for it to finish before trying again.");
     return { ok: false, skipped: true, reason: "member-action-already-running", source: normalizedSource };
   }
-  activeMemberActionOperations.add(normalizedSource);
+  beginMemberActionOperation(normalizedSource);
   try {
     return await traceDataIo(makeMemberActionDiagnosticMeta(normalizedSource, detail, operation, { staleAfterMs }), action);
   } finally {
-    activeMemberActionOperations.delete(normalizedSource);
+    finishMemberActionOperation(normalizedSource);
   }
 }
 
@@ -2379,9 +2486,24 @@ function latestDataIoOperation({ includeOptionalAdminAudit = false } = {}) {
   return (includeOptionalAdminAudit ? operations : operations.filter((operation) => !isOptionalAdminPanelOperation(operation)))[0] || null;
 }
 
-function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoOperationStaleMs) {
-  return latestDataIoOperations(12).some((operation) => {
+function isForegroundBlockingDataIoOperation(operation = {}) {
+  if (isOptionalAdminPanelOperation(operation)) return false;
+  const entry = operation.latest || operation.start || operation.finish || {};
+  const source = String(entry.source || "").toLowerCase();
+  const endpoint = String(entry.endpoint || "").toLowerCase();
+  const route = String(entry.route || "").toLowerCase();
+  if (/owner-activity|admin-diagnostics|admin-render-health|admin-tool|workspace-tools-refresh|focus|realtime|service-worker|background/.test(source)) return false;
+  if (/vehicle-lookup|settings-save|booking|trip|fuel|payment|settlement|period-close|workspace-switch|workspace-create|workspace-invite|member-profile|write-context/.test(source)) return true;
+  if (/\/api\/(vehicle|settings|trips|fuel|bookings|payments|context\/write)/.test(endpoint)) return true;
+  if (/member-action/.test(route)) return true;
+  return false;
+}
+
+function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoOperationStaleMs, options = {}) {
+  const foregroundOnly = options.foregroundOnly !== false;
+  return latestDataIoOperations(30).some((operation) => {
     if (operation.status !== "active") return false;
+    if (foregroundOnly && !isForegroundBlockingDataIoOperation(operation)) return false;
     const startedAtMs = Number(operation.startedAtMs || Date.parse(operation.start?.at || ""));
     if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) return true;
     return referenceTime - startedAtMs < maxAgeMs;
@@ -2389,7 +2511,9 @@ function hasActiveDataIoOperation(referenceTime = Date.now(), maxAgeMs = dataIoO
 }
 
 function hasForegroundWriteInFlight(referenceTime = Date.now()) {
-  return hasActiveForegroundOperation(referenceTime) || pendingSettlementRequestKeys.size > 0 || hasActiveDataIoOperation(referenceTime, dataIoOperationStaleMs);
+  purgeStaleForegroundOperations("foreground-check", referenceTime);
+  purgeStaleMemberActionOperations("foreground-check", referenceTime);
+  return hasActiveForegroundOperation(referenceTime) || pendingSettlementRequestKeys.size > 0 || hasActiveDataIoOperation(referenceTime, dataIoOperationStaleMs, { foregroundOnly: true });
 }
 
 function shouldDeferBackgroundCloudLoad(reason = "background", referenceTime = Date.now()) {
@@ -2833,6 +2957,8 @@ let workspaceInviteRefreshQueued = false;
 let lastWorkspaceInviteRefreshAt = 0;
 const workspaceInviteRefreshFreshMs = 5000;
 const activeMemberActionOperations = new Set();
+const activeMemberActionOperationStartedAt = new Map();
+const memberActionOperationStaleMs = 20000;
 let normalizedReadModeActive = false;
 const pendingSettlementRequestKeys = new Set();
 const viewStorageKey = "fuel-ledger-active-view";
@@ -3967,6 +4093,7 @@ function clearVehicleLookupForPlateChange() {
 }
 
 function handleVehicleLookupButtonClick(event = null) {
+  recoverStaleInteractiveActionState("vehicle-lookup-click");
   if (event?.__fuelVehicleLookupHandled) return;
   if (event) {
     event.preventDefault();
@@ -4007,6 +4134,9 @@ function handleVehicleLookupButtonClick(event = null) {
   });
   lookupVehicleByPlateFromUi({ trigger: "button-click", requestedPlate: plate });
 }
+
+document.addEventListener("click", handleInteractiveActionPreflightEvent, true);
+document.addEventListener("submit", handleInteractiveActionPreflightEvent, true);
 
 if (els.vehicleLookupButton) {
   markVehicleLookupButtonBound(els.vehicleLookupButton);
@@ -10047,7 +10177,57 @@ async function ensureVehicleLookupWorkspaceContext(plate = "", options = {}) {
   const automaticRetry = Boolean(options?.automaticRetry);
   const workspaceRetry = Number(options?.workspaceContextRetry || 0);
   const beforeContext = buildDataIoWorkspaceContext({ selectedWorkspaceId: requestedWorkspaceId, selectedWorkspaceLabel: getWorkspaceLabelByLedgerId(requestedWorkspaceId) });
-  const backendContext = await getRenderAppContext({ ledgerId: requestedWorkspaceId, preferredWorkspaceId: requestedWorkspaceId, reason: "vehicle-lookup", timeoutMs: 6000 });
+  setVehicleLookupStatus(`Checking ${beforeContext.selectedWorkspaceLabel} permissions before vehicle lookup…`, { plate, phase: "backend-context" });
+  let backendContext = isBackendAppContextFreshForWorkspace(requestedWorkspaceId) ? getBackendAppContext() : null;
+  if (backendContext) {
+    recordDataIoDiagnostic("skip", {
+      source: "vehicle-lookup-backend-context",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "load",
+      ok: true,
+      resultCode: "VEHICLE_LOOKUP_BACKEND_CONTEXT_REUSED",
+      statusCode: "VEHICLE_LOOKUP_BACKEND_CONTEXT_REUSED",
+      ledgerId: requestedWorkspaceId,
+      selectedWorkspaceId: beforeContext.selectedWorkspaceId,
+      selectedWorkspaceLabel: beforeContext.selectedWorkspaceLabel,
+      loadedWorkspaceId: beforeContext.loadedWorkspaceId,
+      loadedWorkspaceLabel: beforeContext.loadedWorkspaceLabel,
+      workspaceMismatch: beforeContext.workspaceMismatch,
+      detail: `Reused fresh backend app context for vehicle lookup in ${beforeContext.selectedWorkspaceLabel}.`
+    });
+  } else {
+    backendContext = await getRenderAppContext({ ledgerId: requestedWorkspaceId, preferredWorkspaceId: requestedWorkspaceId, reason: "vehicle-lookup", timeoutMs: 6000 });
+  }
+  if (!backendContext) {
+    const message = appBackendContextStatus?.error || "Backend workspace context did not finish in time.";
+    const timedOut = /timeout|timed out/i.test(String(message || ""));
+    recordDataIoDiagnostic(timedOut ? "timeout" : "blocked", {
+      source: "vehicle-lookup-backend-context",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "load",
+      ok: false,
+      resultCode: timedOut ? "VEHICLE_LOOKUP_BACKEND_CONTEXT_TIMEOUT" : "VEHICLE_LOOKUP_BACKEND_CONTEXT_UNAVAILABLE",
+      statusCode: timedOut ? "VEHICLE_LOOKUP_BACKEND_CONTEXT_TIMEOUT" : "VEHICLE_LOOKUP_BACKEND_CONTEXT_UNAVAILABLE",
+      ledgerId: requestedWorkspaceId,
+      selectedWorkspaceId: beforeContext.selectedWorkspaceId,
+      selectedWorkspaceLabel: beforeContext.selectedWorkspaceLabel,
+      loadedWorkspaceId: beforeContext.loadedWorkspaceId,
+      loadedWorkspaceLabel: beforeContext.loadedWorkspaceLabel,
+      workspaceMismatch: beforeContext.workspaceMismatch,
+      detail: message
+    });
+    if (!automaticRetry) {
+      setVehicleLookupStatus("Backend workspace check is delayed. The app will retry this vehicle lookup automatically without a hard refresh.", { plate, phase: "retry" });
+      scheduleRenderBackendWake("vehicle-lookup-context-retry");
+      window.setTimeout(() => lookupVehicleByPlateFromUi({ automaticRetry: true, requestedPlate: plate, workspaceContextRetry: workspaceRetry }), 1800);
+    } else {
+      setVehicleLookupStatus("Backend workspace check is still delayed. Try Lookup vehicle again; manual fuel settings are safe to edit meanwhile.", { plate, phase: "blocked" });
+    }
+    setVehicleLookupSummary("", { plate, phase: "blocked" });
+    return { ok: false, ledgerId: requestedWorkspaceId, context: beforeContext, reason: "backend_context_unavailable" };
+  }
   const backendWorkspaceId = String(backendContext?.activeWorkspace?.ledgerId || backendContext?.activeWorkspace?.ledger_id || "").trim();
   if (backendWorkspaceId && backendWorkspaceId !== String(getActiveLedgerId() || "")) {
     setActiveLedgerId(backendWorkspaceId, { persist: true, updateUrl: true });
@@ -13471,23 +13651,22 @@ async function requestRenderJson(endpoint, options = {}) {
     if (options.body !== undefined) fetchOptions.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
 
     const timeoutMs = Number(options.timeoutMs || 0);
-    const fetchPromise = fetch(endpoint, fetchOptions);
-    const response = timeoutMs > 0
-      ? await Promise.race([fetchPromise, new Promise((_, reject) => {
-          timeoutId = window.setTimeout(() => {
-            if (controller) controller.abort();
-            reject(paymentActionTimeoutError(options.timeoutLabel || "Render API", timeoutMs));
-          }, timeoutMs);
-        })])
-      : await fetchPromise;
-    if (timeoutId) {
-      window.clearTimeout(timeoutId);
-      timeoutId = 0;
+    const runRequest = async () => {
+      const response = await fetch(endpoint, fetchOptions);
+      const text = await response.text();
+      let result = null;
+      try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+      return { response, text, result, status: response.status, ok: response.ok };
+    };
+    if (timeoutMs > 0) {
+      return await Promise.race([runRequest(), new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          if (controller) controller.abort();
+          reject(paymentActionTimeoutError(options.timeoutLabel || "Render API", timeoutMs));
+        }, timeoutMs);
+      })]);
     }
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
-    return { response, text, result, status: response.status, ok: response.ok };
+    return await runRequest();
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
   }
@@ -13525,12 +13704,17 @@ async function callRenderActionMutation({
     const startMeta = { ...traceMeta, ok: true };
     if (startResultCode) startMeta.resultCode = startResultCode;
     recordDataIoDiagnostic("start", startMeta);
-    const { response, text, result } = await requestRenderJson(endpoint, {
+    const { response, text, result } = await callRenderJsonWithUserActionRecovery(endpoint, {
       method: "POST",
       timeoutMs,
       timeoutLabel,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: payload
+      authTimeoutMs: Math.min(timeoutMs || writeContextSessionTimeoutMs, writeContextSessionTimeoutMs),
+      source: traceMeta?.source || "render-action",
+      preferCachedSession: true,
+      body: payload,
+      allowResultOkFalse: true,
+      attempts: 2,
+      recoveryReason: traceMeta?.source || timeoutLabel || "render-action"
     });
 
     if (response.ok && result?.ok) {
@@ -16213,38 +16397,26 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
   const preferredWorkspaceIdAtRequest = String(preferredWorkspaceId || ledgerId || selectedWorkspaceIdAtRequest || getConfiguredLedgerId()).trim();
   const operationId = createDataIoOperationId("app-context", "load");
   const traceMeta = { source: "app-context", route: "render-api", endpoint: renderAppContextUrl, operation: "load", operationId };
-  let controller = null;
-  let timeoutId = 0;
   try {
-    const accessToken = await getFreshRenderAccessToken();
-    if (!accessToken) return null;
     appBackendContextStatus = { ...appBackendContextStatus, loading: true, error: "" };
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "APP_CONTEXT_STARTED", detail: `Load backend app context (${reason})` });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Backend app context", timeoutMs));
-      }, timeoutMs);
-    });
-    const response = await Promise.race([fetch(renderAppContextUrl, {
+    const { response, text, result } = await callRenderJson(renderAppContextUrl, {
       method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
+      body: {
         ledgerId,
         preferredWorkspaceId: preferredWorkspaceIdAtRequest,
         selectedWorkspaceId: selectedWorkspaceIdAtRequest,
         loadedWorkspaceId: getLoadedWorkspaceId(),
         urlWorkspaceId: getWorkspaceUrlLedgerId(),
         reason
-      })
-    }), timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+      },
+      timeoutMs,
+      timeoutLabel: "Backend app context",
+      authTimeoutMs: Math.min(timeoutMs, writeContextSessionTimeoutMs),
+      source: "app-context",
+      preferCachedSession: true,
+      allowResultOkFalse: true
+    });
     if (response.ok && result?.ok && result?.context) {
       const activeId = applyBackendAppContext(result.context, { reason, expectedWorkspaceId: preferredWorkspaceIdAtRequest });
       const staleContextIgnored = appBackendContextStatus?.decision === "stale-backend-context-ignored";
@@ -16258,13 +16430,12 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
     recordDataIoDiagnostic("error", { ...traceMeta, ok: false, error, resultCode: "APP_CONTEXT_ERROR", detail: message });
     return null;
   } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || error?.name === "RenderApiTimeoutError" || error?.isPaymentActionTimeout;
     const message = error?.message || String(error || "Backend app context failed");
     appBackendContextStatus = { ...appBackendContextStatus, checked: true, ok: false, loading: false, error: message, checkedAt: new Date().toISOString() };
     recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, ok: false, error, resultCode: timedOut ? "APP_CONTEXT_TIMEOUT" : "APP_CONTEXT_EXCEPTION", detail: message });
     return null;
   } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
     appBackendContextStatus = { ...appBackendContextStatus, loading: false };
   }
 }
@@ -16847,7 +17018,7 @@ async function createPrivateWorkspaceFromUi() {
   const submitButton = els.createWorkspaceForm ? els.createWorkspaceForm.querySelector('button[type="submit"]') : null;
   if (submitButton) submitButton.disabled = true;
   setCreateWorkspaceMessage("Creating private workspace... This can take up to 15 seconds.");
-  activeMemberActionOperations.add(actionKey);
+  beginMemberActionOperation(actionKey);
   const operationId = createDataIoOperationId("workspace-create", "create");
   const traceMeta = {
     source: "workspace-create",
@@ -16897,7 +17068,7 @@ async function createPrivateWorkspaceFromUi() {
     showUserError(`Could not create workspace: ${describeWorkspaceCreateError(error)}`);
     return false;
   } finally {
-    activeMemberActionOperations.delete(actionKey);
+    finishMemberActionOperation(actionKey);
     if (submitButton) submitButton.disabled = false;
     renderWorkspaceInvitesPanel();
   }
@@ -19143,10 +19314,10 @@ async function hasFreshSupabaseSession(options = {}) {
 async function getFreshRenderAccessToken(options = {}) {
   if (!supabaseClient) return "";
   const session = await getFreshSessionWithTimeout({
-    timeoutMs: Number(options.timeoutMs || 0),
+    timeoutMs: Number(options.timeoutMs || writeContextSessionTimeoutMs),
     label: options.timeoutLabel || "Render backend session",
     source: options.source || "render-api",
-    preferCached: options.preferCached === true
+    preferCached: options.preferCached !== false
   });
   if (!session?.access_token) {
     currentSession = null;
@@ -19158,17 +19329,25 @@ async function getFreshRenderAccessToken(options = {}) {
 }
 
 async function buildRenderRequestHeaders(extraHeaders = {}, options = {}) {
-  const accessToken = await getFreshRenderAccessToken(options);
+  const accessToken = await getFreshRenderAccessToken({
+    ...options,
+    timeoutMs: Number(options.timeoutMs || writeContextSessionTimeoutMs),
+    timeoutLabel: options.timeoutLabel || "Render backend session",
+    source: options.source || "render-api",
+    preferCached: options.preferCached !== false
+  });
   if (!accessToken) {
     const error = new Error("Sign in before calling the Render backend.");
     error.code = "AUTH_REQUIRED";
     error.resultCode = "AUTH_REQUIRED";
     throw error;
   }
-  return {
-    ...extraHeaders,
-    "Authorization": `Bearer ${accessToken}`
-  };
+  return renderApiClient?.makeHeaders
+    ? renderApiClient.makeHeaders(extraHeaders, { accessToken, contentType: extraHeaders && Object.prototype.hasOwnProperty.call(extraHeaders, "Content-Type") ? extraHeaders["Content-Type"] : undefined })
+    : {
+        ...extraHeaders,
+        "Authorization": `Bearer ${accessToken}`
+      };
 }
 
 function hasFreshRenderBackendWake(referenceTime = Date.now()) {
@@ -19265,11 +19444,23 @@ async function callRenderJson(endpoint, options = {}) {
   const timeoutMs = Number(options.timeoutMs || 12000);
   const timeoutLabel = options.timeoutLabel || `Render API ${endpoint}`;
   const allowResultOkFalse = options.allowResultOkFalse === true;
+  const authTimeoutMs = Math.max(1, Number(options.authTimeoutMs || Math.min(timeoutMs, writeContextSessionTimeoutMs)));
   try {
-    const headers = await buildRenderRequestHeaders({
-      "Content-Type": "application/json",
-      ...(options.headers || {})
+    const accessToken = await getFreshRenderAccessToken({
+      timeoutMs: authTimeoutMs,
+      timeoutLabel: `${timeoutLabel} session`,
+      source: options.source || "render-api",
+      preferCached: options.preferCachedSession !== false
     });
+    if (!accessToken) {
+      const error = new Error("Sign in before calling the Render backend.");
+      error.code = "AUTH_REQUIRED";
+      error.resultCode = "AUTH_REQUIRED";
+      throw error;
+    }
+    const headers = renderApiClient?.makeHeaders
+      ? renderApiClient.makeHeaders(options.headers || {}, { accessToken, contentType: "application/json" })
+      : { "Content-Type": "application/json", ...(options.headers || {}), "Authorization": `Bearer ${accessToken}` };
     const { response, text, result } = await requestRenderJson(endpoint, {
       method,
       timeoutMs,
@@ -19752,31 +19943,20 @@ async function syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads, sourc
   const traceMeta = { source, route: "render-api", endpoint: renderLedgerDirectorySyncUrl, operation: "upsert" };
   if (!currentSession?.access_token || !ledgerPayload?.id) return { ok: false, shouldFallback: true };
 
-  let controller = null;
-  let timeoutId = 0;
   try {
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true, ledgerId: ledgerPayload.id });
-    controller = new AbortController();
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => {
-        if (controller) controller.abort();
-        reject(paymentActionTimeoutError("Render ledger directory sync API", 12000));
-      }, 12000);
-    });
-    const fetchPromise = fetch(renderLedgerDirectorySyncUrl, {
+    const { response, text, result } = await callRenderJsonWithUserActionRecovery(renderLedgerDirectorySyncUrl, {
       method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ ledger: ledgerPayload, members: memberPayloads })
+      body: { ledger: ledgerPayload, members: memberPayloads },
+      timeoutMs: 12000,
+      timeoutLabel: "Render ledger directory sync API",
+      authTimeoutMs: writeContextSessionTimeoutMs,
+      source,
+      preferCachedSession: true,
+      allowResultOkFalse: true,
+      attempts: 2,
+      recoveryReason: source
     });
-
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    window.clearTimeout(timeoutId);
-    timeoutId = 0;
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-ledger-directory-sync", "ledger directory via Render backend API");
@@ -19787,6 +19967,8 @@ async function syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads, sourc
     const message = result?.message || result?.error || text || `Render ledger directory sync failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
+    error.code = result?.code || response.status;
+    error.resultCode = result?.code || response.status;
     const shouldFallback = [404, 405, 501].includes(response.status);
     recordDataIoDiagnostic("error", {
       ...traceMeta,
@@ -19796,17 +19978,15 @@ async function syncLedgerDirectoryViaRender(ledgerPayload, memberPayloads, sourc
     });
     return { ok: false, shouldFallback, error };
   } catch (error) {
-    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError";
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || error?.name === "RenderApiTimeoutError" || /timeout|timed out/i.test(String(error?.message || error?.code || error?.resultCode || ""));
     if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render ledger directory sync API", 12000);
     recordDataIoDiagnostic(timedOut ? "timeout" : "exception", {
       ...traceMeta,
       error,
       ledgerId: ledgerPayload.id,
-      detail: "Falling back to direct Supabase ledger directory sync."
+      detail: timedOut ? "Render ledger directory sync timed out before the user action could continue." : "Falling back to direct Supabase ledger directory sync."
     });
-    return { ok: false, shouldFallback: true, error };
-  } finally {
-    if (timeoutId) window.clearTimeout(timeoutId);
+    return { ok: false, shouldFallback: !timedOut, error };
   }
 }
 
@@ -20422,13 +20602,9 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
 
   try {
     recordDataIoDiagnostic("start", { ...traceMeta, ok: true });
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), paymentStatusActionTimeoutMs);
-    const response = await fetch(renderPaymentStatusActionUrl, {
+    const { response, text, result } = await callRenderJsonWithUserActionRecovery(renderPaymentStatusActionUrl, {
       method: "POST",
-      signal: controller.signal,
-      headers: await buildRenderRequestHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
+      body: {
         context: { ledgerId: context.ledgerId, openPeriodId: context.openPeriodId },
         settlement: {
           from_member_id: payload.from_member_id,
@@ -20440,12 +20616,16 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
         previousStatus: normalizePaymentStatus(options.previousStatus),
         auditEntry: options.auditEntry || {},
         currentPairKeys: currentSettlementPairKeys(context)
-      })
-    }).finally(() => window.clearTimeout(timeoutId));
-
-    const text = await response.text();
-    let result = null;
-    try { result = text ? JSON.parse(text) : null; } catch (_) { result = null; }
+      },
+      timeoutMs: paymentStatusActionTimeoutMs,
+      timeoutLabel: "Render payment action API",
+      authTimeoutMs: Math.min(paymentStatusActionTimeoutMs, writeContextSessionTimeoutMs),
+      source: "settlement-request-save",
+      preferCachedSession: true,
+      allowResultOkFalse: true,
+      attempts: 2,
+      recoveryReason: "payment-status-action"
+    });
 
     if (response.ok && result?.ok) {
       recordSupabaseLoadEvent("render-payment-action", `${payload.status} via Render backend API`);
@@ -20456,6 +20636,8 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
     const message = result?.message || result?.error || text || `Render payment action failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
+    error.code = result?.code || response.status;
+    error.resultCode = result?.code || response.status;
     recordDataIoDiagnostic("error", { ...traceMeta, error, detail: `HTTP ${response.status}` });
     return {
       ok: false,
@@ -20464,13 +20646,12 @@ async function applyPaymentStatusActionViaRender(context, payload, options = {},
       backend: "render-api"
     };
   } catch (error) {
-    recordDataIoDiagnostic(error?.name === "AbortError" ? "timeout" : "exception", { ...traceMeta, error });
-    console.warn("Render payment action API failed; falling back to direct Supabase RPC", error);
-    if (error?.name === "AbortError") {
-      error = paymentActionTimeoutError("Render payment action API", paymentStatusActionTimeoutMs);
-      error.isRenderPaymentActionTimeout = true;
-      return { ok: false, error, shouldFallback: false, backend: "render-api" };
-    }
+    const timedOut = error?.name === "AbortError" || error?.name === "PaymentActionTimeoutError" || error?.name === "RenderApiTimeoutError" || /timeout|timed out/i.test(String(error?.message || error?.code || error?.resultCode || ""));
+    if (timedOut && error?.name !== "PaymentActionTimeoutError") error = paymentActionTimeoutError("Render payment action API", paymentStatusActionTimeoutMs);
+    if (timedOut) error.isRenderPaymentActionTimeout = true;
+    recordDataIoDiagnostic(timedOut ? "timeout" : "exception", { ...traceMeta, error });
+    console.warn("Render payment action API failed", error);
+    if (timedOut) return { ok: false, error, shouldFallback: false, backend: "render-api" };
     return { ok: false, error, shouldFallback: true, backend: "render-api" };
   }
 }

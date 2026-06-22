@@ -98,17 +98,20 @@
       fetchOptions.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
     }
 
+    const runRequest = async () => {
+      const response = await fetch(url, fetchOptions);
+      return parseJsonResponse(response);
+    };
+
     try {
-      const fetchPromise = fetch(url, fetchOptions);
-      if (!timeoutMs || timeoutMs <= 0) return parseJsonResponse(await fetchPromise);
+      if (!timeoutMs || timeoutMs <= 0) return runRequest();
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimer(() => {
           try { if (controller) controller.abort(); } catch (_) {}
           reject(createTimeoutError(timeoutLabel, timeoutMs, options.timeoutErrorFactory));
         }, timeoutMs);
       });
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
-      return parseJsonResponse(response);
+      return await Promise.race([runRequest(), timeoutPromise]);
     } finally {
       if (timeoutId) clearTimer(timeoutId);
     }

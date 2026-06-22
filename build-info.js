@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.277",
-    buildLabel: "workspace-action-authority-lane",
-    updatedAt: "2026-06-22T14:55:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v418",
+    version: "2026.06.18.278",
+    buildLabel: "interactive-action-timeout-lane",
+    updatedAt: "2026-06-22T15:25:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v419",
     releaseNotes: Object.freeze([
+      "Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.",
       "Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.",
       "Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.",
       "Render API calls now have their first dedicated runtime client: backend endpoint names, JSON parsing, auth-header merging, and timeout/abort behavior live in render-api-client.js while app.js delegates the state-load, write-context, booking, trip, and fuel paths through one request helper.",

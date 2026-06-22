@@ -237,8 +237,20 @@ if (tripRenderCallIndex < 0 || tripFallbackBlockIndex < 0 || tripDirectRpcIndex 
 
 const tripRenderBody = extractFunctionBody(source, 'saveTripWithParticipantsViaRender') || '';
 const renderActionMutationBody = extractFunctionBody(source, 'callRenderActionMutation') || '';
+const renderUserActionRecoveryBody = extractFunctionBody(source, 'callRenderJsonWithUserActionRecovery') || '';
+const callRenderJsonBody = extractFunctionBody(source, 'callRenderJson') || '';
 const renderRequestBody = extractFunctionBody(source, 'requestRenderJson') || '';
-const sharedRenderActionIsBounded = renderActionMutationBody.includes('requestRenderJson(') && /Promise\.race\(\[fetchPromise[\s\S]*paymentActionTimeoutError/.test(renderRequestBody);
+const renderRequestIsBodyBounded = (
+  /Promise\.race\(\[fetchPromise[\s\S]*paymentActionTimeoutError/.test(renderRequestBody)
+  || /const runRequest = async \(\) => \{[\s\S]*response\.text\(\)[\s\S]*Promise\.race\(\[runRequest\(\), new Promise[\s\S]*paymentActionTimeoutError/.test(renderRequestBody)
+);
+const sharedRenderActionUsesRecovery = renderActionMutationBody.includes('callRenderJsonWithUserActionRecovery(')
+  && renderUserActionRecoveryBody.includes('callRenderJson(endpoint, options)')
+  && /requestRenderJson\(endpoint,[\s\S]*timeoutMs/.test(callRenderJsonBody);
+const sharedRenderActionIsBounded = (
+  (renderActionMutationBody.includes('requestRenderJson(') && renderRequestIsBodyBounded)
+  || (sharedRenderActionUsesRecovery && renderRequestIsBodyBounded)
+);
 const sharedRenderActionFinishes = renderActionMutationBody.includes('finishDiagnostic("success"') && renderActionMutationBody.includes('finishDiagnostic(timedOut ? "timeout" : "exception"');
 if (!tripRenderBody.includes('Promise.race([fetchPromise, timeoutPromise])') && !(tripRenderBody.includes('callRenderActionMutation({') && sharedRenderActionIsBounded)) {
   console.error('Regression guard failed: trip Render saves must use bounded Render API request handling so the frontend cannot hang forever waiting for fetch/abort cleanup.');

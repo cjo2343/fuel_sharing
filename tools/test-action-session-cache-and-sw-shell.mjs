@@ -46,7 +46,7 @@ assertMatches(hasFresh, /preferCached: options\.preferCached === true/,
   'hasFreshSupabaseSession must pass through preferCached.');
 
 const renderToken = findFunctionBody(app, 'getFreshRenderAccessToken');
-assertMatches(renderToken, /preferCached: options\.preferCached === true/,
+assertMatches(renderToken, /preferCached: options\.preferCached !== false/,
   'Render request headers must be able to reuse cached action sessions.');
 
 const writeContext = findFunctionBody(app, 'getNormalizedWriteContext');

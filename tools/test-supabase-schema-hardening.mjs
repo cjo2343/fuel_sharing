@@ -766,7 +766,7 @@ function testDataIoFlightRecorderExists() {
   assert.match(app, /let dataIoOperationCounter = 0/);
   assert.match(app, /function createDataIoOperationId\(source = "data-io"\)/);
   assert.match(app, /const dataIoOperationStaleMs = 15000/);
-  assert.match(app, /function hasActiveDataIoOperation\(referenceTime = Date\.now\(\), maxAgeMs = dataIoOperationStaleMs\)/);
+  assert.match(app, /function hasActiveDataIoOperation\(referenceTime = Date\.now\(\), maxAgeMs = dataIoOperationStaleMs, options = \{\}\)/);
   assert.match(app, /operation\.status = "timeout";[\s\S]*operation\.durationMs = Math\.max/);
   assert.match(app, /if \(entry\.operationId\) return `op:\$\{entry\.operationId\}`/);
   assert.match(app, /operationId: meta\.operationId \|\| ""/);
