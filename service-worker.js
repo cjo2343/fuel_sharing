@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v410";
+const CACHE_NAME = "fuel-ledger-v411";
 const BUILD_LABEL = "update-prompt-workspace-visibility-lane";
-const BUILD_UPDATED_AT = "2026-06-22T11:20:00.000Z";
+const BUILD_UPDATED_AT = "2026-06-22T12:40:48.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

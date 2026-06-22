@@ -1,5 +1,5 @@
 ## Recent runtime patch notes
-- 2026-06-22T11:20:00.000Z — `2026.06.18.269` / `update-prompt-workspace-visibility-lane` / `fuel-ledger-v410`: Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.
+- 2026-06-22T12:40:48.000Z — `2026.06.18.270` / `update-prompt-workspace-visibility-lane` / `fuel-ledger-v411`: Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.
 
 - 2026-06-22 10:55 UTC: v409 General member action routes return immediately after primary writes, optional owner activity is best-effort, action responses expose routeTiming breadcrumbs, and booking submit catches unexpected promise errors without requiring refresh.
 - 2026-06-22 10:20 UTC: v408 Interactive actions now reuse the already-hydrated Supabase session for booking/trip/fuel write-context setup instead of blocking clicks on a fresh auth.getSession call, and the service worker keeps older app-shell caches during deploy handoff so ?workspace navigations do not fall into Offline 503.
@@ -40,9 +40,9 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.269`
-- Service-worker cache: `fuel-ledger-v410`
-- Updated at: `2026-06-22T11:20:00.000Z`
+- Version: `2026.06.18.270`
+- Service-worker cache: `fuel-ledger-v411`
+- Updated at: `2026-06-22T12:40:48.000Z`
 - Top release note: Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.
 
 ## Invite beta readiness: member action Data I/O

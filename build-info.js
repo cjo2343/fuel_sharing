@@ -1,10 +1,10 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.269",
+    version: "2026.06.18.270",
     buildLabel: "update-prompt-workspace-visibility-lane",
-    updatedAt: "2026-06-22T11:20:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v410",
+    updatedAt: "2026-06-22T12:40:48.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v411",
     releaseNotes: Object.freeze([
       "Update prompt + workspace visibility truth lane replaces automatic service-worker refresh with a bottom-right New version available prompt, exposes update lifecycle state in load reports, and makes Admin distinguish active linked-workspace context from explicit app-owner global workspace visibility with loaded/empty/failed/not-checked states.",
       "General member action routes now return after the primary write and make owner activity/audit logging best-effort; booking/trip/fuel/payment routes include server timing breadcrumbs, frontend Data I/O stores routeTiming details, and booking submit catches unexpected promise errors so actions do not become stale after a timeout.",
