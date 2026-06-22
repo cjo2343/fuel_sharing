@@ -41,14 +41,26 @@ assert.match(
 
 assert.match(
   appSource,
-  /return shouldSurfaceBackgroundSyncDelay\(startedAt\);/,
-  "background sync timeouts should only show the delayed banner when the last healthy sync is stale"
+  /return shouldSurfaceBackgroundSyncDelay\(startedAt, reason\);/,
+  "background sync timeouts should pass their lane reason into the visible-delay decision"
 );
 
 assert.doesNotMatch(
   appSource,
   /lastHealthySyncMs < startedAt/,
   "background sync timeouts must not treat every earlier successful sync as stale"
+);
+
+assert.match(
+  appSource,
+  /function shouldKeepPassiveBackgroundSyncQuiet\(reason = "background", referenceTime = Date\.now\(\)\)[\s\S]*pendingLocalChanges > 0[\s\S]*hasAnyHealthyCloudSync\(\)[\s\S]*isPassiveBackgroundSyncReason\(reason\)[\s\S]*return true;/,
+  "passive focus/realtime/background refreshes should stay quiet after any healthy sync when there are no pending local changes"
+);
+
+assert.match(
+  appSource,
+  /function shouldSurfaceBackgroundSyncDelay\(referenceTime = Date\.now\(\), reason = "background"\)[\s\S]*shouldKeepPassiveBackgroundSyncQuiet\(reason, referenceTime\)[\s\S]*return false;[\s\S]*hasRecentHealthyCloudSync\(referenceTime, syncDelayHealthyGraceMs\)/,
+  "background sync delay surfacing should be blocked by the passive-background quiet gate before the stale-sync check"
 );
 
 assert.match(

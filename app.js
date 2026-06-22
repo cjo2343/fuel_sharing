@@ -2472,12 +2472,38 @@ function latestSyncDiagnostics(limit = 5) {
   return syncDiagnostics.slice(-limit).reverse();
 }
 
-function hasRecentHealthyCloudSync(referenceTime = Date.now(), graceMs = syncDelayHealthyGraceMs) {
-  const lastHealthySyncMs = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
-  return Number.isFinite(lastHealthySyncMs) && referenceTime - lastHealthySyncMs <= graceMs;
+function lastHealthyCloudSyncMs() {
+  const parsed = Date.parse(lastCloudSyncAt || lastCloudSaveAt || "");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function shouldSurfaceBackgroundSyncDelay(referenceTime = Date.now()) {
+function hasAnyHealthyCloudSync() {
+  return lastHealthyCloudSyncMs() > 0;
+}
+
+function hasRecentHealthyCloudSync(referenceTime = Date.now(), graceMs = syncDelayHealthyGraceMs) {
+  const lastHealthySyncMs = lastHealthyCloudSyncMs();
+  return lastHealthySyncMs > 0 && referenceTime - lastHealthySyncMs <= graceMs;
+}
+
+function isPassiveBackgroundSyncReason(reason = "background") {
+  const normalizedReason = normalizeVisibleSyncSource(reason, "background").toLowerCase();
+  if (/^(window-focus|focus-refresh|visibilitychange|service-worker|realtime|realtime-refresh|supabase-realtime|ledger-event|background)/.test(normalizedReason)) return true;
+  return isBackgroundVisibleSyncSource(normalizedReason);
+}
+
+function shouldKeepPassiveBackgroundSyncQuiet(reason = "background", referenceTime = Date.now()) {
+  if (pendingLocalChanges > 0) return false;
+  if (!hasAnyHealthyCloudSync()) return false;
+  if (!isPassiveBackgroundSyncReason(reason)) return false;
+  // A passive focus/realtime refresh is only a freshness probe. When the app has
+  // already loaded shared data and there are no local writes waiting, a slow
+  // probe should not turn the whole app red for app-owner/admin sessions.
+  return true;
+}
+
+function shouldSurfaceBackgroundSyncDelay(referenceTime = Date.now(), reason = "background") {
+  if (shouldKeepPassiveBackgroundSyncQuiet(reason, referenceTime)) return false;
   return !hasRecentHealthyCloudSync(referenceTime, syncDelayHealthyGraceMs);
 }
 
@@ -9404,7 +9430,7 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
     if (isAdminDiagnosticsSync) return false;
     if (isManualSync) return shouldSurfaceManualSyncDelay(startedAt);
     if (!isBackgroundSync) return true;
-    return shouldSurfaceBackgroundSyncDelay(startedAt);
+    return shouldSurfaceBackgroundSyncDelay(startedAt, reason);
   };
   const timeout = new Promise((resolve) => {
     timeoutId = window.setTimeout(() => {
@@ -9427,8 +9453,8 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
         recordSupabaseLoadEvent("cloud-sync-delayed-manual-quiet", `${reason} timed out after a healthy sync`);
         recordSyncDiagnostic("manual-load-timeout-after-healthy-sync", `${reason} timed out after a healthy sync`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
       } else {
-        recordSupabaseLoadEvent("cloud-sync-delayed-background", `${reason} timed out after a healthy sync`);
-        recordSyncDiagnostic("background-timeout", `${reason} timed out after a healthy sync`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt });
+        recordSupabaseLoadEvent("cloud-sync-delayed-background", `${reason} timed out in a passive background lane`);
+        recordSyncDiagnostic("background-timeout-quiet", `${reason} timed out in a passive background lane. Core app sync remains on the last loaded cloud state.`, { reason, timeoutMs, elapsedMs: Date.now() - startedAt, pendingLocalChanges, lastCloudSyncAt, lastCloudSaveAt });
       }
       resolve(false);
     }, timeoutMs);
@@ -9457,8 +9483,8 @@ async function loadSupabaseStateWithTimeout(options, timeoutMs, timeoutMessage) 
       recordSupabaseLoadEvent("manual-sync-incomplete-quiet", `${reason} returned without a fresh load after a healthy sync`);
       recordSyncDiagnostic("manual-load-incomplete-after-healthy-sync", `${reason} returned without a fresh load after a healthy sync`, { reason, elapsedMs: Date.now() - startedAt });
     } else if (isBackgroundSync && !shouldShowDelayedStatus()) {
-      recordSupabaseLoadEvent("background-sync-incomplete", `${reason} returned without a fresh load after a healthy sync`);
-      recordSyncDiagnostic("background-incomplete", `${reason} returned without a fresh load after a healthy sync`, { reason, elapsedMs: Date.now() - startedAt });
+      recordSupabaseLoadEvent("background-sync-incomplete", `${reason} returned without a fresh load in a passive background lane`);
+      recordSyncDiagnostic("background-incomplete-quiet", `${reason} returned without a fresh load in a passive background lane. Core app sync remains on the last loaded cloud state.`, { reason, elapsedMs: Date.now() - startedAt, pendingLocalChanges, lastCloudSyncAt, lastCloudSaveAt });
     } else {
       markCloudSyncDidNotComplete(timeoutMessage || "Cloud sync did not complete.");
     }
