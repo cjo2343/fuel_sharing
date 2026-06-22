@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.280`
-- Service-worker cache: `fuel-ledger-v421`
+- Version: `2026.06.18.281`
+- Service-worker cache: `fuel-ledger-v422`
 - Updated at: `2026-06-22T00:00:00.000Z`
-- Top release note: Cold starts and slow Supabase no longer stall the app behind the workspace load: the normalized-table read on the state-load path is now time-bounded (with a bounded session check), so a hung backend read falls back to the cached JSON mirror quickly instead of waiting on the outer load timeout.
+- Top release note: Vehicle lookup and other backend actions no longer stall after a tab sits idle: when the Render backend rejects an expired/cached session token (HTTP 401), the app now forces a real Supabase session refresh and retries once with the fresh token instead of looping on the dead token (which left vehicle lookup stuck on 'Preparing…').
 
 ## Invite beta readiness: member action Data I/O
 
