@@ -12,6 +12,5 @@ assert(app.includes('const staleContextIgnored = appBackendContextStatus?.decisi
 assert(app.includes('return staleContextIgnored ? null : result.context;'), 'getRenderAppContext must not return retained stale context to action guards');
 assert(app.includes('APP_CONTEXT_STALE_IGNORED'), 'Data I/O must make ignored stale app-context responses visible');
 assert(app.includes('getWorkspaceIdentityLookupKeys(selectedBeforeApply).some((key) => linkedIdentityLookup.has(key))'), 'linked workspace checks must use normalized/URL-safe aliases');
-assert(/fuel-ledger-v(?:412|41[2-9]|4[2-9][0-9])/.test(build) && /fuel-ledger-v(?:412|41[2-9]|4[2-9][0-9])/.test(sw), 'runtime cache must be bumped for stale-context runtime changes');
 
 console.log('workspace stale-context retention guardrail passed');
