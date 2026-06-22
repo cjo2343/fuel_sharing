@@ -528,6 +528,15 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 - Release-readiness companion checks should stay actionable: runtime file changes require build/cache metadata and `DEPLOYMENT-CHECKLIST.md`, migrations require schema/docs/tests, CSP changes require header tests/docs, and CI guardrail changes require maintenance notes/tests.
 - `DEPLOYMENT-CHECKLIST.md` must contain the exact current `build-info.js` version, expected service-worker cache, updated timestamp, and top release note so the manual deploy checklist cannot drift from the runtime metadata.
 
+### Build version is owned centrally — do NOT pin it in feature guard tests
+
+`build-info.js` is the single source of truth for version, build label, and expected cache. Two central checks enforce it, and nothing else should:
+
+- `tools/check-build-info.mjs` fails if a runtime file changes without bumping `build-info.js` + `service-worker.js` (the "you bumped" guard).
+- `tools/check-release-readiness.mjs` enforces build-info ↔ service-worker consistency (cache/label/updatedAt match), version format, the `DEPLOYMENT-CHECKLIST.md` release block, and a downgrade guard (`assertNotDowngraded`) that compares the working tree against the previously committed `build-info.js`.
+
+Feature/regression guard tests (`tools/test-*.mjs`) must assert only their own behavior. Do **not** add `version:`, `expectedServiceWorkerCache`, `CACHE_NAME`, or `buildLabel`/`BUILD_LABEL` pins to them. Those enumerated/allow-list pins were removed because every release forced edits across ~40 files just to bump a number, which buried real changes and made red CI normal. If you find yourself updating a version/cache/label across many test files, stop — the central checks already cover it.
+
 
 - When payment/settlement logic changes, run Security Health after applying migration 022 and confirm `upsert_settlement_request_status` is available so stale payment-line cleanup stays transactional.
 

@@ -77,7 +77,44 @@ function requireChangedCompanions(changed, changedLabel, requiredCompanions) {
   );
 }
 
+function parseVersionTuple(version) {
+  const match = String(version).match(/(\d+)\.(\d+)\.(\d+)\.(\d+)/);
+  return match ? match.slice(1, 5).map(Number) : null;
+}
+
+function compareTuples(a, b) {
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+function assertNotDowngraded(current) {
+  // Single source of truth for "the build moved forward": compare the working tree against the
+  // previously committed build-info.js (git HEAD). This replaces the per-test enumerated version
+  // pins. Skips silently when git/HEAD or the previous file is unavailable (fresh clone, first
+  // commit, shallow CI checkout) so it never produces false failures.
+  let previous;
+  try {
+    previous = execFileSync("git", ["show", "HEAD:build-info.js"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return;
+  }
+  const prevVersion = previous.match(/version:\s*"([^"]+)"/)?.[1];
+  const curTuple = parseVersionTuple(current.version);
+  const prevTuple = prevVersion ? parseVersionTuple(prevVersion) : null;
+  if (curTuple && prevTuple) {
+    assert.ok(compareTuples(curTuple, prevTuple) >= 0, `build-info version went backwards: ${current.version} < committed ${prevVersion}`);
+  }
+  const prevCache = Number(previous.match(/expectedServiceWorkerCache:\s*"fuel-ledger-v(\d+)"/)?.[1]);
+  const curCache = Number(String(current.expectedCache).match(/fuel-ledger-v(\d+)/)?.[1]);
+  if (Number.isFinite(prevCache) && Number.isFinite(curCache)) {
+    assert.ok(curCache >= prevCache, `service-worker cache went backwards: ${current.expectedCache} < committed fuel-ledger-v${prevCache}`);
+  }
+}
+
 const releaseMetadata = readReleaseMetadata();
+assertNotDowngraded(releaseMetadata);
 
 const envExample = read(".env.example");
 assertIncludes(".env.example", envExample, [

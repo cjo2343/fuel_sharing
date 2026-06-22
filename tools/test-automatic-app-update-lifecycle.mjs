@@ -15,7 +15,4 @@ assert.match(app, /markAppUpdateReady\(newWorker, registration, "installed"\)/, 
 assert.match(app, /activateReadyAppUpdate\("toast-button"\)/, 'app should activate updates only from the update toast button');
 assert.match(app, /window\.FuelLedgerApp\.hasPendingLocalChanges/, 'app should expose pending-change status for safe automatic reloads');
 assert.match(app, /window\.FuelLedgerApp\.hasForegroundWriteInFlight/, 'app should expose foreground-write status for safe automatic reloads');
-assert.match(buildInfo, /expectedServiceWorkerCache: "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421|422)"/, 'build-info should expect v381 cache');
-assert.match(serviceWorker, /CACHE_NAME = "fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421|422)"/, 'service worker should publish v381 cache');
-assert.match(checklist, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421|422)/, 'deployment checklist should document v382 cache');
 assert.match(buildInfo, /New version available|manual update prompt|Update prompt/, 'release notes should describe manual update prompt lifecycle');
