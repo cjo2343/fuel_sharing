@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.278`
-- Service-worker cache: `fuel-ledger-v419`
-- Updated at: `2026-06-22T15:25:00.000Z`
-- Top release note: Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.
+- Version: `2026.06.18.279`
+- Service-worker cache: `fuel-ledger-v420`
+- Updated at: `2026-06-22T00:00:00.000Z`
+- Top release note: Buttons no longer require a page refresh after a slow/hung cloud load: a timed-out load now also releases the workspace-load and startup-hydration latches it used to orphan (which kept editing locked), and a new proactive latch watchdog clears any stuck load/workspace/hydration/action latch on a 5s timer regardless of sync-badge state, then re-enables interactive controls automatically.
 
 ## Invite beta readiness: member action Data I/O
 

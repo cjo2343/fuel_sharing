@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.278",
-    buildLabel: "interactive-action-timeout-lane",
-    updatedAt: "2026-06-22T15:25:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v419",
+    version: "2026.06.18.279",
+    buildLabel: "stuck-latch-watchdog",
+    updatedAt: "2026-06-22T00:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v420",
     releaseNotes: Object.freeze([
+      "Buttons no longer require a page refresh after a slow/hung cloud load: a timed-out load now also releases the workspace-load and startup-hydration latches it used to orphan (which kept editing locked), and a new proactive latch watchdog clears any stuck load/workspace/hydration/action latch on a 5s timer regardless of sync-badge state, then re-enables interactive controls automatically.",
       "Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.",
       "Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.",
       "Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.",
