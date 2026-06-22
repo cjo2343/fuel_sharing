@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.279",
-    buildLabel: "stuck-latch-watchdog",
+    version: "2026.06.18.280",
+    buildLabel: "bounded-supabase-reads",
     updatedAt: "2026-06-22T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v420",
+    expectedServiceWorkerCache: "fuel-ledger-v421",
     releaseNotes: Object.freeze([
+      "Cold starts and slow Supabase no longer stall the app behind the workspace load: the normalized-table read on the state-load path is now time-bounded (with a bounded session check), so a hung backend read falls back to the cached JSON mirror quickly instead of waiting on the outer load timeout.",
       "Buttons no longer require a page refresh after a slow/hung cloud load: a timed-out load now also releases the workspace-load and startup-hydration latches it used to orphan (which kept editing locked), and a new proactive latch watchdog clears any stuck load/workspace/hydration/action latch on a 5s timer regardless of sync-badge state, then re-enables interactive controls automatically.",
       "Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.",
       "Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.",

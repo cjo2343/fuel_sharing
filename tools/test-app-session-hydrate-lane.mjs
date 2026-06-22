@@ -16,7 +16,7 @@ assert.match(app, /await resolveActiveWorkspaceStateScope\(\{ reason: "state-loa
 assert.match(app, /await hydrateAppSessionContext\(\{[\s\S]*reason: `workspace-switch:\$\{source\}`[\s\S]*force: true[\s\S]*source: "workspace-switch"/, 'workspace switch should confirm backend context through the hydrate lane');
 assert.match(app, /hydrateAppSessionContext\(\{ reason: `admin-diagnostics:\$\{String\(reason \|\| "admin"\)\}`[\s\S]*source: "admin-diagnostics"/, 'Admin diagnostics may inspect backend context but must stay labeled outside normal app UX');
 assert.doesNotMatch(app, /scheduleWorkspaceInviteRefresh\("admin-tab-open"\)/, 'Admin tab open must not revive the old workspace tools auto-refresh lane');
-assert.match(build, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420)/, 'build-info expected cache should be v394');
-assert.match(sw, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420)/, 'service worker cache should be v394');
+assert.match(build, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421)/, 'build-info expected cache should be v394');
+assert.match(sw, /fuel-ledger-v(?:394|395|396|397|398|399|400|401|402|403|404|405|406|407|408|409|410|411|412|413|414|415|416|417|418|419|420|421)/, 'service worker cache should be v394');
 
 console.log('app session hydrate lane guardrails passed');
