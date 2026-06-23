@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.284`
-- Service-worker cache: `fuel-ledger-v425`
+- Version: `2026.06.18.285`
+- Service-worker cache: `fuel-ledger-v426`
 - Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: Closed the action-hang class for good: every direct Supabase RPC on an action path (close period, redeem/revoke invite, update profile, production reset, invite-email check, settlement request status, ledger-event publish) is now time-bounded via a contract-preserving timeout, so a stale client after a long idle can no longer freeze an action — worst case it fails cleanly and can be retried. A new validation guard fails CI if an unbounded supabaseClient.rpc(...) is ever reintroduced.
+- Top release note: Fixed the true root cause of the 'stuck after idle' freezes: the Supabase onAuthStateChange callback was async and awaited Supabase work (member-profile read, app-context, realtime subscribes) inline. supabase-js runs that callback while holding its auth lock during the post-idle token refresh, so those calls deadlocked until they timed out. The callback now captures the session synchronously and defers all Supabase work to a fresh task, so the lock is released first and nothing hangs. The recent timeouts remain as defense-in-depth, and a guard prevents the async-callback pattern from returning.
 
 ## Invite beta readiness: member action Data I/O
 
