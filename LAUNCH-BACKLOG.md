@@ -15,6 +15,20 @@ incremental edits are fine for Haiku/Sonnet; keep it accurate over pretty.
 collide / risk the downgrade guard. Branch each worker off the latest `origin/main`
 and merge PRs in order; prefer one worker per theme cluster (one PR, one bump).
 
+## Progress (2026-06-23) — main at v433
+
+**Done & merged:** #1 SW handoff (PR #19) · #3 cold-start banners (#21) · #11/#13/#14
+admin observability (#22) · #7/#9/#17 settings layout + release-notes-3 + booking
+card removal (#23). Plus docs/ARCHITECTURE (#18, #20).
+
+**Pending:** #15 workspace health observability (dispatched but the worker hit the
+session limit — NO PR yet, retry) · #16 Render health probes (Opus server + Sonnet) ·
+#5 invite-only membership (Sonnet UI + Opus server) · #4 predictions A/B (Sonnet),
+C/F (Opus) · #12 flaky e2e (Sonnet, test-only) · #2 sign-in flow review (Opus, deferred).
+
+**To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
+item/cluster off the latest `origin/main`; merge each PR before starting the next.
+
 | # | Task | Category | Status | Plan |
 |---|------|----------|--------|------|
 | 1 | Reliable service-worker update handoff (Safari stranded on old version) | **Sonnet** | Plan ready, awaiting implementation | [SW-UPDATE-RELIABILITY-PLAN.md](SW-UPDATE-RELIABILITY-PLAN.md) |
