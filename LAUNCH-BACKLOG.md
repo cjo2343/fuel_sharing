@@ -5,11 +5,21 @@ Working model: a task is handed in → Opus investigates + writes a plan → tag
 auth / security-sensitive). Sonnet implements from the `*-PLAN.md`; Opus does the
 sensitive ones directly.
 
+**Architecture upkeep:** every task that changes wiring (a route, load/sync path,
+panel, auth step, or a removed/added subsystem) must update `ARCHITECTURE.md` in the
+same PR — refresh the relevant Mermaid diagram + the "where to look" table. Cheap
+incremental edits are fine for Haiku/Sonnet; keep it accurate over pretty.
+
+**Version sequencing for parallel work:** runtime changes require a version bump
+(build-info + service-worker + checklist), so two PRs branched off the same base will
+collide / risk the downgrade guard. Branch each worker off the latest `origin/main`
+and merge PRs in order; prefer one worker per theme cluster (one PR, one bump).
+
 | # | Task | Category | Status | Plan |
 |---|------|----------|--------|------|
 | 1 | Reliable service-worker update handoff (Safari stranded on old version) | **Sonnet** | Plan ready, awaiting implementation | [SW-UPDATE-RELIABILITY-PLAN.md](SW-UPDATE-RELIABILITY-PLAN.md) |
 | 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Deferred — see notes | (to be written when we tackle it) |
-| 3 | Stale "Backend startup delayed" banner after a cold-Render recovery | **Opus** (borderline Sonnet) | Plan ready — see notes | inline below |
+| 3 | Cold-Render-after-idle banners too alarming / can go stale (startup-gate **and** sync-delay "Cloud delayed" paths) | **Opus** | Plan ready + repro confirmed — see notes | inline below |
 | 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C → Opus | Audited; fixes planned | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
 | 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Plan ready | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
 | 6 | Owner-gate "Version & update status" panel; trim public About | **Sonnet** | Plan ready | [ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md](ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md) |
@@ -19,8 +29,18 @@ sensitive ones directly.
 | 9 | Release notes: show only the last 3 updates | **Sonnet** | Plan ready — see notes | inline below |
 | 10 | Workspaces & invites overhaul (active/used split, go horizontal, trim copy) | **Sonnet** (mockup optional) | Plan ready | [WORKSPACE-INVITES-OVERHAUL-PLAN.md](WORKSPACE-INVITES-OVERHAUL-PLAN.md) |
 | 11 | Owner Diagnostics Lab → observability view (group, freshness stamps, one refresh, trim) | **Sonnet** | Plan ready | [OWNER-DIAGNOSTICS-OBSERVABILITY-PLAN.md](OWNER-DIAGNOSTICS-OBSERVABILITY-PLAN.md) |
+| 12 | Harden flaky e2e "no-refresh action chain" (idle assertion races a just-started save) | **Sonnet** (test-only) | Plan ready — see notes | inline below |
+| 13 | Clean up Diagnostics Lab *tools* drawer (group by risk, trim copy, compact report tile) | **Sonnet** | Plan ready | [OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md](OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md) |
+| 14 | Fix cramped "App-owner global diagnostics" (full-width span + stop mid-word wrap) | **Sonnet** | Plan ready | [OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md](OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md) |
+| 15 | Workspace health → observability (fix mis-severity "cries wolf"; summary-first, collapse passing, group) | **Sonnet** | Plan ready | [WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md](WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md) |
+| 16 | Render health report is mostly fake-green (20/28 hardcoded) — add real probes + runtime signals | **Mixed**: server probes → Opus · presentation → Sonnet | Plan ready | [RENDER-HEALTH-REPORT-PLAN.md](RENDER-HEALTH-REPORT-PLAN.md) |
+| 17 | Remove "Who and shortcuts" booking card; book for the signed-in user | **Sonnet** | Plan ready (decision: book-for-self) | [BOOKING-WHO-SHORTCUTS-REMOVAL-PLAN.md](BOOKING-WHO-SHORTCUTS-REMOVAL-PLAN.md) |
 
 > **Theme cluster — Admin role separation:** #5 + #6 + #8 are one coherent Sonnet pass ("normal workspace admins see only workspace tools; owner/diagnostics UI is app-owner-only"). Hand them together for consistent gating.
+
+> **Theme cluster — Owner diagnostics cleanup:** #11 (health/status tiles) + #13 (Diagnostics Lab tools drawer) + #14 (cramped global-diagnostics width) are the same owner panel; do together and reuse the v427 metric-tile styling.
+
+> **Design principle — "Admin observability" (applies to #11/#13/#14/#15 and future Admin panels):** the recurring complaint is "so much information." Apply the Supabase-observability pattern everywhere in Admin: (1) **summary first**, then **surface only anomalies** by default and **collapse the healthy/passing baseline** behind an expander; (2) **honest severity** — never badge a neutral/informational/setup state as a warning/error (no crying wolf); add an `info` level where needed; (3) **group by domain** with clear section headers; (4) **trim copy** to one line + tooltip/details; (5) **go wide, not tall/narrow** (ties to #7); (6) make the few non-OK items **actionable**. Default to calm; make problems loud.
 
 ### #9 — Release notes: last 3 only
 The "Latest notes" list renders the entire `BUILD_INFO.releaseNotes` array (build-info.js
@@ -39,6 +59,18 @@ The "Latest notes" list renders the entire `BUILD_INFO.releaseNotes` array (buil
   asserts the version/label/cache, not the note count, so the slice is safe. Runtime
   file change → version bump.
 - Category: **Sonnet** (trivial, well-specified).
+
+### #12 — Harden flaky e2e "no-refresh action chain"
+`tests/smoke.spec.js:1325` ("no-refresh action chain keeps buttons usable…") asserts
+`debug.foregroundOperationCount === 0` (line ~1308) immediately after the vehicle-lookup
+guard step. It intermittently fails in CI because a `server-save` operation that just
+fired (observed ageMs ≈ 24) is still counted as a foreground op — a timing race, not a
+product bug (the surrounding commits pass; it passed on re-run).
+- Fix: before the idle assertions, wait for foreground ops to drain — e.g.
+  `await expect.poll(() => page.evaluate(() => window.FuelLedgerApp.getNoRefreshActionDebugState().foregroundOperationCount)).toBe(0)` with a short timeout, instead of a single-shot `expect(...).toBe(0)`. Apply to the same block's
+  `activeDataIoOperationCount` / `visibleSavingActive` checks.
+- Test-only change; no runtime files, so no version bump.
+- Category: **Sonnet**.
 
 ## Notes
 
@@ -103,3 +135,36 @@ Category: **Opus** because it edits the startup-gate state machine and sync lane
 (subtle; must not mask real failures or cause banner flicker). Borderline — the fix
 above is specific enough that Sonnet could do it with the manual cold-start
 verification; promote to a standalone `*-PLAN.md` if you want to hand it over.
+
+#### Repro confirmed (2026-06-23) — the *sync-delay* banner, a second path in the same family
+Screenshot after a long idle: a red **"Sync delayed — Render state load is required
+before loading workspace data. Changes are kept on this device and will be retried."**
+banner + a **"Cloud delayed"** badge, while the workspace is fully visible (settings,
+odometer 1.679 km, vehicle info all rendered from local cache). Repeated
+`interactive-action-controls-recovered` diagnostics show the watchdog recovering the UI.
+
+Mechanism (distinct from the startup-gate banner above, same UX problem): on a cold
+Render after idle, `loadSupabaseState` → `getRenderNormalizedStateRows()` returns null
+(Render still spinning up), so the code records `RENDER_STATE_LOAD_REQUIRED` and
+**throws** "Render state load is required before loading workspace data." (app.js
+~22102). That becomes `lastSyncError`, which `renderSyncHealthBanner` (app.js ~10871)
+renders as the red "Sync delayed" card (message built ~10843) plus the "Cloud delayed"
+badge. The visible data is the local cached state, so the app is usable — the red
+banner overstates severity.
+
+Add to the #3 fix (treat both banners together):
+1. **Calm the cold-start case.** When the Render state load fails BUT cached/local
+   state is present and shown AND a retry is in flight, render a calm amber
+   "Reconnecting — the backend is waking (free tier, ~30–50s). Your data is shown from
+   this device and will sync." instead of the red "Render state load is required"
+   engineering message. Reserve red for retries exhausted over a longer window with no
+   usable cached data.
+2. **Confirm the successful retry clears it.** `clearSyncDelay` is called on
+   load-success (app.js ~22167) and admin-render-load-success (~22023); verify the
+   cold-Render retry/focus path actually reaches one of those once Render wakes, and
+   that `renderSyncHealthBanner` re-runs — the "Cloud delayed" badge + banner must drop
+   the moment a retry loads, without a manual "Sync now".
+3. Keep "Changes are kept on this device and will be retried" as the reassurance, but
+   lead with the calm wording, not the throw text.
+Verification: idle until Render spins down, return, confirm an amber waking state (not
+red) while cached data stays usable, and that it clears on its own when Render wakes.
