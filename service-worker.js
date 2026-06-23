@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v429";
-const BUILD_LABEL = "csp-safe-admin-sparkline";
+const CACHE_NAME = "fuel-ledger-v430";
+const BUILD_LABEL = "sw-update-reliability-safari";
 const BUILD_UPDATED_AT = "2026-06-23T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",

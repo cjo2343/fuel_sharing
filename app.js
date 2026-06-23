@@ -1932,6 +1932,9 @@ let appUpdateRegistration = null;
 let appUpdateWaitingWorker = null;
 let appUpdateReady = false;
 let appUpdateInstalling = false;
+let appUpdateDeployMismatch = false;
+let appUpdateAutoActivatedThisLoad = false;
+let appUpdateActivationInFlight = false;
 let pushSupported = false;
 let pushEnabled = false;
 let latestFuelPrice = null;
@@ -4786,6 +4789,7 @@ els.toggleLiveSync?.addEventListener("click", async () => {
 
 els.appUpdateNow?.addEventListener("click", () => activateReadyAppUpdate("toast-button"));
 els.appUpdateDismiss?.addEventListener("click", () => {
+  appUpdateDeployMismatch = false;
   if (els.appUpdateToast) els.appUpdateToast.classList.add("hidden");
   recordSyncDiagnostic("service-worker-update-dismissed", "User dismissed the app update prompt. The waiting update remains available.");
 });
@@ -5611,6 +5615,9 @@ function buildSupabaseLoadReport() {
       updateReady: Boolean(appUpdateReady),
       installing: Boolean(appUpdateInstalling),
       hasWaitingWorker: Boolean(appUpdateWaitingWorker),
+      deployMismatch: Boolean(appUpdateDeployMismatch),
+      autoActivated: Boolean(appUpdateAutoActivatedThisLoad),
+      activationInFlight: Boolean(appUpdateActivationInFlight),
       promptVisible: Boolean(els.appUpdateToast && !els.appUpdateToast.classList.contains("hidden")),
       mode: "manual-prompt"
     },
@@ -19198,7 +19205,7 @@ async function checkForReadyAppUpdate(reason = "manual-check", options = {}) {
 
 function renderAppUpdateToast(reason = "render") {
   if (!els.appUpdateToast) return;
-  const show = Boolean(appUpdateReady && appUpdateWaitingWorker);
+  const show = Boolean((appUpdateReady && appUpdateWaitingWorker) || appUpdateDeployMismatch);
   els.appUpdateToast.classList.toggle("hidden", !show);
   els.appUpdateToast.dataset.reason = reason;
 }
@@ -19214,13 +19221,9 @@ function markAppUpdateReady(worker, registration, reason = "service-worker-updat
   renderAppUpdateToast(reason);
 }
 
-function activateReadyAppUpdate(reason = "manual-update") {
-  if (!appUpdateWaitingWorker) {
-    showAppMessage("No app update is waiting yet. Checking the service worker again...", "info", { timeoutMs: 3500 });
-    checkForReadyAppUpdate(reason).then((ready) => {
-      if (ready) activateReadyAppUpdate(`${reason}:after-check`);
-    });
-    renderAppUpdateToast(reason);
+async function activateReadyAppUpdate(reason = "manual-update") {
+  if (appUpdateActivationInFlight) {
+    recordSyncDiagnostic("service-worker-update-already-in-flight", "Activation already in progress; ignoring duplicate request.", { reason });
     return;
   }
   if (hasForegroundWriteInFlight() || state.pendingLocalChanges || pendingLocalChanges) {
@@ -19228,13 +19231,46 @@ function activateReadyAppUpdate(reason = "manual-update") {
     recordSyncDiagnostic("service-worker-update-deferred", "Manual update deferred because a save or local change is still active.", { reason, pendingLocalChanges, foreground: foregroundOperationSummary() });
     return;
   }
+  appUpdateActivationInFlight = true;
+  appUpdateDeployMismatch = false;
   recordSyncDiagnostic("service-worker-update-accepted", "User accepted the app update prompt; activating waiting service worker.", { reason });
   recordSupabaseLoadEvent("service-worker-update-accepted", "User clicked Update now.");
-  appUpdateWaitingWorker.postMessage({ type: "SKIP_WAITING" });
+  try {
+    if (appUpdateWaitingWorker) {
+      appUpdateWaitingWorker.postMessage({ type: "SKIP_WAITING" });
+      return;
+    }
+    const registration = appUpdateRegistration || await navigator.serviceWorker.getRegistration("/");
+    if (!registration) {
+      recordSyncDiagnostic("service-worker-update-no-registration", "No service worker registration available; reloading to fetch latest.", { reason });
+      window.location.reload();
+      return;
+    }
+    try { await registration.update(); } catch (error) {}
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      return;
+    }
+    recordSyncDiagnostic("service-worker-update-unregister-fallback", "No waiting worker after update(); using unregister+reload fallback (Safari path).", { reason });
+    try { await registration.unregister(); } catch (error) {}
+    window.location.reload();
+  } catch (error) {
+    recordSyncDiagnostic("service-worker-update-activation-error", "Activation attempt failed; reloading as last resort.", { reason, error: error?.message || String(error) });
+    appUpdateActivationInFlight = false;
+    window.location.reload();
+  }
 }
 
 window.addEventListener("fuel-ledger-build-update-available", (event) => {
+  appUpdateDeployMismatch = true;
+  renderAppUpdateToast("build-info-newer-deploy");
   checkForReadyAppUpdate(event?.detail?.reason || "build-info-newer-deploy");
+  if (!appUpdateAutoActivatedThisLoad && !appUpdateActivationInFlight
+      && !hasForegroundWriteInFlight() && !state.pendingLocalChanges && !pendingLocalChanges) {
+    appUpdateAutoActivatedThisLoad = true;
+    recordSyncDiagnostic("service-worker-auto-activate", "Stale controller detected and no pending writes; auto-activating update.", { reason: event?.detail?.reason || "build-info-newer-deploy" });
+    activateReadyAppUpdate("auto-stale-controller");
+  }
 });
 
 window.FuelLedgerApp = window.FuelLedgerApp || {};
