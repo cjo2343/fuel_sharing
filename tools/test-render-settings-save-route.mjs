@@ -34,7 +34,7 @@ assert.match(server, /memberWarning/, "settings route should return member sync 
 assert.match(server, /SETTINGS_SAVE_TIMEOUT/, "backend settings save should return explicit timeout JSON");
 assert.doesNotMatch(server, /fallback_ledger = dict\(ledger\)/, "settings save must not silently drop vehicle fields when schema is missing");
 assert.match(server, /"settings-save": \{"limit": 30, "window": 300\}/, "settings save should have a dedicated rate limit bucket");
-assert.match(server, /"settingsSave", "\/api\/settings\/save"/, "Render admin health should list the settings-save route");
+assert.match(server, /"\/api\/settings\/save", "Workspace settings save"/, "Render admin health critical routes should list the settings-save route");
 
 assert.match(migrations, /vehicle_plate text not null default ''/, "migration should add vehicle plate storage");
 assert.match(migrations, /vehicle_info jsonb not null default '\{\}'::jsonb/, "migration should add sanitized vehicle info storage");

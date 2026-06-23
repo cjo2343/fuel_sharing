@@ -25,11 +25,12 @@ function bodyOfFunction(source, functionName) {
 function testMemberManagementFailsClosedWhenRpcMissing() {
   const saveManagedMember = bodyOfFunction(app, "saveManagedMember");
   const setManagedMemberActive = bodyOfFunction(app, "setManagedMemberActive");
-  const addManagedMember = bodyOfFunction(app, "addManagedMember");
-  for (const source of [saveManagedMember, setManagedMemberActive, addManagedMember]) {
+  for (const source of [saveManagedMember, setManagedMemberActive]) {
     assert.match(source, /Apply the latest Supabase schema/);
     assert.doesNotMatch(source, /\.from\("ledger_members"\)\s*\.(insert|update|upsert|delete)/s);
   }
+  // Invite-only onboarding (#5): the direct "Add member" creation path is removed.
+  assert.doesNotMatch(app, /function addManagedMember\b/, "addManagedMember (direct create) must be removed; members join via invites");
   assert.match(server, /upsert_ledger_member_admin/);
   assert.match(server, /set_ledger_member_active_admin/);
   assert.match(app, /callMemberManagementRoute\("upsert"/);

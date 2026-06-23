@@ -93,3 +93,5 @@ Adds server-side onboarding abuse monitoring/rate-limit storage and enforces thr
 - `035_sql_ambiguity_guardrail.sql` hardens SQL naming after the invite `actor_email` ambiguity: the payment-status RPC now uses `safe_actor_email`, Security Health expects migration 035, and release validation includes `tools/test-sql-ambiguity-guard.mjs` to block future high-risk PL/pgSQL local variable names that collide with common table columns.
 
 - 039_list_my_ledgers_dedup.sql - de-duplicates workspace selector rows returned by list_my_ledgers, preferring admin role when duplicate active member rows exist for the same signed-in email/workspace.
+
+- `042_member_invite_only_creation_lockdown.sql` locks member onboarding to the invite flow: `upsert_ledger_member_admin` now updates or deactivates existing members only and rejects creating a brand-new member row (null `target_member_id`) for everyone, including the app owner. New members must redeem a workspace invite (`redeem_ledger_invite`). The Render `/api/members/manage` route enforces the same rule for defense-in-depth.

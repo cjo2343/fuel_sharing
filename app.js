@@ -3191,14 +3191,9 @@ const els = {
   databaseDiagnosticsList: document.querySelector("#databaseDiagnosticsList"),
   refreshDatabaseDiagnostics: document.querySelector("#refreshDatabaseDiagnostics"),
   memberManagementPanel: document.querySelector(".member-management-panel"),
-  memberManagementForm: document.querySelector("#memberManagementForm"),
   memberManagementList: document.querySelector("#memberManagementList"),
   memberManagementMessage: document.querySelector("#memberManagementMessage"),
   refreshMembers: document.querySelector("#refreshMembers"),
-  newMemberName: document.querySelector("#newMemberName"),
-  newMemberEmail: document.querySelector("#newMemberEmail"),
-  newMemberMobilePayPhone: document.querySelector("#newMemberMobilePayPhone"),
-  newMemberRole: document.querySelector("#newMemberRole"),
   workspaceInvitesPanel: document.querySelector(".workspace-invites-panel"),
   refreshWorkspaceInvites: document.querySelector("#refreshWorkspaceInvites"),
   createWorkspaceForm: document.querySelector("#createWorkspaceForm"),
@@ -4882,12 +4877,6 @@ els.runRetentionCleanup?.addEventListener("click", () => {
   runRetentionCleanup();
 });
 
-els.memberManagementForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!canManageSettings()) return;
-  await traceAdminToolOperation("add-member", "Add managed member", addManagedMember);
-});
-
 els.refreshMembers?.addEventListener("click", async () => {
   if (!canManageSettings()) return;
   await traceAdminToolOperation("refresh-members", "Refresh member management", refreshMemberManagement);
@@ -6514,6 +6503,7 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
       userEmail: result.userEmail || "",
       message: result.summary || (result.ok ? "Render admin backend is healthy." : "Render admin backend needs review."),
       checks,
+      runtime: result.runtime && typeof result.runtime === "object" ? result.runtime : null,
       lastHealthyAt: result.ok === true ? (result.checkedAt || new Date().toISOString()) : renderAdminHealthStatus.lastHealthyAt || "",
       staleHealthy: false,
       lastAttemptFailed: false
@@ -6661,27 +6651,66 @@ function renderBackendAppContextCard() {
   `;
 }
 
+function renderAdminHealthCheckRow(check) {
+  const isIssue = check.ok === false;
+  const isInfo = !isIssue && check.level === "info";
+  const chipClass = isIssue ? "requested" : isInfo ? "open" : "paid";
+  const chipLabel = isIssue ? "Issue" : isInfo ? "Info" : "OK";
+  const latency = Number.isFinite(check.latencyMs) ? ` · ${check.latencyMs} ms` : "";
+  return `<li><span class="status-chip ${chipClass}">${chipLabel}</span> <strong>${escapeHtml(check.label || check.id || "Check")}</strong>${check.detail ? ` — ${escapeHtml(check.detail)}` : ""}${latency}</li>`;
+}
+
+function formatAdminHealthUptime(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (total < 60) return `${total}s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 function renderRenderAdminHealthCard() {
   const status = renderAdminHealthStatus || {};
   const checks = Array.isArray(status.checks) ? status.checks : [];
-  const okCount = checks.filter((check) => check.ok === true).length;
-  const issueCount = checks.filter((check) => check.ok === false).length;
+  // Honest severity: an info-level row (e.g. provider not configured) is not an issue.
+  const issues = checks.filter((check) => check.ok === false);
+  const passing = checks.filter((check) => check.ok !== false);
   const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
   const title = status.loading ? "Checking" : status.staleHealthy ? (status.ok ? "Last OK" : "Slow") : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
   const detail = status.message || "Run the Render admin health check before dangerous admin work.";
+  const runtime = status.runtime && typeof status.runtime === "object" ? status.runtime : null;
+  const runtimeBits = [];
+  if (runtime) {
+    if (runtime.version) runtimeBits.push(`v${runtime.version}`);
+    if (Number.isFinite(runtime.uptimeSeconds)) runtimeBits.push(`up ${formatAdminHealthUptime(runtime.uptimeSeconds)}`);
+    if (Number.isFinite(runtime.supabaseLatencyMs)) runtimeBits.push(`Supabase ${runtime.supabaseLatencyMs} ms`);
+  }
+  const summaryLine = checks.length
+    ? `${passing.length} ok${issues.length ? ` · ${issues.length} issue${issues.length === 1 ? "" : "s"}` : ""}`
+    : "Backend safety preflight";
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>Render admin health</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>${checks.length ? `${okCount} ok${issueCount ? ` · ${issueCount} issue${issueCount === 1 ? "" : "s"}` : ""}` : "Backend safety preflight"}</small>
+      <small>${escapeHtml(summaryLine)}${runtimeBits.length ? ` · ${escapeHtml(runtimeBits.join(" · "))}` : ""}</small>
       <p>${escapeHtml(detail)}</p>
     </article>
     ${checks.length ? `
-      <details class="admin-diagnostics-section">
-        <summary>Render admin health checks</summary>
-        <ul class="test-lab-check-list readable-activity-list">
-          ${checks.map((check) => `<li><span class="status-chip ${check.ok ? "paid" : "requested"}">${check.ok ? "OK" : "Issue"}</span> <strong>${escapeHtml(check.label || check.id || "Check")}</strong>${check.route ? ` · <code>${escapeHtml(check.route)}</code>` : ""}${check.detail ? ` — ${escapeHtml(check.detail)}` : ""}</li>`).join("")}
-        </ul>
+      <details class="admin-diagnostics-section"${issues.length ? " open" : ""}>
+        <summary>${issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to review` : "Render admin health checks"}</summary>
+        ${issues.length ? `
+          <ul class="test-lab-check-list readable-activity-list">
+            ${issues.map(renderAdminHealthCheckRow).join("")}
+          </ul>
+        ` : `<p class="section-note">All ${passing.length} Render health checks are passing.</p>`}
+        ${passing.length ? `
+          <details class="health-disclosure">
+            <summary>✓ ${passing.length} passing</summary>
+            <ul class="test-lab-check-list readable-activity-list">
+              ${passing.map(renderAdminHealthCheckRow).join("")}
+            </ul>
+          </details>
+        ` : ""}
       </details>
     ` : ""}
   `;
@@ -16092,7 +16121,7 @@ function renderSystemHealth(ledger) {
       acc[check.level] = (acc[check.level] || 0) + 1;
       return acc;
     },
-    { issue: 0, warning: 0, ok: 0 }
+    { issue: 0, warning: 0, ok: 0, info: 0 }
   );
 
   els.systemHealthSummary.innerHTML = `
@@ -16107,22 +16136,46 @@ function renderSystemHealth(ledger) {
     <article class="health-summary-card">
       <span>Looks good</span>
       <strong>${counts.ok || 0}</strong>
+      ${counts.info ? `<small class="health-summary-info">+${counts.info} informational</small>` : ""}
     </article>
   `;
 
-  els.systemHealthList.innerHTML = checks
-    .map(
-      (check) => `
-        <article class="health-check ${check.level}">
-          <div>
-            <strong>${escapeHtml(check.title)}</strong>
-            <p>${escapeHtml(check.message)}</p>
-          </div>
-          <span>${healthLevelLabel(check.level)}</span>
-        </article>
-      `
-    )
-    .join("");
+  const anomalies = checks.filter((check) => check.level === "issue" || check.level === "warning");
+  const passing = checks.filter((check) => check.level === "ok");
+  const info = checks.filter((check) => check.level === "info");
+
+  const sections = [];
+
+  if (anomalies.length) {
+    sections.push(renderSystemHealthGroups(anomalies));
+  } else {
+    sections.push(`
+      <article class="health-all-clear">
+        <strong>All checks passing</strong>
+        <p>No issues or warnings in this workspace${info.length ? ` · ${info.length} informational note${info.length === 1 ? "" : "s"} below` : ""}.</p>
+      </article>
+    `);
+  }
+
+  if (passing.length) {
+    sections.push(`
+      <details class="health-disclosure">
+        <summary>✓ ${passing.length} looking good</summary>
+        ${renderSystemHealthGroups(passing)}
+      </details>
+    `);
+  }
+
+  if (info.length) {
+    sections.push(`
+      <details class="health-disclosure">
+        <summary>${info.length} informational</summary>
+        <div class="system-health-list">${info.map(renderSystemHealthCheckRow).join("")}</div>
+      </details>
+    `);
+  }
+
+  els.systemHealthList.innerHTML = sections.join("");
 }
 
 
@@ -16173,7 +16226,7 @@ function renderMemberManagementPanel() {
       ? "Loading members..."
       : memberManagementStatus.error
         ? `Could not load members: ${memberManagementStatus.error}`
-        : "Active members can use the app. Admins can manage members, settings, diagnostics, exports, and reset tools. Keep at least one active admin.";
+        : "Edit existing members' email, role, and MobilePay, or deactivate old/test members. To add someone, create an invite in Account → Workspaces & invites and share the code — they join by redeeming it. Keep at least one active admin.";
   }
 
   if (!els.memberManagementList) return;
@@ -16371,41 +16424,6 @@ async function setManagedMemberActive(row, isActive) {
     return;
   }
   await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
-}
-
-async function addManagedMember() {
-  const name = els.newMemberName?.value.trim() || "";
-  const email = normalizeEmail(els.newMemberEmail?.value || "");
-  const mobilepayPhone = normalizePhone(els.newMemberMobilePayPhone?.value || "");
-  const role = els.newMemberRole?.value === "admin" ? "admin" : "member";
-  if (!name) {
-    showUserError("Member name is required.");
-    return;
-  }
-  if (!email) {
-    showUserError("Login email is required before inviting a member.");
-    return;
-  }
-
-  let result;
-  try {
-    result = await upsertManagedMemberRpc({
-      id: null,
-      name,
-      email,
-      mobilepay_phone: mobilepayPhone || null,
-      role,
-      is_active: true
-    });
-  } catch (error) {
-    showUserError(`Could not add member: ${error.message || error}. Apply the latest Supabase schema if the member-management RPC is missing.`);
-    return;
-  }
-  if (els.newMemberName) els.newMemberName.value = "";
-  if (els.newMemberEmail) els.newMemberEmail.value = "";
-  if (els.newMemberMobilePayPhone) els.newMemberMobilePayPhone.value = "";
-  if (els.newMemberRole) els.newMemberRole.value = "member";
-  await afterMemberManagementChange(`${name} added as ${memberRoleLabel(role)}.`);
 }
 
 async function afterMemberManagementChange(message) {
@@ -18027,7 +18045,7 @@ function buildSystemHealthChecks(ledger) {
   });
 
   checks.push({
-    level: pushEnabled ? "ok" : (pushSupported ? "warning" : "warning"),
+    level: pushEnabled ? "ok" : "info",
     title: "Push notifications on this device",
     message: pushSubscriptionHint
   });
@@ -18048,7 +18066,7 @@ function buildSystemHealthChecks(ledger) {
       : "No overlapping bookings found in the local booking list."
   });
   checks.push({
-    level: bookingDiagnostics.upcoming ? "ok" : "warning",
+    level: bookingDiagnostics.upcoming ? "ok" : "info",
     title: "Upcoming car bookings",
     message: bookingDiagnostics.upcoming
       ? `${bookingDiagnostics.upcoming} upcoming or active booking${bookingDiagnostics.upcoming === 1 ? "" : "s"} are visible.`
@@ -18056,7 +18074,7 @@ function buildSystemHealthChecks(ledger) {
   });
 
   if (normalizedTableStatus.details && normalizedTableStatus.details.length) {
-    normalizedTableStatus.details.forEach((detail) => checks.push(detail));
+    normalizedTableStatus.details.forEach((detail) => checks.push({ category: "Data integrity", ...detail }));
   } else {
     checks.push({
       level: normalizedTableStatus.checked ? (normalizedTableStatus.ok ? "ok" : "warning") : "warning",
@@ -18066,7 +18084,7 @@ function buildSystemHealthChecks(ledger) {
   }
 
   checks.push({
-    level: state.closedPeriods.length ? "ok" : "warning",
+    level: state.closedPeriods.length ? "ok" : "info",
     title: "Archive history",
     message: state.closedPeriods.length
       ? `${state.closedPeriods.length} closed settlement period${state.closedPeriods.length === 1 ? "" : "s"} archived.`
@@ -18098,7 +18116,69 @@ function getBookingDiagnostics() {
 function healthLevelLabel(level) {
   if (level === "issue") return "Fix";
   if (level === "warning") return "Check";
+  if (level === "info") return "Info";
   return "OK";
+}
+
+const HEALTH_CATEGORY_ORDER = ["Access", "Data integrity", "Bookings", "Maintenance"];
+
+const HEALTH_CHECK_CATEGORIES = {
+  "Authentication": "Access",
+  "Admin users": "Access",
+  "People with email": "Access",
+  "Database saving": "Data integrity",
+  "Database tables": "Data integrity",
+  "Fuel logs with liters": "Data integrity",
+  "Receipt price checks": "Data integrity",
+  "Trip distance checks": "Data integrity",
+  "Open settlement fuel sanity": "Data integrity",
+  "Normalized database tables": "Data integrity",
+  "Push notifications on this device": "Maintenance",
+  "Archive history": "Maintenance",
+  "Booking date integrity": "Bookings",
+  "Booking overlaps": "Bookings",
+  "Upcoming car bookings": "Bookings"
+};
+
+function healthCheckCategory(check) {
+  return check.category || HEALTH_CHECK_CATEGORIES[check.title] || "Data integrity";
+}
+
+function healthCategoryRank(category) {
+  const index = HEALTH_CATEGORY_ORDER.indexOf(category);
+  return index === -1 ? HEALTH_CATEGORY_ORDER.length : index;
+}
+
+function renderSystemHealthCheckRow(check) {
+  return `
+    <article class="health-check ${check.level}">
+      <div>
+        <strong>${escapeHtml(check.title)}</strong>
+        <p>${escapeHtml(check.message)}</p>
+      </div>
+      <span>${healthLevelLabel(check.level)}</span>
+    </article>
+  `;
+}
+
+function renderSystemHealthGroups(checks) {
+  const byCategory = new Map();
+  checks.forEach((check) => {
+    const category = healthCheckCategory(check);
+    if (!byCategory.has(category)) byCategory.set(category, []);
+    byCategory.get(category).push(check);
+  });
+  return [...byCategory.keys()]
+    .sort((a, b) => healthCategoryRank(a) - healthCategoryRank(b))
+    .map((category) => `
+      <section class="health-group">
+        <h3 class="health-group-title">${escapeHtml(category)}</h3>
+        <div class="system-health-list">
+          ${byCategory.get(category).map(renderSystemHealthCheckRow).join("")}
+        </div>
+      </section>
+    `)
+    .join("");
 }
 
 function renderClosedPeriods() {

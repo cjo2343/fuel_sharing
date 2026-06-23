@@ -24,7 +24,6 @@ const requiredTools = [
   'save-json-backup',
   'clean-stale-requests',
   'production-activity-reset',
-  'add-member',
   'refresh-members',
   'create-invite',
   'revoke-invite',

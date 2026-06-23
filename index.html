@@ -816,30 +816,8 @@
             </div>
             <button id="refreshMembers" class="subtle-button" type="button">Refresh members</button>
           </div>
-          <p class="section-note">Add invited members, update emails and roles, or deactivate old/test members without using SQL. This is a normal workspace-admin task; global app diagnostics stay separated in Owner tools.</p>
-
-          <form id="memberManagementForm" class="member-management-form">
-            <label>
-              Name
-              <input id="newMemberName" type="text" autocomplete="off" placeholder="e.g. Jonas" />
-            </label>
-            <label>
-              Login email
-              <input id="newMemberEmail" type="email" autocomplete="off" placeholder="person@example.com" />
-            </label>
-            <label>
-              MobilePay phone
-              <input id="newMemberMobilePayPhone" type="tel" autocomplete="off" placeholder="e.g. +45 12 34 56 78" />
-            </label>
-            <label>
-              Role
-              <select id="newMemberRole">
-                <option value="member">Member - use ledger</option>
-                <option value="admin">Workspace admin - manage this workspace</option>
-              </select>
-            </label>
-            <button class="primary-button" type="submit">Add member</button>
-          </form>
+          <p class="section-note">Update emails and roles, or deactivate old/test members without using SQL. This is a normal workspace-admin task; global app diagnostics stay separated in Owner tools.</p>
+          <p class="section-note">To add people, create an invite in <strong>Account → Workspaces &amp; invites</strong> and share the code or link. Members join by redeeming it — that confirms they own the email and respects invite expiry and limits.</p>
 
           <div id="memberManagementMessage" class="section-note"></div>
           <div id="memberManagementList" class="member-management-list"></div>

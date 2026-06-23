@@ -15,16 +15,29 @@ incremental edits are fine for Haiku/Sonnet; keep it accurate over pretty.
 collide / risk the downgrade guard. Branch each worker off the latest `origin/main`
 and merge PRs in order; prefer one worker per theme cluster (one PR, one bump).
 
-## Progress (2026-06-23) — main at v433
+## Progress (2026-06-23) — main at v433, branch at v434
 
 **Done & merged:** #1 SW handoff (PR #19) · #3 cold-start banners (#21) · #11/#13/#14
 admin observability (#22) · #7/#9/#17 settings layout + release-notes-3 + booking
 card removal (#23). Plus docs/ARCHITECTURE (#18, #20).
 
-**Pending:** #15 workspace health observability (dispatched but the worker hit the
-session limit — NO PR yet, retry) · #16 Render health probes (Opus server + Sonnet) ·
-#5 invite-only membership (Sonnet UI + Opus server) · #4 predictions A/B (Sonnet),
-C/F (Opus) · #12 flaky e2e (Sonnet, test-only) · #2 sign-in flow review (Opus, deferred).
+**Done (this branch, awaiting PR):** #15 workspace health observability — `info`
+severity level for neutral setup states (push/no-bookings/no-closed-periods no longer
+amber warnings), summary-first layout grouping anomalies by Access/Data integrity/
+Bookings/Maintenance, passing + info checks collapsed behind `<details>` (v434). · #16
+Render health real probes — real timeout-bounded Supabase reachability probe (latency +
+error class), cached vehicle-provider row (no live provider call), consolidated 20
+always-green route rows into one dependency-gated row, runtime signals (uptime/version/
+latency), client card leads with issues + collapses passing (v435).
+
+**Done (this branch, awaiting PR):** #5 invite-only membership (v436) — removed the
+direct add-member form (UI), and now `upsert_member_as_user` (Render) + the
+`upsert_ledger_member_admin` SQL RPC (migration 042) reject creating brand-new
+members for everyone incl. the app owner; `redeem_ledger_invite` is the single
+onboarding path. Member management keeps edit/deactivate for existing members.
+
+**Pending:** #4 predictions A/B (Sonnet), C/F (Opus) · #12 flaky e2e (Sonnet,
+test-only) · #2 sign-in flow review (Opus, deferred).
 
 **To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
 item/cluster off the latest `origin/main`; merge each PR before starting the next.
@@ -35,7 +48,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Deferred — see notes | (to be written when we tackle it) |
 | 3 | Cold-Render-after-idle banners too alarming / can go stale (startup-gate **and** sync-delay "Cloud delayed" paths) | **Opus** | Plan ready + repro confirmed — see notes | inline below |
 | 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C → Opus | Audited; fixes planned | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
-| 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Plan ready | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
+| 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Done (v436, awaiting PR) | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
 | 6 | Owner-gate "Version & update status" panel; trim public About | **Sonnet** | Plan ready | [ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md](ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md) |
 | 7 | Group settings horizontal layout (+ general "go wide" principle) | **Sonnet** | Plan ready | [SETTINGS-HORIZONTAL-LAYOUT-PLAN.md](SETTINGS-HORIZONTAL-LAYOUT-PLAN.md) |
 | 8 | "Workspace admin" overview honest per role (hide owner zones for normal admins) | **Sonnet** | Plan ready | [ADMIN-HOME-OVERVIEW-PLAN.md](ADMIN-HOME-OVERVIEW-PLAN.md) |
@@ -46,8 +59,8 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | 12 | Harden flaky e2e "no-refresh action chain" (idle assertion races a just-started save) | **Sonnet** (test-only) | Plan ready — see notes | inline below |
 | 13 | Clean up Diagnostics Lab *tools* drawer (group by risk, trim copy, compact report tile) | **Sonnet** | Plan ready | [OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md](OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md) |
 | 14 | Fix cramped "App-owner global diagnostics" (full-width span + stop mid-word wrap) | **Sonnet** | Plan ready | [OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md](OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md) |
-| 15 | Workspace health → observability (fix mis-severity "cries wolf"; summary-first, collapse passing, group) | **Sonnet** | Plan ready | [WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md](WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md) |
-| 16 | Render health report is mostly fake-green (20/28 hardcoded) — add real probes + runtime signals | **Mixed**: server probes → Opus · presentation → Sonnet | Plan ready | [RENDER-HEALTH-REPORT-PLAN.md](RENDER-HEALTH-REPORT-PLAN.md) |
+| 15 | Workspace health → observability (fix mis-severity "cries wolf"; summary-first, collapse passing, group) | **Sonnet** | Done (v434, awaiting PR) | [WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md](WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md) |
+| 16 | Render health report is mostly fake-green (20/28 hardcoded) — add real probes + runtime signals | **Mixed**: server probes → Opus · presentation → Sonnet | Done (v435, awaiting PR) | [RENDER-HEALTH-REPORT-PLAN.md](RENDER-HEALTH-REPORT-PLAN.md) |
 | 17 | Remove "Who and shortcuts" booking card; book for the signed-in user | **Sonnet** | Plan ready (decision: book-for-self) | [BOOKING-WHO-SHORTCUTS-REMOVAL-PLAN.md](BOOKING-WHO-SHORTCUTS-REMOVAL-PLAN.md) |
 
 > **Theme cluster — Admin role separation:** #5 + #6 + #8 are one coherent Sonnet pass ("normal workspace admins see only workspace tools; owner/diagnostics UI is app-owner-only"). Hand them together for consistent gating.
