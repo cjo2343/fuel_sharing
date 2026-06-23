@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.287",
-    buildLabel: "owner-global-workspace-autoload",
+    version: "2026.06.18.288",
+    buildLabel: "csp-safe-admin-sparkline",
     updatedAt: "2026-06-23T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v428",
+    expectedServiceWorkerCache: "fuel-ledger-v429",
     releaseNotes: Object.freeze([
+      "Fixed a Content-Security-Policy regression in the new Admin activity sparkline: it set bar heights with an inline style attribute, which the app's strict style-src 'self' policy blocks, so the bars did not render and the console filled with CSP violations. The sparkline is now drawn as inline SVG (bar geometry via attributes, colour via a CSS class), and a validation guard now scans runtime JS for inline style attributes so this cannot regress.",
       "App-owner Admin now sees all workspaces automatically. The app-owner global view (every workspace, member counts, and cross-workspace activity) and the all-workspaces owner activity log already worked through owner-only backend routes, but they were manual-refresh only, so Admin looked like it only saw the owner's own workspace (main-car). Opening Admin as the configured app owner now loads both once (cached ~5 minutes, no polling), so other workspaces such as test1 appear without a manual click. The owner's own workspace selector still correctly shows only workspaces they are a member of.",
       "Redesigned the Admin diagnostics into a cleaner dashboard: compact metric tiles with status dots, a tighter responsive grid, and a live activity sparkline (bucketed from the last 30 minutes of app-side events) on the App activity card — in the app's light theme so it stays consistent with the rest of the app.",
       "Fixed the true root cause of the 'stuck after idle' freezes: the Supabase onAuthStateChange callback was async and awaited Supabase work (member-profile read, app-context, realtime subscribes) inline. supabase-js runs that callback while holding its auth lock during the post-idle token refresh, so those calls deadlocked until they timed out. The callback now captures the session synchronously and defers all Supabase work to a fresh task, so the lock is released first and nothing hangs. The recent timeouts remain as defense-in-depth, and a guard prevents the async-callback pattern from returning.",

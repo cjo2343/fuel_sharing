@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.287`
-- Service-worker cache: `fuel-ledger-v428`
+- Version: `2026.06.18.288`
+- Service-worker cache: `fuel-ledger-v429`
 - Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: App-owner Admin now sees all workspaces automatically. The app-owner global view (every workspace, member counts, and cross-workspace activity) and the all-workspaces owner activity log already worked through owner-only backend routes, but they were manual-refresh only, so Admin looked like it only saw the owner's own workspace (main-car). Opening Admin as the configured app owner now loads both once (cached ~5 minutes, no polling), so other workspaces such as test1 appear without a manual click. The owner's own workspace selector still correctly shows only workspaces they are a member of.
+- Top release note: Fixed a Content-Security-Policy regression in the new Admin activity sparkline: it set bar heights with an inline style attribute, which the app's strict style-src 'self' policy blocks, so the bars did not render and the console filled with CSP violations. The sparkline is now drawn as inline SVG (bar geometry via attributes, colour via a CSS class), and a validation guard now scans runtime JS for inline style attributes so this cannot regress.
 
 ## Invite beta readiness: member action Data I/O
 

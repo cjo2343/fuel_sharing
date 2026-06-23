@@ -71,7 +71,25 @@ function testNoInlineStylesRemainInMarkup() {
   assert.doesNotMatch(index, /\sstyle=/i, 'index.html must not use inline style attributes');
 }
 
-const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders, testNoInlineStylesRemainInMarkup];
+function testNoInlineStylesInRuntimeJs() {
+  // CSP is style-src 'self' with no unsafe-inline, so any style="..." attribute emitted into
+  // markup (innerHTML/template strings) at runtime is blocked by the browser. The static
+  // index.html check above cannot see these, so scan the runtime JS that builds markup.
+  const runtimeJsFiles = [
+    'app.js', 'booking-calendar.js', 'trip-rendering.js', 'fuel-rendering.js',
+    'admin-tools.js', 'ui-messages.js', 'notifications.js', 'planner-booking-bridge.js',
+    'stress-test-helpers.js', 'security-health-helpers.js', 'build-info.js'
+  ];
+  for (const file of runtimeJsFiles) {
+    assert.doesNotMatch(
+      read(file),
+      /style="/,
+      `${file} must not emit inline style="..." attributes (blocked by CSP style-src 'self'); use a CSS class or SVG geometry attributes instead`
+    );
+  }
+}
+
+const tests = [testVercelHeaders, testStaticHeadersFile, testLocalServerHeaders, testNoInlineStylesRemainInMarkup, testNoInlineStylesInRuntimeJs];
 for (const test of tests) {
   test();
   console.log(`ok - ${test.name}`);
