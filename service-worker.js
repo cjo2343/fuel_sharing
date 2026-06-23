@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v428";
-const BUILD_LABEL = "owner-global-workspace-autoload";
+const CACHE_NAME = "fuel-ledger-v429";
+const BUILD_LABEL = "csp-safe-admin-sparkline";
 const BUILD_UPDATED_AT = "2026-06-23T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",

@@ -6618,8 +6618,20 @@ function renderActivitySparkline({ windowMs = 30 * 60 * 1000, buckets = 16 } = {
   }
   const max = Math.max(1, ...counts);
   const idle = events.length === 0;
-  const bars = counts.map((count) => `<span style="height:${Math.round((count / max) * 100)}%"></span>`).join("");
-  return `<div class="admin-sparkline${idle ? " is-idle" : ""}" role="img" aria-label="App activity over the last ${Math.round(windowMs / 60000)} minutes">${bars}</div>`;
+  // Render as inline SVG using geometry attributes (x/y/width/height) rather than inline CSS,
+  // because the app's CSP is style-src 'self' with no unsafe-inline — an inline style attribute
+  // would be blocked. Bar colour comes from a CSS class in styles.css (CSP-safe).
+  const viewW = 100;
+  const viewH = 26;
+  const slot = viewW / buckets;
+  const barW = slot * 0.72;
+  const bars = counts.map((count, index) => {
+    const height = idle ? 2 : Math.max(1.5, (count / max) * viewH);
+    const x = (index * slot + (slot - barW) / 2).toFixed(2);
+    const y = (viewH - height).toFixed(2);
+    return `<rect x="${x}" y="${y}" width="${barW.toFixed(2)}" height="${height.toFixed(2)}" rx="0.6"></rect>`;
+  }).join("");
+  return `<svg class="admin-sparkline${idle ? " is-idle" : ""}" viewBox="0 0 ${viewW} ${viewH}" preserveAspectRatio="none" role="img" aria-label="App activity over the last ${Math.round(windowMs / 60000)} minutes">${bars}</svg>`;
 }
 
 function renderSupabaseLoadMonitor() {

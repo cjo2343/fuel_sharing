@@ -134,7 +134,7 @@ The result should have `ok: true`, all values under `critical_rpcs` set to `true
 
 - Inline style CSP allowance has been removed: `style-src 'self'` is now used in static, Vercel, and local server headers.
 - Runtime helper positioning uses CSS classes instead of inline style mutations where practical.
-- `tools/test-security-headers.mjs` fails if `unsafe-inline` or inline markup styles return.
+- `tools/test-security-headers.mjs` fails if `unsafe-inline` or inline markup styles return. It checks `index.html` for inline `<style>`/`style=` and also scans the runtime JS files (`app.js`, the `*-rendering.js` helpers, `admin-tools.js`, etc.) for `style="` emitted into markup, because a dynamic `style="..."` attribute is blocked by `style-src 'self'` at runtime but is invisible to a static `index.html` check. Use a CSS class, or SVG geometry attributes for things like the Admin activity sparkline, instead of inline styles.
 
 ### Diagnostic redaction hardening
 
