@@ -31,4 +31,19 @@ for (const match of rpcMatches) {
   );
 }
 
+// supabase-js runs the onAuthStateChange callback while holding its internal auth lock (e.g. during
+// the post-idle _recoverAndRefresh). Making the callback async / awaiting Supabase work inline
+// deadlocks those calls on the lock until they time out — the true root cause of the "stuck after
+// idle" freezes. The callback must defer its work out of the lock via setTimeout instead.
+assert.doesNotMatch(
+  app,
+  /onAuthStateChange\(\s*async\b/,
+  "onAuthStateChange callback must not be async — awaiting Supabase work inside it deadlocks on the auth lock after idle; defer the work to a fresh task instead"
+);
+assert.match(
+  app,
+  /onAuthStateChange\(\(event, session\) => \{[\s\S]{0,800}?setTimeout\([\s\S]{0,120}?handleAuthStateChange\(event, session\)/,
+  "onAuthStateChange must defer its work out of the auth-lock callback (setTimeout -> handleAuthStateChange)"
+);
+
 console.log("Bounded Supabase action call guardrails passed.");

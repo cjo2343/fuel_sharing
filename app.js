@@ -9466,7 +9466,20 @@ async function initializeSupabase() {
     await ensureAppStartupWakeGate("initial-session", { force: true });
   }
 
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    // supabase-js invokes this callback while holding its internal auth lock (notably during the
+    // post-idle _recoverAndRefresh token refresh). Awaiting Supabase calls directly inside the
+    // callback — refreshAuthBoundMemberProfile, hydrateAppSessionContext, realtime subscribes,
+    // state load — deadlocks them on that lock until they time out. That was the root cause of the
+    // recurring "stuck after idle" freezes. Capture the session synchronously, then defer all
+    // Supabase work to a fresh macrotask so the auth lock is released before any of it runs.
+    currentSession = session;
+    window.setTimeout(() => {
+      handleAuthStateChange(event, session).catch((error) => console.warn("Auth state change handling failed", error));
+    }, 0);
+  });
+
+  async function handleAuthStateChange(event, session) {
     currentSession = session;
     if (session) applyWorkspacePreferenceForCurrentUser(`auth-${String(event || "session").toLowerCase()}`);
     initializeInviteDeepLink();
@@ -9542,7 +9555,7 @@ async function initializeSupabase() {
       unsubscribeFromLedgerEvents();
       unsubscribeFromSupabaseState();
     }
-  });
+  }
 
   if (currentSession) {
     if (!isAppStartupGateReady()) {
