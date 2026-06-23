@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.288`
-- Service-worker cache: `fuel-ledger-v429`
+- Version: `2026.06.18.289`
+- Service-worker cache: `fuel-ledger-v430`
 - Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: Fixed a Content-Security-Policy regression in the new Admin activity sparkline: it set bar heights with an inline style attribute, which the app's strict style-src 'self' policy blocks, so the bars did not render and the console filled with CSP violations. The sparkline is now drawn as inline SVG (bar geometry via attributes, colour via a CSS class), and a validation guard now scans runtime JS for inline style attributes so this cannot regress.
+- Top release note: Reliable service-worker update handoff for Safari: the update prompt now also fires from a deploy-version mismatch so Safari users are no longer stranded on an old version when registration.waiting is not exposed. Update activation is tiered: use the waiting worker if available, else call registration.update() and try again, else unregister the stale controller and reload as a Safari escape hatch. One safe auto-activation fires when the app is stale and no writes are in flight, guarded by one-shot flags so nothing loops or double-reloads. The manual Update now path continues to work for all browsers.
 
 ## Invite beta readiness: member action Data I/O
 
