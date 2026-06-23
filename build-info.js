@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.283",
-    buildLabel: "bound-member-profile-read",
+    version: "2026.06.18.284",
+    buildLabel: "bound-action-supabase-calls",
     updatedAt: "2026-06-23T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v424",
+    expectedServiceWorkerCache: "fuel-ledger-v425",
     releaseNotes: Object.freeze([
+      "Closed the action-hang class for good: every direct Supabase RPC on an action path (close period, redeem/revoke invite, update profile, production reset, invite-email check, settlement request status, ledger-event publish) is now time-bounded via a contract-preserving timeout, so a stale client after a long idle can no longer freeze an action — worst case it fails cleanly and can be retried. A new validation guard fails CI if an unbounded supabaseClient.rpc(...) is ever reintroduced.",
       "Fixed a vehicle-lookup freeze on 'Checking permissions…' after a long idle: the signed-in member-profile read (a direct Supabase query on the lookup's critical path) was unbounded and could hang indefinitely, and the lookup awaited it in a branch that never updated the status. The read is now time-bounded and the lookup continues if it times out.",
       "Returning to a long-idle tab no longer stampedes the backend: /api/app/context requests are now single-flighted, so the focus sync, workspace-tools refresh, latch watchdog, and vehicle lookup share one in-flight context request per workspace instead of each firing their own. This collapses the burst that left vehicle lookup waiting on 'Preparing…' and cuts redundant Supabase/Render load.",
       "Vehicle lookup and other backend actions no longer stall after a tab sits idle: when the Render backend rejects an expired/cached session token (HTTP 401), the app now forces a real Supabase session refresh and retries once with the fresh token instead of looping on the dead token (which left vehicle lookup stuck on 'Preparing…').",

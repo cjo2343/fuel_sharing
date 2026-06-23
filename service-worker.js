@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v424";
-const BUILD_LABEL = "bound-member-profile-read";
+const CACHE_NAME = "fuel-ledger-v425";
+const BUILD_LABEL = "bound-action-supabase-calls";
 const BUILD_UPDATED_AT = "2026-06-23T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",

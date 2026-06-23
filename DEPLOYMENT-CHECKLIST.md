@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.283`
-- Service-worker cache: `fuel-ledger-v424`
+- Version: `2026.06.18.284`
+- Service-worker cache: `fuel-ledger-v425`
 - Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: Fixed a vehicle-lookup freeze on 'Checking permissions…' after a long idle: the signed-in member-profile read (a direct Supabase query on the lookup's critical path) was unbounded and could hang indefinitely, and the lookup awaited it in a branch that never updated the status. The read is now time-bounded and the lookup continues if it times out.
+- Top release note: Closed the action-hang class for good: every direct Supabase RPC on an action path (close period, redeem/revoke invite, update profile, production reset, invite-email check, settlement request status, ledger-event publish) is now time-bounded via a contract-preserving timeout, so a stale client after a long idle can no longer freeze an action — worst case it fails cleanly and can be retried. A new validation guard fails CI if an unbounded supabaseClient.rpc(...) is ever reintroduced.
 
 ## Invite beta readiness: member action Data I/O
 
