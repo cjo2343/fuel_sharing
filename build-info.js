@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.286",
-    buildLabel: "admin-dashboard-redesign",
+    version: "2026.06.18.287",
+    buildLabel: "owner-global-workspace-autoload",
     updatedAt: "2026-06-23T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v427",
+    expectedServiceWorkerCache: "fuel-ledger-v428",
     releaseNotes: Object.freeze([
+      "App-owner Admin now sees all workspaces automatically. The app-owner global view (every workspace, member counts, and cross-workspace activity) and the all-workspaces owner activity log already worked through owner-only backend routes, but they were manual-refresh only, so Admin looked like it only saw the owner's own workspace (main-car). Opening Admin as the configured app owner now loads both once (cached ~5 minutes, no polling), so other workspaces such as test1 appear without a manual click. The owner's own workspace selector still correctly shows only workspaces they are a member of.",
       "Redesigned the Admin diagnostics into a cleaner dashboard: compact metric tiles with status dots, a tighter responsive grid, and a live activity sparkline (bucketed from the last 30 minutes of app-side events) on the App activity card — in the app's light theme so it stays consistent with the rest of the app.",
       "Fixed the true root cause of the 'stuck after idle' freezes: the Supabase onAuthStateChange callback was async and awaited Supabase work (member-profile read, app-context, realtime subscribes) inline. supabase-js runs that callback while holding its auth lock during the post-idle token refresh, so those calls deadlocked until they timed out. The callback now captures the session synchronously and defers all Supabase work to a fresh task, so the lock is released first and nothing hangs. The recent timeouts remain as defense-in-depth, and a guard prevents the async-callback pattern from returning.",
       "Closed the action-hang class for good: every direct Supabase RPC on an action path (close period, redeem/revoke invite, update profile, production reset, invite-email check, settlement request status, ledger-event publish) is now time-bounded via a contract-preserving timeout, so a stale client after a long idle can no longer freeze an action — worst case it fails cleanly and can be retried. A new validation guard fails CI if an unbounded supabaseClient.rpc(...) is ever reintroduced.",
