@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.282`
-- Service-worker cache: `fuel-ledger-v423`
-- Updated at: `2026-06-22T00:00:00.000Z`
-- Top release note: Returning to a long-idle tab no longer stampedes the backend: /api/app/context requests are now single-flighted, so the focus sync, workspace-tools refresh, latch watchdog, and vehicle lookup share one in-flight context request per workspace instead of each firing their own. This collapses the burst that left vehicle lookup waiting on 'Preparing…' and cuts redundant Supabase/Render load.
+- Version: `2026.06.18.283`
+- Service-worker cache: `fuel-ledger-v424`
+- Updated at: `2026-06-23T00:00:00.000Z`
+- Top release note: Fixed a vehicle-lookup freeze on 'Checking permissions…' after a long idle: the signed-in member-profile read (a direct Supabase query on the lookup's critical path) was unbounded and could hang indefinitely, and the lookup awaited it in a branch that never updated the status. The read is now time-bounded and the lookup continues if it times out.
 
 ## Invite beta readiness: member action Data I/O
 

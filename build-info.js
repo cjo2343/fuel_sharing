@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.282",
-    buildLabel: "app-context-single-flight",
-    updatedAt: "2026-06-22T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v423",
+    version: "2026.06.18.283",
+    buildLabel: "bound-member-profile-read",
+    updatedAt: "2026-06-23T00:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v424",
     releaseNotes: Object.freeze([
+      "Fixed a vehicle-lookup freeze on 'Checking permissions…' after a long idle: the signed-in member-profile read (a direct Supabase query on the lookup's critical path) was unbounded and could hang indefinitely, and the lookup awaited it in a branch that never updated the status. The read is now time-bounded and the lookup continues if it times out.",
       "Returning to a long-idle tab no longer stampedes the backend: /api/app/context requests are now single-flighted, so the focus sync, workspace-tools refresh, latch watchdog, and vehicle lookup share one in-flight context request per workspace instead of each firing their own. This collapses the burst that left vehicle lookup waiting on 'Preparing…' and cuts redundant Supabase/Render load.",
       "Vehicle lookup and other backend actions no longer stall after a tab sits idle: when the Render backend rejects an expired/cached session token (HTTP 401), the app now forces a real Supabase session refresh and retries once with the fresh token instead of looping on the dead token (which left vehicle lookup stuck on 'Preparing…').",
       "Cold starts and slow Supabase no longer stall the app behind the workspace load: the normalized-table read on the state-load path is now time-bounded (with a bounded session check), so a hung backend read falls back to the cached JSON mirror quickly instead of waiting on the outer load timeout.",
