@@ -17,8 +17,11 @@ assert.match(app, /if \(!requireGlobalAdminToolsPermission\("Export backup"\)\) 
 assert.match(app, /Owner diagnostics are hidden from normal users and workspace admins/, 'advanced tool copy must explain owner-only diagnostic scope');
 assert.match(app, /function isSignedInPrimaryAppOwner\(\) \{[\s\S]*?getPrimaryAppOwnerEmail\(\)[\s\S]*?getLoggedInEmail\(\)/, 'owner diagnostics must compare the signed-in email with the primary app owner email');
 
-assert.match(html, /Workspace admin - manage this workspace/, 'role option must say workspace admin, not global app admin');
-assert.doesNotMatch(html, /Admin - manage app/, 'old global-admin role label must not be shown for workspace roles');
+// #5: the direct add-member form (with its role <select>) is removed; member roles
+// are now only set on the per-member edit row, whose admin role is described as
+// workspace-scoped, never as a global app admin.
+assert.match(app, /Can manage members, settings, diagnostics, exports, and admin tools\./, 'workspace admin role must be described as workspace-scoped, not global app admin');
+assert.doesNotMatch(app, /manage app|global app admin/i, 'workspace member roles must not be labeled as global app admin');
 assert.match(html, /Global app data tools/, 'Data tools heading must make global scope explicit');
 assert.match(html, /Primary app-admin-only diagnostics and maintenance tools/, 'global data tools intro must clarify primary app-admin scope');
 assert.match(pkg, /test-workspace-admin-scope-guard\.mjs/, 'validation must include workspace admin scope guard');

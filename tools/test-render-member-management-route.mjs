@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync('app.js', 'utf8');
 const server = readFileSync('server.py', 'utf8');
+const indexHtml = readFileSync('index.html', 'utf8');
 
 assert.match(app, /const\s+renderMemberManagementUrl\s*=\s*renderApiEndpoints\.memberManagement\s*\|\|\s*"\/api\/members\/manage"/, 'frontend should define the backend-owned member-management route');
 assert.match(app, /async function callMemberManagementRoute\(action, payload = \{\}\)/, 'frontend should call one Render member-management helper');
@@ -19,3 +20,10 @@ assert.match(server, /assert_user_can_admin_ledger\(ledger_id, user, user_token\
 assert.match(server, /upsert_ledger_member_admin/, 'backend should call existing member upsert RPC server-side');
 assert.match(server, /set_ledger_member_active_admin/, 'backend should call existing activation RPC server-side');
 assert.match(server, /"\/api\/members\/manage", "Member management"/, 'Render admin health critical routes should include member management route');
+
+// Invite-only onboarding (#5): no direct add-by-email path anywhere.
+assert.doesNotMatch(indexHtml, /id="memberManagementForm"/, 'the direct Add member form must be removed from index.html');
+assert.doesNotMatch(indexHtml, /id="newMemberEmail"/, 'the direct add-member email input must be removed');
+assert.match(indexHtml, /Workspaces &amp; invites/, 'member management panel should point admins at the invite flow');
+assert.doesNotMatch(app, /function addManagedMember\b/, 'the direct add-member handler must be removed; members join via invites');
+assert.match(server, /def upsert_member_as_user\(ledger_id, member, user, user_token\):[\s\S]*New members join by redeeming a workspace invite/, 'Render manage-members upsert must reject creating brand-new members (invite-only), even if the API is called directly');

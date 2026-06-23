@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.294",
-    buildLabel: "render-health-real-probes",
-    updatedAt: "2026-06-23T16:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v435",
+    version: "2026.06.18.295",
+    buildLabel: "member-invite-only-onboarding",
+    updatedAt: "2026-06-24T09:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v436",
     releaseNotes: Object.freeze([
+      "Adding members is now invite-only. The direct Add-member-by-email form is gone; to bring someone in, create an invite under Account, Workspaces and invites, and share the code or link so they join by redeeming it (which confirms they own the email and respects invite expiry and use limits). Member management still lets workspace admins edit an existing member email, role, and MobilePay or deactivate old and test members. Both the Render member API and the upsert_ledger_member_admin database function now reject creating a brand-new member for everyone, including the app owner, so a redeemed invite is the single onboarding path even if the API is called directly.",
       "The Render admin health report now actually reports health instead of showing a wall of green. It runs a real, short-timeout Supabase reachability probe (with latency) so a backend or RLS outage turns the row red and the overall status to needs-review, replaces twenty hardcoded always-green route rows with one honest dependency-gated row for the critical write/admin lanes, and reports the vehicle lookup provider from its last cached outcome rather than calling the external provider on every check. New runtime signals (process uptime, deployed app version, Supabase probe latency) surface free-tier cold starts and crash-loops, and the card now leads with any issues and collapses the passing checks behind an expander.",
       "Workspace health is now observability-style and no longer cries wolf: a freshly set-up healthy workspace reads zero needs-attention and zero warnings because purely informational setup states (push not enabled on this device, no upcoming bookings, no closed periods yet) are reclassified from amber warnings to a quiet informational note. The panel leads with the summary plus only the issues and warnings worth a look, grouped by Access, Data integrity, Bookings, and Maintenance, while the passing checks collapse behind a looking-good expander and the informational notes behind their own disclosure.",
       "Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.",

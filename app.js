@@ -3191,14 +3191,9 @@ const els = {
   databaseDiagnosticsList: document.querySelector("#databaseDiagnosticsList"),
   refreshDatabaseDiagnostics: document.querySelector("#refreshDatabaseDiagnostics"),
   memberManagementPanel: document.querySelector(".member-management-panel"),
-  memberManagementForm: document.querySelector("#memberManagementForm"),
   memberManagementList: document.querySelector("#memberManagementList"),
   memberManagementMessage: document.querySelector("#memberManagementMessage"),
   refreshMembers: document.querySelector("#refreshMembers"),
-  newMemberName: document.querySelector("#newMemberName"),
-  newMemberEmail: document.querySelector("#newMemberEmail"),
-  newMemberMobilePayPhone: document.querySelector("#newMemberMobilePayPhone"),
-  newMemberRole: document.querySelector("#newMemberRole"),
   workspaceInvitesPanel: document.querySelector(".workspace-invites-panel"),
   refreshWorkspaceInvites: document.querySelector("#refreshWorkspaceInvites"),
   createWorkspaceForm: document.querySelector("#createWorkspaceForm"),
@@ -4880,12 +4875,6 @@ els.previewRetentionCleanup?.addEventListener("click", () => {
 
 els.runRetentionCleanup?.addEventListener("click", () => {
   runRetentionCleanup();
-});
-
-els.memberManagementForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!canManageSettings()) return;
-  await traceAdminToolOperation("add-member", "Add managed member", addManagedMember);
 });
 
 els.refreshMembers?.addEventListener("click", async () => {
@@ -16237,7 +16226,7 @@ function renderMemberManagementPanel() {
       ? "Loading members..."
       : memberManagementStatus.error
         ? `Could not load members: ${memberManagementStatus.error}`
-        : "Active members can use the app. Admins can manage members, settings, diagnostics, exports, and reset tools. Keep at least one active admin.";
+        : "Edit existing members' email, role, and MobilePay, or deactivate old/test members. To add someone, create an invite in Account → Workspaces & invites and share the code — they join by redeeming it. Keep at least one active admin.";
   }
 
   if (!els.memberManagementList) return;
@@ -16435,41 +16424,6 @@ async function setManagedMemberActive(row, isActive) {
     return;
   }
   await afterMemberManagementChange(isActive ? `${existing?.name || "Member"} reactivated.` : `${existing?.name || "Member"} deactivated.`);
-}
-
-async function addManagedMember() {
-  const name = els.newMemberName?.value.trim() || "";
-  const email = normalizeEmail(els.newMemberEmail?.value || "");
-  const mobilepayPhone = normalizePhone(els.newMemberMobilePayPhone?.value || "");
-  const role = els.newMemberRole?.value === "admin" ? "admin" : "member";
-  if (!name) {
-    showUserError("Member name is required.");
-    return;
-  }
-  if (!email) {
-    showUserError("Login email is required before inviting a member.");
-    return;
-  }
-
-  let result;
-  try {
-    result = await upsertManagedMemberRpc({
-      id: null,
-      name,
-      email,
-      mobilepay_phone: mobilepayPhone || null,
-      role,
-      is_active: true
-    });
-  } catch (error) {
-    showUserError(`Could not add member: ${error.message || error}. Apply the latest Supabase schema if the member-management RPC is missing.`);
-    return;
-  }
-  if (els.newMemberName) els.newMemberName.value = "";
-  if (els.newMemberEmail) els.newMemberEmail.value = "";
-  if (els.newMemberMobilePayPhone) els.newMemberMobilePayPhone.value = "";
-  if (els.newMemberRole) els.newMemberRole.value = "member";
-  await afterMemberManagementChange(`${name} added as ${memberRoleLabel(role)}.`);
 }
 
 async function afterMemberManagementChange(message) {

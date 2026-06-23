@@ -30,8 +30,14 @@ error class), cached vehicle-provider row (no live provider call), consolidated 
 always-green route rows into one dependency-gated row, runtime signals (uptime/version/
 latency), client card leads with issues + collapses passing (v435).
 
-**Pending:** #5 invite-only membership (Sonnet UI + Opus server) · #4 predictions A/B (Sonnet),
-C/F (Opus) · #12 flaky e2e (Sonnet, test-only) · #2 sign-in flow review (Opus, deferred).
+**Done (this branch, awaiting PR):** #5 invite-only membership (v436) — removed the
+direct add-member form (UI), and now `upsert_member_as_user` (Render) + the
+`upsert_ledger_member_admin` SQL RPC (migration 042) reject creating brand-new
+members for everyone incl. the app owner; `redeem_ledger_invite` is the single
+onboarding path. Member management keeps edit/deactivate for existing members.
+
+**Pending:** #4 predictions A/B (Sonnet), C/F (Opus) · #12 flaky e2e (Sonnet,
+test-only) · #2 sign-in flow review (Opus, deferred).
 
 **To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
 item/cluster off the latest `origin/main`; merge each PR before starting the next.
@@ -42,7 +48,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Deferred — see notes | (to be written when we tackle it) |
 | 3 | Cold-Render-after-idle banners too alarming / can go stale (startup-gate **and** sync-delay "Cloud delayed" paths) | **Opus** | Plan ready + repro confirmed — see notes | inline below |
 | 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C → Opus | Audited; fixes planned | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
-| 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Plan ready | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
+| 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Done (v436, awaiting PR) | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
 | 6 | Owner-gate "Version & update status" panel; trim public About | **Sonnet** | Plan ready | [ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md](ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md) |
 | 7 | Group settings horizontal layout (+ general "go wide" principle) | **Sonnet** | Plan ready | [SETTINGS-HORIZONTAL-LAYOUT-PLAN.md](SETTINGS-HORIZONTAL-LAYOUT-PLAN.md) |
 | 8 | "Workspace admin" overview honest per role (hide owner zones for normal admins) | **Sonnet** | Plan ready | [ADMIN-HOME-OVERVIEW-PLAN.md](ADMIN-HOME-OVERVIEW-PLAN.md) |

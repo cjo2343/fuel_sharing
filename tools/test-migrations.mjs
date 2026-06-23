@@ -51,6 +51,7 @@ const expected = [
   "039_list_my_ledgers_dedup.sql",
   "040_workspace_identity_hardening.sql",
   "041_owner_activity_log.sql",
+  "042_member_invite_only_creation_lockdown.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -200,6 +201,8 @@ for (const marker of [
   "latest_expected', migration_status.latest_expected",
   "scope_key",
   "ledger_onboarding_rate_limits_scope_key_window_idx",
+  "042_member_invite_only_creation_lockdown",
+  "New members join by redeeming a workspace invite; member management can only update existing members",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);

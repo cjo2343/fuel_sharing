@@ -2784,6 +2784,15 @@ def list_members_as_user(ledger_id, user, user_token):
 
 def upsert_member_as_user(ledger_id, member, user, user_token):
     assert_user_can_admin_ledger(ledger_id, user, user_token)
+    # Invite-only onboarding: the member-management route may update or deactivate
+    # existing members, never create brand-new ones. New members must redeem a
+    # workspace invite (consent, expiry, max-uses, rate limits). Reject any upsert
+    # without an existing member id so a direct API call cannot bypass the invite
+    # flow. Defense-in-depth: upsert_ledger_member_admin also rejects a null id.
+    if not (member.get("id") or "").strip():
+        raise PermissionError(
+            "New members join by redeeming a workspace invite. Member management can only update or deactivate existing members."
+        )
     return call_supabase_rpc_as_user("upsert_ledger_member_admin", {
         "target_ledger_id": ledger_id,
         "target_member_id": member.get("id") or None,

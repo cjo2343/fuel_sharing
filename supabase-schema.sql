@@ -1639,44 +1639,38 @@ begin
     raise exception 'Member login email is required' using errcode = '23502';
   end if;
 
-  if target_member_id is not null then
-    select * into existing_member
-    from public.ledger_members
-    where id = target_member_id and ledger_id = target_ledger_id
-    for update;
+  -- Invite-only onboarding: this RPC may only update existing members. New members
+  -- join by redeeming a workspace invite (redeem_ledger_invite), which enforces
+  -- consent, expiry, max-uses, and rate limits. Reject creating a brand-new member
+  -- row (null target_member_id) for everyone, including the app owner.
+  if target_member_id is null then
+    raise exception 'New members join by redeeming a workspace invite; member management can only update existing members' using errcode = '42501';
+  end if;
 
-    if existing_member.id is null then
-      raise exception 'Member does not belong to this ledger' using errcode = '23503';
-    end if;
+  select * into existing_member
+  from public.ledger_members
+  where id = target_member_id and ledger_id = target_ledger_id
+  for update;
 
-    if existing_member.id = actor_member_id and (member_is_active is false or normalized_role <> 'admin') then
-      raise exception 'Admins cannot demote or deactivate themselves' using errcode = '42501';
-    end if;
+  if existing_member.id is null then
+    raise exception 'Member does not belong to this ledger' using errcode = '23503';
+  end if;
+
+  if existing_member.id = actor_member_id and (member_is_active is false or normalized_role <> 'admin') then
+    raise exception 'Admins cannot demote or deactivate themselves' using errcode = '42501';
   end if;
 
   perform pg_advisory_xact_lock(hashtext(target_ledger_id || ':member-admin'));
 
-  if target_member_id is null then
-    insert into public.ledger_members (ledger_id, name, email, mobilepay_phone, role, is_active, updated_at)
-    values (target_ledger_id, trim(member_name), normalized_email, nullif(trim(coalesce(member_mobilepay_phone, '')), ''), normalized_role, coalesce(member_is_active, true), now())
-    on conflict (ledger_id, name) do update set
-      email = excluded.email,
-      mobilepay_phone = excluded.mobilepay_phone,
-      role = excluded.role,
-      is_active = excluded.is_active,
+  update public.ledger_members
+  set name = trim(member_name),
+      email = normalized_email,
+      mobilepay_phone = nullif(trim(coalesce(member_mobilepay_phone, '')), ''),
+      role = normalized_role,
+      is_active = coalesce(member_is_active, true),
       updated_at = now()
-    returning id into saved_member_id;
-  else
-    update public.ledger_members
-    set name = trim(member_name),
-        email = normalized_email,
-        mobilepay_phone = nullif(trim(coalesce(member_mobilepay_phone, '')), ''),
-        role = normalized_role,
-        is_active = coalesce(member_is_active, true),
-        updated_at = now()
-    where id = target_member_id and ledger_id = target_ledger_id
-    returning id into saved_member_id;
-  end if;
+  where id = target_member_id and ledger_id = target_ledger_id
+  returning id into saved_member_id;
 
   select count(*) into active_admin_count
   from public.ledger_members
@@ -7005,4 +6999,12 @@ revoke all on public.owner_activity_log from anon;
 revoke all on public.owner_activity_log from authenticated;
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('041_owner_activity_log', 'Server-owned owner-only cross-workspace activity log for Render backend actions.')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+-- Consolidated schema addition: 042_member_invite_only_creation_lockdown
+-- upsert_ledger_member_admin (defined above) now rejects creating brand-new
+-- members; the only onboarding path is redeem_ledger_invite. This seed records the
+-- migration so schema tracking stays aligned with supabase/migrations/.
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('042_member_invite_only_creation_lockdown', 'upsert_ledger_member_admin updates existing members only; new members must redeem a workspace invite.')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
