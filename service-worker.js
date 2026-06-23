@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v422";
-const BUILD_LABEL = "render-auth-401-refresh";
+const CACHE_NAME = "fuel-ledger-v423";
+const BUILD_LABEL = "app-context-single-flight";
 const BUILD_UPDATED_AT = "2026-06-22T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",

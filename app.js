@@ -16439,10 +16439,32 @@ function applyBackendAppContext(context, { persist = true, reason = "app-context
   return staleForCurrentSelection ? "" : activeCanonicalId || activeId;
 }
 
+let renderAppContextInFlight = null;
+
 async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWorkspaceId = "", reason = "app-context", timeoutMs = 8000 } = {}) {
   if (!currentSession || typeof fetch !== "function") return null;
   const selectedWorkspaceIdAtRequest = getActiveLedgerId();
   const preferredWorkspaceIdAtRequest = String(preferredWorkspaceId || ledgerId || selectedWorkspaceIdAtRequest || getConfiguredLedgerId()).trim();
+  // Single-flight: callers asking for the same workspace join the running request instead of
+  // firing a duplicate. Returning to a long-idle tab otherwise stampedes /api/app/context from
+  // the focus sync, workspace-tools refresh, latch watchdog, and vehicle lookup all at once,
+  // and the lookup sits on "Preparing…" behind that burst. A different workspace still starts a
+  // fresh request (a workspace switch must not join a stale in-flight load).
+  if (renderAppContextInFlight && renderAppContextInFlight.key === preferredWorkspaceIdAtRequest) {
+    recordDataIoDiagnostic("skip", {
+      source: "app-context",
+      route: "render-api",
+      endpoint: renderAppContextUrl,
+      operation: "load",
+      ok: true,
+      resultCode: "APP_CONTEXT_JOINED_IN_FLIGHT",
+      selectedWorkspaceId: preferredWorkspaceIdAtRequest,
+      loadedWorkspaceId: getLoadedWorkspaceId(),
+      detail: `Joined the in-flight backend app context request for ${preferredWorkspaceIdAtRequest} (${reason}).`
+    });
+    return renderAppContextInFlight.promise;
+  }
+  const requestPromise = (async () => {
   const operationId = createDataIoOperationId("app-context", "load");
   const traceMeta = { source: "app-context", route: "render-api", endpoint: renderAppContextUrl, operation: "load", operationId };
   try {
@@ -16485,6 +16507,15 @@ async function getRenderAppContext({ ledgerId = getActiveLedgerId(), preferredWo
     return null;
   } finally {
     appBackendContextStatus = { ...appBackendContextStatus, loading: false };
+  }
+  })();
+  renderAppContextInFlight = { key: preferredWorkspaceIdAtRequest, promise: requestPromise };
+  try {
+    return await requestPromise;
+  } finally {
+    if (renderAppContextInFlight && renderAppContextInFlight.promise === requestPromise) {
+      renderAppContextInFlight = null;
+    }
   }
 }
 
