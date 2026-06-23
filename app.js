@@ -9772,10 +9772,10 @@ async function verifyLoginInviteEmailBeforeOtp(inviteCode, email) {
     detail: "Check invite email before sending login code"
   });
   try {
-    const { data, error } = await supabaseClient.rpc("check_ledger_invite_email", {
+    const { data, error } = await supabaseCallWithTimeout("Invite email check", supabaseClient.rpc("check_ledger_invite_email", {
       invite_code: normalizedInviteCode,
       login_email: normalizedLoginEmail
-    });
+    }));
     if (error) throw error;
     const result = Array.isArray(data) ? data[0] : data;
     const allowed = Boolean(result?.allowed);
@@ -13033,11 +13033,11 @@ async function closeNormalizedPeriodWithRpc(context, periodSnapshot) {
   if (!context?.openPeriodId || !periodSnapshot || typeof periodSnapshot !== "object") {
     throw new Error("Blocked close_settlement_period RPC because the open period or snapshot is missing.");
   }
-  const { data, error } = await supabaseClient.rpc("close_settlement_period", {
+  const { data, error } = await supabaseCallWithTimeout("Close settlement period", supabaseClient.rpc("close_settlement_period", {
     target_ledger_id: context.ledgerId,
     target_period_id: context.openPeriodId,
     period_snapshot: periodSnapshot
-  });
+  }));
 
   if (!error) return { ok: true, data };
 
@@ -16834,7 +16834,7 @@ async function redeemWorkspaceInvite(inviteCodeOverride = "") {
   };
   recordDataIoDiagnostic("start", { ...traceMeta, ok: true, resultCode: "INVITE_REDEEM_STARTED" });
   try {
-    const { data, error } = await supabaseClient.rpc("redeem_ledger_invite", { invite_code: inviteCode });
+    const { data, error } = await supabaseCallWithTimeout("Redeem invite", supabaseClient.rpc("redeem_ledger_invite", { invite_code: inviteCode }));
     if (error) throw error;
     const result = Array.isArray(data) ? data[0] : data;
     const joinedLedgerId = String(result?.ledger_id || "").trim();
@@ -16946,11 +16946,11 @@ async function saveOwnMemberProfileFromSetup() {
     detail: "Save own member profile"
   });
   try {
-    const { data, error } = await supabaseClient.rpc("update_own_ledger_member_profile", {
+    const { data, error } = await supabaseCallWithTimeout("Update member profile", supabaseClient.rpc("update_own_ledger_member_profile", {
       target_ledger_id: ledgerId,
       member_name: name,
       member_mobilepay_phone: mobilepayPhone || null
-    });
+    }));
     if (error) throw error;
     const saved = Array.isArray(data) ? data[0] : data;
     authBoundMemberProfile = {
@@ -17643,10 +17643,10 @@ async function revokeWorkspaceInvite(inviteId) {
   const ledgerId = getActiveLedgerId();
   setWorkspaceInvitesMessage("Revoking invite...");
   try {
-    const { error } = await supabaseClient.rpc("revoke_ledger_invite", {
+    const { error } = await supabaseCallWithTimeout("Revoke invite", supabaseClient.rpc("revoke_ledger_invite", {
       target_ledger_id: ledgerId,
       target_invite_id: inviteId
-    });
+    }));
     if (error) throw error;
     setWorkspaceInvitesMessage("Invite revoked.");
     await refreshWorkspaceInvites();
@@ -17697,7 +17697,7 @@ async function runProductionActivityReset() {
   try {
     if (!(await hasFreshSupabaseSession())) throw new Error("Session is not fresh. Sign out and back in if this persists.");
     const ledgerId = supabaseHelpers.getLedgerId(supabaseConfig);
-    const { data, error } = await supabaseClient.rpc("production_activity_reset", { target_ledger_id: ledgerId });
+    const { data, error } = await supabaseCallWithTimeout("Production activity reset", supabaseClient.rpc("production_activity_reset", { target_ledger_id: ledgerId }));
     if (error) throw error;
 
     state.bookings = [];
@@ -19404,6 +19404,32 @@ async function withSupabaseReadTimeout(label, promise, timeoutMs = 10000) {
   }
 }
 
+// Contract-preserving timeout for direct supabase-js calls (.from/.rpc/.auth), which all
+// resolve to { data, error }. On timeout this RESOLVES to { data: null, error: <timeout> }
+// instead of rejecting, so every existing caller's `if (error)` path handles it unchanged —
+// no caller needs a try/catch added. This stops a stale client after a long idle from hanging
+// a user action forever (the recurring vehicle-lookup / action freeze).
+async function supabaseCallWithTimeout(label, call, timeoutMs = 15000) {
+  let timeoutId = null;
+  const timeout = new Promise((resolve) => {
+    timeoutId = window.setTimeout(() => {
+      resolve({
+        data: null,
+        error: {
+          message: `${label} did not respond within ${Math.round(timeoutMs / 1000)} seconds. Please try again.`,
+          code: "SUPABASE_CALL_TIMEOUT",
+          isSupabaseCallTimeout: true
+        }
+      });
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([Promise.resolve(call), timeout]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 async function hasFreshSupabaseSession(options = {}) {
   const session = await getFreshSessionWithTimeout({
     timeoutMs: Number(options.timeoutMs || 0),
@@ -20672,7 +20698,7 @@ function currentSettlementPairKeys(context) {
 }
 
 async function saveSettlementRequestStatusRpc(context, payload) {
-  const { data, error } = await traceDataIo({ source: "settlement-request-save", route: "supabase-rpc", rpc: "upsert_settlement_request_status", operation: "rpc" }, () => supabaseClient.rpc("upsert_settlement_request_status", {
+  const { data, error } = await traceDataIo({ source: "settlement-request-save", route: "supabase-rpc", rpc: "upsert_settlement_request_status", operation: "rpc" }, () => supabaseCallWithTimeout("Settlement request status", supabaseClient.rpc("upsert_settlement_request_status", {
     target_ledger_id: context.ledgerId,
     target_open_period_id: context.openPeriodId,
     payer_member_id: payload.from_member_id,
@@ -20681,7 +20707,7 @@ async function saveSettlementRequestStatusRpc(context, payload) {
     currency_value: payload.currency,
     next_status: payload.status,
     current_pair_keys: currentSettlementPairKeys(context)
-  }));
+  })));
 
   if (!error) return { ok: true, data };
 
@@ -22381,7 +22407,7 @@ async function publishLedgerEvent(event = {}) {
 
   try {
     recordSupabaseLoadEvent("ledger-event-publish", eventType);
-    const { error } = await supabaseClient.from("ledger_events").insert({
+    const { error } = await supabaseCallWithTimeout("Ledger event publish", supabaseClient.from("ledger_events").insert({
       ledger_id: ledgerId,
       event_type: eventType,
       title,
@@ -22389,7 +22415,7 @@ async function publishLedgerEvent(event = {}) {
       actor_email: actorEmail,
       target_email: event.targetEmail ? String(event.targetEmail).trim().toLowerCase() : null,
       metadata: event.metadata || {}
-    });
+    }));
     if (error) throw error;
     lastLedgerEventPublishAt = now;
     return true;

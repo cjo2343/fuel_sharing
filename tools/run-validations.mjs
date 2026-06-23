@@ -132,6 +132,7 @@ const scripts = [
   "node tools/test-security-headers.mjs",
   "node tools/test-booking-status-helpers.mjs",
   "node tools/test-runtime-module-contract.mjs",
+  "node tools/test-bound-supabase-action-calls.mjs",
   "node tools/check-app-references.mjs",
   "node tools/check-build-info.mjs",
   "node tools/check-tracked-artifacts.mjs",
@@ -272,6 +273,7 @@ const scripts = [
   "node --check tools/check-build-info.mjs",
   "node --check tools/check-runtime-assets.mjs",
   "node --check tools/test-runtime-module-contract.mjs",
+  "node --check tools/test-bound-supabase-action-calls.mjs",
   "node --check tools/test-release-readiness-guardrails.mjs",
   "node --check tools/check-ci-guardrails.mjs"
 ];
