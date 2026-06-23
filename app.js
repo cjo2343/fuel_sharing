@@ -1516,6 +1516,30 @@ function isAppStartupGateReady() {
   return appStartupGateState.ready === true && Boolean(lastCloudSyncAt || lastCloudSaveAt);
 }
 
+// Backlog #3 — any successful load (background sync, focus sync, manual Retry / Sync now,
+// admin Render load) must immediately transition the startup gate out of a stale "failed"
+// state and drop the sync-delay banner + "Cloud delayed" badge, without waiting for a
+// refocus re-render. Called from the load-success sites so the cold-Render recovery
+// surfaces on its own. No-op when the gate is already ready (avoids banner flicker).
+function recoverStartupGateAfterSuccessfulLoad(reason = "load-success") {
+  if (!supabaseClient || !currentSession) return;
+  // The startup gate's own in-flight run sets phase to "ready" itself once its sequence
+  // finishes; don't pre-empt it from the load it is awaiting (avoids a duplicate
+  // ready-transition / banner flicker). This recovers later loads (background, focus,
+  // manual Retry/Sync now) that succeed after the gate has gone "failed".
+  if (appStartupGatePromise) {
+    clearSyncDelay(`gate-recovered:${reason}`);
+    return;
+  }
+  if (appStartupGateState.phase !== "ready") {
+    setAppStartupGatePhase("ready", `Workspace state loaded after a delayed startup; banner cleared (${reason}).`, { reason });
+    lastAppStartupGateReadyAt = Date.now();
+  }
+  clearSyncDelay(`gate-recovered:${reason}`);
+  setSyncStatus(getHealthySyncStatusLabel());
+  renderSyncHealthBanner();
+}
+
 function shouldDelayOptionalStartupLane(reason = "optional") {
   if (!supabaseClient || !currentSession) return false;
   if (isAppStartupGateReady()) return false;
@@ -2671,6 +2695,57 @@ function getHealthySyncStatusLabel() {
   if (!supabaseClient || !currentSession) return "Login";
   return normalizedReadModeActive ? "Tables" : "Cloud";
 }
+
+// Backlog #3 — cold-start vs genuine-failure discrimination for the sync-health banner.
+// On Render free tier a cold start (30–50s wake) can fail the startup gate / state load
+// while the workspace is fully usable from this device's cached state. That case should
+// read as a calm amber "reconnecting" message, not a red error. RED is reserved for a
+// genuine failure: a wake/retry is no longer in flight, the failure has persisted past a
+// longer window, AND there is no usable cached data to show.
+
+// True when the locally cached/applied workspace state actually has content to show. A
+// brand-new signed-in user with a genuinely failing backend has no cached content, so
+// the red error must still surface for them (we must not mask real failures).
+function hasUsableCachedWorkspaceState() {
+  if (hasAnyHealthyCloudSync()) return true;
+  if (!state || typeof state !== "object") return false;
+  const counts = [state.trips, state.bookings, state.fuel, state.closedPeriods, state.auditLog]
+    .reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
+  if (counts > 0) return true;
+  // A previously-synced workspace stamps updatedAt even with no entries yet; treat a
+  // restored local snapshot as usable so an empty-but-real workspace stays calm too.
+  return Boolean(state.updatedAt);
+}
+
+// True while the backend is actively being woken / the workspace is being (re)loaded, or
+// a retry was kicked off very recently. Used to keep the banner amber instead of red.
+const coldStartReconnectWindowMs = 60 * 1000;
+function isBackendWakeOrRetryInFlight(referenceTime = Date.now()) {
+  if (appStartupGatePromise) return true;
+  if (supabaseLoadInFlight) return true;
+  if (workspaceSwitchAutoRetryTimer) return true;
+  const retryMs = Date.parse(lastCloudRetryAt || "");
+  if (Number.isFinite(retryMs) && referenceTime - retryMs >= 0 && referenceTime - retryMs <= coldStartReconnectWindowMs) {
+    return true;
+  }
+  return false;
+}
+
+// True when a state load has not (yet) succeeded but the situation is the benign
+// cold-Render-with-cached-data case: data is shown from this device and a wake/retry is
+// in flight, so the banner should be a calm amber "reconnecting" instead of a red error.
+function isColdStartReconnecting(referenceTime = Date.now()) {
+  if (!supabaseClient || !currentSession) return false;
+  if (!hasUsableCachedWorkspaceState()) return false;
+  return isBackendWakeOrRetryInFlight(referenceTime);
+}
+
+const coldStartReconnectBanner = Object.freeze({
+  level: "warning",
+  title: "Reconnecting",
+  message: "The backend is waking (free tier, ~30–50s). Your data is shown from this device and will sync. Changes are kept on this device and will be retried.",
+  action: "Retry loading workspace"
+});
 
 function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
   if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
@@ -10820,6 +10895,13 @@ function buildSyncHealthBannerState() {
   }
 
   if (supabaseClient && currentSession && appStartupGateState.phase === "failed") {
+    // Calm the cold-start case: the startup gate timed out on a slow/waking Render, but
+    // the workspace is usable from this device's cached state and a wake/retry is in
+    // flight. Show amber "reconnecting" instead of the red "startup delayed" engineering
+    // banner. RED is reserved for a genuine failure (no retry in flight + no cached data).
+    if (isColdStartReconnecting()) {
+      return { ...coldStartReconnectBanner };
+    }
     return {
       level: "error",
       title: "Backend startup delayed",
@@ -10845,6 +10927,12 @@ function buildSyncHealthBannerState() {
   }
 
   if (lastSyncError) {
+    // Same cold-start calming for the sync-delay path: a cold-Render state load can set
+    // lastSyncError (e.g. "Render state load is required…") while cached data is shown and
+    // a wake/retry is in flight. Surface the calm amber banner instead of the red card.
+    if (isColdStartReconnecting()) {
+      return { ...coldStartReconnectBanner };
+    }
     return {
       level: "error",
       title: "Sync delayed",
@@ -22060,6 +22148,7 @@ async function tryRenderAdminDiagnosticsStateLoad(reason, loadToken, jsonFallbac
     recordSupabaseLoadEvent("render-admin-diagnostics-load", reason);
     recordSyncDiagnostic("admin-render-load-success", "Admin diagnostics refreshed from Render state load.", { reason, route: "render-api", endpoint: renderStateLoadUrl });
     markActiveWorkspaceConfirmed(reason);
+    recoverStartupGateAfterSuccessfulLoad(`admin-render-load:${reason}`);
     setSyncStatus("Tables");
     return true;
   } catch (error) {
@@ -22206,6 +22295,7 @@ async function loadSupabaseState(options = {}) {
     if (/workspace-switch|workspace-session|ledger-event|manual|startup|auth/i.test(String(reason || ""))) {
       clearWorkspaceSwitchAutoRetry(`load-confirmed:${reason}`);
     }
+    recoverStartupGateAfterSuccessfulLoad(`load-success:${reason}`);
     setSyncStatus(loadedFromTables ? "Tables" : "Cloud");
     render();
     return true;
