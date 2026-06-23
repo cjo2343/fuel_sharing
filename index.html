@@ -739,94 +739,95 @@
                 <small>Open only when investigating a problem, testing, or running maintenance.</small>
               </summary>
               <div class="data-tools-grid diagnostics-lab-grid">
-            <article class="data-tool-card danger-zone">
-              <strong>Clean test users</strong>
-              <p>Remove users with “test” in the name when they have no trips, fuel payments, or archived history.</p>
-              <button id="removeTestUsers" class="danger-button" type="button">Remove unused test users</button>
-            </article>
-            <article class="data-tool-card">
-              <strong>Test data</strong>
-              <p>Create or remove generated test trips and fuel logs. Purge only removes old soft-deleted generated rows from normalized tables.</p>
-              <div class="button-row">
-                <button id="addTestTrip" class="subtle-button" type="button">Add test trip</button>
-                <button id="addTestFuel" class="subtle-button" type="button">Add test fuel</button>
-                <button id="removeTestData" class="danger-button" type="button">Remove test data</button>
-                <button id="purgeSoftDeletedTestRows" class="danger-button" type="button">Purge soft-deleted test rows</button>
-              </div>
-            </article>
-            <article class="data-tool-card">
-              <strong>Test Lab</strong>
-              <p>Routine checks are local-only by default. Cloud-touching and stress tools are protected so they cannot be triggered accidentally.</p>
-              <div class="admin-tool-badges" aria-label="Test Lab safety labels">
-                <span class="tool-safety-badge safe">Safe</span>
-                <span class="tool-safety-badge local-only">Local-only</span>
-                <span class="tool-safety-badge admin-only">Admin-only</span>
-              </div>
-              <div class="button-row test-lab-primary-actions">
-                <button id="runFullTestLab" class="subtle-button" type="button">Run safe Test Lab</button>
-                <button id="exportTestLabReport" class="subtle-button" type="button">Export last report</button>
-                <button id="cleanupTestLabData" class="danger-button" type="button">Clean generated data</button>
-              </div>
-              <details class="test-lab-action-group">
-                <summary>Targeted checks</summary>
-                <div class="button-row">
-                  <button id="runScenarioMatrix" class="subtle-button" type="button">Scenario matrix</button>
-                  <button id="runPaymentScenario" class="subtle-button" type="button">Payments</button>
-                  <button id="runBackupScenario" class="subtle-button" type="button">Backup/import</button>
-                  <button id="runPrivacyScenario" class="subtle-button" type="button">Privacy</button>
-                  <button id="runRuntimeScenario" class="subtle-button" type="button">Runtime/PWA</button>
-                </div>
-              </details>
-              <details class="test-lab-action-group cloud-touching-tool">
-                <summary>Cloud-touching checks</summary>
-                <p class="entry-meta"><span class="tool-safety-badge cloud-touching">Cloud-touching</span> Security Health uses live Supabase reads/probes and has a cooldown. Run it only when Supabase CPU is calm.</p>
-                <div class="button-row">
-                  <button id="runSecurityScenario" class="subtle-button" type="button">Security health</button>
-                  <button id="saveTestLabReportCloud" class="subtle-button" type="button">Save report to cloud</button>
-                </div>
-              </details>
-              <div class="advanced-admin-unlock">
-                <button id="unlockAdvancedAdminTools" class="subtle-button" type="button">Unlock advanced admin tools</button>
-                <span id="advancedAdminToolsStatus" class="entry-meta">Advanced stress tools are locked.</span>
-              </div>
-              <details class="test-lab-action-group admin-advanced-tools hidden">
-                <summary>Advanced stress tools</summary>
-                <p class="entry-meta"><span class="tool-safety-badge destructive">Destructive/cloud load risk</span> These write temporary generated data and can increase Supabase usage. They require typed confirmation.</p>
-                <div class="button-row">
-                  <button id="runStressTest" class="subtle-button" type="button">Add stress data</button>
-                  <button id="runRapidSaveTest" class="subtle-button" type="button">Rapid save test</button>
-                </div>
-              </details>
-              <div id="testLabReport" class="section-note test-lab-report-host" aria-live="polite"></div>
-            </article>
-            <article class="data-tool-card">
-              <strong>Data retention & privacy cleanup</strong>
-              <p>Preview and clean temporary/privacy-sensitive records without touching real ledger history. Keeps trips, fuel logs, bookings, settlements, closed periods, and audit-critical history.</p>
-              <div class="admin-tool-badges" aria-label="Retention cleanup safety labels">
-                <span class="tool-safety-badge admin-only">Admin-only</span>
-                <span class="tool-safety-badge cloud-touching">Cloud-touching</span>
-                <span class="tool-safety-badge destructive">Deletes temporary data</span>
-              </div>
-              <div class="button-row">
-                <button id="previewRetentionCleanup" class="subtle-button" type="button">Preview cleanup</button>
-                <button id="runRetentionCleanup" class="danger-button" type="button">Run retention cleanup</button>
-              </div>
-              <p class="entry-meta">Policy: old <code>ledger_events</code> after 30 days/expiry, stale push subscriptions after 180 days, local Test Lab reports beyond the latest 3 or older than 30 days, and old browser-local load monitor entries.</p>
-              <div id="retentionCleanupSummary" class="section-note" aria-live="polite"></div>
-            </article>
-            <article class="data-tool-card supabase-load-monitor-card">
-              <strong>Data I/O &amp; backend monitor</strong>
-              <p>Raw troubleshooting view for recent app-side saves, backend calls, health checks, and sync diagnostics. Keep this closed unless you are debugging.</p>
-              <div class="button-row">
-                <button id="syncNowAdmin" class="subtle-button" type="button">Sync now</button>
-                <button id="refreshSupabaseLoadMonitor" class="subtle-button" type="button">Refresh load monitor</button>
-                <button id="checkRenderAdminHealth" class="subtle-button" type="button">Check Render health</button>
-                <button id="exportSupabaseLoadReport" class="subtle-button" type="button">Export load report</button>
-                <button id="toggleLiveSync" class="subtle-button" type="button">Enable live sync</button>
-              </div>
-              <p class="entry-meta">Live Realtime sync is off by default to protect Supabase CPU. The app syncs on load, save, manual refresh, and occasional tab focus instead.</p>
-              <div id="supabaseLoadMonitor" class="section-note supabase-load-monitor" aria-live="polite"></div>
-            </article>
+
+                <article class="data-tool-card danger-zone">
+                  <strong>Maintenance actions</strong>
+                  <p>Grouped by risk. Destructive actions require confirmation and are scoped to avoid touching accounting history.</p>
+
+                  <p class="entry-meta">Clean test users &mdash; <span class="tool-safety-badge destructive">Destructive</span></p>
+                  <p class="entry-meta">Remove users with "test" in the name that have no trips, fuel, or archived history.</p>
+                  <div class="button-row">
+                    <button id="removeTestUsers" class="danger-button" type="button">Remove unused test users</button>
+                  </div>
+
+                  <p class="entry-meta">Test data &mdash; <span class="tool-safety-badge local-only">Local-only</span> <span class="tool-safety-badge destructive">Destructive</span></p>
+                  <p class="entry-meta">Add or remove generated test trips and fuel logs. Purge removes old soft-deleted generated rows from normalized tables only.</p>
+                  <div class="button-row">
+                    <button id="addTestTrip" class="subtle-button" type="button">Add test trip</button>
+                    <button id="addTestFuel" class="subtle-button" type="button">Add test fuel</button>
+                    <button id="removeTestData" class="danger-button" type="button">Remove test data</button>
+                    <button id="purgeSoftDeletedTestRows" class="danger-button" type="button">Purge soft-deleted test rows</button>
+                  </div>
+
+                  <p class="entry-meta">Data retention &amp; privacy cleanup &mdash; <span class="tool-safety-badge admin-only">Admin-only</span> <span class="tool-safety-badge cloud-touching">Cloud-touching</span> <span class="tool-safety-badge destructive">Deletes temporary data</span></p>
+                  <p class="entry-meta">Preview and clean temporary/privacy-sensitive records. Never touches ledger accounting history.</p>
+                  <div class="button-row">
+                    <button id="previewRetentionCleanup" class="subtle-button" type="button">Preview cleanup</button>
+                    <button id="runRetentionCleanup" class="danger-button" type="button">Run retention cleanup</button>
+                  </div>
+                  <div id="retentionCleanupSummary" class="section-note" aria-live="polite"></div>
+                </article>
+
+                <article class="data-tool-card">
+                  <strong>Self-tests &amp; reports</strong>
+                  <p>Routine checks are local-only. Cloud-touching and stress tools are protected and require confirmation.</p>
+                  <div class="admin-tool-badges" aria-label="Test Lab safety labels">
+                    <span class="tool-safety-badge safe">Safe</span>
+                    <span class="tool-safety-badge local-only">Local-only</span>
+                    <span class="tool-safety-badge admin-only">Admin-only</span>
+                  </div>
+                  <div class="button-row test-lab-primary-actions">
+                    <button id="runFullTestLab" class="subtle-button" type="button">Run safe Test Lab</button>
+                    <button id="exportTestLabReport" class="subtle-button" type="button">Export last report</button>
+                    <button id="cleanupTestLabData" class="danger-button" type="button">Clean generated data</button>
+                  </div>
+                  <details class="test-lab-action-group">
+                    <summary>Targeted checks</summary>
+                    <div class="button-row">
+                      <button id="runScenarioMatrix" class="subtle-button" type="button">Scenario matrix</button>
+                      <button id="runPaymentScenario" class="subtle-button" type="button">Payments</button>
+                      <button id="runBackupScenario" class="subtle-button" type="button">Backup/import</button>
+                      <button id="runPrivacyScenario" class="subtle-button" type="button">Privacy</button>
+                      <button id="runRuntimeScenario" class="subtle-button" type="button">Runtime/PWA</button>
+                    </div>
+                  </details>
+                  <details class="test-lab-action-group cloud-touching-tool">
+                    <summary>Cloud-touching checks</summary>
+                    <p class="entry-meta"><span class="tool-safety-badge cloud-touching">Cloud-touching</span> Security Health uses live Supabase reads/probes and has a cooldown. Run it only when Supabase CPU is calm.</p>
+                    <div class="button-row">
+                      <button id="runSecurityScenario" class="subtle-button" type="button">Security health</button>
+                      <button id="saveTestLabReportCloud" class="subtle-button" type="button">Save report to cloud</button>
+                    </div>
+                  </details>
+                  <div class="advanced-admin-unlock">
+                    <button id="unlockAdvancedAdminTools" class="subtle-button" type="button">Unlock advanced admin tools</button>
+                    <span id="advancedAdminToolsStatus" class="entry-meta">Advanced stress tools are locked.</span>
+                  </div>
+                  <details class="test-lab-action-group admin-advanced-tools hidden">
+                    <summary>Advanced stress tools</summary>
+                    <p class="entry-meta"><span class="tool-safety-badge destructive">Destructive/cloud load risk</span> These write temporary generated data and can increase Supabase usage. They require typed confirmation.</p>
+                    <div class="button-row">
+                      <button id="runStressTest" class="subtle-button" type="button">Add stress data</button>
+                      <button id="runRapidSaveTest" class="subtle-button" type="button">Rapid save test</button>
+                    </div>
+                  </details>
+                  <div id="testLabReport" class="section-note test-lab-report-host" aria-live="polite"></div>
+                </article>
+
+                <article class="data-tool-card supabase-load-monitor-card">
+                  <strong>Data I/O &amp; backend monitor</strong>
+                  <p>Raw troubleshooting view for recent app-side saves, backend calls, health checks, and sync diagnostics. Keep this closed unless you are debugging.</p>
+                  <div class="button-row">
+                    <button id="syncNowAdmin" class="subtle-button" type="button">Sync now</button>
+                    <button id="refreshSupabaseLoadMonitor" class="subtle-button" type="button">Refresh load monitor</button>
+                    <button id="checkRenderAdminHealth" class="subtle-button" type="button">Check Render health</button>
+                    <button id="exportSupabaseLoadReport" class="subtle-button" type="button">Export load report</button>
+                    <button id="toggleLiveSync" class="subtle-button" type="button">Enable live sync</button>
+                  </div>
+                  <p class="entry-meta">Live Realtime sync is off by default to protect Supabase CPU. The app syncs on load, save, manual refresh, and occasional tab focus instead.</p>
+                  <div id="supabaseLoadMonitor" class="section-note supabase-load-monitor" aria-live="polite"></div>
+                </article>
+
               </div>
             </details>
           </div>

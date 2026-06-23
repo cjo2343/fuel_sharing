@@ -6806,12 +6806,13 @@ function formatAdminTimestamp(value) {
   return date.toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" });
 }
 
-function adminGuardrailStatusCard({ title, status, detail, level = "ok" }) {
+function adminGuardrailStatusCard({ title, status, detail, level = "ok", freshness = "" }) {
   return `
     <article class="admin-guardrail-card ${escapeHtml(level)}">
       <strong>${escapeHtml(title)}</strong>
       <p>${escapeHtml(status)}</p>
       <small>${escapeHtml(detail)}</small>
+      ${freshness ? `<span class="freshness-stamp">${escapeHtml(freshness)}</span>` : ""}
     </article>
   `;
 }
@@ -7130,76 +7131,133 @@ function renderAdminGuardrailOverview() {
     normalizedStatus
   });
 
+  // Freshness: Security Health checks stamp a checkedAt on supabaseSecurityStatus.
+  // Status tiles (Release/Realtime/Sync/Backup) update without Security Health — label them "Live".
+  const securityCheckedAt = supabaseSecurityStatus?.checkedAt
+    ? new Date(supabaseSecurityStatus.checkedAt).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit" })
+    : null;
+  const healthFreshness = securityCheckedAt ? `Checked ${securityCheckedAt}` : "Not checked — run Security Health";
+  const liveFreshness = "Live";
+
+  // Control bar: last-run time + cooldown note.
+  const now = Date.now();
+  const cooldownRemaining = supabaseLoadSafety.securityHealthCooldownMs - (now - supabaseLoadSafety.lastSecurityHealthAt);
+  const lastRunLabel = supabaseSecurityStatus?.checkedAt
+    ? `Last run: ${securityCheckedAt}`
+    : "Never";
+  const cooldownNote = cooldownRemaining > 0
+    ? `Cooldown: ${Math.ceil(cooldownRemaining / 1000)}s`
+    : "";
+
+  // Launch readiness: collapse behind a <details> — it is reference text, not a live metric.
+  const launchRisksDetail = publicLaunchReadinessDiagnostics.detail || "";
+
   els.adminGuardrailOverview.innerHTML = `
-    <div class="admin-guardrail-grid" data-admin-diagnostics-overview="true">
-      ${adminGuardrailStatusCard({
-        title: "Overall health",
-        status: healthSummary.status,
-        detail: healthSummary.detail,
-        level: healthSummary.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Release",
-        status: build.version ? `${build.version} · ${build.buildLabel || "unlabeled"}` : "Build info unavailable",
-        detail: build.expectedServiceWorkerCache ? `Expected cache: ${build.expectedServiceWorkerCache}` : "Refresh version status if this looks stale.",
-        level: build.version ? "ok" : "warning"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Realtime",
-        status: liveSyncEnabled ? "Live Sync enabled" : "Live Sync off by default",
-        detail: realtimeDetail,
-        level: liveSyncEnabled ? "warning" : "ok"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Table health",
-        status: normalizedStatus,
-        detail: normalizedTableStatus?.message || "Normalized tables are primary; JSON is a safety mirror.",
-        level: normalizedTableStatus?.checked && normalizedTableStatus?.ok ? "ok" : "warning"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "RPC availability",
-        status: rpcDiagnostics.status,
-        detail: rpcDiagnostics.detail,
-        level: rpcDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Migrations",
-        status: schemaMigrationDiagnostics.status,
-        detail: schemaMigrationDiagnostics.detail,
-        level: schemaMigrationDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Schema shape",
-        status: schemaDriftDiagnostics.status,
-        detail: schemaDriftDiagnostics.detail,
-        level: schemaDriftDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Realtime publication",
-        status: realtimePublicationDiagnostics.status,
-        detail: realtimePublicationDiagnostics.detail,
-        level: realtimePublicationDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Public launch readiness",
-        status: publicLaunchReadinessDiagnostics.status,
-        detail: publicLaunchReadinessDiagnostics.detail,
-        level: publicLaunchReadinessDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Backup guardrails",
-        status: "Protected destructive actions",
-        detail: backupDetail,
-        level: lastSyncError ? "warning" : "ok"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Sync state",
-        status: pendingLocalChanges > 0 ? "Pending local changes" : "Ready",
-        detail: pendingDetail,
-        level: pendingLocalChanges > 0 || lastSyncError ? "warning" : "ok"
-      })}
+    <div data-admin-diagnostics-overview="true">
+      <div class="admin-guardrail-control-bar">
+        <button type="button" class="subtle-button small-button" data-run-security-health-shortcut>Run Security Health</button>
+        <span class="entry-meta">${escapeHtml(lastRunLabel)}${cooldownNote ? ` · ${escapeHtml(cooldownNote)}` : ""}</span>
+        <span class="entry-meta">On-demand checks — not auto-refreshed, to protect Supabase CPU.</span>
+      </div>
+
+      <p class="admin-guardrail-group-label">Health — Security Health checks</p>
+      <div class="admin-guardrail-grid">
+        ${adminGuardrailStatusCard({
+          title: "Overall health",
+          status: healthSummary.status,
+          detail: healthSummary.detail,
+          level: healthSummary.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Table health",
+          status: normalizedStatus,
+          detail: normalizedTableStatus?.message || "Normalized tables are primary; JSON is a safety mirror.",
+          level: normalizedTableStatus?.checked && normalizedTableStatus?.ok ? "ok" : "warning",
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "RPC availability",
+          status: rpcDiagnostics.status,
+          detail: rpcDiagnostics.detail,
+          level: rpcDiagnostics.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Migrations",
+          status: schemaMigrationDiagnostics.status,
+          detail: schemaMigrationDiagnostics.detail,
+          level: schemaMigrationDiagnostics.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Schema shape",
+          status: schemaDriftDiagnostics.status,
+          detail: schemaDriftDiagnostics.detail,
+          level: schemaDriftDiagnostics.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Realtime publication",
+          status: realtimePublicationDiagnostics.status,
+          detail: realtimePublicationDiagnostics.detail,
+          level: realtimePublicationDiagnostics.level,
+          freshness: healthFreshness
+        })}
+      </div>
+
+      <p class="admin-guardrail-group-label">Status — Live</p>
+      <div class="admin-guardrail-grid">
+        ${adminGuardrailStatusCard({
+          title: "Release",
+          status: build.version ? `${build.version} · ${build.buildLabel || "unlabeled"}` : "Build info unavailable",
+          detail: build.expectedServiceWorkerCache ? `Expected cache: ${build.expectedServiceWorkerCache}` : "Refresh version status if this looks stale.",
+          level: build.version ? "ok" : "warning",
+          freshness: liveFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Realtime",
+          status: liveSyncEnabled ? "Live Sync enabled" : "Broad Live Sync is off by default",
+          detail: realtimeDetail,
+          level: liveSyncEnabled ? "warning" : "ok",
+          freshness: liveFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Sync state",
+          status: pendingLocalChanges > 0 ? "Pending local changes" : "Ready",
+          detail: pendingDetail,
+          level: pendingLocalChanges > 0 || lastSyncError ? "warning" : "ok",
+          freshness: liveFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Backup guardrails",
+          status: "Protected destructive actions",
+          detail: backupDetail,
+          level: lastSyncError ? "warning" : "ok",
+          freshness: liveFreshness
+        })}
+      </div>
+
+      <details class="admin-diagnostics-section">
+        <summary>Launch readiness checklist</summary>
+        <div class="admin-guardrail-grid">
+          ${adminGuardrailStatusCard({
+            title: "Public launch readiness",
+            status: publicLaunchReadinessDiagnostics.status,
+            detail: publicLaunchReadinessDiagnostics.detail,
+            level: publicLaunchReadinessDiagnostics.level
+          })}
+        </div>
+      </details>
     </div>
   `;
+
+  // Wire the shortcut button inside the control bar to the existing Security Health handler.
+  els.adminGuardrailOverview.querySelectorAll("[data-run-security-health-shortcut]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      els.runSecurityScenario?.click();
+    });
+  });
 }
 
 async function downloadSupabaseLoadReport() {
