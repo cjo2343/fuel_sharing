@@ -337,7 +337,12 @@ legend {
 }
 
 .settings-form {
-  grid-template-columns: minmax(118px, 0.55fr) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  align-items: end;
+}
+
+.settings-form .setting-toggle {
+  grid-column: span 2;
 }
 
 .auth-form {
@@ -3165,6 +3170,11 @@ body.auth-locked #authPanel .text-button {
 
 .release-note-card li + li {
   margin-top: 0.25rem;
+}
+
+.release-note-card .muted-note {
+  color: var(--muted);
+  font-size: 0.85em;
 }
 
 /* Completed-period archive search/filter controls */

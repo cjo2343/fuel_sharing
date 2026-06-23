@@ -3511,7 +3511,7 @@ if (els.bookingForm) {
   });
 }
 
-[els.bookingMember, els.bookingStart, els.bookingEnd].forEach((input) => {
+[els.bookingStart, els.bookingEnd].forEach((input) => {
   if (!input) return;
   input.addEventListener("input", updateBookingAvailabilityPreview);
   input.addEventListener("change", updateBookingAvailabilityPreview);
@@ -8661,30 +8661,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  const bookingDayButton = event.target.closest("[data-booking-day]");
-  if (bookingDayButton) {
-    setBookingQuickDate(Number(bookingDayButton.dataset.bookingDay || 0));
-    return;
-  }
-
-  const bookingWeekendButton = event.target.closest("[data-booking-weekend]");
-  if (bookingWeekendButton) {
-    setBookingQuickWeekend();
-    return;
-  }
-
-  const bookingDurationButton = event.target.closest("[data-booking-duration-hours]");
-  if (bookingDurationButton) {
-    setBookingDuration(Number(bookingDurationButton.dataset.bookingDurationHours || 2));
-    return;
-  }
-
-  const bookingAllDayButton = event.target.closest("[data-booking-all-day]");
-  if (bookingAllDayButton) {
-    setBookingAllDay();
-    return;
-  }
-
   const bookingCalendarViewButton = event.target.closest("[data-booking-calendar-view]");
   if (bookingCalendarViewButton) {
     setBookingCalendarView(bookingCalendarViewButton.dataset.bookingCalendarView);
@@ -11092,7 +11068,6 @@ function renderPeopleSelectors() {
     .map((member) => `<option value="${escapeHtml(member)}">${escapeHtml(member)}</option>`)
     .join("");
   els.tripDriver.innerHTML = options;
-  if (els.bookingMember) els.bookingMember.innerHTML = options;
   els.fuelPayer.innerHTML = options;
   els.currentUser.innerHTML = options;
 
@@ -11113,9 +11088,7 @@ function renderPeopleSelectors() {
   els.fuelPayer.disabled = lockToLoggedInUser || periodLocked;
 
   setFormDisabled(els.tripForm, !canLogEntries);
-  if (els.bookingForm) setFormDisabled(els.bookingForm, !canUse);
   setFormDisabled(els.fuelForm, !canLogEntries);
-  if (els.bookingMember) els.bookingMember.disabled = !canUse || lockToLoggedInUser;
   renderPeriodEntryLock();
   renderLogEntryPanelsVisibility();
 
@@ -15902,7 +15875,7 @@ function startBookingEdit(id) {
   els.bookingPurpose.value = booking.purpose || "";
   renderBookingConflictNotice(null);
   updateEditUi();
-  els.bookingForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  els.bookingStart.scrollIntoView({ behavior: "smooth", block: "start" });
   els.bookingStart.focus();
 }
 
