@@ -1,3 +1,4 @@
+- 2026-06-23T14:00:00.000Z — `2026.06.18.292` / `settings-layout-release-notes-booking-self` / `fuel-ledger-v433`: Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.
 - 2026-06-22T15:25:00.000Z — `2026.06.18.278` / `interactive-action-timeout-lane` / `fuel-ledger-v419`: Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.
 - 2026-06-22T14:55:00.000Z — `2026.06.18.277` / `workspace-action-authority-lane` / `fuel-ledger-v418`: Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.
 - 2026-06-22T14:35:00.000Z — `2026.06.18.276` / `owner-passive-background-sync-calm-lane` / `fuel-ledger-v417`: Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.
@@ -47,10 +48,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.289`
-- Service-worker cache: `fuel-ledger-v430`
-- Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: Reliable service-worker update handoff for Safari: the update prompt now also fires from a deploy-version mismatch so Safari users are no longer stranded on an old version when registration.waiting is not exposed. Update activation is tiered: use the waiting worker if available, else call registration.update() and try again, else unregister the stale controller and reload as a Safari escape hatch. One safe auto-activation fires when the app is stale and no writes are in flight, guarded by one-shot flags so nothing loops or double-reloads. The manual Update now path continues to work for all browsers.
+- Version: `2026.06.18.292`
+- Service-worker cache: `fuel-ledger-v433`
+- Updated at: `2026-06-23T14:00:00.000Z`
+- Top release note: Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.
 
 ## Invite beta readiness: member action Data I/O
 

@@ -1516,6 +1516,30 @@ function isAppStartupGateReady() {
   return appStartupGateState.ready === true && Boolean(lastCloudSyncAt || lastCloudSaveAt);
 }
 
+// Backlog #3 — any successful load (background sync, focus sync, manual Retry / Sync now,
+// admin Render load) must immediately transition the startup gate out of a stale "failed"
+// state and drop the sync-delay banner + "Cloud delayed" badge, without waiting for a
+// refocus re-render. Called from the load-success sites so the cold-Render recovery
+// surfaces on its own. No-op when the gate is already ready (avoids banner flicker).
+function recoverStartupGateAfterSuccessfulLoad(reason = "load-success") {
+  if (!supabaseClient || !currentSession) return;
+  // The startup gate's own in-flight run sets phase to "ready" itself once its sequence
+  // finishes; don't pre-empt it from the load it is awaiting (avoids a duplicate
+  // ready-transition / banner flicker). This recovers later loads (background, focus,
+  // manual Retry/Sync now) that succeed after the gate has gone "failed".
+  if (appStartupGatePromise) {
+    clearSyncDelay(`gate-recovered:${reason}`);
+    return;
+  }
+  if (appStartupGateState.phase !== "ready") {
+    setAppStartupGatePhase("ready", `Workspace state loaded after a delayed startup; banner cleared (${reason}).`, { reason });
+    lastAppStartupGateReadyAt = Date.now();
+  }
+  clearSyncDelay(`gate-recovered:${reason}`);
+  setSyncStatus(getHealthySyncStatusLabel());
+  renderSyncHealthBanner();
+}
+
 function shouldDelayOptionalStartupLane(reason = "optional") {
   if (!supabaseClient || !currentSession) return false;
   if (isAppStartupGateReady()) return false;
@@ -2672,6 +2696,57 @@ function getHealthySyncStatusLabel() {
   return normalizedReadModeActive ? "Tables" : "Cloud";
 }
 
+// Backlog #3 — cold-start vs genuine-failure discrimination for the sync-health banner.
+// On Render free tier a cold start (30–50s wake) can fail the startup gate / state load
+// while the workspace is fully usable from this device's cached state. That case should
+// read as a calm amber "reconnecting" message, not a red error. RED is reserved for a
+// genuine failure: a wake/retry is no longer in flight, the failure has persisted past a
+// longer window, AND there is no usable cached data to show.
+
+// True when the locally cached/applied workspace state actually has content to show. A
+// brand-new signed-in user with a genuinely failing backend has no cached content, so
+// the red error must still surface for them (we must not mask real failures).
+function hasUsableCachedWorkspaceState() {
+  if (hasAnyHealthyCloudSync()) return true;
+  if (!state || typeof state !== "object") return false;
+  const counts = [state.trips, state.bookings, state.fuel, state.closedPeriods, state.auditLog]
+    .reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
+  if (counts > 0) return true;
+  // A previously-synced workspace stamps updatedAt even with no entries yet; treat a
+  // restored local snapshot as usable so an empty-but-real workspace stays calm too.
+  return Boolean(state.updatedAt);
+}
+
+// True while the backend is actively being woken / the workspace is being (re)loaded, or
+// a retry was kicked off very recently. Used to keep the banner amber instead of red.
+const coldStartReconnectWindowMs = 60 * 1000;
+function isBackendWakeOrRetryInFlight(referenceTime = Date.now()) {
+  if (appStartupGatePromise) return true;
+  if (supabaseLoadInFlight) return true;
+  if (workspaceSwitchAutoRetryTimer) return true;
+  const retryMs = Date.parse(lastCloudRetryAt || "");
+  if (Number.isFinite(retryMs) && referenceTime - retryMs >= 0 && referenceTime - retryMs <= coldStartReconnectWindowMs) {
+    return true;
+  }
+  return false;
+}
+
+// True when a state load has not (yet) succeeded but the situation is the benign
+// cold-Render-with-cached-data case: data is shown from this device and a wake/retry is
+// in flight, so the banner should be a calm amber "reconnecting" instead of a red error.
+function isColdStartReconnecting(referenceTime = Date.now()) {
+  if (!supabaseClient || !currentSession) return false;
+  if (!hasUsableCachedWorkspaceState()) return false;
+  return isBackendWakeOrRetryInFlight(referenceTime);
+}
+
+const coldStartReconnectBanner = Object.freeze({
+  level: "warning",
+  title: "Reconnecting",
+  message: "The backend is waking (free tier, ~30–50s). Your data is shown from this device and will sync. Changes are kept on this device and will be retried.",
+  action: "Retry loading workspace"
+});
+
 function restoreHealthySyncStatusAfterQuietSync(reason = "quiet-sync") {
   if (els.syncStatus && ["saving", "syncing"].includes(String(els.syncStatus.dataset.status || ""))) {
     setSyncStatus(getHealthySyncStatusLabel());
@@ -3436,7 +3511,7 @@ if (els.bookingForm) {
   });
 }
 
-[els.bookingMember, els.bookingStart, els.bookingEnd].forEach((input) => {
+[els.bookingStart, els.bookingEnd].forEach((input) => {
   if (!input) return;
   input.addEventListener("input", updateBookingAvailabilityPreview);
   input.addEventListener("change", updateBookingAvailabilityPreview);
@@ -6731,12 +6806,13 @@ function formatAdminTimestamp(value) {
   return date.toLocaleString("en-DK", { dateStyle: "short", timeStyle: "short" });
 }
 
-function adminGuardrailStatusCard({ title, status, detail, level = "ok" }) {
+function adminGuardrailStatusCard({ title, status, detail, level = "ok", freshness = "" }) {
   return `
     <article class="admin-guardrail-card ${escapeHtml(level)}">
       <strong>${escapeHtml(title)}</strong>
       <p>${escapeHtml(status)}</p>
       <small>${escapeHtml(detail)}</small>
+      ${freshness ? `<span class="freshness-stamp">${escapeHtml(freshness)}</span>` : ""}
     </article>
   `;
 }
@@ -7055,76 +7131,133 @@ function renderAdminGuardrailOverview() {
     normalizedStatus
   });
 
+  // Freshness: Security Health checks stamp a checkedAt on supabaseSecurityStatus.
+  // Status tiles (Release/Realtime/Sync/Backup) update without Security Health — label them "Live".
+  const securityCheckedAt = supabaseSecurityStatus?.checkedAt
+    ? new Date(supabaseSecurityStatus.checkedAt).toLocaleTimeString("en-DK", { hour: "2-digit", minute: "2-digit" })
+    : null;
+  const healthFreshness = securityCheckedAt ? `Checked ${securityCheckedAt}` : "Not checked — run Security Health";
+  const liveFreshness = "Live";
+
+  // Control bar: last-run time + cooldown note.
+  const now = Date.now();
+  const cooldownRemaining = supabaseLoadSafety.securityHealthCooldownMs - (now - supabaseLoadSafety.lastSecurityHealthAt);
+  const lastRunLabel = supabaseSecurityStatus?.checkedAt
+    ? `Last run: ${securityCheckedAt}`
+    : "Never";
+  const cooldownNote = cooldownRemaining > 0
+    ? `Cooldown: ${Math.ceil(cooldownRemaining / 1000)}s`
+    : "";
+
+  // Launch readiness: collapse behind a <details> — it is reference text, not a live metric.
+  const launchRisksDetail = publicLaunchReadinessDiagnostics.detail || "";
+
   els.adminGuardrailOverview.innerHTML = `
-    <div class="admin-guardrail-grid" data-admin-diagnostics-overview="true">
-      ${adminGuardrailStatusCard({
-        title: "Overall health",
-        status: healthSummary.status,
-        detail: healthSummary.detail,
-        level: healthSummary.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Release",
-        status: build.version ? `${build.version} · ${build.buildLabel || "unlabeled"}` : "Build info unavailable",
-        detail: build.expectedServiceWorkerCache ? `Expected cache: ${build.expectedServiceWorkerCache}` : "Refresh version status if this looks stale.",
-        level: build.version ? "ok" : "warning"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Realtime",
-        status: liveSyncEnabled ? "Live Sync enabled" : "Live Sync off by default",
-        detail: realtimeDetail,
-        level: liveSyncEnabled ? "warning" : "ok"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Table health",
-        status: normalizedStatus,
-        detail: normalizedTableStatus?.message || "Normalized tables are primary; JSON is a safety mirror.",
-        level: normalizedTableStatus?.checked && normalizedTableStatus?.ok ? "ok" : "warning"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "RPC availability",
-        status: rpcDiagnostics.status,
-        detail: rpcDiagnostics.detail,
-        level: rpcDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Migrations",
-        status: schemaMigrationDiagnostics.status,
-        detail: schemaMigrationDiagnostics.detail,
-        level: schemaMigrationDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Schema shape",
-        status: schemaDriftDiagnostics.status,
-        detail: schemaDriftDiagnostics.detail,
-        level: schemaDriftDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Realtime publication",
-        status: realtimePublicationDiagnostics.status,
-        detail: realtimePublicationDiagnostics.detail,
-        level: realtimePublicationDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Public launch readiness",
-        status: publicLaunchReadinessDiagnostics.status,
-        detail: publicLaunchReadinessDiagnostics.detail,
-        level: publicLaunchReadinessDiagnostics.level
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Backup guardrails",
-        status: "Protected destructive actions",
-        detail: backupDetail,
-        level: lastSyncError ? "warning" : "ok"
-      })}
-      ${adminGuardrailStatusCard({
-        title: "Sync state",
-        status: pendingLocalChanges > 0 ? "Pending local changes" : "Ready",
-        detail: pendingDetail,
-        level: pendingLocalChanges > 0 || lastSyncError ? "warning" : "ok"
-      })}
+    <div data-admin-diagnostics-overview="true">
+      <div class="admin-guardrail-control-bar">
+        <button type="button" class="subtle-button small-button" data-run-security-health-shortcut>Run Security Health</button>
+        <span class="entry-meta">${escapeHtml(lastRunLabel)}${cooldownNote ? ` · ${escapeHtml(cooldownNote)}` : ""}</span>
+        <span class="entry-meta">On-demand checks — not auto-refreshed, to protect Supabase CPU.</span>
+      </div>
+
+      <p class="admin-guardrail-group-label">Health — Security Health checks</p>
+      <div class="admin-guardrail-grid">
+        ${adminGuardrailStatusCard({
+          title: "Overall health",
+          status: healthSummary.status,
+          detail: healthSummary.detail,
+          level: healthSummary.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Table health",
+          status: normalizedStatus,
+          detail: normalizedTableStatus?.message || "Normalized tables are primary; JSON is a safety mirror.",
+          level: normalizedTableStatus?.checked && normalizedTableStatus?.ok ? "ok" : "warning",
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "RPC availability",
+          status: rpcDiagnostics.status,
+          detail: rpcDiagnostics.detail,
+          level: rpcDiagnostics.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Migrations",
+          status: schemaMigrationDiagnostics.status,
+          detail: schemaMigrationDiagnostics.detail,
+          level: schemaMigrationDiagnostics.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Schema shape",
+          status: schemaDriftDiagnostics.status,
+          detail: schemaDriftDiagnostics.detail,
+          level: schemaDriftDiagnostics.level,
+          freshness: healthFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Realtime publication",
+          status: realtimePublicationDiagnostics.status,
+          detail: realtimePublicationDiagnostics.detail,
+          level: realtimePublicationDiagnostics.level,
+          freshness: healthFreshness
+        })}
+      </div>
+
+      <p class="admin-guardrail-group-label">Status — Live</p>
+      <div class="admin-guardrail-grid">
+        ${adminGuardrailStatusCard({
+          title: "Release",
+          status: build.version ? `${build.version} · ${build.buildLabel || "unlabeled"}` : "Build info unavailable",
+          detail: build.expectedServiceWorkerCache ? `Expected cache: ${build.expectedServiceWorkerCache}` : "Refresh version status if this looks stale.",
+          level: build.version ? "ok" : "warning",
+          freshness: liveFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Realtime",
+          status: liveSyncEnabled ? "Live Sync enabled" : "Broad Live Sync is off by default",
+          detail: realtimeDetail,
+          level: liveSyncEnabled ? "warning" : "ok",
+          freshness: liveFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Sync state",
+          status: pendingLocalChanges > 0 ? "Pending local changes" : "Ready",
+          detail: pendingDetail,
+          level: pendingLocalChanges > 0 || lastSyncError ? "warning" : "ok",
+          freshness: liveFreshness
+        })}
+        ${adminGuardrailStatusCard({
+          title: "Backup guardrails",
+          status: "Protected destructive actions",
+          detail: backupDetail,
+          level: lastSyncError ? "warning" : "ok",
+          freshness: liveFreshness
+        })}
+      </div>
+
+      <details class="admin-diagnostics-section">
+        <summary>Launch readiness checklist</summary>
+        <div class="admin-guardrail-grid">
+          ${adminGuardrailStatusCard({
+            title: "Public launch readiness",
+            status: publicLaunchReadinessDiagnostics.status,
+            detail: publicLaunchReadinessDiagnostics.detail,
+            level: publicLaunchReadinessDiagnostics.level
+          })}
+        </div>
+      </details>
     </div>
   `;
+
+  // Wire the shortcut button inside the control bar to the existing Security Health handler.
+  els.adminGuardrailOverview.querySelectorAll("[data-run-security-health-shortcut]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      els.runSecurityScenario?.click();
+    });
+  });
 }
 
 async function downloadSupabaseLoadReport() {
@@ -8525,30 +8658,6 @@ document.addEventListener("click", async (event) => {
     const settlement = ledger.settlements.find((item) => settlementKey(item) === mobilePayButton.dataset.paymentKey);
     openMobilePayApp(settlement);
     render();
-    return;
-  }
-
-  const bookingDayButton = event.target.closest("[data-booking-day]");
-  if (bookingDayButton) {
-    setBookingQuickDate(Number(bookingDayButton.dataset.bookingDay || 0));
-    return;
-  }
-
-  const bookingWeekendButton = event.target.closest("[data-booking-weekend]");
-  if (bookingWeekendButton) {
-    setBookingQuickWeekend();
-    return;
-  }
-
-  const bookingDurationButton = event.target.closest("[data-booking-duration-hours]");
-  if (bookingDurationButton) {
-    setBookingDuration(Number(bookingDurationButton.dataset.bookingDurationHours || 2));
-    return;
-  }
-
-  const bookingAllDayButton = event.target.closest("[data-booking-all-day]");
-  if (bookingAllDayButton) {
-    setBookingAllDay();
     return;
   }
 
@@ -10820,6 +10929,13 @@ function buildSyncHealthBannerState() {
   }
 
   if (supabaseClient && currentSession && appStartupGateState.phase === "failed") {
+    // Calm the cold-start case: the startup gate timed out on a slow/waking Render, but
+    // the workspace is usable from this device's cached state and a wake/retry is in
+    // flight. Show amber "reconnecting" instead of the red "startup delayed" engineering
+    // banner. RED is reserved for a genuine failure (no retry in flight + no cached data).
+    if (isColdStartReconnecting()) {
+      return { ...coldStartReconnectBanner };
+    }
     return {
       level: "error",
       title: "Backend startup delayed",
@@ -10845,6 +10961,12 @@ function buildSyncHealthBannerState() {
   }
 
   if (lastSyncError) {
+    // Same cold-start calming for the sync-delay path: a cold-Render state load can set
+    // lastSyncError (e.g. "Render state load is required…") while cached data is shown and
+    // a wake/retry is in flight. Surface the calm amber banner instead of the red card.
+    if (isColdStartReconnecting()) {
+      return { ...coldStartReconnectBanner };
+    }
     return {
       level: "error",
       title: "Sync delayed",
@@ -10946,7 +11068,6 @@ function renderPeopleSelectors() {
     .map((member) => `<option value="${escapeHtml(member)}">${escapeHtml(member)}</option>`)
     .join("");
   els.tripDriver.innerHTML = options;
-  if (els.bookingMember) els.bookingMember.innerHTML = options;
   els.fuelPayer.innerHTML = options;
   els.currentUser.innerHTML = options;
 
@@ -10967,9 +11088,7 @@ function renderPeopleSelectors() {
   els.fuelPayer.disabled = lockToLoggedInUser || periodLocked;
 
   setFormDisabled(els.tripForm, !canLogEntries);
-  if (els.bookingForm) setFormDisabled(els.bookingForm, !canUse);
   setFormDisabled(els.fuelForm, !canLogEntries);
-  if (els.bookingMember) els.bookingMember.disabled = !canUse || lockToLoggedInUser;
   renderPeriodEntryLock();
   renderLogEntryPanelsVisibility();
 
@@ -15756,7 +15875,7 @@ function startBookingEdit(id) {
   els.bookingPurpose.value = booking.purpose || "";
   renderBookingConflictNotice(null);
   updateEditUi();
-  els.bookingForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  els.bookingStart.scrollIntoView({ behavior: "smooth", block: "start" });
   els.bookingStart.focus();
 }
 
@@ -22060,6 +22179,7 @@ async function tryRenderAdminDiagnosticsStateLoad(reason, loadToken, jsonFallbac
     recordSupabaseLoadEvent("render-admin-diagnostics-load", reason);
     recordSyncDiagnostic("admin-render-load-success", "Admin diagnostics refreshed from Render state load.", { reason, route: "render-api", endpoint: renderStateLoadUrl });
     markActiveWorkspaceConfirmed(reason);
+    recoverStartupGateAfterSuccessfulLoad(`admin-render-load:${reason}`);
     setSyncStatus("Tables");
     return true;
   } catch (error) {
@@ -22206,6 +22326,7 @@ async function loadSupabaseState(options = {}) {
     if (/workspace-switch|workspace-session|ledger-event|manual|startup|auth/i.test(String(reason || ""))) {
       clearWorkspaceSwitchAutoRetry(`load-confirmed:${reason}`);
     }
+    recoverStartupGateAfterSuccessfulLoad(`load-success:${reason}`);
     setSyncStatus(loadedFromTables ? "Tables" : "Cloud");
     render();
     return true;

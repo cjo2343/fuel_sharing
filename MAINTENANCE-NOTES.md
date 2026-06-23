@@ -527,6 +527,7 @@ The local and GitHub checks now include a checker that checks the checkers. Keep
 - GitHub Actions must run Fast validation and `node tools/check-release-readiness.mjs` on pushes, while Playwright/Chromium runs only on pull requests or manual `workflow_dispatch` runs.
 - Release-readiness companion checks should stay actionable: runtime file changes require build/cache metadata and `DEPLOYMENT-CHECKLIST.md`, migrations require schema/docs/tests, CSP changes require header tests/docs, and CI guardrail changes require maintenance notes/tests.
 - `DEPLOYMENT-CHECKLIST.md` must contain the exact current `build-info.js` version, expected service-worker cache, updated timestamp, and top release note so the manual deploy checklist cannot drift from the runtime metadata.
+- `npm run validate` runs `tools/test-cold-start-reconnect-banner.mjs`, the backlog #3 guard for the cold-start sync-health banner: it asserts the calm amber "Reconnecting" banner is shown when cached data is present and a wake/retry is in flight, that RED is reserved for a genuine failure with no usable cached data, and that any successful load recovers the stale "failed" startup gate immediately.
 
 ### Build version is owned centrally — do NOT pin it in feature guard tests
 

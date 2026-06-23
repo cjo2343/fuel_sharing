@@ -1,11 +1,14 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.289",
-    buildLabel: "sw-update-reliability-safari",
-    updatedAt: "2026-06-23T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v430",
+    version: "2026.06.18.292",
+    buildLabel: "settings-layout-release-notes-booking-self",
+    updatedAt: "2026-06-23T14:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v433",
     releaseNotes: Object.freeze([
+      "Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.",
+      "Admin diagnostics cleanup: Security Health tiles are grouped into Health (Overall/Table/RPC/Migrations/Schema/Realtime-publication) and Status (Release/Realtime/Sync/Backup — live) with per-tile freshness stamps and a single control bar (Run Security Health button, last-run time, cooldown note, on-demand note). The launch readiness checklist collapses behind a details element since it is reference text. The Diagnostics Lab drawer reorganises into Maintenance actions (Clean test users, Test data, Retention cleanup — grouped by risk badge) and Self-tests and reports (Test Lab controls and report). The App-owner global diagnostics card now spans the full outer grid row so the three nested cards (Global workspaces, Recent vehicle lookups, Recent global activity) lay out horizontally instead of stacking in a single 212px column; activity list items wrap at word boundaries instead of breaking mid-character.",
+      "Cold-start recovery banner is now honest: after Render free-tier spins down and the workspace loads from this device cache, the app shows a calm amber Reconnecting message (the backend is waking, around 30-50s, your data is shown from this device and will sync) instead of a red Backend startup delayed or Sync delayed error. Red is reserved for a genuine failure with no usable cached data. Any successful load (background, focus, manual Retry or Sync now) now transitions the startup gate out of failed to ready immediately and drops the Cloud delayed badge without waiting for a refocus.",
       "Reliable service-worker update handoff for Safari: the update prompt now also fires from a deploy-version mismatch so Safari users are no longer stranded on an old version when registration.waiting is not exposed. Update activation is tiered: use the waiting worker if available, else call registration.update() and try again, else unregister the stale controller and reload as a Safari escape hatch. One safe auto-activation fires when the app is stale and no writes are in flight, guarded by one-shot flags so nothing loops or double-reloads. The manual Update now path continues to work for all browsers.",
       "Fixed a Content-Security-Policy regression in the new Admin activity sparkline: it set bar heights with an inline style attribute, which the app's strict style-src 'self' policy blocks, so the bars did not render and the console filled with CSP violations. The sparkline is now drawn as inline SVG (bar geometry via attributes, colour via a CSS class), and a validation guard now scans runtime JS for inline style attributes so this cannot regress.",
       "App-owner Admin now sees all workspaces automatically. The app-owner global view (every workspace, member counts, and cross-workspace activity) and the all-workspaces owner activity log already worked through owner-only backend routes, but they were manual-refresh only, so Admin looked like it only saw the owner's own workspace (main-car). Opening Admin as the configured app owner now loads both once (cached ~5 minutes, no polling), so other workspaces such as test1 appear without a manual click. The owner's own workspace selector still correctly shows only workspaces they are a member of.",
@@ -519,9 +522,10 @@
     const latestDeployLabel = deployedInfo?.buildLabel || BUILD_INFO.buildLabel;
     const latestDeployCache = deployedInfo?.expectedServiceWorkerCache || BUILD_INFO.expectedServiceWorkerCache;
     const latestDeployVersion = deployedInfo?.version || BUILD_INFO.version;
-    const releaseNotes = (BUILD_INFO.releaseNotes || [])
+    const allNotes = BUILD_INFO.releaseNotes || [];
+    const releaseNotes = allNotes.slice(0, 3)
       .map((note) => `<li>${escapeBuildInfoText(note)}</li>`)
-      .join("");
+      .join("") + (allNotes.length > 3 ? `<li class="muted-note">+${allNotes.length - 3} earlier updates</li>` : "");
 
     target.innerHTML = `
       <div class="build-info-grid">

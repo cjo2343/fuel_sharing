@@ -427,7 +427,6 @@ test("booking IDs are visible on booking cards, month chips, and save feedback",
   await openLocalApp(page);
 
   await page.locator('[data-view-tab="book"]').click();
-  await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill("2026-06-18T08:00");
   await page.locator("#bookingEnd").fill("2026-06-18T10:00");
   await page.locator("#bookingPurpose").fill("Booking ref visibility regression");
@@ -448,7 +447,6 @@ test("booking-to-trip linkage shows booking and trip IDs in log context and pend
   await openLocalApp(page);
 
   await page.locator('[data-view-tab="book"]').click();
-  await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill("2026-06-10T21:00");
   await page.locator("#bookingEnd").fill("2026-06-11T23:00");
   await page.locator("#bookingPurpose").fill("Booking ref linkage regression");
@@ -486,10 +484,7 @@ test("create, edit, persist, delete booking and reject overlapping booking", asy
   await openLocalApp(page);
 
   await page.locator('[data-view-tab="book"]').click();
-  await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill("2026-06-12T09:00");
-  await page.locator('[data-booking-duration-hours="4"]').click();
-  await expect(page.locator("#bookingEnd")).toHaveValue("2026-06-12T13:00");
   await page.locator("#bookingEnd").fill("2026-06-12T11:00");
   await page.locator("#bookingPurpose").fill("Airport pickup");
   await page.locator("#bookingForm").evaluate((form) => form.requestSubmit());
@@ -700,7 +695,6 @@ test("multi-day booking trip requires linked full-tank fuel before closing", asy
   page.on("dialog", (dialog) => dialog.accept());
 
   await page.locator('[data-view-tab="book"]').click();
-  await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill("2026-06-10T21:00");
   await page.locator("#bookingEnd").fill("2026-06-11T23:00");
   await page.locator("#bookingPurpose").fill("Required fuel regression");
@@ -831,7 +825,6 @@ test("payment status actions do not mutate booking records or emit normalized sy
   page.on("dialog", (dialog) => dialog.accept());
 
   await page.locator('[data-view-tab="book"]').click();
-  await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill("2026-06-15T09:00");
   await page.locator("#bookingEnd").fill("2026-06-15T12:00");
   await page.locator("#bookingPurpose").fill("Payment action booking immutability");
@@ -1314,7 +1307,6 @@ async function expectNoStaleActionLatch(page, label) {
 
 async function createNoRefreshBooking(page, { start, end, purpose }) {
   await openBookView(page);
-  await chooseFirstSelectOption(page.locator("#bookingMember"));
   await page.locator("#bookingStart").fill(start);
   await page.locator("#bookingEnd").fill(end);
   await page.locator("#bookingPurpose").fill(purpose);
