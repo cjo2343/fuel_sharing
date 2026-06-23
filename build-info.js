@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.288",
-    buildLabel: "csp-safe-admin-sparkline",
+    version: "2026.06.18.289",
+    buildLabel: "sw-update-reliability-safari",
     updatedAt: "2026-06-23T00:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v429",
+    expectedServiceWorkerCache: "fuel-ledger-v430",
     releaseNotes: Object.freeze([
+      "Reliable service-worker update handoff for Safari: the update prompt now also fires from a deploy-version mismatch so Safari users are no longer stranded on an old version when registration.waiting is not exposed. Update activation is tiered: use the waiting worker if available, else call registration.update() and try again, else unregister the stale controller and reload as a Safari escape hatch. One safe auto-activation fires when the app is stale and no writes are in flight, guarded by one-shot flags so nothing loops or double-reloads. The manual Update now path continues to work for all browsers.",
       "Fixed a Content-Security-Policy regression in the new Admin activity sparkline: it set bar heights with an inline style attribute, which the app's strict style-src 'self' policy blocks, so the bars did not render and the console filled with CSP violations. The sparkline is now drawn as inline SVG (bar geometry via attributes, colour via a CSS class), and a validation guard now scans runtime JS for inline style attributes so this cannot regress.",
       "App-owner Admin now sees all workspaces automatically. The app-owner global view (every workspace, member counts, and cross-workspace activity) and the all-workspaces owner activity log already worked through owner-only backend routes, but they were manual-refresh only, so Admin looked like it only saw the owner's own workspace (main-car). Opening Admin as the configured app owner now loads both once (cached ~5 minutes, no polling), so other workspaces such as test1 appear without a manual click. The owner's own workspace selector still correctly shows only workspaces they are a member of.",
       "Redesigned the Admin diagnostics into a cleaner dashboard: compact metric tiles with status dots, a tighter responsive grid, and a live activity sparkline (bucketed from the last 30 minutes of app-side events) on the App activity card — in the app's light theme so it stays consistent with the rest of the app.",
