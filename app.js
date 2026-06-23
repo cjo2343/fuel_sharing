@@ -6514,6 +6514,7 @@ async function checkRenderAdminHealth({ silent = false } = {}) {
       userEmail: result.userEmail || "",
       message: result.summary || (result.ok ? "Render admin backend is healthy." : "Render admin backend needs review."),
       checks,
+      runtime: result.runtime && typeof result.runtime === "object" ? result.runtime : null,
       lastHealthyAt: result.ok === true ? (result.checkedAt || new Date().toISOString()) : renderAdminHealthStatus.lastHealthyAt || "",
       staleHealthy: false,
       lastAttemptFailed: false
@@ -6661,27 +6662,66 @@ function renderBackendAppContextCard() {
   `;
 }
 
+function renderAdminHealthCheckRow(check) {
+  const isIssue = check.ok === false;
+  const isInfo = !isIssue && check.level === "info";
+  const chipClass = isIssue ? "requested" : isInfo ? "open" : "paid";
+  const chipLabel = isIssue ? "Issue" : isInfo ? "Info" : "OK";
+  const latency = Number.isFinite(check.latencyMs) ? ` · ${check.latencyMs} ms` : "";
+  return `<li><span class="status-chip ${chipClass}">${chipLabel}</span> <strong>${escapeHtml(check.label || check.id || "Check")}</strong>${check.detail ? ` — ${escapeHtml(check.detail)}` : ""}${latency}</li>`;
+}
+
+function formatAdminHealthUptime(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (total < 60) return `${total}s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 function renderRenderAdminHealthCard() {
   const status = renderAdminHealthStatus || {};
   const checks = Array.isArray(status.checks) ? status.checks : [];
-  const okCount = checks.filter((check) => check.ok === true).length;
-  const issueCount = checks.filter((check) => check.ok === false).length;
+  // Honest severity: an info-level row (e.g. provider not configured) is not an issue.
+  const issues = checks.filter((check) => check.ok === false);
+  const passing = checks.filter((check) => check.ok !== false);
   const cardClass = status.loading || status.staleHealthy ? "warning" : status.checked ? (status.ok ? "ok" : "issue") : "warning";
   const title = status.loading ? "Checking" : status.staleHealthy ? (status.ok ? "Last OK" : "Slow") : status.checked ? (status.ok ? "OK" : "Needs review") : "Not checked";
   const detail = status.message || "Run the Render admin health check before dangerous admin work.";
+  const runtime = status.runtime && typeof status.runtime === "object" ? status.runtime : null;
+  const runtimeBits = [];
+  if (runtime) {
+    if (runtime.version) runtimeBits.push(`v${runtime.version}`);
+    if (Number.isFinite(runtime.uptimeSeconds)) runtimeBits.push(`up ${formatAdminHealthUptime(runtime.uptimeSeconds)}`);
+    if (Number.isFinite(runtime.supabaseLatencyMs)) runtimeBits.push(`Supabase ${runtime.supabaseLatencyMs} ms`);
+  }
+  const summaryLine = checks.length
+    ? `${passing.length} ok${issues.length ? ` · ${issues.length} issue${issues.length === 1 ? "" : "s"}` : ""}`
+    : "Backend safety preflight";
   return `
     <article class="admin-metric-card ${cardClass}">
       <span>Render admin health</span>
       <strong>${escapeHtml(title)}</strong>
-      <small>${checks.length ? `${okCount} ok${issueCount ? ` · ${issueCount} issue${issueCount === 1 ? "" : "s"}` : ""}` : "Backend safety preflight"}</small>
+      <small>${escapeHtml(summaryLine)}${runtimeBits.length ? ` · ${escapeHtml(runtimeBits.join(" · "))}` : ""}</small>
       <p>${escapeHtml(detail)}</p>
     </article>
     ${checks.length ? `
-      <details class="admin-diagnostics-section">
-        <summary>Render admin health checks</summary>
-        <ul class="test-lab-check-list readable-activity-list">
-          ${checks.map((check) => `<li><span class="status-chip ${check.ok ? "paid" : "requested"}">${check.ok ? "OK" : "Issue"}</span> <strong>${escapeHtml(check.label || check.id || "Check")}</strong>${check.route ? ` · <code>${escapeHtml(check.route)}</code>` : ""}${check.detail ? ` — ${escapeHtml(check.detail)}` : ""}</li>`).join("")}
-        </ul>
+      <details class="admin-diagnostics-section"${issues.length ? " open" : ""}>
+        <summary>${issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to review` : "Render admin health checks"}</summary>
+        ${issues.length ? `
+          <ul class="test-lab-check-list readable-activity-list">
+            ${issues.map(renderAdminHealthCheckRow).join("")}
+          </ul>
+        ` : `<p class="section-note">All ${passing.length} Render health checks are passing.</p>`}
+        ${passing.length ? `
+          <details class="health-disclosure">
+            <summary>✓ ${passing.length} passing</summary>
+            <ul class="test-lab-check-list readable-activity-list">
+              ${passing.map(renderAdminHealthCheckRow).join("")}
+            </ul>
+          </details>
+        ` : ""}
       </details>
     ` : ""}
   `;

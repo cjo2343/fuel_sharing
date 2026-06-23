@@ -32,4 +32,23 @@ assert.match(app, /renderAdminHealthStatus\s*\}/, 'load report should export Ren
 assert.match(app, /function renderRenderAdminHealthCard\(\)/, 'load monitor should render a health card');
 assert.match(html, /id="checkRenderAdminHealth"/, 'Admin UI should expose a Render health button');
 
+// #16 — the health report must actually report health, not 20 always-green rows.
+assert.doesNotMatch(server, /Route is mounted in this Render service\./, 'admin health should no longer emit hardcoded always-green route rows');
+assert.doesNotMatch(server, /def build_render_admin_route_health/, 'the static route-health helper should be removed in favour of real probes');
+assert.match(server, /def probe_supabase_reachability\(ledger_id, user_token\)/, 'admin health should run a real, timeout-bounded Supabase reachability probe');
+assert.match(server, /timeout=6/, 'the Supabase probe should be short-timeout bounded');
+assert.match(server, /"latencyMs": latency_ms/, 'the Supabase probe should report latency');
+assert.match(server, /def classify_probe_error\(error\)/, 'probe failures should be reduced to a safe error class, not raw messages');
+assert.match(server, /def build_vehicle_provider_health\(\)/, 'admin health should report vehicle provider health from cache');
+assert.match(server, /provider not called on health checks/, 'vehicle provider must not be called on every health check');
+assert.match(server, /LAST_VEHICLE_LOOKUP/, 'vehicle provider health should read the cached last-known outcome');
+assert.match(server, /record_vehicle_lookup_outcome\(result\)/, 'vehicle lookup route should cache its outcome for the health report');
+assert.match(server, /CRITICAL_RENDER_ROUTES/, 'critical Render routes should be a named dependency-gated set');
+assert.match(server, /def build_render_runtime_signals/, 'admin health should surface Render runtime signals (uptime/version/latency)');
+assert.match(server, /"uptimeSeconds":/, 'runtime signals should include process uptime');
+assert.match(server, /"runtime": build_render_runtime_signals/, 'admin health response should include the runtime signal block');
+assert.match(app, /status\.runtime/, 'health card should surface the server runtime signals');
+assert.match(app, /check\.ok === false/, 'health card should split issues from passing rows (observability: anomalies first)');
+assert.match(app, /function formatAdminHealthUptime/, 'health card should format uptime compactly');
+
 console.log('Render admin health endpoint guard check passed.');

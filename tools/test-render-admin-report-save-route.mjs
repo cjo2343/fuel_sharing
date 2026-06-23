@@ -23,7 +23,7 @@ assert.match(server, /def save_admin_report_backend\(self\):/, 'server should im
 assert.match(server, /def save_admin_report_as_user\(payload, user, user_token\):/, 'server should save reports as the signed-in user');
 assert.match(server, /assert_user_can_admin_ledger\(ledger_id, user, user_token\)/, 'server report save should verify workspace admin permission');
 assert.match(server, /call_supabase_rpc_as_user\("upsert_test_lab_report"/, 'server should call the report save RPC');
-assert.match(server, /"adminReportSave", "\/api\/admin\/reports\/save"/, 'admin health should list the report-save route');
+assert.match(server, /"\/api\/admin\/reports\/save", "Admin report save"/, 'admin health critical routes should list the report-save route');
 
 assert.match(audit, /Render primary.*Browser report RPC removed/, 'audit should mark report save as Render-owned');
 assert.match(packageJson, /test-render-admin-report-save-route\.mjs/, 'validate should run the v307 guard test');

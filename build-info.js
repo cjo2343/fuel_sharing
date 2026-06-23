@@ -1,11 +1,12 @@
 (function () {
   const BUILD_INFO = Object.freeze({
     appName: "Fuel Ledger",
-    version: "2026.06.18.293",
-    buildLabel: "workspace-health-observability",
-    updatedAt: "2026-06-23T15:00:00.000Z",
-    expectedServiceWorkerCache: "fuel-ledger-v434",
+    version: "2026.06.18.294",
+    buildLabel: "render-health-real-probes",
+    updatedAt: "2026-06-23T16:00:00.000Z",
+    expectedServiceWorkerCache: "fuel-ledger-v435",
     releaseNotes: Object.freeze([
+      "The Render admin health report now actually reports health instead of showing a wall of green. It runs a real, short-timeout Supabase reachability probe (with latency) so a backend or RLS outage turns the row red and the overall status to needs-review, replaces twenty hardcoded always-green route rows with one honest dependency-gated row for the critical write/admin lanes, and reports the vehicle lookup provider from its last cached outcome rather than calling the external provider on every check. New runtime signals (process uptime, deployed app version, Supabase probe latency) surface free-tier cold starts and crash-loops, and the card now leads with any issues and collapses the passing checks behind an expander.",
       "Workspace health is now observability-style and no longer cries wolf: a freshly set-up healthy workspace reads zero needs-attention and zero warnings because purely informational setup states (push not enabled on this device, no upcoming bookings, no closed periods yet) are reclassified from amber warnings to a quiet informational note. The panel leads with the summary plus only the issues and warnings worth a look, grouped by Access, Data integrity, Bookings, and Maintenance, while the passing checks collapse behind a looking-good expander and the informational notes behind their own disclosure.",
       "Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.",
       "Admin diagnostics cleanup: Security Health tiles are grouped into Health (Overall/Table/RPC/Migrations/Schema/Realtime-publication) and Status (Release/Realtime/Sync/Backup — live) with per-tile freshness stamps and a single control bar (Run Security Health button, last-run time, cooldown note, on-demand note). The launch readiness checklist collapses behind a details element since it is reference text. The Diagnostics Lab drawer reorganises into Maintenance actions (Clean test users, Test data, Retention cleanup — grouped by risk badge) and Self-tests and reports (Test Lab controls and report). The App-owner global diagnostics card now spans the full outer grid row so the three nested cards (Global workspaces, Recent vehicle lookups, Recent global activity) lay out horizontally instead of stacking in a single 212px column; activity list items wrap at word boundaries instead of breaking mid-character.",

@@ -27,6 +27,49 @@ except Exception:  # pywebpush is optional for local development until notificat
 ROOT = Path(__file__).resolve().parent
 DATA_FILE = Path(os.environ.get("FUEL_LEDGER_DATA_FILE", ROOT / "ledger-data.json")).expanduser()
 
+# Runtime signals for the admin health report: when this process started (surfaces
+# Render free-tier cold starts and crash-loops) and the last vehicle-provider outcome
+# (so health checks report from cache instead of hammering the external provider).
+SERVER_PROCESS_START_AT = datetime.now(timezone.utc)
+SERVER_PROCESS_START_MONOTONIC = time.monotonic()
+LAST_VEHICLE_LOOKUP = {"at": None, "ok": None, "code": None, "status": None}
+_BUILD_INFO_CACHE = None
+
+
+def read_build_info_metadata():
+    """Best-effort parse of build-info.js so the server can report the deployed
+    app version/cache/label alongside its own uptime. Cached after first read."""
+    global _BUILD_INFO_CACHE
+    if _BUILD_INFO_CACHE is not None:
+        return _BUILD_INFO_CACHE
+    meta = {"version": "", "cache": "", "label": ""}
+    try:
+        text = (ROOT / "build-info.js").read_text(encoding="utf-8")
+        version = re.search(r'version:\s*"([^"]+)"', text)
+        cache = re.search(r'expectedServiceWorkerCache:\s*"([^"]+)"', text)
+        label = re.search(r'buildLabel:\s*"([^"]+)"', text)
+        meta = {
+            "version": version.group(1) if version else "",
+            "cache": cache.group(1) if cache else "",
+            "label": label.group(1) if label else "",
+        }
+    except Exception:
+        pass
+    _BUILD_INFO_CACHE = meta
+    return meta
+
+
+def record_vehicle_lookup_outcome(result):
+    """Cache the last vehicle-provider outcome so the admin health report can show
+    provider reachability without calling the external provider on every check."""
+    if not isinstance(result, dict):
+        return
+    provider = result.get("provider") if isinstance(result.get("provider"), dict) else {}
+    LAST_VEHICLE_LOOKUP["at"] = datetime.now(timezone.utc).isoformat()
+    LAST_VEHICLE_LOOKUP["ok"] = bool(result.get("ok"))
+    LAST_VEHICLE_LOOKUP["code"] = str(result.get("code") or "")
+    LAST_VEHICLE_LOOKUP["status"] = provider.get("providerStatus")
+
 DEFAULT_STATE = {
     "currency": "DKK",
     "members": ["Christian", "Emilie", "Jonas", "Marie"],
@@ -1546,65 +1589,182 @@ def build_admin_health_payload(payload):
     return ledger_id
 
 
-def build_render_admin_route_health(ledger_id, context):
-    route_checks = [
-        ("stateLoad", "/api/state/load", "Render normalized state load route"),
-        ("writeContext", "/api/context/write", "Render write-context route"),
-        ("jsonMirrorBackup", "/api/backups/json-mirror", "Render JSON mirror backup route"),
-        ("ledgerDirectorySync", "/api/ledgers/sync", "Render ledger directory sync route"),
-        ("adminTestDataCreate", "/api/admin/test-data/create", "Render generated test-data create route"),
-        ("adminTestDataCleanup", "/api/admin/test-data/cleanup", "Render generated test-data cleanup route"),
-        ("adminReportSave", "/api/admin/reports/save", "Render admin report save route"),
-        ("adminSecurityHealth", "/api/admin/security-health", "Render admin security-health route"),
-        ("retentionPreview", "/api/admin/retention/preview", "Render retention preview route"),
-        ("retentionCleanup", "/api/admin/retention/cleanup", "Render retention cleanup route"),
-        ("tripUpsert", "/api/trips/upsert", "Render trip save route"),
-        ("fuelUpsert", "/api/fuel/upsert", "Render fuel save route"),
-        ("bookingUpsert", "/api/bookings/upsert", "Render booking save route"),
-        ("bookingDelete", "/api/bookings/delete", "Render booking delete route"),
-        ("paymentStatusAction", "/api/payments/status-action", "Render payment-status action route"),
-        ("settingsSave", "/api/settings/save", "Render workspace settings save route"),
-        ("memberManagement", "/api/members/manage", "Render workspace member-management route"),
-        ("ownerActivity", "/api/owner/activity", "Render app-owner activity route"),
-        ("ownerGlobalDiagnostics", "/api/owner/global-diagnostics", "Render app-owner global workspace diagnostics route"),
-        ("vehicleLookup", "/api/vehicle/lookup", "Render vehicle lookup proxy route"),
-    ]
-    return [
-        {
-            "id": key,
+# Safety-relevant Render write/admin lanes. We report these as one honest,
+# dependency-gated row (do the routes' shared Supabase + auth deps hold?) instead of
+# 20 always-green "route is mounted" rows that probed nothing and could never fail.
+CRITICAL_RENDER_ROUTES = [
+    ("/api/state/load", "Normalized state load"),
+    ("/api/context/write", "Write-context"),
+    ("/api/backups/json-mirror", "JSON mirror backup"),
+    ("/api/ledgers/sync", "Ledger directory sync"),
+    ("/api/admin/test-data/create", "Generated test-data create"),
+    ("/api/admin/test-data/cleanup", "Generated test-data cleanup"),
+    ("/api/admin/reports/save", "Admin report save"),
+    ("/api/admin/security-health", "Admin security-health"),
+    ("/api/admin/retention/preview", "Retention preview"),
+    ("/api/admin/retention/cleanup", "Retention cleanup"),
+    ("/api/trips/upsert", "Trip save"),
+    ("/api/fuel/upsert", "Fuel save"),
+    ("/api/bookings/upsert", "Booking save"),
+    ("/api/bookings/delete", "Booking delete"),
+    ("/api/payments/status-action", "Payment-status action"),
+    ("/api/settings/save", "Workspace settings save"),
+    ("/api/members/manage", "Member management"),
+    ("/api/owner/activity", "App-owner activity"),
+    ("/api/owner/global-diagnostics", "App-owner global diagnostics"),
+    ("/api/vehicle/lookup", "Vehicle lookup proxy"),
+]
+
+
+def classify_probe_error(error):
+    """Reduce a probe exception to a safe error class (never the raw message/body,
+    which can leak tokens or internal detail)."""
+    if isinstance(error, urllib.error.HTTPError):
+        return f"HTTP {error.code}"
+    if isinstance(error, socket.timeout):
+        return "timeout"
+    if isinstance(error, urllib.error.URLError):
+        reason = getattr(error, "reason", None)
+        if isinstance(reason, socket.timeout):
+            return "timeout"
+        return "unreachable"
+    return type(error).__name__
+
+
+def probe_supabase_reachability(ledger_id, user_token):
+    """One lightweight, short-timeout REST read against this ledger row. Real signal:
+    fails/times out if Supabase (or RLS) is down, instead of a hardcoded green row."""
+    started = time.monotonic()
+    try:
+        request_json(
+            f"{supabase_url()}/rest/v1/ledgers?select=id&limit=1&id=eq.{quote_postgrest_value(ledger_id)}",
+            token=user_token,
+            api_key=supabase_anon_key(),
+            timeout=6,
+        )
+        latency_ms = round((time.monotonic() - started) * 1000)
+        return {
+            "id": "supabase-reachable",
             "ok": True,
-            "route": route,
-            "label": label,
-            "detail": "Route is mounted in this Render service."
+            "label": "Supabase is reachable",
+            "detail": f"Lightweight ledger probe responded in {latency_ms} ms.",
+            "latencyMs": latency_ms,
         }
-        for key, route, label in route_checks
-    ]
+    except Exception as error:
+        latency_ms = round((time.monotonic() - started) * 1000)
+        return {
+            "id": "supabase-reachable",
+            "ok": False,
+            "level": "error",
+            "label": "Supabase is reachable",
+            "detail": f"Supabase probe failed ({classify_probe_error(error)}) after {latency_ms} ms.",
+            "latencyMs": latency_ms,
+        }
+
+
+def build_vehicle_provider_health():
+    """Report provider health from the last cached lookup outcome + config — never
+    call the external provider on a health check (cost/abuse/latency)."""
+    config = vehicle_provider_config_status()
+    if not config.get("configured"):
+        return {
+            "id": "vehicle-provider",
+            "ok": True,
+            "level": "info",
+            "label": "Vehicle lookup provider",
+            "detail": "Not configured on this Render service; manual fuel settings are used.",
+        }
+    last = LAST_VEHICLE_LOOKUP
+    key_note = "API key present" if config.get("hasApiKey") else "no API key"
+    if not last.get("at"):
+        return {
+            "id": "vehicle-provider",
+            "ok": True,
+            "level": "info",
+            "label": "Vehicle lookup provider",
+            "detail": f"Configured ({key_note}). No lookup has run yet this process; provider is not probed live to avoid cost/abuse.",
+        }
+    # A NO_MATCH means the provider is reachable and working (just no vehicle for that
+    # plate), so it counts as healthy; auth/server/timeout errors do not.
+    healthy = bool(last.get("ok")) or last.get("code") == "VEHICLE_LOOKUP_NO_MATCH"
+    outcome = last.get("code") or ("ok" if last.get("ok") else "failed")
+    return {
+        "id": "vehicle-provider",
+        "ok": healthy,
+        "level": None if healthy else "warning",
+        "label": "Vehicle lookup provider",
+        "detail": f"Last lookup {last.get('at')} -> {outcome} (from cache; provider not called on health checks).",
+    }
+
+
+def build_render_route_dependency_health():
+    """One honest row for the critical write/admin lanes: they share Supabase + auth,
+    so report whether those dependencies are present rather than faking 20 green rows."""
+    supabase_ready = bool(supabase_url() and supabase_anon_key())
+    count = len(CRITICAL_RENDER_ROUTES)
+    return {
+        "id": "render-routes",
+        "ok": supabase_ready,
+        "level": None if supabase_ready else "error",
+        "label": "Critical Render routes are dependency-ready",
+        "detail": (
+            f"{count} write/admin routes share the Supabase + auth dependency, which is present."
+            if supabase_ready
+            else f"{count} write/admin routes need Supabase configuration, which is MISSING."
+        ),
+        "routes": [{"route": route, "label": label} for route, label in CRITICAL_RENDER_ROUTES],
+    }
+
+
+def build_render_runtime_signals(supabase_latency_ms=None):
+    """Render free-tier runtime signals: uptime (cold starts/crash-loops), deployed
+    app build, and the live Supabase probe latency."""
+    uptime_seconds = max(0, round(time.monotonic() - SERVER_PROCESS_START_MONOTONIC))
+    build = read_build_info_metadata()
+    return {
+        "uptimeSeconds": uptime_seconds,
+        "startedAt": SERVER_PROCESS_START_AT.isoformat(),
+        "version": build.get("version") or "",
+        "cache": build.get("cache") or "",
+        "buildLabel": build.get("label") or "",
+        "supabaseLatencyMs": supabase_latency_ms,
+    }
 
 
 def build_render_admin_health(ledger_id, user, user_token):
     if not supabase_url() or not supabase_anon_key():
         raise RuntimeError("Supabase server environment variables are missing")
     context = assert_user_can_admin_ledger(ledger_id, user, user_token)
+    supabase_probe = probe_supabase_reachability(ledger_id, user_token)
     checks = [
         {"id": "render", "ok": True, "label": "Render backend is reachable", "detail": "Admin health route responded."},
         {"id": "supabase-config", "ok": True, "label": "Supabase configuration is present", "detail": "SUPABASE_URL and Supabase API key are configured."},
+        supabase_probe,
         {"id": "supabase-session", "ok": True, "label": "Supabase session is active", "detail": str(user.get("email") or "")},
         {"id": "workspace-member", "ok": True, "label": "Signed-in user maps to this workspace", "detail": str(context.get("currentMemberId") or "")},
         {"id": "workspace-admin", "ok": bool(context.get("canAdmin")), "label": "Signed-in user is workspace admin", "detail": str(context.get("role") or "")},
         {"id": "open-period", "ok": bool(context.get("openPeriodId")), "label": "Open settlement period is available", "detail": str(context.get("openPeriodId") or "")},
         {"id": "server-rate-limits", "ok": not rate_limit_disabled(), "label": "Server-side route rate limits are enabled", "detail": "Admin, generated test data, retention, backup, and write routes are guarded by per-user/per-ledger in-memory limits."},
-        {"id": "vehicle-provider-config", "ok": bool(vehicle_provider_config_status().get("configured")), "label": "Vehicle lookup provider is configured", "detail": "Provider URL is configured; API key present: " + ("yes" if vehicle_provider_config_status().get("hasApiKey") else "no")},
+        build_vehicle_provider_health(),
+        build_render_route_dependency_health(),
     ]
-    checks.extend(build_render_admin_route_health(ledger_id, context))
+    # Honest overall: info-level rows (e.g. provider not configured) must not flip ok to
+    # false, but a real failed probe (level "error"/"warning") must.
+    overall_ok = all(bool(check.get("ok")) for check in checks)
+    failed = [check for check in checks if not check.get("ok")]
     return {
-        "ok": all(bool(check.get("ok")) for check in checks),
+        "ok": overall_ok,
         "backend": "render",
         "ledgerId": ledger_id,
         "userEmail": user.get("email"),
         "checkedAt": datetime.now(timezone.utc).isoformat(),
         "checks": checks,
-        "routes": {check.get("id"): check for check in checks if check.get("route")},
-        "summary": "Render admin backend, Supabase session, workspace admin permission, and mounted safety routes are ready."
+        "runtime": build_render_runtime_signals(supabase_probe.get("latencyMs")),
+        "summary": (
+            "Render admin backend, Supabase reachability, workspace admin permission, and critical routes are healthy."
+            if overall_ok
+            else f"Render admin health found {len(failed)} issue(s): " + ", ".join(str(check.get("label") or check.get("id")) for check in failed) + "."
+        ),
     }
 
 
@@ -4262,6 +4422,7 @@ class Handler(SimpleHTTPRequestHandler):
             # but this route should not wait on settlement/open-period setup.
             context = get_member_context_as_service_fast(ledger_id, user, timeout=3)
             result, response_status = fetch_vehicle_lookup(plate)
+            record_vehicle_lookup_outcome(result)
             result_code = result.get("code") or ("VEHICLE_LOOKUP_OK" if result.get("ok") else "VEHICLE_LOOKUP_FAILED")
             provider_meta = result.get("provider") if isinstance(result.get("provider"), dict) else {"providerStatus": response_status}
             record_lookup_activity(bool(result.get("ok")), result_code, response_status, f"Vehicle lookup for {plate}.", provider_meta)

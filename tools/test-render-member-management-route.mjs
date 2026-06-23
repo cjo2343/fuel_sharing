@@ -18,4 +18,4 @@ assert.match(server, /def manage_members_backend\(self\):/, 'server should imple
 assert.match(server, /assert_user_can_admin_ledger\(ledger_id, user, user_token\)/, 'backend should verify workspace admin scope');
 assert.match(server, /upsert_ledger_member_admin/, 'backend should call existing member upsert RPC server-side');
 assert.match(server, /set_ledger_member_active_admin/, 'backend should call existing activation RPC server-side');
-assert.match(server, /"memberManagement", "\/api\/members\/manage"/, 'Render admin health should include member management route');
+assert.match(server, /"\/api\/members\/manage", "Member management"/, 'Render admin health critical routes should include member management route');

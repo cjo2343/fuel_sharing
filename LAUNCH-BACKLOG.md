@@ -24,10 +24,13 @@ card removal (#23). Plus docs/ARCHITECTURE (#18, #20).
 **Done (this branch, awaiting PR):** #15 workspace health observability — `info`
 severity level for neutral setup states (push/no-bookings/no-closed-periods no longer
 amber warnings), summary-first layout grouping anomalies by Access/Data integrity/
-Bookings/Maintenance, passing + info checks collapsed behind `<details>` (v434).
+Bookings/Maintenance, passing + info checks collapsed behind `<details>` (v434). · #16
+Render health real probes — real timeout-bounded Supabase reachability probe (latency +
+error class), cached vehicle-provider row (no live provider call), consolidated 20
+always-green route rows into one dependency-gated row, runtime signals (uptime/version/
+latency), client card leads with issues + collapses passing (v435).
 
-**Pending:** #16 Render health probes (Opus server + Sonnet) ·
-#5 invite-only membership (Sonnet UI + Opus server) · #4 predictions A/B (Sonnet),
+**Pending:** #5 invite-only membership (Sonnet UI + Opus server) · #4 predictions A/B (Sonnet),
 C/F (Opus) · #12 flaky e2e (Sonnet, test-only) · #2 sign-in flow review (Opus, deferred).
 
 **To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
@@ -51,7 +54,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | 13 | Clean up Diagnostics Lab *tools* drawer (group by risk, trim copy, compact report tile) | **Sonnet** | Plan ready | [OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md](OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md) |
 | 14 | Fix cramped "App-owner global diagnostics" (full-width span + stop mid-word wrap) | **Sonnet** | Plan ready | [OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md](OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md) |
 | 15 | Workspace health → observability (fix mis-severity "cries wolf"; summary-first, collapse passing, group) | **Sonnet** | Done (v434, awaiting PR) | [WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md](WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md) |
-| 16 | Render health report is mostly fake-green (20/28 hardcoded) — add real probes + runtime signals | **Mixed**: server probes → Opus · presentation → Sonnet | Plan ready | [RENDER-HEALTH-REPORT-PLAN.md](RENDER-HEALTH-REPORT-PLAN.md) |
+| 16 | Render health report is mostly fake-green (20/28 hardcoded) — add real probes + runtime signals | **Mixed**: server probes → Opus · presentation → Sonnet | Done (v435, awaiting PR) | [RENDER-HEALTH-REPORT-PLAN.md](RENDER-HEALTH-REPORT-PLAN.md) |
 | 17 | Remove "Who and shortcuts" booking card; book for the signed-in user | **Sonnet** | Plan ready (decision: book-for-self) | [BOOKING-WHO-SHORTCUTS-REMOVAL-PLAN.md](BOOKING-WHO-SHORTCUTS-REMOVAL-PLAN.md) |
 
 > **Theme cluster — Admin role separation:** #5 + #6 + #8 are one coherent Sonnet pass ("normal workspace admins see only workspace tools; owner/diagnostics UI is app-owner-only"). Hand them together for consistent gating.
