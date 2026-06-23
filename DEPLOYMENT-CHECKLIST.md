@@ -1,3 +1,4 @@
+- 2026-06-23T14:00:00.000Z — `2026.06.18.292` / `settings-layout-release-notes-booking-self` / `fuel-ledger-v433`: Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.
 - 2026-06-22T15:25:00.000Z — `2026.06.18.278` / `interactive-action-timeout-lane` / `fuel-ledger-v419`: Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.
 - 2026-06-22T14:55:00.000Z — `2026.06.18.277` / `workspace-action-authority-lane` / `fuel-ledger-v418`: Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.
 - 2026-06-22T14:35:00.000Z — `2026.06.18.276` / `owner-passive-background-sync-calm-lane` / `fuel-ledger-v417`: Passive owner/background refreshes now stay calm: window-focus/realtime/service-worker freshness probes remain diagnostics when a cloud state has already loaded and there are no pending writes, so app-owner sessions do not show red Cloud delayed banners for background timeouts.
@@ -47,10 +48,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.291`
-- Service-worker cache: `fuel-ledger-v432`
-- Updated at: `2026-06-23T13:00:00.000Z`
-- Top release note: Admin diagnostics cleanup: Security Health tiles are grouped into Health (Overall/Table/RPC/Migrations/Schema/Realtime-publication) and Status (Release/Realtime/Sync/Backup — live) with per-tile freshness stamps and a single control bar (Run Security Health button, last-run time, cooldown note, on-demand note). The launch readiness checklist collapses behind a details element since it is reference text. The Diagnostics Lab drawer reorganises into Maintenance actions (Clean test users, Test data, Retention cleanup — grouped by risk badge) and Self-tests and reports (Test Lab controls and report). The App-owner global diagnostics card now spans the full outer grid row so the three nested cards (Global workspaces, Recent vehicle lookups, Recent global activity) lay out horizontally instead of stacking in a single 212px column; activity list items wrap at word boundaries instead of breaking mid-character.
+- Version: `2026.06.18.292`
+- Service-worker cache: `fuel-ledger-v433`
+- Updated at: `2026-06-23T14:00:00.000Z`
+- Top release note: Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.
 
 ## Invite beta readiness: member action Data I/O
 

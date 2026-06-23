@@ -163,35 +163,9 @@
           <button id="appUpdateDismiss" class="subtle-button compact-button" type="button" aria-label="Dismiss update notice">Later</button>
         </aside>
 
-        <section id="bookingPanel" class="panel primary-panel booking-panel" data-view="book" aria-labelledby="bookingHeading">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Booking</p>
-              <h2 id="bookingHeading">Who and shortcuts</h2>
-            </div>
-          </div>
-          <form id="bookingForm" class="form-grid">
-            <label>
-              Driver
-              <select id="bookingMember" required></select>
-            </label>
-            <div class="booking-quick-actions wide" aria-label="Quick booking choices">
-              <div>
-                <span>When</span>
-                <button class="subtle-button compact-button" type="button" data-booking-day="0">Today</button>
-                <button class="subtle-button compact-button" type="button" data-booking-day="1">Tomorrow</button>
-                <button class="subtle-button compact-button" type="button" data-booking-weekend="true">Weekend</button>
-              </div>
-              <div>
-                <span>Length</span>
-                <button class="subtle-button compact-button" type="button" data-booking-duration-hours="1">+1h</button>
-                <button class="subtle-button compact-button" type="button" data-booking-duration-hours="2">+2h</button>
-                <button class="subtle-button compact-button" type="button" data-booking-duration-hours="4">+4h</button>
-                <button class="subtle-button compact-button" type="button" data-booking-all-day="true">All day</button>
-              </div>
-            </div>
-          </form>
-        </section>
+        <form id="bookingForm" hidden>
+          <input id="bookingMember" type="hidden" />
+        </form>
 
         <section class="panel wide-panel trip-estimator-panel" data-view="book" aria-labelledby="tripEstimatorHeading">
           <div class="panel-header">
