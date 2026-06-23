@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v430";
-const BUILD_LABEL = "sw-update-reliability-safari";
-const BUILD_UPDATED_AT = "2026-06-23T00:00:00.000Z";
+const CACHE_NAME = "fuel-ledger-v431";
+const BUILD_LABEL = "cold-start-reconnect-banner-calm";
+const BUILD_UPDATED_AT = "2026-06-23T12:00:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",

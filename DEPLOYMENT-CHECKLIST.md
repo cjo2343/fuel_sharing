@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.289`
-- Service-worker cache: `fuel-ledger-v430`
-- Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: Reliable service-worker update handoff for Safari: the update prompt now also fires from a deploy-version mismatch so Safari users are no longer stranded on an old version when registration.waiting is not exposed. Update activation is tiered: use the waiting worker if available, else call registration.update() and try again, else unregister the stale controller and reload as a Safari escape hatch. One safe auto-activation fires when the app is stale and no writes are in flight, guarded by one-shot flags so nothing loops or double-reloads. The manual Update now path continues to work for all browsers.
+- Version: `2026.06.18.290`
+- Service-worker cache: `fuel-ledger-v431`
+- Updated at: `2026-06-23T12:00:00.000Z`
+- Top release note: Cold-start recovery banner is now honest: after Render free-tier spins down and the workspace loads from this device cache, the app shows a calm amber Reconnecting message (the backend is waking, around 30-50s, your data is shown from this device and will sync) instead of a red Backend startup delayed or Sync delayed error. Red is reserved for a genuine failure with no usable cached data. Any successful load (background, focus, manual Retry or Sync now) now transitions the startup gate out of failed to ready immediately and drops the Cloud delayed badge without waiting for a refocus.
 
 ## Invite beta readiness: member action Data I/O
 
