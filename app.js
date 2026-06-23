@@ -5960,6 +5960,17 @@ function completeAdminDiagnosticsLaneFromContext(context, reason = "admin") {
       : "Backend app context was unavailable; Admin diagnostics are separated and did not run owner/global routes."
   };
   renderSupabaseLoadMonitor();
+  if (isOwner) {
+    // App owners should immediately see the all-workspaces view on Admin open instead of an
+    // empty "Not checked" card that makes it look like only the owner's own workspace exists.
+    // Both helpers are cached/throttled (global ~5 min fresh window; activity has its own
+    // cooldown), so this loads once per Admin open without polling or hammering Render. The
+    // active workspace and normal sync are unaffected — these are owner-only read routes.
+    refreshOwnerGlobalDiagnostics({ silent: true, reason: `${reason}-owner-autoload` })
+      .catch((error) => console.warn("Owner global diagnostics autoload failed", error));
+    refreshOwnerActivity({ silent: true, reason: `${reason}-owner-autoload` })
+      .catch((error) => console.warn("Owner activity autoload failed", error));
+  }
   return context;
 }
 

@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.286`
-- Service-worker cache: `fuel-ledger-v427`
+- Version: `2026.06.18.287`
+- Service-worker cache: `fuel-ledger-v428`
 - Updated at: `2026-06-23T00:00:00.000Z`
-- Top release note: Redesigned the Admin diagnostics into a cleaner dashboard: compact metric tiles with status dots, a tighter responsive grid, and a live activity sparkline (bucketed from the last 30 minutes of app-side events) on the App activity card — in the app's light theme so it stays consistent with the rest of the app.
+- Top release note: App-owner Admin now sees all workspaces automatically. The app-owner global view (every workspace, member counts, and cross-workspace activity) and the all-workspaces owner activity log already worked through owner-only backend routes, but they were manual-refresh only, so Admin looked like it only saw the owner's own workspace (main-car). Opening Admin as the configured app owner now loads both once (cached ~5 minutes, no polling), so other workspaces such as test1 appear without a manual click. The owner's own workspace selector still correctly shows only workspaces they are a member of.
 
 ## Invite beta readiness: member action Data I/O
 

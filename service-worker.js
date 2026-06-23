@@ -1,5 +1,5 @@
-const CACHE_NAME = "fuel-ledger-v427";
-const BUILD_LABEL = "admin-dashboard-redesign";
+const CACHE_NAME = "fuel-ledger-v428";
+const BUILD_LABEL = "owner-global-workspace-autoload";
 const BUILD_UPDATED_AT = "2026-06-23T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",
