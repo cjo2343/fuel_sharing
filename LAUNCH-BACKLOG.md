@@ -36,8 +36,20 @@ direct add-member form (UI), and now `upsert_member_as_user` (Render) + the
 members for everyone incl. the app owner; `redeem_ledger_invite` is the single
 onboarding path. Member management keeps edit/deactivate for existing members.
 
-**Pending:** #4 predictions A/B (Sonnet), C/F (Opus) · #12 flaky e2e (Sonnet,
-test-only) · #2 sign-in flow review (Opus, deferred).
+**Done (this branch, awaiting PR):** #4 predictions rules audit (v437) — A/B/C/F all
+landed. C: `calculateHistoricalFuelStats` measures L/100km full-tank-to-full-tank
+(`computeFullTankConsumption`), falling back to rough total/total with
+`consumptionMethod` labelling. B: split `consumptionLooksRealistic` (planning gate)
+from `consumptionConfirmedRealistic` (confidence credit + "looks plausible" copy);
+no-liters now reads "not enough liters logged yet". A: `estimateSource` price label
+mirrors `calculateTripCostEstimate` (receipt→live→fallback). F: trusted
+full-tank-measured consumption feeds the tank-range display
+(`buildRefuelPlanning`/`estimateTankStateAtOdometer({consumption})`); overfill
+save-guard stays on the car setting.
+
+**Pending:** #12 flaky e2e (Sonnet, test-only — still reproduces: `server-save`
+ageMs≈10 counted as foreground op in `no-refresh action chain`) · #2 sign-in flow
+review (Opus, deferred).
 
 **To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
 item/cluster off the latest `origin/main`; merge each PR before starting the next.
@@ -47,7 +59,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | 1 | Reliable service-worker update handoff (Safari stranded on old version) | **Sonnet** | Plan ready, awaiting implementation | [SW-UPDATE-RELIABILITY-PLAN.md](SW-UPDATE-RELIABILITY-PLAN.md) |
 | 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Deferred — see notes | (to be written when we tackle it) |
 | 3 | Cold-Render-after-idle banners too alarming / can go stale (startup-gate **and** sync-delay "Cloud delayed" paths) | **Opus** | Plan ready + repro confirmed — see notes | inline below |
-| 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C → Opus | Audited; fixes planned | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
+| 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C,F → Opus | Done (v437, awaiting PR) | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
 | 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Done (v436, awaiting PR) | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
 | 6 | Owner-gate "Version & update status" panel; trim public About | **Sonnet** | Plan ready | [ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md](ADMIN-VERSION-PANEL-OWNER-ONLY-PLAN.md) |
 | 7 | Group settings horizontal layout (+ general "go wide" principle) | **Sonnet** | Plan ready | [SETTINGS-HORIZONTAL-LAYOUT-PLAN.md](SETTINGS-HORIZONTAL-LAYOUT-PLAN.md) |
