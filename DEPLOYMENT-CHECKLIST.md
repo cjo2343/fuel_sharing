@@ -1,3 +1,4 @@
+- 2026-06-23T15:00:00.000Z — `2026.06.18.293` / `workspace-health-observability` / `fuel-ledger-v434`: Workspace health is now observability-style and no longer cries wolf: a freshly set-up healthy workspace reads zero needs-attention and zero warnings because purely informational setup states (push not enabled on this device, no upcoming bookings, no closed periods yet) are reclassified from amber warnings to a quiet informational note. The panel leads with the summary plus only the issues and warnings worth a look, grouped by Access, Data integrity, Bookings, and Maintenance, while the passing checks collapse behind a looking-good expander and the informational notes behind their own disclosure.
 - 2026-06-23T14:00:00.000Z — `2026.06.18.292` / `settings-layout-release-notes-booking-self` / `fuel-ledger-v433`: Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.
 - 2026-06-22T15:25:00.000Z — `2026.06.18.278` / `interactive-action-timeout-lane` / `fuel-ledger-v419`: Interactive actions no longer stall at Preparing/Saving after idle/session wake: trip, fuel, booking, payment, settings, and vehicle lookup Render calls now bound session/header/body timeouts, reuse the hydrated session for user actions, and clear stale action latches before clicks so users can retry without a hard refresh.
 - 2026-06-22T14:55:00.000Z — `2026.06.18.277` / `workspace-action-authority-lane` / `fuel-ledger-v418`: Workspace actions now trust the selected in-app workspace over stale URL state: tab changes and vehicle lookup keep the active workspace, explicit backend context mismatches are ignored instead of snapping back, and lookup asks Render for the selected workspace before checking permissions.
@@ -48,10 +49,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.292`
-- Service-worker cache: `fuel-ledger-v433`
-- Updated at: `2026-06-23T14:00:00.000Z`
-- Top release note: Group settings form now flows into 3-4 columns at full width and collapses to one column on phones; the release notes panel shows the 3 most recent updates with a muted count of earlier ones; bookings are attributed to the signed-in user automatically without a Who and shortcuts card.
+- Version: `2026.06.18.293`
+- Service-worker cache: `fuel-ledger-v434`
+- Updated at: `2026-06-23T15:00:00.000Z`
+- Top release note: Workspace health is now observability-style and no longer cries wolf: a freshly set-up healthy workspace reads zero needs-attention and zero warnings because purely informational setup states (push not enabled on this device, no upcoming bookings, no closed periods yet) are reclassified from amber warnings to a quiet informational note. The panel leads with the summary plus only the issues and warnings worth a look, grouped by Access, Data integrity, Bookings, and Maintenance, while the passing checks collapse behind a looking-good expander and the informational notes behind their own disclosure.
 
 ## Invite beta readiness: member action Data I/O
 

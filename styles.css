@@ -1961,6 +1961,96 @@ body.auth-locked #authPanel .text-button {
   color: var(--red);
 }
 
+.health-check.info {
+  border-color: var(--line);
+  background: #f7f9fb;
+}
+
+.health-check.info > span {
+  background: #e8eef4;
+  color: #51627a;
+}
+
+.health-summary-info {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.health-group {
+  display: grid;
+  gap: 10px;
+}
+
+.health-group-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 860;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.health-all-clear {
+  border: 1px solid #cfe6d4;
+  border-radius: 10px;
+  background: #f4fbf5;
+  padding: 14px 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.health-all-clear strong {
+  color: var(--green-dark);
+}
+
+.health-all-clear p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.health-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfb;
+  padding: 2px 8px;
+}
+
+.health-disclosure > summary {
+  cursor: pointer;
+  padding: 10px 4px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--muted);
+  list-style: none;
+}
+
+.health-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.health-disclosure[open] > summary {
+  color: var(--ink);
+}
+
+.health-disclosure[open] > summary {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.health-disclosure > .health-group,
+.health-disclosure > .system-health-list {
+  padding: 0 0 8px;
+}
+
+.health-disclosure > .health-group + .health-group {
+  margin-top: 12px;
+}
+
 @media (max-width: 700px) {
   .system-health-summary {
     grid-template-columns: 1fr;

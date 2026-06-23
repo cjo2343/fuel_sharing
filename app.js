@@ -16092,7 +16092,7 @@ function renderSystemHealth(ledger) {
       acc[check.level] = (acc[check.level] || 0) + 1;
       return acc;
     },
-    { issue: 0, warning: 0, ok: 0 }
+    { issue: 0, warning: 0, ok: 0, info: 0 }
   );
 
   els.systemHealthSummary.innerHTML = `
@@ -16107,22 +16107,46 @@ function renderSystemHealth(ledger) {
     <article class="health-summary-card">
       <span>Looks good</span>
       <strong>${counts.ok || 0}</strong>
+      ${counts.info ? `<small class="health-summary-info">+${counts.info} informational</small>` : ""}
     </article>
   `;
 
-  els.systemHealthList.innerHTML = checks
-    .map(
-      (check) => `
-        <article class="health-check ${check.level}">
-          <div>
-            <strong>${escapeHtml(check.title)}</strong>
-            <p>${escapeHtml(check.message)}</p>
-          </div>
-          <span>${healthLevelLabel(check.level)}</span>
-        </article>
-      `
-    )
-    .join("");
+  const anomalies = checks.filter((check) => check.level === "issue" || check.level === "warning");
+  const passing = checks.filter((check) => check.level === "ok");
+  const info = checks.filter((check) => check.level === "info");
+
+  const sections = [];
+
+  if (anomalies.length) {
+    sections.push(renderSystemHealthGroups(anomalies));
+  } else {
+    sections.push(`
+      <article class="health-all-clear">
+        <strong>All checks passing</strong>
+        <p>No issues or warnings in this workspace${info.length ? ` · ${info.length} informational note${info.length === 1 ? "" : "s"} below` : ""}.</p>
+      </article>
+    `);
+  }
+
+  if (passing.length) {
+    sections.push(`
+      <details class="health-disclosure">
+        <summary>✓ ${passing.length} looking good</summary>
+        ${renderSystemHealthGroups(passing)}
+      </details>
+    `);
+  }
+
+  if (info.length) {
+    sections.push(`
+      <details class="health-disclosure">
+        <summary>${info.length} informational</summary>
+        <div class="system-health-list">${info.map(renderSystemHealthCheckRow).join("")}</div>
+      </details>
+    `);
+  }
+
+  els.systemHealthList.innerHTML = sections.join("");
 }
 
 
@@ -18027,7 +18051,7 @@ function buildSystemHealthChecks(ledger) {
   });
 
   checks.push({
-    level: pushEnabled ? "ok" : (pushSupported ? "warning" : "warning"),
+    level: pushEnabled ? "ok" : "info",
     title: "Push notifications on this device",
     message: pushSubscriptionHint
   });
@@ -18048,7 +18072,7 @@ function buildSystemHealthChecks(ledger) {
       : "No overlapping bookings found in the local booking list."
   });
   checks.push({
-    level: bookingDiagnostics.upcoming ? "ok" : "warning",
+    level: bookingDiagnostics.upcoming ? "ok" : "info",
     title: "Upcoming car bookings",
     message: bookingDiagnostics.upcoming
       ? `${bookingDiagnostics.upcoming} upcoming or active booking${bookingDiagnostics.upcoming === 1 ? "" : "s"} are visible.`
@@ -18056,7 +18080,7 @@ function buildSystemHealthChecks(ledger) {
   });
 
   if (normalizedTableStatus.details && normalizedTableStatus.details.length) {
-    normalizedTableStatus.details.forEach((detail) => checks.push(detail));
+    normalizedTableStatus.details.forEach((detail) => checks.push({ category: "Data integrity", ...detail }));
   } else {
     checks.push({
       level: normalizedTableStatus.checked ? (normalizedTableStatus.ok ? "ok" : "warning") : "warning",
@@ -18066,7 +18090,7 @@ function buildSystemHealthChecks(ledger) {
   }
 
   checks.push({
-    level: state.closedPeriods.length ? "ok" : "warning",
+    level: state.closedPeriods.length ? "ok" : "info",
     title: "Archive history",
     message: state.closedPeriods.length
       ? `${state.closedPeriods.length} closed settlement period${state.closedPeriods.length === 1 ? "" : "s"} archived.`
@@ -18098,7 +18122,69 @@ function getBookingDiagnostics() {
 function healthLevelLabel(level) {
   if (level === "issue") return "Fix";
   if (level === "warning") return "Check";
+  if (level === "info") return "Info";
   return "OK";
+}
+
+const HEALTH_CATEGORY_ORDER = ["Access", "Data integrity", "Bookings", "Maintenance"];
+
+const HEALTH_CHECK_CATEGORIES = {
+  "Authentication": "Access",
+  "Admin users": "Access",
+  "People with email": "Access",
+  "Database saving": "Data integrity",
+  "Database tables": "Data integrity",
+  "Fuel logs with liters": "Data integrity",
+  "Receipt price checks": "Data integrity",
+  "Trip distance checks": "Data integrity",
+  "Open settlement fuel sanity": "Data integrity",
+  "Normalized database tables": "Data integrity",
+  "Push notifications on this device": "Maintenance",
+  "Archive history": "Maintenance",
+  "Booking date integrity": "Bookings",
+  "Booking overlaps": "Bookings",
+  "Upcoming car bookings": "Bookings"
+};
+
+function healthCheckCategory(check) {
+  return check.category || HEALTH_CHECK_CATEGORIES[check.title] || "Data integrity";
+}
+
+function healthCategoryRank(category) {
+  const index = HEALTH_CATEGORY_ORDER.indexOf(category);
+  return index === -1 ? HEALTH_CATEGORY_ORDER.length : index;
+}
+
+function renderSystemHealthCheckRow(check) {
+  return `
+    <article class="health-check ${check.level}">
+      <div>
+        <strong>${escapeHtml(check.title)}</strong>
+        <p>${escapeHtml(check.message)}</p>
+      </div>
+      <span>${healthLevelLabel(check.level)}</span>
+    </article>
+  `;
+}
+
+function renderSystemHealthGroups(checks) {
+  const byCategory = new Map();
+  checks.forEach((check) => {
+    const category = healthCheckCategory(check);
+    if (!byCategory.has(category)) byCategory.set(category, []);
+    byCategory.get(category).push(check);
+  });
+  return [...byCategory.keys()]
+    .sort((a, b) => healthCategoryRank(a) - healthCategoryRank(b))
+    .map((category) => `
+      <section class="health-group">
+        <h3 class="health-group-title">${escapeHtml(category)}</h3>
+        <div class="system-health-list">
+          ${byCategory.get(category).map(renderSystemHealthCheckRow).join("")}
+        </div>
+      </section>
+    `)
+    .join("");
 }
 
 function renderClosedPeriods() {

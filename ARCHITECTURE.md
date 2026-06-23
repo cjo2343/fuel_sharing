@@ -79,7 +79,7 @@ to avoid the supabase-js auth-lock deadlock (the original "stuck after idle" roo
 | Predictions / fuel intelligence | `buildSmartPredictions`, `buildFuelIntelligence`, `calculateHistoricalFuelStats` | #4 |
 | Onboarding / invites | `renderWorkspaceInvitesPanel`, server invite RPCs | #5, #10 |
 | Admin role separation | `canUseGlobalAdminTools`, `#dataToolsPanel` | #6, #8 |
-| Admin observability (tiles/tools/health) | `renderAdminGuardrailOverview` (grouped Health/Status/Launch tiles + control bar), `renderSupabaseLoadMonitor`, `renderSystemHealth`, `build_render_admin_health`; Diagnostics Lab drawer reorganised into Maintenance actions + Self-tests zones | #11 done, #13 done, #15, #16 |
+| Admin observability (tiles/tools/health) | `renderAdminGuardrailOverview` (grouped Health/Status/Launch tiles + control bar), `renderSupabaseLoadMonitor`, `renderSystemHealth` (summary-first; anomalies grouped by Access/Data integrity/Bookings/Maintenance via `renderSystemHealthGroups`; passing + `info` checks collapse behind `<details>`; `buildSystemHealthChecks` adds an `info` level for neutral setup states), `build_render_admin_health`; Diagnostics Lab drawer reorganised into Maintenance actions + Self-tests zones | #11 done, #13 done, #15 done, #16 |
 | Layout "go wide" | `.settings-form`, `.workspace-invites-grid`, `.admin-diagnostics-section { grid-column: 1/-1 }` spans outer grid row so nested cards lay out horizontally | #7, #10, #14 done |
 | Booking | `#bookingForm` (hidden, book-for-self; `#bookingMember` hidden input always holds `currentUser`), calendar card inputs bound via `form="bookingForm"` | #17 done |
 
