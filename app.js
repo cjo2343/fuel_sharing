@@ -6594,6 +6594,23 @@ function renderRenderAdminHealthCard() {
   `;
 }
 
+function renderActivitySparkline({ windowMs = 30 * 60 * 1000, buckets = 16 } = {}) {
+  const now = Date.now();
+  const events = supabaseLoadActivityEvents(getSupabaseLoadEvents(windowMs));
+  const counts = new Array(buckets).fill(0);
+  const bucketMs = windowMs / buckets;
+  for (const entry of events) {
+    const age = now - Number(entry.at || 0);
+    if (age < 0 || age > windowMs) continue;
+    const idx = Math.min(buckets - 1, Math.floor((windowMs - age) / bucketMs));
+    counts[idx] += 1;
+  }
+  const max = Math.max(1, ...counts);
+  const idle = events.length === 0;
+  const bars = counts.map((count) => `<span style="height:${Math.round((count / max) * 100)}%"></span>`).join("");
+  return `<div class="admin-sparkline${idle ? " is-idle" : ""}" role="img" aria-label="App activity over the last ${Math.round(windowMs / 60000)} minutes">${bars}</div>`;
+}
+
 function renderSupabaseLoadMonitor() {
   if (els.toggleLiveSync) {
     els.toggleLiveSync.textContent = liveSyncEnabled ? "Disable live sync" : "Enable live sync";
@@ -6623,6 +6640,7 @@ function renderSupabaseLoadMonitor() {
         <span>App activity</span>
         <strong>${summary.total}</strong>
         <small>${summary.lastMinute} last minute · ${summary.lastFiveMinutes} last 5 minutes</small>
+        ${renderActivitySparkline()}
         <p>${escapeHtml(statusText)}</p>
       </article>
       <article class="admin-metric-card ${supabaseLoadInFlight ? "warning" : "ok"}">

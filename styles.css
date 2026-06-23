@@ -5066,60 +5066,116 @@ body.auth-locked #authPanel .text-button {
 
 .admin-diagnostics-dashboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+  gap: 12px;
   margin: 0.75rem 0 1rem;
 }
 
 .admin-metric-card {
   display: grid;
-  gap: 0.35rem;
-  min-height: 150px;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 12px 32px rgba(13, 39, 31, 0.05);
+  gap: 0.3rem;
+  align-content: start;
+  min-height: 96px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-solid);
+  box-shadow: none;
+  position: relative;
 }
 
 .admin-metric-card span {
   color: var(--muted);
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
+  padding-right: 1rem;
 }
 
 .admin-metric-card strong {
-  font-size: clamp(1.35rem, 3vw, 2.35rem);
-  line-height: 1;
+  font-size: clamp(1.3rem, 2.6vw, 1.9rem);
+  line-height: 1.05;
   color: var(--ink);
+  font-weight: 800;
 }
 
 .admin-metric-card small,
 .admin-metric-card p {
   margin: 0;
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 0.8rem;
   line-height: 1.35;
   overflow-wrap: break-word;
   word-break: normal;
 }
 
+.admin-metric-card p {
+  font-size: 0.75rem;
+  opacity: 0.82;
+}
+
+.admin-metric-card::after {
+  content: "";
+  position: absolute;
+  top: 0.95rem;
+  right: 0.95rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.4;
+}
+
 .admin-metric-card.ok {
-  border-color: rgba(22, 101, 52, 0.2);
-  background: linear-gradient(180deg, #f8fffb, #ffffff);
+  border-color: rgba(47, 125, 99, 0.28);
+}
+
+.admin-metric-card.ok::after {
+  background: var(--green);
+  opacity: 1;
 }
 
 .admin-metric-card.warning,
 .admin-metric-card.has-warning {
-  border-color: rgba(217, 119, 6, 0.35);
-  background: #fffaf0;
+  border-color: rgba(216, 154, 50, 0.42);
+}
+
+.admin-metric-card.warning::after,
+.admin-metric-card.has-warning::after {
+  background: var(--amber);
+  opacity: 1;
 }
 
 .admin-metric-card.issue {
-  border-color: rgba(185, 28, 28, 0.35);
-  background: #fff5f5;
+  border-color: rgba(185, 77, 69, 0.42);
+}
+
+.admin-metric-card.issue::after {
+  background: var(--red);
+  opacity: 1;
+}
+
+.admin-sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+  margin-top: 0.2rem;
+}
+
+.admin-sparkline span {
+  flex: 1 1 0;
+  min-height: 2px;
+  border-radius: 1px;
+  background: var(--green);
+  opacity: 0.82;
+}
+
+.admin-sparkline.is-idle span {
+  background: var(--muted);
+  opacity: 0.3;
 }
 
 .admin-diagnostics-section {
@@ -5210,10 +5266,10 @@ body.auth-locked #authPanel .text-button {
   justify-content: space-between;
   gap: 0.75rem;
   align-items: center;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: #fff;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-solid);
 }
 
 .admin-activity-grid span {
