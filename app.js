@@ -866,7 +866,12 @@ async function refreshAuthBoundMemberProfile() {
   const ledgerId = getActiveLedgerId();
   if (!supabaseClient || !currentSession || !email || !ledgerId) return null;
   try {
-    const { data, error } = await supabaseClient
+    // Time-bound this direct supabase-js read. It sits on the vehicle-lookup critical path
+    // (and runs on auth/workspace changes), and an unbounded read can hang after a long idle —
+    // which froze vehicle lookup on "Checking permissions…" because the caller awaits this in a
+    // branch that never updates the status. On timeout we reject into the catch below and return
+    // null; the profile refresh is optional, so the lookup continues.
+    const { data, error } = await withSupabaseReadTimeout("Signed-in member profile read", supabaseClient
       .from("ledger_members")
       .select("id,name,email,role,is_active,mobilepay_phone,created_at")
       .eq("ledger_id", ledgerId)
@@ -874,7 +879,7 @@ async function refreshAuthBoundMemberProfile() {
       .ilike("email", email)
       .order("role", { ascending: true })
       .order("created_at", { ascending: true })
-      .limit(10);
+      .limit(10), 8000);
     if (error) throw error;
     authBoundMemberProfileLoaded = true;
     const rows = Array.isArray(data) ? data : [];

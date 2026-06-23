@@ -19,7 +19,7 @@ mustInclude(server, 'requested-linked-normalized', 'backend app context must pre
 mustInclude(app, 'function mergeWorkspaceLedgerRows', 'workspace selector must merge duplicate rows client-side');
 mustInclude(app, 'const seenOptionKeys = new Set();', 'workspace selector must prevent duplicate option rendering');
 mustInclude(app, 'workspace-member-duplicate-collapsed', 'signed-in member profile must collapse duplicate active member rows safely');
-mustInclude(app, '.limit(10);', 'signed-in member profile must not use maybeSingle when duplicates can exist');
+mustInclude(app, '.limit(10), 8000)', 'signed-in member profile must not use maybeSingle when duplicates can exist, and the read must be time-bounded');
 mustInclude(app, 'const role = confirmed ? normalizeWorkspaceRole', 'unconfirmed workspace must not pretend to grant member/admin role');
 mustInclude(app, 'suffix = ledger.unconfirmed ? " · loading" : role', 'unconfirmed workspace selector option must be visibly loading');
 

@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v423";
-const BUILD_LABEL = "app-context-single-flight";
-const BUILD_UPDATED_AT = "2026-06-22T00:00:00.000Z";
+const CACHE_NAME = "fuel-ledger-v424";
+const BUILD_LABEL = "bound-member-profile-read";
+const BUILD_UPDATED_AT = "2026-06-23T00:00:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
