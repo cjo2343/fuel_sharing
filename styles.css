@@ -1573,6 +1573,40 @@ body.auth-locked #authPanel .text-button {
   line-height: 1.35;
 }
 
+.admin-guardrail-control-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(248, 252, 250, 0.9);
+}
+
+.admin-guardrail-control-bar .entry-meta {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.admin-guardrail-group-label {
+  margin: 0.9rem 0 0.35rem;
+  color: var(--muted);
+  font-weight: 900;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.admin-guardrail-card .freshness-stamp {
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+
 @media (max-width: 980px) {
   .data-tools-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5180,6 +5214,9 @@ body.auth-locked #authPanel .text-button {
   border: 1px solid var(--border);
   border-radius: 18px;
   background: rgba(248, 252, 250, 0.9);
+  /* Span the full outer grid row so nested 3-card dashboards lay out horizontally
+     instead of being squeezed into a single ~212px auto-fit column (#14). */
+  grid-column: 1 / -1;
 }
 
 .admin-diagnostics-section summary {
@@ -5287,7 +5324,8 @@ body.auth-locked #authPanel .text-button {
 
 .readable-activity-list li {
   line-height: 1.45;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 

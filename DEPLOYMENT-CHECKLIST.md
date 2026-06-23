@@ -47,10 +47,10 @@ After pushing, check the GitHub Actions CI result. Deploy or trust Render auto-d
 # Deployment checklist
 
 ## Current release target
-- Version: `2026.06.18.290`
-- Service-worker cache: `fuel-ledger-v431`
-- Updated at: `2026-06-23T12:00:00.000Z`
-- Top release note: Cold-start recovery banner is now honest: after Render free-tier spins down and the workspace loads from this device cache, the app shows a calm amber Reconnecting message (the backend is waking, around 30-50s, your data is shown from this device and will sync) instead of a red Backend startup delayed or Sync delayed error. Red is reserved for a genuine failure with no usable cached data. Any successful load (background, focus, manual Retry or Sync now) now transitions the startup gate out of failed to ready immediately and drops the Cloud delayed badge without waiting for a refocus.
+- Version: `2026.06.18.291`
+- Service-worker cache: `fuel-ledger-v432`
+- Updated at: `2026-06-23T13:00:00.000Z`
+- Top release note: Admin diagnostics cleanup: Security Health tiles are grouped into Health (Overall/Table/RPC/Migrations/Schema/Realtime-publication) and Status (Release/Realtime/Sync/Backup — live) with per-tile freshness stamps and a single control bar (Run Security Health button, last-run time, cooldown note, on-demand note). The launch readiness checklist collapses behind a details element since it is reference text. The Diagnostics Lab drawer reorganises into Maintenance actions (Clean test users, Test data, Retention cleanup — grouped by risk badge) and Self-tests and reports (Test Lab controls and report). The App-owner global diagnostics card now spans the full outer grid row so the three nested cards (Global workspaces, Recent vehicle lookups, Recent global activity) lay out horizontally instead of stacking in a single 212px column; activity list items wrap at word boundaries instead of breaking mid-character.
 
 ## Invite beta readiness: member action Data I/O
 

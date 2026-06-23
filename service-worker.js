@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v431";
-const BUILD_LABEL = "cold-start-reconnect-banner-calm";
-const BUILD_UPDATED_AT = "2026-06-23T12:00:00.000Z";
+const CACHE_NAME = "fuel-ledger-v432";
+const BUILD_LABEL = "admin-diagnostics-observability-cleanup";
+const BUILD_UPDATED_AT = "2026-06-23T13:00:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
