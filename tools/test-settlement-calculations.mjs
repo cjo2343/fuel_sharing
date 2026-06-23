@@ -153,6 +153,41 @@ function testHistoricalStatsTolerateMissingClosedPeriods() {
   assert.equal(stats.litersPer100Km, 10);
 }
 
+function testFullTankToFullTankConsumptionIgnoresFirstFill() {
+  // A large first brim fill (60 L) fuels driving before the timeline starts, so
+  // total/total would read high. Full-to-full counts only the closing brim fill
+  // (30 L over 600 km) and the partial in between: (10 + 30) / 600 km = 6.67.
+  const context = loadSettlementContext({
+    trips: [{ driver: "Christian", date: "2026-01-05", startKm: 1000, endKm: 1600, participants: ["Christian"] }],
+    fuel: [
+      { id: "f1", payer: "Christian", date: "2026-01-01", amount: 900, liters: 60, odometer: 1000, fullTank: true },
+      { id: "f2", payer: "Christian", date: "2026-01-10", amount: 150, liters: 10, odometer: 1300 },
+      { id: "f3", payer: "Christian", date: "2026-01-20", amount: 450, liters: 30, odometer: 1600, fullTank: true }
+    ]
+  });
+
+  const stats = context.calculateHistoricalFuelStats({ currentTrips: context.state.trips, currentFuel: context.state.fuel });
+
+  assert.equal(stats.consumptionMethod, "full-to-full");
+  assert.equal(stats.fullTankSegments, 1);
+  assert.equal(stats.fullTankSegmentKm, 600);
+  assert.equal(stats.litersPer100Km, 6.7); // (10 + 30) / 600 * 100 rounded, not 100/600*100
+  assert.equal(stats.litersPer100KmRough, context.round(100 / 600 * 100));
+}
+
+function testConsumptionFallsBackToRoughWithoutFullTankPair() {
+  const context = loadSettlementContext({
+    trips: [{ driver: "Christian", date: "2026-01-05", startKm: 0, endKm: 200, participants: ["Christian"] }],
+    fuel: [{ id: "f1", payer: "Christian", date: "2026-01-05", amount: 200, liters: 12, odometer: 200, fullTank: true }]
+  });
+
+  const stats = context.calculateHistoricalFuelStats({ currentTrips: context.state.trips, currentFuel: context.state.fuel });
+
+  assert.equal(stats.consumptionMethod, "rough");
+  assert.equal(stats.fullTankSegments, 0);
+  assert.equal(stats.litersPer100Km, 6); // 12 / 200 * 100, total/total fallback
+}
+
 function testMalformedTripAndFuelArraysAreSafe() {
   const context = loadSettlementContext({
     trips: null,
@@ -279,6 +314,8 @@ const tests = [
   testStringFuelAmountsAndUnknownPayersAreSafe,
   testNegativeTripDistanceDoesNotReduceBalances,
   testHistoricalStatsTolerateMissingClosedPeriods,
+  testFullTankToFullTankConsumptionIgnoresFirstFill,
+  testConsumptionFallsBackToRoughWithoutFullTankPair,
   testMalformedTripAndFuelArraysAreSafe,
   testReceiptMetricsIgnoreUnknownFuelPayers,
   testTripCostRoundingBalancesToTotalPaid,

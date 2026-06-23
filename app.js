@@ -11275,18 +11275,29 @@ function buildFuelIntelligence(ledger) {
   const fallbackConsumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
   const fallbackPrice = Math.max(0.1, Number(state.fuelFallbackPrice) || defaults.fuelFallbackPrice);
   const livePrice = latestFuelPrice && Number(latestFuelPrice.price) > 0 ? Number(latestFuelPrice.price) : 0;
+  const hasReceiptPrice = stats.pricePerLiter > 0;
   const hasHistoricalCost = stats.costPerKm > 0 && km >= 50;
   const hasHistoricalConsumption = stats.litersPer100Km > 0 && logsWithLiters > 0;
-  const consumptionLooksRealistic = !hasHistoricalConsumption || (stats.litersPer100Km >= 3 && stats.litersPer100Km <= 10);
+  const consumptionInRange = stats.litersPer100Km >= 3 && stats.litersPer100Km <= 10;
+  // "Not implausible" — true when there is no consumption data yet (so it does not
+  // block cost/km planning). "Confirmed realistic" requires actual data in range,
+  // and is what earns confidence credit and the "looks plausible" copy.
+  const consumptionLooksRealistic = !hasHistoricalConsumption || consumptionInRange;
+  const consumptionConfirmedRealistic = hasHistoricalConsumption && consumptionInRange;
+  const consumptionMeasuredFullTank = stats.consumptionMethod === "full-to-full";
   const canUseHistoricalForPlanning = hasHistoricalCost && consumptionLooksRealistic;
-  const confidenceScore = [km >= 500, km >= 1500, logsWithLiters >= 3, logsWithLiters >= 8, Number(stats.periodsWithTripKm || 0) >= 2, consumptionLooksRealistic].filter(Boolean).length;
+  const confidenceScore = [km >= 500, km >= 1500, logsWithLiters >= 3, logsWithLiters >= 8, Number(stats.periodsWithTripKm || 0) >= 2, consumptionConfirmedRealistic].filter(Boolean).length;
   const confidence = confidenceScore >= 5 ? "High" : confidenceScore >= 3 ? "Medium" : "Low";
   const confidenceClass = canUseHistoricalForPlanning && confidence === "High" ? "ok" : confidence === "Low" ? "issue" : "warning";
+  // Mirror the price-source precedence in calculateTripCostEstimate: a historical
+  // receipt average wins over the live reference price, which wins over the fallback.
   const estimateSource = canUseHistoricalForPlanning
     ? "Historical fuel cost per km"
-    : livePrice
-      ? "Car setting + live diesel reference price"
-      : "Car setting + fallback fuel price";
+    : hasReceiptPrice
+      ? "Car setting + historical receipt price"
+      : livePrice
+        ? "Car setting + live diesel reference price"
+        : "Car setting + fallback fuel price";
   const effectiveConsumption = canUseHistoricalForPlanning && stats.litersPer100Km > 0 ? stats.litersPer100Km : fallbackConsumption;
   const effectivePrice = stats.pricePerLiter > 0 ? stats.pricePerLiter : Number(livePrice || fallbackPrice);
   const planningCostPerKm = canUseHistoricalForPlanning
@@ -11312,6 +11323,9 @@ function buildFuelIntelligence(ledger) {
     planningCostPerKm,
     canUseHistoricalForPlanning,
     consumptionLooksRealistic,
+    consumptionConfirmedRealistic,
+    hasHistoricalConsumption,
+    consumptionMeasuredFullTank,
     warnings
   };
 }
@@ -11598,7 +11612,8 @@ function getLatestFullTankFuelBeforeOdometer(targetOdometer = 0, options = {}) {
 
 function estimateTankStateAtOdometer(targetOdometer = 0, options = {}) {
   const odometer = Number(targetOdometer) || 0;
-  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  // Callers may pass a trusted (measured) consumption; default to the car setting.
+  const consumption = Math.max(0.1, Number(options.consumption) || Number(state.fuelConsumption) || defaults.fuelConsumption);
   const tankCapacity = getFuelTankCapacity();
   const baseline = getLatestFullTankFuelBeforeOdometer(odometer, options);
   if (!baseline || odometer <= 0) {
@@ -12031,7 +12046,19 @@ function validateFuelAgainstEstimatedTankCapacity(fuelInput = {}, options = {}) 
 
 function buildRefuelPlanning(distanceKm = 0) {
   const insights = buildStationInsights();
-  const consumption = Math.max(0.1, Number(state.fuelConsumption) || defaults.fuelConsumption);
+  // Use the car's measured full-tank-to-full-tank consumption for the range
+  // readout when it is trusted, so the tank range agrees with the Fuel
+  // intelligence panel. The trip-save overfill guard stays on the car setting.
+  const intel = buildFuelIntelligence(calculateLedger());
+  const measuredConsumption = intel.canUseHistoricalForPlanning
+    && intel.consumptionMeasuredFullTank
+    && intel.stats.litersPer100Km > 0
+    ? intel.stats.litersPer100Km
+    : 0;
+  const consumption = Math.max(0.1, measuredConsumption || Number(state.fuelConsumption) || defaults.fuelConsumption);
+  const consumptionBasis = measuredConsumption
+    ? `your measured ${formatNumber(consumption)} L/100 km`
+    : `the car setting of ${formatNumber(consumption)} L/100 km`;
   const tankCapacity = getFuelTankCapacity();
   const warningUsedPercent = getFuelWarningUsedPercent();
   const tankLowRangeThresholdPercent = getTankLowRangeThresholdPercent();
@@ -12040,7 +12067,7 @@ function buildRefuelPlanning(distanceKm = 0) {
   const plannedLiters = distanceKm > 0 ? distanceKm * consumption / 100 : 100 * consumption / 100;
   const latestFuelOdometer = Number(insights.latestFullTank?.odometer || insights.latestOdometerFuel?.odometer || 0);
   const currentOdometer = Number(getLatestRangeOdometer(latestFuelOdometer) || latestFuelOdometer || 0);
-  const currentTankState = estimateTankStateAtOdometer(currentOdometer);
+  const currentTankState = estimateTankStateAtOdometer(currentOdometer, { consumption });
   const kmSinceFuel = currentTankState.enforced ? currentTankState.kmSinceFuel : 0;
   const litersSinceFuel = currentTankState.enforced ? Math.max(0, currentTankState.litersUsedSinceFull - currentTankState.litersAddedSinceFull) : 0;
   const projectedLiters = litersSinceFuel + plannedLiters;
@@ -12072,7 +12099,7 @@ function buildRefuelPlanning(distanceKm = 0) {
         recommendation += ` This plan is still only an estimate; before saving it as a booking, the car is currently estimated at about ${currentRangeText} remaining.`;
       }
     } else {
-      recommendation = `Current range since the last logged fuel odometer: about ${currentRangeText} remaining. Full-tank range is about ${formatNumber(fullTankRange)} km.`;
+      recommendation = `Current range since the last logged fuel odometer: about ${currentRangeText} remaining, based on ${consumptionBasis}. Full-tank range is about ${formatNumber(fullTankRange)} km.`;
       if (estimatedLitersRemaining <= warningLitersRemaining) tone = "warning";
     }
   } else if (distanceKm > 0) {
@@ -12666,8 +12693,8 @@ function buildSmartPredictions(ledger) {
   const actualRefuel = buildRefuelPlanning(0);
   const upcomingBookingDistance = getUpcomingEstimatedBookingDistance();
   const upcomingBookingRefuel = upcomingBookingDistance > 0 ? buildRefuelPlanning(upcomingBookingDistance) : null;
-  const monthlySignal = intel.consumptionLooksRealistic ? getLatestMonthlySignal() : null;
-  const historicalQuality = intel.consumptionLooksRealistic && intel.confidence !== "Low" ? "Good" : intel.confidence === "Low" ? "Limited" : "Needs cleanup";
+  const monthlySignal = intel.consumptionConfirmedRealistic ? getLatestMonthlySignal() : null;
+  const historicalQuality = intel.consumptionConfirmedRealistic && intel.confidence !== "Low" ? "Good" : intel.confidence === "Low" ? "Limited" : "Needs cleanup";
   const planningConfidence = intel.canUseHistoricalForPlanning ? intel.confidence : latestFuelPrice?.price || intel.effectivePrice ? "Medium" : "Low";
   const planningNote = distance > 0 ? "Using your booking estimate distance." : "Using a 100 km reference because no planned booking distance is entered.";
   return { intel, health, planDistance, participants, planEstimate, actualRefuel, upcomingBookingDistance, upcomingBookingRefuel, monthlySignal, historicalQuality, planningConfidence, planningNote };
@@ -12752,7 +12779,7 @@ function renderSmartPredictions(ledger) {
       <article>
         <span>Historical data quality</span>
         <strong><span class="status-pill status-${historicalTone}">${prediction.historicalQuality}</span></strong>
-        <small>${prediction.intel.consumptionLooksRealistic ? "Historical consumption looks plausible." : "Historical consumption looks unusual and is ignored for planning."}</small>
+        <small>${prediction.intel.consumptionConfirmedRealistic ? "Historical consumption looks plausible." : prediction.intel.hasHistoricalConsumption ? "Historical consumption looks unusual and is ignored for planning." : "Not enough liters logged yet to judge consumption."}</small>
       </article>
       <article>
         <span>Outliers to review</span>

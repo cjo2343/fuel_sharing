@@ -193,6 +193,61 @@ function centsToMoney(cents) {
   return Math.round(cents) / 100;
 }
 
+function getFuelLogOdometer(fuel) {
+  const value = Number(fuel?.odometer ?? fuel?.odometer_km ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isFullTankFuelEntry(fuel) {
+  return Boolean(fuel?.fullTank || fuel?.full_tank);
+}
+
+// Proper consumption is measured full-tank to full-tank: between two consecutive
+// brim fills, every liter added (the partial fills in between plus the closing
+// brim fill) was burned over the odometer delta, because the tank started and
+// ended full. total-liters ÷ total-km mixes the first fill and unknown tank
+// levels, so it is only a rough fallback. Returns 0 when there is no usable pair.
+function computeFullTankConsumption(fuelLogs = []) {
+  const rows = (Array.isArray(fuelLogs) ? fuelLogs : [])
+    .map((fuel) => ({
+      odometer: getFuelLogOdometer(fuel),
+      liters: safeNumber(fuel?.liters),
+      full: isFullTankFuelEntry(fuel)
+    }))
+    .filter((row) => row.odometer > 0)
+    .sort((a, b) => a.odometer - b.odometer);
+  const fullStops = rows.filter((row) => row.full);
+  if (fullStops.length < 2) {
+    return { litersPer100Km: 0, segmentKm: 0, segments: 0 };
+  }
+
+  let segmentLiters = 0;
+  let segmentKm = 0;
+  let segments = 0;
+  for (let i = 1; i < fullStops.length; i += 1) {
+    const previous = fullStops[i - 1];
+    const current = fullStops[i];
+    const deltaKm = current.odometer - previous.odometer;
+    if (deltaKm <= 0) continue; // duplicate or out-of-order odometer reading
+    const litersOverSegment = rows
+      .filter((row) => row.odometer > previous.odometer && row.odometer <= current.odometer)
+      .reduce((sum, row) => sum + row.liters, 0);
+    if (litersOverSegment <= 0) continue;
+    segmentKm += deltaKm;
+    segmentLiters += litersOverSegment;
+    segments += 1;
+  }
+
+  if (segmentKm <= 0 || segmentLiters <= 0) {
+    return { litersPer100Km: 0, segmentKm: 0, segments: 0 };
+  }
+  return {
+    litersPer100Km: round(segmentLiters / segmentKm * 100),
+    segmentKm: round(segmentKm),
+    segments
+  };
+}
+
 function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = {}) {
   const periods = [
     { trips: currentTrips, fuel: currentFuel },
@@ -240,14 +295,25 @@ function calculateHistoricalFuelStats({ currentTrips = [], currentFuel = [] } = 
     }
   }
 
+  const roughLitersPer100Km = totalLiters > 0 && totalTripKm > 0 ? round(totalLiters / totalTripKm * 100) : 0;
+  const allFuel = periods.reduce((rows, period) => rows.concat(Array.isArray(period.fuel) ? period.fuel : []), []);
+  const fullTank = computeFullTankConsumption(allFuel);
+  const usedFullTankMeasurement = fullTank.litersPer100Km > 0;
+  const litersPer100Km = usedFullTankMeasurement ? fullTank.litersPer100Km : roughLitersPer100Km;
+  const consumptionMethod = usedFullTankMeasurement ? "full-to-full" : (roughLitersPer100Km > 0 ? "rough" : "none");
+
   return {
     totalTripKm: round(totalTripKm),
     totalPaid: roundMoney(totalPaid),
     totalLiters: round(totalLiters),
     costPerKm: totalTripKm > 0 ? roundMoney(totalPaid / totalTripKm) : 0,
     pricePerLiter: totalLiters > 0 ? roundMoney(totalAmountWithLiters / totalLiters) : 0,
-    litersPer100Km: totalLiters > 0 && totalTripKm > 0 ? round(totalLiters / totalTripKm * 100) : 0,
-    kmPerLiter: totalLiters > 0 && totalTripKm > 0 ? round(totalTripKm / totalLiters) : 0,
+    litersPer100Km,
+    litersPer100KmRough: roughLitersPer100Km,
+    kmPerLiter: litersPer100Km > 0 ? round(100 / litersPer100Km) : 0,
+    consumptionMethod,
+    fullTankSegmentKm: fullTank.segmentKm,
+    fullTankSegments: fullTank.segments,
     fuelLogsWithLiters,
     periodsWithTripKm,
     periodsWithLiters
