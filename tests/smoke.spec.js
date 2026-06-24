@@ -1296,12 +1296,26 @@ test("fuel log is blocked when it would overfill estimated tank level", async ({
 });
 
 async function expectNoStaleActionLatch(page, label) {
+  const initial = await page.evaluate(() => window.FuelLedgerApp?.getNoRefreshActionDebugState?.() || null);
+  expect(initial, `${label}: getNoRefreshActionDebugState() should be exposed`).toBeTruthy();
+
+  // Poll until transient ops drain — a just-fired server-save can still be counted as a
+  // foreground op for a few ms after the preceding action completes.
+  await expect.poll(
+    () => page.evaluate(() => window.FuelLedgerApp?.getNoRefreshActionDebugState?.()?.foregroundOperationCount ?? -1),
+    { message: `${label}: foreground operations should be idle` }
+  ).toBe(0);
+  await expect.poll(
+    () => page.evaluate(() => window.FuelLedgerApp?.getNoRefreshActionDebugState?.()?.activeDataIoOperationCount ?? -1),
+    { message: `${label}: Data I/O operations should not remain active` }
+  ).toBe(0);
+  await expect.poll(
+    () => page.evaluate(() => Boolean(window.FuelLedgerApp?.getNoRefreshActionDebugState?.()?.visibleSavingActive)),
+    { message: `${label}: visible Saving latch should be clear` }
+  ).toBe(false);
+
   const debug = await page.evaluate(() => window.FuelLedgerApp?.getNoRefreshActionDebugState?.() || null);
-  expect(debug, `${label}: getNoRefreshActionDebugState() should be exposed`).toBeTruthy();
-  expect(debug.foregroundOperationCount, `${label}: foreground operations should be idle; debug=${JSON.stringify(debug)}`).toBe(0);
-  expect(debug.activeDataIoOperationCount, `${label}: Data I/O operations should not remain active; debug=${JSON.stringify(debug)}`).toBe(0);
   expect(debug.supabaseLoadInFlight, `${label}: state load should not remain in flight; debug=${JSON.stringify(debug)}`).toBeFalsy();
-  expect(debug.visibleSavingActive, `${label}: visible Saving latch should be clear; debug=${JSON.stringify(debug)}`).toBeFalsy();
   expect(debug.workspaceMismatch, `${label}: selected and loaded workspace should match; debug=${JSON.stringify(debug)}`).toBeFalsy();
 }
 

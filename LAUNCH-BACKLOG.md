@@ -58,8 +58,10 @@ logged-out visitor's URL drops `?workspace=<slug>`; membership restores it after
 Decisions taken with the user: strip slug when signed out · keep the blurred shell · tighten
 copy.
 
-**Pending:** #12 flaky e2e (Sonnet, test-only — still reproduces: `server-save`
-ageMs≈10 counted as foreground op in `no-refresh action chain`).
+**Done (this branch, awaiting PR):** #12 flaky e2e (Sonnet, test-only) — `expectNoStaleActionLatch`
+now uses `expect.poll()` for `foregroundOperationCount`, `activeDataIoOperationCount`, and
+`visibleSavingActive` so a just-fired `server-save` can drain before the assertion fires;
+`supabaseLoadInFlight` and `workspaceMismatch` remain single-shot (they don't race).
 
 **To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
 item/cluster off the latest `origin/main`; merge each PR before starting the next.
@@ -78,7 +80,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | 9 | Release notes: show only the last 3 updates | **Sonnet** | Plan ready — see notes | inline below |
 | 10 | Workspaces & invites overhaul (active/used split, go horizontal, trim copy) | **Sonnet** (mockup optional) | Plan ready | [WORKSPACE-INVITES-OVERHAUL-PLAN.md](WORKSPACE-INVITES-OVERHAUL-PLAN.md) |
 | 11 | Owner Diagnostics Lab → observability view (group, freshness stamps, one refresh, trim) | **Sonnet** | Plan ready | [OWNER-DIAGNOSTICS-OBSERVABILITY-PLAN.md](OWNER-DIAGNOSTICS-OBSERVABILITY-PLAN.md) |
-| 12 | Harden flaky e2e "no-refresh action chain" (idle assertion races a just-started save) | **Sonnet** (test-only) | Plan ready — see notes | inline below |
+| 12 | Harden flaky e2e "no-refresh action chain" (idle assertion races a just-started save) | **Sonnet** (test-only) | Done (awaiting PR) | inline below |
 | 13 | Clean up Diagnostics Lab *tools* drawer (group by risk, trim copy, compact report tile) | **Sonnet** | Plan ready | [OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md](OWNER-DIAGNOSTICS-LAB-TOOLS-CLEANUP-PLAN.md) |
 | 14 | Fix cramped "App-owner global diagnostics" (full-width span + stop mid-word wrap) | **Sonnet** | Plan ready | [OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md](OWNER-GLOBAL-DIAGNOSTICS-WIDTH-PLAN.md) |
 | 15 | Workspace health → observability (fix mis-severity "cries wolf"; summary-first, collapse passing, group) | **Sonnet** | Done (v434, awaiting PR) | [WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md](WORKSPACE-HEALTH-OBSERVABILITY-PLAN.md) |
