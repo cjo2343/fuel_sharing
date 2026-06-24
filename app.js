@@ -346,6 +346,12 @@ function applyWorkspacePreferenceForCurrentUser(reason = "workspace-preference")
 
 function writeActiveWorkspaceToCurrentUrl(ledgerId) {
   if (!window.history || !window.history.replaceState) return;
+  // Never expose a workspace slug in the URL while signed out — keep the
+  // logged-out URL clean so it does not reveal which workspaces exist.
+  if (isConfirmedSignedOut()) {
+    removeWorkspaceScopeFromCurrentUrl();
+    return;
+  }
   const normalized = normalizeWorkspaceUrlId(ledgerId || getConfiguredLedgerId());
   if (!normalized) return;
   try {
@@ -364,6 +370,24 @@ function writeActiveWorkspaceToCurrentUrl(ledgerId) {
 function removeWorkspaceScopeFromUrlObject(url) {
   workspaceUrlParamNames.forEach((name) => url.searchParams.delete(name));
   return url;
+}
+
+// True once we know the visitor is signed out (initial session resolved, no
+// session). Used to keep the logged-out URL clean of any workspace slug.
+function isConfirmedSignedOut() {
+  return Boolean(supabaseClient && initialSupabaseSessionResolved && !currentSession);
+}
+
+function removeWorkspaceScopeFromCurrentUrl() {
+  if (!window.history || !window.history.replaceState) return;
+  try {
+    const url = new URL(window.location.href);
+    if (!workspaceUrlParamNames.some((name) => url.searchParams.has(name))) return;
+    removeWorkspaceScopeFromUrlObject(url);
+    window.history.replaceState(window.history.state, document.title, url.toString());
+  } catch (error) {
+    console.warn("Could not clear workspace from URL", error);
+  }
 }
 
 function getActiveLedgerId() {
@@ -1327,6 +1351,10 @@ let closingPeriodInProgress = false;
 let suppressNormalizedBookingWrites = false;
 let currentUser = localStorage.getItem(userKey) || "";
 let currentSession = null;
+// True once the initial supabase getSession() has resolved. Before that, a null
+// currentSession means "still checking", not "signed out" — used to avoid
+// stripping a workspace deep-link from the URL before we know the auth state.
+let initialSupabaseSessionResolved = false;
 let authBoundMemberProfile = null;
 let authBoundMemberProfileLedgerId = "";
 let authBoundMemberProfileLoaded = false;
@@ -3430,7 +3458,7 @@ if (els.bookingForm) {
   els.bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!canUseAppAsMember()) {
-      showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
+      showUserError("Your email is not a member of this workspace yet. Ask a workspace admin for an invite, then redeem it to join.");
       return;
     }
 
@@ -3523,7 +3551,7 @@ document.addEventListener("click", (event) => {
 els.tripForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canUseAppAsMember()) {
-    showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
+    showUserError("Your email is not a member of this workspace yet. Ask a workspace admin for an invite, then redeem it to join.");
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
@@ -3652,7 +3680,7 @@ els.fuelForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   clearFuelCorrectionPanel();
   if (!canUseAppAsMember()) {
-    showUserError("Your email is not assigned to a member yet. Ask an admin to add it.");
+    showUserError("Your email is not a member of this workspace yet. Ask a workspace admin for an invite, then redeem it to join.");
     return;
   }
   if (!assertCurrentPeriodAllowsNewEntries()) return;
@@ -9641,6 +9669,7 @@ async function initializeSupabase() {
   setSyncStatus("Login");
   const { data } = await supabaseClient.auth.getSession();
   currentSession = data.session;
+  initialSupabaseSessionResolved = true;
   if (currentSession) applyWorkspacePreferenceForCurrentUser("initial-session");
   if (currentSession?.user?.email) {
     localStorage.setItem(rememberedLoginEmailKey, currentSession.user.email);
@@ -10106,15 +10135,16 @@ function updateAuthUi() {
   els.authMessage.textContent = currentSession
     ? profile
       ? `Signed in as ${email}. If you log out or the session expires, sign in again with this email and a fresh email login code. You do not need the invite link again.`
-      : `Signed in as ${email}, but this email is not assigned to a member yet. Ask an admin to add it.`
+      : `Signed in as ${email}, but this email is not a member of this workspace yet. Ask a workspace admin for an invite link or code, then redeem it to join.`
     : pendingEmail
       ? `Enter the login code sent to ${pendingEmail}.`
       : loginRequestedFromUrl
         ? "Enter your email and the login code from the email."
         : rememberedEmail
           ? "Welcome back. Enter your email to sign in on this device if your saved session has expired."
-          : "Enter your email to sign in. If this is your first time, open or paste a workspace invite. Returning users only need email + email login code.";
+          : "Enter your email to sign in. New here? Add your workspace invite code below. Returning members only need their email plus the login code we email them.";
   if (!currentSession) {
+    if (isConfirmedSignedOut()) removeWorkspaceScopeFromCurrentUrl();
     finishStartupHydration("signed-out");
     setSyncStatus("Login");
   } else if (!["saving", "syncing", "local", "delayed"].includes(els.syncStatus.dataset.status || "")) {
@@ -15263,7 +15293,7 @@ function describeTripPermissionMessage(trip, action = "edit") {
   const actor = describeCurrentActor();
   if (canManageSettings()) return "";
   if (!getCurrentMemberProfile() && supabaseClient) {
-    return `You are signed in as ${actor}, but this email is not linked to a ledger member. Ask an admin to add your email before changing trip logs.`;
+    return `You are signed in as ${actor}, but this email is not a workspace member. Ask a workspace admin for an invite, then redeem it to join before changing trip logs.`;
   }
   return `Only ${owner}, the trip creator, or an admin can ${action} this trip. You are signed in as ${actor}.`;
 }
@@ -15273,7 +15303,7 @@ function describeFuelPermissionMessage(fuel, action = "edit") {
   const actor = describeCurrentActor();
   if (canManageSettings()) return "";
   if (!getCurrentMemberProfile() && supabaseClient) {
-    return `You are signed in as ${actor}, but this email is not linked to a ledger member. Ask an admin to add your email before changing fuel logs.`;
+    return `You are signed in as ${actor}, but this email is not a workspace member. Ask a workspace admin for an invite, then redeem it to join before changing fuel logs.`;
   }
   return `Only ${owner}, the fuel payer/creator, or an admin can ${action} this fuel log. You are signed in as ${actor}.`;
 }

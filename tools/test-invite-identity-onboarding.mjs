@@ -7,8 +7,8 @@ const schema = fs.readFileSync('supabase-schema.sql', 'utf8');
 const pkg = fs.readFileSync('package.json', 'utf8');
 const buildInfo = fs.readFileSync('build-info.js', 'utf8');
 
-assert.match(html, /Invite link\/code = permission to join a workspace/, 'login UI should explain invite code vs email login code');
-assert.match(html, /Email login code = proof you own the email/, 'login UI should explain email auth code');
+assert.match(html, /that's your permission to join a workspace/, 'login UI should explain invite code vs email login code');
+assert.match(html, /login code we email you next is separate: it proves you own this address/, 'login UI should explain email auth code');
 assert.match(html, /memberProfileSetupPanel/, 'new members should have a profile setup panel');
 assert.match(html, /Your member profile/, 'profile setup heading should be present');
 assert.match(html, /Email restriction.*exact-login email/s, 'invite admin UI should explain exact-email restrictions');
@@ -19,7 +19,7 @@ assert.match(app, /rpc\("update_own_ledger_member_profile"/, 'profile setup shou
 assert.match(app, /PROFILE_SAVE_STARTED/, 'profile save should produce Data I/O start code');
 assert.match(app, /PROFILE_SAVED/, 'profile save should produce Data I/O success code');
 assert.match(app, /PROFILE_SAVE_ERROR/, 'profile save should produce Data I/O error code');
-assert.match(app, /Returning users only need email \+ email login code/, 'returning login requirements should be explicit');
+assert.match(app, /Returning members only need their email plus the login code we email them/, 'returning login requirements should be explicit');
 assert.match(app, /If the invite was restricted to one email, it will only redeem for this exact email/, 'wrong-email invite behavior should be explicit');
 
 assert.match(schema, /create or replace function public\.update_own_ledger_member_profile\(/, 'schema should include self-service profile RPC');
