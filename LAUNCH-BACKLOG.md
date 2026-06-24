@@ -47,9 +47,19 @@ full-tank-measured consumption feeds the tank-range display
 (`buildRefuelPlanning`/`estimateTankStateAtOdometer({consumption})`); overfill
 save-guard stays on the car setting.
 
+**Done (this branch, awaiting PR):** #2 sign-in flow review (v438) — (1) corrected six
+stale "ask an admin to add your email" messages (form guards + auth panel + trip/fuel
+edit-permission text) to invite-only wording; (2) tightened login-card copy to
+distinguish the workspace invite code (permission to join) from the emailed login code
+(proof of address ownership), keeping the restricted-invite preflight note; (3) signed-out
+URL hygiene — `isConfirmedSignedOut()` (gated on `initialSupabaseSessionResolved`) drives
+`removeWorkspaceScopeFromCurrentUrl` / a guard in `writeActiveWorkspaceToCurrentUrl` so a
+logged-out visitor's URL drops `?workspace=<slug>`; membership restores it after sign-in.
+Decisions taken with the user: strip slug when signed out · keep the blurred shell · tighten
+copy.
+
 **Pending:** #12 flaky e2e (Sonnet, test-only — still reproduces: `server-save`
-ageMs≈10 counted as foreground op in `no-refresh action chain`) · #2 sign-in flow
-review (Opus, deferred).
+ageMs≈10 counted as foreground op in `no-refresh action chain`).
 
 **To resume:** read this file + the relevant `*-PLAN.md`; dispatch one worker per
 item/cluster off the latest `origin/main`; merge each PR before starting the next.
@@ -57,7 +67,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 | # | Task | Category | Status | Plan |
 |---|------|----------|--------|------|
 | 1 | Reliable service-worker update handoff (Safari stranded on old version) | **Sonnet** | Plan ready, awaiting implementation | [SW-UPDATE-RELIABILITY-PLAN.md](SW-UPDATE-RELIABILITY-PLAN.md) |
-| 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Deferred — see notes | (to be written when we tackle it) |
+| 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Done (v438, awaiting PR) | inline notes below |
 | 3 | Cold-Render-after-idle banners too alarming / can go stale (startup-gate **and** sync-delay "Cloud delayed" paths) | **Opus** | Plan ready + repro confirmed — see notes | inline below |
 | 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C,F → Opus | Done (v437, awaiting PR) | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
 | 5 | Members join via invites, not direct add-by-email | **Mixed**: UI → Sonnet · server lockdown → Opus | Done (v436, awaiting PR) | [MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md](MEMBER-MANAGEMENT-INVITE-ONLY-PLAN.md) |
@@ -112,6 +122,21 @@ product bug (the surrounding commits pass; it passed on re-run).
 - Category: **Sonnet**.
 
 ## Notes
+
+### #2 — RESOLVED (v438)
+Walked the flow. Shipped: (1) **stale invite-only copy** — six messages told users to
+"ask an admin to add your email," which contradicts #5 (admins can no longer add members);
+all now point to requesting + redeeming an invite. (2) **login-card copy tightened** —
+crisper new-vs-returning framing and an explicit invite-code (permission to join) vs
+emailed login-code (proof of address) distinction; restricted-invite preflight note kept.
+(3) **signed-out URL hygiene** — the logged-out URL no longer carries `?workspace=<slug>`
+(`isConfirmedSignedOut()` gates the strip on `initialSupabaseSessionResolved` so it never
+fires before the initial `getSession()` resolves, preserving member deep-links); after
+sign-in the workspace is restored from membership. **Decisions (with user):** strip slug
+when signed out (accepted tradeoff: a member following a workspace deep-link lands on their
+default/remembered workspace, not the deep-linked one) · keep the blurred app-shell gate ·
+tighten copy. The data-exposure characterization below was re-confirmed: still not a data
+leak; this was UX/clarity + low-severity slug hygiene.
 
 ### #2 — Sign-in / sign-up flow (deferred, broader review)
 Observed: when logged out, the URL can already be on a workspace

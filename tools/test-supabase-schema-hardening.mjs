@@ -569,7 +569,10 @@ function testInviteOnboardingFoundationExists() {
   assert.match(index, /id="redeemInviteForm"/);
   assert.match(index, /id="redeemInviteCode"/);
   assert.match(index, /id="loginInviteCode"/);
-  assert.match(index, /Invite link\/code = permission to join a workspace/);
+  // Login card still distinguishes the invite code (permission to join) from the
+  // emailed login code (proof of address ownership), in the tightened copy.
+  assert.match(index, /that's your permission to join a workspace/);
+  assert.match(index, /login code we email you next is separate/);
   assert.match(app, /pendingWorkspaceInviteCodeKey/);
   assert.match(app, /redeemPendingLoginInviteAfterSignIn/);
   assert.match(app, /rememberLoginInviteCode/);
