@@ -68,7 +68,7 @@ item/cluster off the latest `origin/main`; merge each PR before starting the nex
 
 | # | Task | Category | Status | Plan |
 |---|------|----------|--------|------|
-| 1 | Reliable service-worker update handoff (Safari stranded on old version) | **Sonnet** | Plan ready, awaiting implementation | [SW-UPDATE-RELIABILITY-PLAN.md](SW-UPDATE-RELIABILITY-PLAN.md) |
+| 1 | Reliable service-worker update handoff (Safari stranded on old version) | **Sonnet** | Done & merged (PR #19) | [SW-UPDATE-RELIABILITY-PLAN.md](SW-UPDATE-RELIABILITY-PLAN.md) |
 | 2 | Sign-in / sign-up flow review (incl. logged-out URL already on a workspace) | **Opus** | Done (v438, awaiting PR) | inline notes below |
 | 3 | Cold-Render-after-idle banners too alarming / can go stale (startup-gate **and** sync-delay "Cloud delayed" paths) | **Opus** | Plan ready + repro confirmed — see notes | inline below |
 | 4 | Smart-predictions rules audit (odometer/tank/consumption/price) | **Mixed**: A,B → Sonnet · C,F → Opus | Done (v437, awaiting PR) | [PREDICTIONS-RULES-AUDIT.md](PREDICTIONS-RULES-AUDIT.md) |
