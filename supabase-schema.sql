@@ -7008,3 +7008,61 @@ on conflict (migration_id) do update set description = excluded.description, app
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('042_member_invite_only_creation_lockdown', 'upsert_ledger_member_admin updates existing members only; new members must redeem a workspace invite.')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+-- Migration 043: car maintenance, repair history & insurance (GVM-11).
+alter table public.ledgers
+  add column if not exists next_service_date date,
+  add column if not exists next_service_km integer,
+  add column if not exists insurance_provider text,
+  add column if not exists insurance_policy_no text,
+  add column if not exists insurance_renewal date;
+create table if not exists public.vehicle_repairs (
+  id uuid primary key default gen_random_uuid(),
+  ledger_id text not null references public.ledgers(id) on delete cascade,
+  repair_date date not null,
+  description text not null,
+  cost_dkk numeric(12, 2) not null default 0,
+  odo_km integer,
+  created_by_member_id uuid references public.ledger_members(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists vehicle_repairs_ledger_date_idx on public.vehicle_repairs (ledger_id, repair_date desc) where deleted_at is null;
+alter table public.vehicle_repairs enable row level security;
+create policy "Ledger members can read repairs" on public.vehicle_repairs for select to authenticated using (public.is_ledger_member(ledger_id));
+create policy "Creators and admins can insert repairs" on public.vehicle_repairs for insert to authenticated with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id)));
+create policy "Creators and admins can update repairs" on public.vehicle_repairs for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or created_by_member_id = public.current_ledger_member_id(ledger_id)));
+create policy "Admins can delete repairs" on public.vehicle_repairs for delete to authenticated using (public.is_ledger_admin(ledger_id));
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('043_car_maintenance_repairs_insurance', 'Add maintenance + insurance fields to ledgers and a vehicle_repairs table (GVM-11).')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+-- Migration 044: in-app messages / chat (GVM-12).
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  ledger_id text not null references public.ledgers(id) on delete cascade,
+  sender_member_id uuid not null references public.ledger_members(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists messages_ledger_created_idx on public.messages (ledger_id, created_at desc) where deleted_at is null;
+alter table public.messages enable row level security;
+create policy "Ledger members can read messages" on public.messages for select to authenticated using (public.is_ledger_member(ledger_id));
+create policy "Members can send messages" on public.messages for insert to authenticated with check (public.is_ledger_member(ledger_id) and sender_member_id = public.current_ledger_member_id(ledger_id));
+create policy "Senders and admins can update messages" on public.messages for update to authenticated using (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or sender_member_id = public.current_ledger_member_id(ledger_id))) with check (public.is_ledger_member(ledger_id) and (public.is_ledger_admin(ledger_id) or sender_member_id = public.current_ledger_member_id(ledger_id)));
+create table if not exists public.message_read_state (
+  ledger_id text not null references public.ledgers(id) on delete cascade,
+  member_id uuid not null references public.ledger_members(id) on delete cascade,
+  last_read_at timestamptz not null default now(),
+  primary key (ledger_id, member_id)
+);
+alter table public.message_read_state enable row level security;
+create policy "Members read own read-state" on public.message_read_state for select to authenticated using (public.is_ledger_member(ledger_id) and member_id = public.current_ledger_member_id(ledger_id));
+create policy "Members upsert own read-state" on public.message_read_state for insert to authenticated with check (public.is_ledger_member(ledger_id) and member_id = public.current_ledger_member_id(ledger_id));
+create policy "Members update own read-state" on public.message_read_state for update to authenticated using (public.is_ledger_member(ledger_id) and member_id = public.current_ledger_member_id(ledger_id)) with check (public.is_ledger_member(ledger_id) and member_id = public.current_ledger_member_id(ledger_id));
+do $$ begin if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages') then execute 'alter publication supabase_realtime add table public.messages'; end if; end if; end $$;
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('044_messages_chat', 'Add messages + message_read_state tables with member-scoped RLS and realtime (GVM-12).')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();

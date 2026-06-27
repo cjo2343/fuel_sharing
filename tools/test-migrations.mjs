@@ -52,6 +52,8 @@ const expected = [
   "040_workspace_identity_hardening.sql",
   "041_owner_activity_log.sql",
   "042_member_invite_only_creation_lockdown.sql",
+  "043_car_maintenance_repairs_insurance.sql",
+  "044_messages_chat.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
