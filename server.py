@@ -1612,6 +1612,7 @@ CRITICAL_RENDER_ROUTES = [
     ("/api/members/manage", "Member management"),
     ("/api/owner/activity", "App-owner activity"),
     ("/api/owner/global-diagnostics", "App-owner global diagnostics"),
+    ("/api/mobile/activity", "Mobile activity log"),
     ("/api/vehicle/lookup", "Vehicle lookup proxy"),
 ]
 
@@ -3506,6 +3507,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/owner/global-diagnostics":
             self.owner_global_diagnostics_backend()
             return
+        if self.path == "/api/mobile/activity":
+            self.mobile_activity_backend()
+            return
         if self.path == "/api/admin/retention/preview":
             self.preview_retention_cleanup_backend()
             return
@@ -4262,6 +4266,73 @@ class Handler(SimpleHTTPRequestHandler):
         route_timing = action_route_response("/api/bookings/delete", "BOOKING_DELETED", started_at)
         self.send_json({"ok": True, "result": result, "backend": "render", "userEmail": user.get("email"), "routeTiming": route_timing})
         best_effort_owner_activity_as_service(rpc_payload.get("target_ledger_id"), user, action="booking-delete", route="/api/bookings/delete", ok=True, result_code="BOOKING_DELETED", status_code=200, duration_ms=route_timing.get("durationMs"), summary="Booking Delete completed through Render.", metadata={"legacyId": rpc_payload.get("legacy_id") or rpc_payload.get("legacy_trip_id") or rpc_payload.get("legacy_booking_id") or "", "resultType": type(result).__name__, "routeTiming": route_timing}, context=context)
+
+    def mobile_activity_backend(self):
+        # The native app writes to Supabase directly with the anon key + user JWT,
+        # but owner_activity_log is service-role only by design (migration 041:
+        # RLS on, all access revoked from anon/authenticated). This route lets the
+        # app record safe, redacted owner-activity rows for meaningful actions,
+        # after verifying the caller is an active member of the target ledger.
+        user = current_supabase_user(self)
+        if not user or not user.get("email"):
+            self.send_json({"ok": False, "code": "AUTH_REQUIRED", "message": "Sign in before recording activity."}, status=401)
+            return
+        started_at = time.time()
+        try:
+            payload = read_request_body(self)
+            if not isinstance(payload, dict):
+                raise ValueError("Activity payload must be an object")
+            ledger_id = str(payload.get("ledgerId") or payload.get("ledger_id") or "").strip()
+            if not ledger_id:
+                raise ValueError("Missing ledgerId")
+            action = clamp_text(payload.get("action"), 120).strip()
+            if not action:
+                raise ValueError("Missing action")
+            if not check_backend_rate_limit(self, "write", user=user, ledger_id=ledger_id):
+                return
+            # Confirms the signed-in user is an active member of this ledger (raises
+            # PermissionError otherwise) and yields their member id/role for the row.
+            context = get_state_load_context_as_service(ledger_id, user)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_error(400, str(error))
+            return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except Exception as error:
+            self.send_safe_internal_error(error)
+            return
+
+        ok = payload.get("ok")
+        ok = True if ok is None else bool(ok)
+        route = clamp_text(payload.get("route") or payload.get("screen") or "mobile", 120)
+        result_code = clamp_text(payload.get("resultCode") or payload.get("result_code") or ("OK" if ok else "ERROR"), 80)
+        status_code = safe_int(payload.get("statusCode"), safe_int(payload.get("status_code"), 200 if ok else 500), minimum=0, maximum=599)
+        summary = clamp_text(payload.get("summary"), 500)
+        duration_ms = payload.get("durationMs")
+        if duration_ms is None:
+            duration_ms = payload.get("duration_ms")
+        metadata = payload.get("metadata")
+        metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        # Stamp the channel so the owner console can tell mobile rows apart. The
+        # metadata is redacted by safe_owner_activity_metadata before it is stored.
+        metadata["source"] = "mobile"
+
+        result = best_effort_owner_activity_as_service(
+            ledger_id,
+            user,
+            action=action,
+            route=route,
+            ok=ok,
+            result_code=result_code,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            summary=summary,
+            metadata=metadata,
+            context=context,
+        )
+        route_timing = action_route_response("/api/mobile/activity", result_code, started_at)
+        self.send_json({"ok": True, "recorded": bool(result), "routeTiming": route_timing})
 
     def save_push_subscription(self):
         user = current_supabase_user(self)
