@@ -55,6 +55,7 @@ const expected = [
   "043_car_maintenance_repairs_insurance.sql",
   "044_messages_chat.sql",
   "045_invite_short_codes_and_resolve.sql",
+  "046_settlement_safety_rails.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -206,6 +207,11 @@ for (const marker of [
   "ledger_onboarding_rate_limits_scope_key_window_idx",
   "042_member_invite_only_creation_lockdown",
   "New members join by redeeming a workspace invite; member management can only update existing members",
+  "046_settlement_safety_rails",
+  "create or replace function public.settlement_entry_is_locked(",
+  "create or replace function public.enforce_settlement_entry_lock()",
+  "create trigger enforce_settlement_entry_lock_trips",
+  "before insert or update or delete on public.trips",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);
