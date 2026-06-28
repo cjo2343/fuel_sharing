@@ -56,6 +56,7 @@ const expected = [
   "044_messages_chat.sql",
   "045_invite_short_codes_and_resolve.sql",
   "046_settlement_safety_rails.sql",
+  "047_fuel_price_warning_thresholds.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -212,6 +213,10 @@ for (const marker of [
   "create or replace function public.enforce_settlement_entry_lock()",
   "create trigger enforce_settlement_entry_lock_trips",
   "before insert or update or delete on public.trips",
+  "047_fuel_price_warning_thresholds",
+  "fuel_price_warn_low",
+  "fuel_price_warn_high",
+  "fuel_sanity_threshold_pct",
 ]) {
   assert.ok(migrationText.includes(marker), `migrations should include marker: ${marker}`);
   assert.ok(consolidatedSchema.includes(marker), `consolidated schema should include marker: ${marker}`);
