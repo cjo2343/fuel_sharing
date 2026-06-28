@@ -19,6 +19,9 @@ create table if not exists public.ledgers (
   estimated_consumption_l_per_100km numeric(8,3) not null default 5.3,
   fuel_tank_capacity_l numeric(8,2) not null default 55,
   fallback_fuel_price numeric(10,2) not null default 14.50,
+  fuel_price_warn_low numeric(10,2) not null default 8.00,
+  fuel_price_warn_high numeric(10,2) not null default 25.00,
+  fuel_sanity_threshold_pct numeric(6,2) not null default 70,
   low_fuel_threshold_percent numeric(6,2) not null default 70,
   high_fuel_threshold_percent numeric(6,2) not null default 140,
   vehicle_plate text not null default '',
@@ -35,6 +38,11 @@ alter table public.ledgers
 
 alter table public.ledgers
   add column if not exists bootstrap_locked_at timestamptz;
+
+alter table public.ledgers
+  add column if not exists fuel_price_warn_low numeric(10,2) not null default 8.00,
+  add column if not exists fuel_price_warn_high numeric(10,2) not null default 25.00,
+  add column if not exists fuel_sanity_threshold_pct numeric(6,2) not null default 70;
 
 alter table public.ledgers
   add column if not exists vehicle_plate text not null default '',
@@ -7377,4 +7385,8 @@ for each row execute function public.enforce_settlement_entry_lock();
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('046_settlement_safety_rails', 'Lock-after-payment safety rail: block edits/deletes of live trips, fuel logs, and participants while the open settlement period has a requested or paid payment (global, always-on; reopen the payment to edit).')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('047_fuel_price_warning_thresholds', 'Add fuel_price_warn_low/high (DKK/L bounds) and fuel_sanity_threshold_pct (real-world consumption tolerance) to ledgers, with global defaults 8.00 / 25.00 / 70.')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
