@@ -350,6 +350,24 @@ async function waitForPaymentRequestSaved(page, { timeout = 10000 } = {}) {
   await expect(page.locator("#auditLog")).toContainText(/Status: Not requested .* Requested/, { timeout });
 }
 
+async function waitForPaymentReopenSaved(page, { timeout = 10000 } = {}) {
+  // The reopen action round-trips through server.py (POST /api/payment-action)
+  // and the audit log only re-renders once the saved state comes back. Poll the
+  // persisted state for the reopen audit entry before asserting on #auditLog so
+  // the DOM assertions cannot race the re-render (mirrors the request path above).
+  await expect.poll(async () => {
+    const saved = await page.evaluate(() => (window.FuelLedgerApp.getState() || {}));
+    const auditEntries = Array.isArray(saved.auditLog) ? saved.auditLog : [];
+    return auditEntries.some((entry) => (
+      entry?.type === "payment_reopened"
+      || `${entry?.summary || ""} ${entry?.detail || ""}`.includes("Payment reopened")
+    ));
+  }, {
+    timeout,
+    message: "payment reopen audit entry should be persisted before audit-log assertions"
+  }).toBe(true);
+}
+
 async function requestAllOpenPayments(page) {
   // The settlement UI re-renders after each status change and payment actions
   // may now round-trip through server.py. Keep clicking the first currently
@@ -599,6 +617,7 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   await expect(page.locator("body")).toContainText(/reopen/i);
 
   await reopenButton.evaluate((button) => button.click());
+  await waitForPaymentReopenSaved(page);
   await expect(page.locator("#auditLog")).toContainText("Payment reopened");
   await expect(page.locator("#auditLog")).toContainText(/Status: Requested .* Not requested/);
   await expect(page.locator("#startKm")).toBeEnabled();
