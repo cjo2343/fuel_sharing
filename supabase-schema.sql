@@ -6978,10 +6978,13 @@ set description = excluded.description,
 
 
 -- Consolidated schema addition: 041_owner_activity_log
+-- ledger_id is nullable here, reflecting migration 048 (NULL = console-level /
+-- cross-workspace owner action). The 041 migration created it NOT NULL; the
+-- consolidated schema is a fresh-DB recreate, so it is created already-nullable.
 create table if not exists public.owner_activity_log (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
-  ledger_id text not null references public.ledgers(id) on delete cascade,
+  ledger_id text references public.ledgers(id) on delete cascade,
   workspace_label text not null default '',
   actor_user_id uuid,
   actor_email text,
@@ -6996,6 +6999,8 @@ create table if not exists public.owner_activity_log (
   summary text not null default '',
   metadata jsonb not null default '{}'::jsonb
 );
+comment on column public.owner_activity_log.ledger_id is
+  'Workspace this action concerned, or NULL for console-level / cross-workspace owner actions (e.g. listing all workspaces).';
 create index if not exists owner_activity_log_created_at_idx on public.owner_activity_log (created_at desc);
 create index if not exists owner_activity_log_ledger_created_at_idx on public.owner_activity_log (ledger_id, created_at desc);
 create index if not exists owner_activity_log_actor_email_created_at_idx on public.owner_activity_log (lower(actor_email), created_at desc) where actor_email is not null;
@@ -7007,6 +7012,13 @@ revoke all on public.owner_activity_log from anon;
 revoke all on public.owner_activity_log from authenticated;
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('041_owner_activity_log', 'Server-owned owner-only cross-workspace activity log for Render backend actions.')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+-- Consolidated schema addition: 048_owner_activity_log_nullable_ledger
+-- The nullable ledger_id is already baked into the create table above; this seed
+-- records the migration so schema tracking stays aligned with supabase/migrations/.
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('048_owner_activity_log_nullable_ledger', 'Make owner_activity_log.ledger_id nullable so cross-workspace owner-console reads (workspace/errors lists) can be audited (GV-148).')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
 
 -- Consolidated schema addition: 042_member_invite_only_creation_lockdown
