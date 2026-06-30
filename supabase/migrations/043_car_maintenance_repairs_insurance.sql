@@ -35,10 +35,12 @@ create index if not exists vehicle_repairs_ledger_date_idx
 
 alter table public.vehicle_repairs enable row level security;
 
+drop policy if exists "Ledger members can read repairs" on public.vehicle_repairs;
 create policy "Ledger members can read repairs" on public.vehicle_repairs
   for select to authenticated
   using (public.is_ledger_member(ledger_id));
 
+drop policy if exists "Creators and admins can insert repairs" on public.vehicle_repairs;
 create policy "Creators and admins can insert repairs" on public.vehicle_repairs
   for insert to authenticated
   with check (
@@ -47,6 +49,7 @@ create policy "Creators and admins can insert repairs" on public.vehicle_repairs
          or created_by_member_id = public.current_ledger_member_id(ledger_id))
   );
 
+drop policy if exists "Creators and admins can update repairs" on public.vehicle_repairs;
 create policy "Creators and admins can update repairs" on public.vehicle_repairs
   for update to authenticated
   using (
@@ -60,6 +63,7 @@ create policy "Creators and admins can update repairs" on public.vehicle_repairs
          or created_by_member_id = public.current_ledger_member_id(ledger_id))
   );
 
+drop policy if exists "Admins can delete repairs" on public.vehicle_repairs;
 create policy "Admins can delete repairs" on public.vehicle_repairs
   for delete to authenticated
   using (public.is_ledger_admin(ledger_id));
