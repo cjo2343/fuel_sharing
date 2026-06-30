@@ -1,6 +1,6 @@
-const CACHE_NAME = "fuel-ledger-v439";
-const BUILD_LABEL = "mobile-activity-endpoint";
-const BUILD_UPDATED_AT = "2026-06-28T12:00:00.000Z";
+const CACHE_NAME = "fuel-ledger-v440";
+const BUILD_LABEL = "render-decommission-cleanup";
+const BUILD_UPDATED_AT = "2026-06-30T12:00:00.000Z";
 const CORE_ASSETS = [
   "/",
   "/index.html",
