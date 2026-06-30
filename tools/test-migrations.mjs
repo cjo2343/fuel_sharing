@@ -59,6 +59,7 @@ const expected = [
   "047_fuel_price_warning_thresholds.sql",
   "048_owner_activity_log_nullable_ledger.sql",
   "049_owner_api_rate_limit.sql",
+  "050_settlement_mode.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
