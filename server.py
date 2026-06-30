@@ -205,7 +205,10 @@ OWNER_ACTIVITY_MAX_LIMIT = 250
 
 
 def configured_app_owner_emails():
-    raw = env_value("FUEL_LEDGER_APP_OWNER_EMAILS") or env_value("APP_OWNER_EMAILS") or "chrjohn94@gmail.com"
+    # No implicit default owner: an empty/missing allow-list yields an empty set,
+    # so a misconfigured deploy authorizes nobody rather than silently falling back
+    # to a hard-coded address (matches the Cloudflare owner gate, GV-149).
+    raw = env_value("FUEL_LEDGER_APP_OWNER_EMAILS") or env_value("APP_OWNER_EMAILS") or ""
     return {part.strip().lower() for part in re.split(r"[,;\s]+", raw) if part.strip()}
 
 
