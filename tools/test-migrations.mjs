@@ -233,4 +233,16 @@ assert.ok(
   "consolidated schema should not reference a non-existent schema migration notes column"
 );
 
-console.log("ok - migration files are present, ordered, and cover critical schema markers");
+// Every migration must be reflected in the consolidated supabase-schema.sql, at
+// minimum by its tracker id (GV-157). This catches migrations that were applied
+// + added to supabase/migrations/ but never mirrored into the consolidated
+// fresh-DB schema (e.g. 048's ledger_id nullability change slipped through).
+files.forEach((file) => {
+  const migrationId = file.replace(/\.sql$/, "");
+  assert.ok(
+    consolidatedSchema.includes(migrationId),
+    `${file} must be mirrored into supabase-schema.sql (id ${migrationId} not found)`,
+  );
+});
+
+console.log("ok - migration files are present, ordered, mirrored in the consolidated schema, and cover critical schema markers");
