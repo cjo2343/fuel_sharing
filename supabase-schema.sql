@@ -28,6 +28,7 @@ create table if not exists public.ledgers (
   vehicle_info jsonb not null default '{}'::jsonb,
   vehicle_lookup_source text not null default 'manual',
   vehicle_lookup_at timestamptz,
+  settlement_mode text not null default 'monthly' check (settlement_mode in ('monthly', 'running')),
   bootstrap_locked_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -49,6 +50,20 @@ alter table public.ledgers
   add column if not exists vehicle_info jsonb not null default '{}'::jsonb,
   add column if not exists vehicle_lookup_source text not null default 'manual',
   add column if not exists vehicle_lookup_at timestamptz;
+
+alter table public.ledgers
+  add column if not exists settlement_mode text not null default 'monthly';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'ledgers_settlement_mode_check'
+  ) then
+    alter table public.ledgers
+      add constraint ledgers_settlement_mode_check
+      check (settlement_mode in ('monthly', 'running'));
+  end if;
+end$$;
 
 create table if not exists public.ledger_members (
   id uuid primary key default gen_random_uuid(),
@@ -7471,4 +7486,8 @@ grant execute on function public.check_owner_rate_limit(text, text, integer, int
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('049_owner_api_rate_limit', 'Service-role-callable per-operator rate limiter for the owner API /api/owner/* (GV-156).')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('050_settlement_mode', 'Add settlement_mode (monthly|running, default monthly) to ledgers — owner-chosen settlement cadence driving the monthly close nudge and Pay-screen layout.')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
