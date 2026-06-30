@@ -20,11 +20,13 @@ create index if not exists messages_ledger_created_idx
 
 alter table public.messages enable row level security;
 
+drop policy if exists "Ledger members can read messages" on public.messages;
 create policy "Ledger members can read messages" on public.messages
   for select to authenticated
   using (public.is_ledger_member(ledger_id));
 
 -- Members may only post as themselves.
+drop policy if exists "Members can send messages" on public.messages;
 create policy "Members can send messages" on public.messages
   for insert to authenticated
   with check (
@@ -33,6 +35,7 @@ create policy "Members can send messages" on public.messages
   );
 
 -- Senders (and admins) may soft-delete their own messages.
+drop policy if exists "Senders and admins can update messages" on public.messages;
 create policy "Senders and admins can update messages" on public.messages
   for update to authenticated
   using (
@@ -56,6 +59,7 @@ create table if not exists public.message_read_state (
 
 alter table public.message_read_state enable row level security;
 
+drop policy if exists "Members read own read-state" on public.message_read_state;
 create policy "Members read own read-state" on public.message_read_state
   for select to authenticated
   using (
@@ -63,6 +67,7 @@ create policy "Members read own read-state" on public.message_read_state
     and member_id = public.current_ledger_member_id(ledger_id)
   );
 
+drop policy if exists "Members upsert own read-state" on public.message_read_state;
 create policy "Members upsert own read-state" on public.message_read_state
   for insert to authenticated
   with check (
@@ -70,6 +75,7 @@ create policy "Members upsert own read-state" on public.message_read_state
     and member_id = public.current_ledger_member_id(ledger_id)
   );
 
+drop policy if exists "Members update own read-state" on public.message_read_state;
 create policy "Members update own read-state" on public.message_read_state
   for update to authenticated
   using (

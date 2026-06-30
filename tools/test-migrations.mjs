@@ -87,6 +87,27 @@ files.forEach((file) => {
   }
 });
 
+// Every `create policy` must be preceded by a matching `drop policy if exists`
+// so the migration set replays cleanly on an empty DB (Supabase Preview CI
+// replays all migrations from scratch). A bare create is not idempotent and
+// fails with SQLSTATE 42710 on replay (GVM-68: 043/044 lacked these guards).
+files.forEach((file) => {
+  const content = readFileSync(join(migrationDir, file), "utf8");
+  const creates = [...content.matchAll(/create policy\s+"([^"]+)"\s+on\s+(\S+)/gi)];
+  const drops = new Set(
+    [...content.matchAll(/drop policy if exists\s+"([^"]+)"\s+on\s+([^\s;]+)/gi)].map(
+      (m) => `${m[1]}::${m[2]}`,
+    ),
+  );
+  creates.forEach((m) => {
+    const key = `${m[1]}::${m[2].replace(/;$/, "")}`;
+    assert.ok(
+      drops.has(key),
+      `${file}: policy "${m[1]}" on ${m[2]} needs a "drop policy if exists" before its create (idempotent replay)`,
+    );
+  });
+});
+
 const migrationText = files.map((file) => readFileSync(join(migrationDir, file), "utf8")).join("\n");
 const consolidatedSchema = readFileSync("supabase-schema.sql", "utf8");
 
