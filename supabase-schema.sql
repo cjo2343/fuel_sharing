@@ -534,7 +534,9 @@ create or replace function public.upsert_trip_with_participants(
   start_km_value numeric,
   end_km_value numeric,
   note_value text,
-  participant_member_ids uuid[]
+  participant_member_ids uuid[],
+  event_title text default null,
+  event_body text default null
 )
 returns jsonb
 language plpgsql
@@ -660,6 +662,17 @@ begin
   from unnest(unique_participant_ids) as member_id
   on conflict (trip_id, member_id) do nothing;
 
+  -- Activity feed event, on create only (GVM-84).
+  if existing_trip.id is null and nullif(event_title, '') is not null then
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id, 'trip_created', event_title, coalesce(event_body, ''),
+      actor_member_id, nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('trip_id', saved_trip_id)
+    );
+  end if;
+
   return jsonb_build_object(
     'trip_id', saved_trip_id,
     'ledger_id', target_ledger_id,
@@ -669,7 +682,7 @@ begin
 end;
 $$;
 
-grant execute on function public.upsert_trip_with_participants(text, uuid, text, uuid, date, numeric, numeric, text, uuid[]) to authenticated;
+grant execute on function public.upsert_trip_with_participants(text, uuid, text, uuid, date, numeric, numeric, text, uuid[], text, text) to authenticated;
 
 
 create or replace function public.close_settlement_period(
@@ -1458,7 +1471,9 @@ create or replace function public.upsert_car_booking(
   booking_member_id uuid,
   start_at_value timestamptz,
   end_at_value timestamptz,
-  purpose_value text
+  purpose_value text,
+  event_title text default null,
+  event_body text default null
 )
 returns jsonb
 language plpgsql
@@ -1551,6 +1566,17 @@ begin
     returning id into saved_booking_id;
   end if;
 
+  -- Activity feed event, on create only (GVM-84).
+  if existing_booking.id is null and nullif(event_title, '') is not null then
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id, 'booking_created', event_title, coalesce(event_body, ''),
+      actor_member_id, nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('booking_id', saved_booking_id)
+    );
+  end if;
+
   return jsonb_build_object(
     'booking_id', saved_booking_id,
     'legacy_id', legacy_booking_id
@@ -1616,7 +1642,7 @@ begin
 end;
 $$;
 
-grant execute on function public.upsert_car_booking(text, text, uuid, timestamptz, timestamptz, text) to authenticated;
+grant execute on function public.upsert_car_booking(text, text, uuid, timestamptz, timestamptz, text, text, text) to authenticated;
 grant execute on function public.soft_delete_car_booking(text, text) to authenticated;
 -- Migration 012: Add Admin/tools guardrails.
 -- Moves sensitive member management and generated-test cleanup behind RPCs,
@@ -1938,7 +1964,9 @@ create or replace function public.upsert_fuel_payment(
   station_lng_value numeric,
   user_lat_value numeric,
   user_lng_value numeric,
-  full_tank_value boolean
+  full_tank_value boolean,
+  event_title text default null,
+  event_body text default null
 )
 returns jsonb
 language plpgsql
@@ -2085,6 +2113,17 @@ begin
     updated_at = now()
   returning id into saved_fuel_id;
 
+  -- Activity feed event, on create only (GVM-84).
+  if existing_fuel.id is null and nullif(event_title, '') is not null then
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id, 'fuel_created', event_title, coalesce(event_body, ''),
+      actor_member_id, nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('fuel_id', saved_fuel_id)
+    );
+  end if;
+
   return jsonb_build_object(
     'fuel_id', saved_fuel_id,
     'ledger_id', target_ledger_id,
@@ -2093,7 +2132,7 @@ begin
 end;
 $$;
 
-grant execute on function public.upsert_fuel_payment(text, uuid, text, uuid, date, numeric, text, numeric, numeric, numeric, text, text, numeric, numeric, numeric, numeric, boolean) to authenticated;
+grant execute on function public.upsert_fuel_payment(text, uuid, text, uuid, date, numeric, text, numeric, numeric, numeric, text, text, numeric, numeric, numeric, numeric, boolean, text, text) to authenticated;
 -- Migration 015: store Test Lab reports outside the full JSON ledger mirror.
 
 -- Cloud-saved diagnostic reports are operational/debug records, not ledger state.
@@ -7490,4 +7529,8 @@ on conflict (migration_id) do update set description = excluded.description, app
 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('050_settlement_mode', 'Add settlement_mode (monthly|running, default monthly) to ledgers — owner-chosen settlement cadence driving the monthly close nudge and Pay-screen layout.')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('051_activity_events_for_trip_fuel_booking', 'Trip/fuel/booking upsert RPCs emit a ledger_events row on create (client-built event_title/event_body, actor_member_id stamped) so the unified Activity feed populates in production (GVM-84).')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();

@@ -78,7 +78,7 @@ function testTripTransactionRpcExists() {
   assert.match(schema, /Trip must include at least one active ledger participant/);
   assert.match(schema, /Only the trip creator, driver, or a ledger admin can update this trip/);
   assert.match(schema, /delete from public\.trip_participants\s+where trip_id = saved_trip_id/);
-  assert.match(schema, /grant execute on function public\.upsert_trip_with_participants\(text, uuid, text, uuid, date, numeric, numeric, text, uuid\[\]\) to authenticated/);
+  assert.match(schema, /grant execute on function public\.upsert_trip_with_participants\(text, uuid, text, uuid, date, numeric, numeric, text, uuid\[\], text, text\) to authenticated/);
   console.log("ok - testTripTransactionRpcExists");
 }
 
@@ -89,7 +89,7 @@ function testBookingTransactionRpcsExist() {
   assert.match(schema, /Only the booking creator, booked member, or a ledger admin can update this booking/);
   assert.match(schema, /create or replace function public\.soft_delete_car_booking\(/);
   assert.match(schema, /Only the booking creator, booked member, or a ledger admin can delete this booking/);
-  assert.match(schema, /grant execute on function public\.upsert_car_booking\(text, text, uuid, timestamptz, timestamptz, text\) to authenticated/);
+  assert.match(schema, /grant execute on function public\.upsert_car_booking\(text, text, uuid, timestamptz, timestamptz, text, text, text\) to authenticated/);
   assert.match(schema, /grant execute on function public\.soft_delete_car_booking\(text, text\) to authenticated/);
   console.log("ok - testBookingTransactionRpcsExist");
 }
@@ -102,7 +102,7 @@ function testFuelPaymentRpcExists() {
   assert.match(schema, /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id \|\| ':fuel:' \|\| legacy_fuel_id\)\)/);
   assert.match(schema, /Only the fuel creator, payer, or a ledger admin can update this fuel payment/);
   assert.match(schema, /Only the fuel payer or a ledger admin can create this fuel payment/);
-  assert.match(schema, /grant execute on function public\.upsert_fuel_payment\(text, uuid, text, uuid, date, numeric, text, numeric, numeric, numeric, text, text, numeric, numeric, numeric, numeric, boolean\) to authenticated/);
+  assert.match(schema, /grant execute on function public\.upsert_fuel_payment\(text, uuid, text, uuid, date, numeric, text, numeric, numeric, numeric, text, text, numeric, numeric, numeric, numeric, boolean, text, text\) to authenticated/);
   assert.match(app, /saveFuelPaymentRpc/);
   assert.match(app, /isMissingFuelPaymentRpcError/);
   assert.match(app, /saveFuelWithGuardedTableUpdate/);
