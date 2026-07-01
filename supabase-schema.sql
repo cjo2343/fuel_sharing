@@ -7720,3 +7720,107 @@ grant execute on function public.update_ledger_vehicle(text, text, jsonb, text, 
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('052_activity_events_for_workspace_and_vehicle', 'Workspace-create emits a workspace_created event; new update_ledger_vehicle RPC becomes the vehicle write path and emits vehicle_added/vehicle_updated so the operator audit trail (ledger_events) captures both (GVM-96).')
 on conflict (migration_id) do update set description = excluded.description, applied_at = now();
+
+-- Consolidated schema addition: 053_seed_open_period_on_workspace_create
+-- create_private_ledger_workspace opens an initial settlement period so trips +
+-- fuel can be logged immediately in a new workspace (GVM-97).
+create or replace function public.create_private_ledger_workspace(
+  workspace_name text,
+  workspace_slug text default null
+)
+returns table (
+  ledger_id text,
+  slug text,
+  name text,
+  admin_member_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_slug text;
+  new_ledger_id text;
+  new_member_id uuid;
+  current_email text := public.current_user_email();
+begin
+  perform public.enforce_onboarding_rate_limit('create_private_workspace', null, 3, 60);
+
+  if current_email is null or btrim(current_email) = '' then
+    raise exception 'A signed-in user email is required to create a private ledger workspace.' using errcode = 'P0001';
+  end if;
+
+  normalized_slug := public.normalize_ledger_slug(coalesce(workspace_slug, workspace_name));
+  if normalized_slug is null or length(normalized_slug) < 3 then
+    raise exception 'Workspace slug must contain at least 3 letters or numbers.' using errcode = 'P0001';
+  end if;
+
+  if normalized_slug = 'main-car' then
+    raise exception 'main-car is reserved for the existing private beta ledger.' using errcode = 'P0001';
+  end if;
+
+  new_ledger_id := normalized_slug;
+
+  insert into public.ledgers (
+    id,
+    slug,
+    name,
+    is_public_signup_enabled,
+    invite_required,
+    bootstrap_locked_at
+  ) values (
+    new_ledger_id,
+    normalized_slug,
+    nullif(btrim(workspace_name), ''),
+    false,
+    true,
+    now()
+  );
+
+  insert into public.ledger_members (
+    ledger_id,
+    name,
+    email,
+    role,
+    is_active
+  ) values (
+    new_ledger_id,
+    split_part(current_email, '@', 1),
+    current_email,
+    'admin',
+    true
+  ) returning id into new_member_id;
+
+  update public.ledgers
+  set created_by_member_id = new_member_id,
+      updated_at = now()
+  where id = new_ledger_id;
+
+  insert into public.settlement_periods (ledger_id, status, label)
+  values (new_ledger_id, 'open', 'Current period');
+
+  insert into public.ledger_events (
+    ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+  ) values (
+    new_ledger_id,
+    'workspace_created',
+    coalesce(nullif(btrim(workspace_name), ''), normalized_slug),
+    'Nyt arbejdsområde oprettet',
+    new_member_id,
+    current_email,
+    jsonb_build_object('slug', normalized_slug)
+  );
+
+  return query
+  select new_ledger_id, normalized_slug, nullif(btrim(workspace_name), ''), new_member_id;
+exception
+  when unique_violation then
+    raise exception 'Workspace slug is already in use.' using errcode = '23505';
+end;
+$$;
+
+grant execute on function public.create_private_ledger_workspace(text, text) to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('053_seed_open_period_on_workspace_create', 'create_private_ledger_workspace opens an initial settlement period so trips/fuel can be logged in a new workspace; backfills an open period for any existing workspace missing one (GVM-97).')
+on conflict (migration_id) do update set description = excluded.description, applied_at = now();
