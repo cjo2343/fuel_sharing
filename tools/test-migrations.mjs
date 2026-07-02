@@ -63,6 +63,7 @@ const expected = [
   "051_activity_events_for_trip_fuel_booking.sql",
   "052_activity_events_for_workspace_and_vehicle.sql",
   "053_seed_open_period_on_workspace_create.sql",
+  "054_settlement_integrity_rails.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
