@@ -10824,3 +10824,28 @@ values ('059_member_joined_event', 'emit a member_joined activity event on invit
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- Migration 060: allow cancelling a reopened (open) settlement request (GV-182).
+-- Recreates is_valid_payment_status_transition with one added edge (open ->
+-- cancelled) so migration 054's stale-pair reconciliation can cancel a request
+-- that was reopened (requested -> open) before the debt direction flipped. Last
+-- definition wins on replay — this supersedes the migration 003 body above.
+create or replace function public.is_valid_payment_status_transition(p_previous_status text, p_next_status text)
+returns boolean
+language sql
+immutable
+as $$
+  select case coalesce(p_previous_status, 'open')
+    when 'open' then coalesce(p_next_status, 'open') in ('open', 'requested', 'cancelled')
+    when 'requested' then coalesce(p_next_status, 'open') in ('requested', 'paid', 'open', 'cancelled')
+    when 'paid' then coalesce(p_next_status, 'open') in ('paid', 'open')
+    when 'cancelled' then coalesce(p_next_status, 'open') in ('cancelled', 'requested', 'open')
+    else false
+  end;
+$$;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('060_allow_cancel_open_request', 'allow cancelling a reopened (open) settlement request so stale-pair reconciliation can cancel it (GV-182)')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
