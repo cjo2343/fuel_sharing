@@ -70,6 +70,7 @@ const expected = [
   "058_resolve_invite_volatile_fix.sql",
   "059_member_joined_event.sql",
   "060_allow_cancel_open_request.sql",
+  "061_redeem_invite_display_name.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
