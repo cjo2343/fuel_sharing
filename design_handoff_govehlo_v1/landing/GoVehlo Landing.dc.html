@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/styles.css">
+  <script src="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/_ds_bundle.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: rgba(45,106,79,.2); border-radius: 3px; }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:#F7F9F8;display:flex;flex-direction:column;">
+
+  <!-- NAV -->
+  <nav style="position:sticky;top:0;z-index:100;background:rgba(26,46,31,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:0 48px;height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <svg width="32" height="32" viewBox="0 0 512 512" style="border-radius:7px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"/><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"/><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"/><circle cx="259" cy="253" r="26" fill="#FBBF24"/><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"/></svg>
+      <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:20px;color:#fff;letter-spacing:-.02em;">GoVehlo</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:32px;">
+      <span style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);cursor:pointer;font-weight:500;" style-hover="color:rgba(255,255,255,.9)">Features</span>
+      <span style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);cursor:pointer;font-weight:500;" style-hover="color:rgba(255,255,255,.9)">How it works</span>
+      <button onClick="{{ noop }}" style="background:#F4A261;border:none;border-radius:10px;padding:8px 20px;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;cursor:pointer;" style-hover="background:#E89549">Get started</button>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section style="background:#1A2E1F;padding:80px 48px 80px;position:relative;overflow:hidden;min-height:540px;">
+    <!-- Road (full-bleed behind content) -->
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;cursor:crosshair;">
+      {{ heroSvg }}
+    </div>
+    <div style="position:relative;z-index:1;max-width:540px;">
+      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#F4A261;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;">Shared car fuel tracking</div>
+      <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:56px;color:#fff;margin:0 0 20px;letter-spacing:-.03em;line-height:1.05;">Fill up.<br/>Drive fair.</h1>
+      <p style="font-family:'Inter',sans-serif;font-size:18px;color:rgba(255,255,255,.55);margin:0 0 36px;line-height:1.6;max-width:420px;text-wrap:pretty;">Track trips by odometer, split fuel costs proportionally, and settle up without the awkward conversations.</p>
+      <div style="display:flex;gap:14px;align-items:center;">
+        <a href="GoVehlo Prototype.dc.html" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 28px;background:#F4A261;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;box-shadow:0 4px 20px rgba(244,162,97,.35);" style-hover="background:#E89549">Try the app</a>
+        <a href="#features" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 28px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;font-family:'Inter',sans-serif;font-weight:600;font-size:15px;color:rgba(255,255,255,.8);" style-hover="background:rgba(255,255,255,.12)">Learn more</a>
+      </div>
+      <div style="display:flex;gap:24px;margin-top:40px;">
+        <div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">5</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">friends sharing</div></div>
+        <div style="width:1px;background:rgba(255,255,255,.08);"></div>
+        <div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">2,47</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">kr per km</div></div>
+        <div style="width:1px;background:rgba(255,255,255,.08);"></div>
+        <div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">0</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">spreadsheets</div></div>
+      </div>
+    </div>
+
+
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" style="padding:80px 48px;background:#F7F9F8;">
+    <div style="text-align:center;margin-bottom:48px;">
+      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What GoVehlo does</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:36px;color:#1A2E1F;margin:0;letter-spacing:-.02em;">Everything your shared car needs</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;max-width:1000px;margin:0 auto;">
+      <!-- Track -->
+      <div style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+        <div style="width:48px;height:48px;border-radius:12px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Track trips</h3>
+        <p style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Log odometer start and end. We calculate the km and cost.</p>
+      </div>
+      <!-- Split -->
+      <div style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+        <div style="width:48px;height:48px;border-radius:12px;background:#FEF3E0;display:flex;align-items:center;justify-content:center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F4A261" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 21 7 17 3"/><line x1="21" y1="7" x2="9" y2="7"/><polyline points="7 21 3 17 7 13"/><line x1="3" y1="17" x2="15" y2="17"/></svg>
+        </div>
+        <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Split costs</h3>
+        <p style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Fair per-km fuel sharing. No guesswork, no spreadsheets.</p>
+      </div>
+      <!-- Book -->
+      <div style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+        <div style="width:48px;height:48px;border-radius:12px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Book the car</h3>
+        <p style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">See who has the car and when it's free at a glance.</p>
+      </div>
+      <!-- Plan -->
+      <div style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+        <div style="width:48px;height:48px;border-radius:12px;background:#D1F5E3;display:flex;align-items:center;justify-content:center;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+        </div>
+        <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Plan ahead</h3>
+        <p style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Estimate trip costs before you drive. No surprises.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section style="padding:80px 48px;background:#F7F9F8;position:relative;overflow:hidden;">
+    <div style="text-align:center;margin-bottom:56px;position:relative;z-index:1;">
+      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Simple by design</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:36px;color:#1A2E1F;margin:0;letter-spacing:-.02em;">How it works</h2>
+    </div>
+    <div style="position:relative;max-width:860px;margin:0 auto;z-index:1;">
+      <!-- S-curve road -->
+      <svg style="position:absolute;top:0;left:-60px;right:-60px;width:calc(100% + 120px);height:160px;pointer-events:none;" viewBox="0 0 980 160" preserveAspectRatio="none">
+        <path d="M -30 95 C 160 30 300 120 490 55 C 680 -10 800 110 1010 45" fill="none" stroke="rgba(216,243,220,0.55)" stroke-width="44" stroke-linecap="round"/>
+        <path d="M -30 95 C 160 30 300 120 490 55 C 680 -10 800 110 1010 45" fill="none" stroke="rgba(45,106,79,0.04)" stroke-width="3" stroke-dasharray="18 30" stroke-linecap="round"/>
+      </svg>
+      <!-- Steps -->
+      <div style="display:flex;position:relative;">
+        <div style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:44px;">
+          <div style="width:56px;height:56px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;box-shadow:0 4px 16px rgba(45,106,79,.25);">1</div>
+          <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Create your group</h3>
+          <p style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Invite the friends who share the car. One tap to join.</p>
+        </div>
+        <div style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:8px;">
+          <div style="width:56px;height:56px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;box-shadow:0 4px 16px rgba(45,106,79,.25);">2</div>
+          <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Log trips and fuel</h3>
+          <p style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Enter odometer readings and fuel receipts. We handle the maths.</p>
+        </div>
+        <div style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:36px;">
+          <div style="width:56px;height:56px;border-radius:50%;background:#F4A261;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#1A2E1F;box-shadow:0 4px 16px rgba(244,162,97,.3);">3</div>
+          <h3 style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Settle up</h3>
+          <p style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Request payment or mark as paid. No awkward conversations.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section style="padding:80px 48px;background:#2D6A4F;text-align:center;">
+    <div style="display:inline-flex;align-items:center;gap:14px;margin-bottom:24px;">
+      <svg width="44" height="44" viewBox="0 0 512 512" style="border-radius:11px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"/><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"/><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"/><circle cx="259" cy="253" r="26" fill="#FBBF24"/><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"/></svg>
+      <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:32px;color:#fff;letter-spacing:-.01em;">GoVehlo</span>
+    </div>
+    <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:40px;color:#fff;margin:0 0 12px;letter-spacing:-.02em;">Ready to drive fair?</h2>
+    <p style="font-family:'Inter',sans-serif;font-size:17px;color:rgba(255,255,255,.6);margin:0 0 32px;">Your car. Your crew. Fair costs.</p>
+    <a href="GoVehlo Prototype.dc.html" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:56px;padding:0 36px;background:#F4A261;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#1A2E1F;box-shadow:0 4px 24px rgba(244,162,97,.4);" style-hover="background:#E89549">Try the app</a>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="background:#1A2E1F;padding:40px 48px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <svg width="28" height="28" viewBox="0 0 512 512" style="border-radius:6px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"/><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"/><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"/><circle cx="259" cy="253" r="26" fill="#FBBF24"/><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"/></svg>
+      <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:#fff;letter-spacing:-.02em;">GoVehlo</span>
+    </div>
+    <div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.25);">Fill up. Drive fair. · 2026</div>
+  </footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: &quot;100%&quot;, &quot;height&quot;: &quot;100%&quot;}}">
+class Component extends DCLogic {
+  state = {};
+  _svgRef = React.createRef();
+  _dotRef = React.createRef();
+  _dashRef = React.createRef();
+  _raf = null;
+  _startTime = 0;
+  _isHovering = false;
+  _mouseT = 0;
+  _currentT = 0;
+
+  // Bezier control points (full-bleed road)
+  _p0 = { x: -50, y: 320 };
+  _p1 = { x: 400, y: 80 };
+  _p2 = { x: 1200, y: 420 };
+  _p3 = { x: 1650, y: 180 };
+
+  componentDidMount() {
+    this._startTime = performance.now();
+    this._tick();
+    const svg = this._svgRef.current;
+    if (svg) {
+      svg.addEventListener('mousemove', this._onMouseMove);
+      svg.addEventListener('mouseleave', this._onMouseLeave);
+      svg.addEventListener('mouseenter', this._onMouseEnter);
+    }
+  }
+
+  componentWillUnmount() {
+    cancelAnimationFrame(this._raf);
+    const svg = this._svgRef.current;
+    if (svg) {
+      svg.removeEventListener('mousemove', this._onMouseMove);
+      svg.removeEventListener('mouseleave', this._onMouseLeave);
+      svg.removeEventListener('mouseenter', this._onMouseEnter);
+    }
+  }
+
+  _onMouseEnter = () => { this._isHovering = true; };
+  _onMouseLeave = () => {
+    this._isHovering = false;
+    // Sync auto-animation to current position
+    this._startTime = performance.now() - this._currentT * 10000;
+  };
+  _onMouseMove = (e) => {
+    const svg = this._svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    this._mouseT = Math.max(0.02, Math.min(0.98, (e.clientX - rect.left) / rect.width));
+  };
+
+  _bezier(t) {
+    const { _p0: p0, _p1: p1, _p2: p2, _p3: p3 } = this;
+    const u = 1 - t;
+    return {
+      x: u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x,
+      y: u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y,
+    };
+  }
+
+  _easeInOutCubic(t) {
+    return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+  }
+
+  _tick = () => {
+    let t;
+    if (this._isHovering) {
+      // Smoothly interpolate towards mouse position
+      this._currentT += (this._mouseT - this._currentT) * 0.12;
+      t = this._currentT;
+    } else {
+      const elapsed = performance.now() - this._startTime;
+      const raw = (elapsed % 10000) / 10000;
+      t = this._easeInOutCubic(raw);
+      this._currentT = t;
+    }
+
+    const pos = this._bezier(t);
+
+    if (this._dotRef.current) {
+      this._dotRef.current.setAttribute('transform', `translate(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})`);
+    }
+
+    if (this._dashRef.current) {
+      const elapsed = performance.now() - this._startTime;
+      const offset = -(elapsed / 18) % 57;
+      this._dashRef.current.setAttribute('stroke-dashoffset', offset.toFixed(1));
+    }
+
+    this._raf = requestAnimationFrame(this._tick);
+  };
+
+  renderVals() {
+    const h = React.createElement;
+    const roadPath = 'M -50 320 C 400 80 1200 420 1650 180';
+
+    const heroSvg = h('svg', {
+      ref: this._svgRef,
+      viewBox: '0 0 1600 500',
+      preserveAspectRatio: 'xMidYMid slice',
+      style: { width: '100%', height: '100%', display: 'block' },
+    },
+      // Road surface
+      h('path', {
+        d: roadPath, fill: 'none', stroke: '#D8F3DC',
+        strokeWidth: 68, strokeLinecap: 'round', opacity: 0.3,
+      }),
+      // Edge detail
+      h('path', {
+        d: roadPath, fill: 'none', stroke: 'rgba(255,255,255,0.03)',
+        strokeWidth: 74, strokeLinecap: 'round',
+      }),
+      // Center dashes (animated via ref)
+      h('path', {
+        ref: this._dashRef,
+        d: roadPath, fill: 'none', stroke: 'rgba(255,255,255,0.15)',
+        strokeWidth: 3.5, strokeDasharray: '22 35', strokeLinecap: 'round',
+      }),
+      // Dot group (positioned via ref)
+      h('g', { ref: this._dotRef },
+        // Outer glow
+        h('circle', { r: 44, fill: 'rgba(244,162,97,0.1)' }),
+        // Mid glow
+        h('circle', { r: 32, fill: 'rgba(244,162,97,0.15)' }),
+        // Main dot
+        h('circle', { r: 22, fill: '#F4A261' }),
+        // Highlight
+        h('circle', { cx: -7, cy: -7, r: 8, fill: 'rgba(255,255,255,0.45)' }),
+      ),
+    );
+
+    return {
+      heroSvg,
+      noop: () => {},
+    };
+  }
+}
+</script>
+</body>
+</html>

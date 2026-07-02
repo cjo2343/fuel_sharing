@@ -1,0 +1,63 @@
+/* GoVehlo Typography Tokens */
+:root {
+  /* ─── Font Families ─── */
+  --font-display: 'Nunito', system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'Courier New', Courier, monospace;
+
+  /* ─── Font Weights ─── */
+  --font-weight-regular:   400;
+  --font-weight-medium:    500;
+  --font-weight-semibold:  600;
+  --font-weight-bold:      700;
+  --font-weight-extrabold: 800;
+  --font-weight-black:     900;
+
+  /* ─── Type Scale ─── */
+
+  /* Display — 32px Nunito 900 — screen titles, onboarding */
+  --text-display-size:           32px;
+  --text-display-weight:         900;
+  --text-display-family:         var(--font-display);
+  --text-display-line-height:    1.2;
+  --text-display-letter-spacing: -0.01em;
+
+  /* Title — 22px Nunito 800 — section headers, card titles */
+  --text-title-size:           22px;
+  --text-title-weight:         800;
+  --text-title-family:         var(--font-display);
+  --text-title-line-height:    1.25;
+  --text-title-letter-spacing: -0.005em;
+
+  /* Heading — 17px Nunito 700 — list headers, tab labels */
+  --text-heading-size:           17px;
+  --text-heading-weight:         700;
+  --text-heading-family:         var(--font-display);
+  --text-heading-line-height:    1.35;
+  --text-heading-letter-spacing: 0;
+
+  /* Body — 15px Inter 400 — main content, descriptions */
+  --text-body-size:        15px;
+  --text-body-weight:      400;
+  --text-body-family:      var(--font-body);
+  --text-body-line-height: 1.55;
+
+  /* Label — 13px Inter 500 — metadata, captions, chips */
+  --text-label-size:        13px;
+  --text-label-weight:      500;
+  --text-label-family:      var(--font-body);
+  --text-label-line-height: 1.4;
+
+  /* Caption — 11px Inter 400 — timestamps, secondary info */
+  --text-caption-size:        11px;
+  --text-caption-weight:      400;
+  --text-caption-family:      var(--font-body);
+  --text-caption-line-height: 1.4;
+
+  /* Mono — 12px Courier New — odometer values, fuel amounts */
+  --text-mono-size:           12px;
+  --text-mono-weight:         400;
+  --text-mono-family:         var(--font-mono);
+  --text-mono-line-height:    1.5;
+  --text-mono-letter-spacing: 0.04em;
+}

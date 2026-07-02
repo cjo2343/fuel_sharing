@@ -1,0 +1,51 @@
+<!-- @dsCard group="Spacing" viewport="700x160" name="Layout Metrics" subtitle="Screen padding · card padding · nav/header heights" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #F7F9F8; padding: 16px 24px; font-family: var(--font-body); }
+    .grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    .token { background: #fff; border: 1px solid #E2EDE8; border-radius: 8px; padding: 10px 14px; min-width: 140px; }
+    .tok-name  { font-family: var(--font-mono); font-size: 10px; color: #2D6A4F; font-weight: 600; }
+    .tok-value { font-size: 18px; font-weight: 800; color: #1A2E1F; margin: 2px 0; font-family: var(--font-display); }
+    .tok-desc  { font-size: 10px; color: #6B8F7A; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="token">
+      <div class="tok-name">--screen-padding-x</div>
+      <div class="tok-value">16px</div>
+      <div class="tok-desc">Horizontal screen margin</div>
+    </div>
+    <div class="token">
+      <div class="tok-name">--card-padding</div>
+      <div class="tok-value">12px</div>
+      <div class="tok-desc">Internal card padding</div>
+    </div>
+    <div class="token">
+      <div class="tok-name">--nav-height</div>
+      <div class="tok-value">64px</div>
+      <div class="tok-desc">Bottom navigation</div>
+    </div>
+    <div class="token">
+      <div class="tok-name">--header-height</div>
+      <div class="tok-value">72px</div>
+      <div class="tok-desc">App header (home)</div>
+    </div>
+    <div class="token">
+      <div class="tok-name">--touch-target</div>
+      <div class="tok-value">44px</div>
+      <div class="tok-desc">Min tap target (WCAG)</div>
+    </div>
+    <div class="token">
+      <div class="tok-name">--section-gap</div>
+      <div class="tok-value">24px</div>
+      <div class="tok-desc">Between sections</div>
+    </div>
+  </div>
+</body>
+</html>

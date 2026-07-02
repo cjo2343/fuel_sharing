@@ -2,6 +2,15 @@
 
 A lightweight car-sharing fuel ledger for friends.
 
+> **⚠️ Status: runtime retired.** This app is no longer deployed — Render hosting was
+> decommissioned and the PWA is kill-switched. GoVehlo now lives in
+> [govehlo-mobile](https://github.com/cjo2343/govehlo-mobile) (native app) and
+> [govehlo-web](https://github.com/cjo2343/govehlo-web) (landing + admin console + API).
+> This repo remains the **source of truth for the shared Supabase schema**
+> (`supabase/migrations/`, `supabase-schema.sql`) and the **v1 design handoff**
+> (`design_handoff_govehlo_v1/`). See `CLAUDE.md` for the migration workflow contract.
+> Everything below describes the frozen legacy app.
+
 ## Features
 
 - Log trips with start and end odometer values.

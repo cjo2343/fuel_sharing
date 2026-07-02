@@ -1,0 +1,93 @@
+<!-- @dsCard group="Components" viewport="700x680" name="Data" subtitle="AmountDisplay · TripCard · FuelCard · SettlementCard · StatusChip · SummaryBand" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="../../styles.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--color-warm-white); padding: 16px 20px; }
+    .sec { margin-bottom: 16px; }
+    .lbl { font-family: var(--font-body); font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .row { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+    .col { display: flex; flex-direction: column; gap: 8px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const NS = window.GoVehloDesignSystem_c5fd4e || {};
+    const { AmountDisplay, TripCard, FuelCard, SettlementCard, StatusChip, SummaryBand } = NS;
+
+    function App() {
+      const [toasted, setToasted] = React.useState(null);
+
+      return (
+        <div>
+          <div className="sec">
+            <div className="lbl">SummaryBand — settle screen header stats</div>
+            <SummaryBand items={[
+              { label: 'Fuel rate',   value: '2,47 kr/km' },
+              { label: 'Trip shares', value: '1.234 kr' },
+              { label: 'Fuel paid',   value: '895 kr' },
+            ]} />
+          </div>
+
+          <div className="sec">
+            <div className="lbl">AmountDisplay</div>
+            <div className="row">
+              <AmountDisplay amount={52.00}  direction="owe"     label="You owe Lars"  size="lg" />
+              <AmountDisplay amount={120.50} direction="receive" label="Sara owes you" size="lg" />
+              <AmountDisplay amount={0}      direction="settled" label="All settled"   size="md" />
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className="lbl">TripCard</div>
+            <div className="col">
+              <TripCard driver="Christian" startOdo={45231} endOdo={45318} cost={22.50} date="22 jun" onClick={() => {}} />
+              <TripCard driver="Lars"      startOdo={45318} endOdo={45502} cost={47.00} date="18 jun" onClick={() => {}} />
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className="lbl">FuelCard</div>
+            <div className="col">
+              <FuelCard paidBy="Christian" amountDkk={495.90} liters={34.2} station="Circle K Roskilde" fullTank date="22 jun" onEdit={() => setToasted('Editing fuel')} />
+              <FuelCard paidBy="Lars"      amountDkk={409.00} liters={28.5} date="15 jun" />
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className="lbl">SettlementCard + StatusChip</div>
+            <div className="col">
+              <div style={{display:'flex', alignItems:'center', gap:10}}>
+                <SettlementCard personName="Lars"   amount={52.00}  direction="owe"     onAction={() => setToasted('Requested')} />
+              </div>
+              <div style={{display:'flex', alignItems:'center', gap:10}}>
+                <SettlementCard personName="Sara"   amount={120.50} direction="receive" onAction={() => setToasted('Marked paid')} />
+              </div>
+              <div style={{display:'flex', alignItems:'center', gap:10}}>
+                <SettlementCard personName="Mikkel" amount={34.00}  direction="settled" />
+              </div>
+            </div>
+          </div>
+
+          {toasted && (
+            <div style={{position:'fixed', bottom:16, left:16, right:16, background:'var(--color-deep-forest)', color:'#fff', padding:'12px 16px', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:14, display:'flex', justifyContent:'space-between', alignItems:'center', boxShadow:'var(--shadow-elevated)'}}>
+              <span>{toasted}</span>
+              <button onClick={() => setToasted(null)} style={{background:'none',border:'none',color:'#fff',opacity:.7,cursor:'pointer',fontSize:18}}>×</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

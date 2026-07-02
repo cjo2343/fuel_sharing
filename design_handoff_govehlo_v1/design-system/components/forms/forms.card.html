@@ -1,0 +1,104 @@
+<!-- @dsCard group="Components" viewport="700x480" name="Forms" subtitle="Input · Select · Checkbox · ParticipantSelector" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="../../styles.css">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--color-warm-white); padding: 16px 20px; font-family: var(--font-body); }
+    .sec { margin-bottom: 18px; }
+    .lbl { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const NS = window.GoVehloDesignSystem_c5fd4e || {};
+    const { Input, Select, Checkbox, ParticipantSelector } = NS;
+
+    function App() {
+      const [fuelType,  setFuelType]  = React.useState('diesel');
+      const [privacy,   setPrivacy]   = React.useState('station-only');
+      const [fullTank,  setFullTank]  = React.useState(true);
+      const [reminders, setReminders] = React.useState(false);
+      const [sel,       setSel]       = React.useState(['christian', 'lars']);
+
+      return (
+        <div>
+          <div className="sec">
+            <div className="lbl">Input — text, number, prefix/suffix, error</div>
+            <div className="grid2">
+              <Input label="Start odometer" type="number" placeholder="45 318" suffix="km" />
+              <Input label="Amount paid"    type="number" placeholder="0,00"   suffix="kr" hint="Enter the receipt total" />
+              <Input label="Station / place" placeholder="Type or pick nearby" />
+              <Input label="Liters added"   type="number" placeholder="Required" error="Liters are required" />
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className="lbl">Select — dropdown</div>
+            <div className="grid2">
+              <Select
+                label="Fuel type"
+                value={fuelType}
+                onChange={e => setFuelType(e.target.value)}
+                options={[{ value:'diesel', label:'Diesel' }, { value:'95', label:'Petrol 95' }]}
+              />
+              <Select
+                label="Location privacy"
+                value={privacy}
+                onChange={e => setPrivacy(e.target.value)}
+                options={[
+                  { value:'station-only', label:'Save selected station GPS only' },
+                  { value:'no-coordinates', label:'Save station name only' },
+                  { value:'full', label:'Save my GPS and station GPS' },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="sec">
+            <div className="lbl">Checkbox — binary toggle</div>
+            <Checkbox
+              label="Filled to full tank"
+              checked={fullTank}
+              onChange={e => setFullTank(e.target.checked)}
+              hint="Enables real-world L/100 km statistics between full-tank fills."
+            />
+            <Checkbox
+              label="Automatic payment reminders"
+              checked={reminders}
+              onChange={e => setReminders(e.target.checked)}
+            />
+          </div>
+
+          <div className="sec">
+            <div className="lbl">ParticipantSelector — multi-select grid</div>
+            <ParticipantSelector
+              participants={[
+                { id:'christian', name:'Christian' },
+                { id:'lars',      name:'Lars' },
+                { id:'sara',      name:'Sara' },
+                { id:'mikkel',    name:'Mikkel' },
+              ]}
+              selected={sel}
+              onChange={setSel}
+            />
+            <div style={{marginTop:8, fontSize:11, color:'var(--text-muted)'}}>
+              Selected: {sel.join(', ') || '—'}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
