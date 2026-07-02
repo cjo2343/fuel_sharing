@@ -29,9 +29,11 @@ file contract below; skipping a step fails CI.
 
    <DDL / create or replace function ...>;
 
-   insert into public.fuel_ledger_schema_migrations (id)
-   values ('NNN_short_snake_description')
-   on conflict (id) do nothing;
+   insert into public.fuel_ledger_schema_migrations (migration_id, description)
+   values ('NNN_short_snake_description', '<one-line description (JIRA-KEY)>')
+   on conflict (migration_id) do update
+   set description = excluded.description,
+       applied_at = now();
    ```
 
    - The first line MUST match `-- Migration NNN:` exactly (validated).

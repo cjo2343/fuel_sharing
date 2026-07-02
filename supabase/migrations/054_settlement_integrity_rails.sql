@@ -891,6 +891,8 @@ $$;
 
 grant execute on function public.upsert_settlement_request_status(text, uuid, uuid, uuid, numeric, text, text, text[]) to authenticated;
 
-insert into public.fuel_ledger_schema_migrations (id)
-values ('054_settlement_integrity_rails')
-on conflict (id) do nothing;
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('054_settlement_integrity_rails', 'Server-side settlement integrity: close_settlement_period validates the snapshot against a recomputed entry fingerprint + SQL settlement recompute; requested amounts bounded by the period''s fuel spend; trip/fuel inserts take FOR SHARE on the open period so writes serialize with closes (GVM-112).')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
