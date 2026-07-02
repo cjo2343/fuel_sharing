@@ -13,7 +13,8 @@
     "start": "python3 server.py",
     "prepush:e2e": "npm run release:check && npm run test:e2e",
     "test:no-refresh-action-chain": "playwright test tests/smoke.spec.js -g \"no-refresh action chain\"",
-    "check:schema-equivalence": "node tools/check-schema-equivalence.mjs"
+    "check:schema-equivalence": "node tools/check-schema-equivalence.mjs",
+    "test:functional-smoke": "bash tools/test-functional-smoke.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.60.0"
