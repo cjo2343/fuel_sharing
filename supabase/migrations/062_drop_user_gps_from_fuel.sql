@@ -16,6 +16,18 @@
 --   2. Backfills existing rows to NULL, scrubbing any user coordinates already
 --      stored. The columns themselves are kept (delete_my_account, migration
 --      056, scrubs them; dropping would need a coordinated rewrite there).
+--
+-- Analytics — this change does NOT affect station or price statistics. The
+-- columns that feed those reports are all still recorded:
+--   Station stats: station_name, station_brand (which station / chain) and
+--     station_lat / station_lng (the station's own coordinates — still written
+--     when the user picks from the nearby list; null when a name is typed
+--     manually, which is pre-existing behaviour). Station reports keyed on
+--     name/brand work regardless; only the map-coordinate view needs the coords.
+--   Price stats: price_per_liter, amount, liters, plus payment_date and
+--     odometer for time series and consumption context.
+-- The only data dropped is the DRIVER's own position (user_lat/user_lng), which
+-- was never part of station/price analytics.
 
 create or replace function public.upsert_fuel_payment(
   target_ledger_id text,
