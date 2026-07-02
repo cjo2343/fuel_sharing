@@ -46,6 +46,8 @@ POST `/rest/api/3/issue` with an ADF description.)
 
 ## 4. After the user says "merged"
 
+**Verify before deleting anything**: `env -u GH_TOKEN -u GITHUB_TOKEN gh pr view <N> --json state,mergedAt` must show MERGED. "Merged" may refer to only some of several open PRs — deleting an unmerged remote branch closes its PR.
+
 1. `git checkout main && git pull` (stash any intentional local-only edits first,
    pop after).
 2. Delete the feature branch (local + remote).
