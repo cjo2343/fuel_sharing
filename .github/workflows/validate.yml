@@ -82,3 +82,23 @@ jobs:
 
       - name: Run Playwright smoke tests
         run: npm run test:e2e
+
+  schema-equivalence:
+    name: Migration/schema equivalence (GV-175)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Replays supabase/migrations/*.sql and supabase-schema.sql into two
+      # disposable Postgres 15 databases and diffs the schema dumps — proves the
+      # consolidated schema reproduces the migrations' end state (the grep-based
+      # guard in test-migrations.mjs cannot see semantic drift).
+      - name: Verify schema equivalence
+        run: node tools/check-schema-equivalence.mjs

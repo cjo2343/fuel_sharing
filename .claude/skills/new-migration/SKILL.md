@@ -57,7 +57,11 @@ file contract below; skipping a step fails CI.
    create-or-replace statements plus the tracker insert, so a fresh install replaying
    the consolidated schema ends in the same state (last definition wins).
 
-5. **Validate:** `npm run validate` must pass.
+5. **Validate:** `npm run validate` must pass. Then run
+   `npm run check:schema-equivalence` (needs Docker) — it replays the migrations
+   and the consolidated schema into disposable Postgres databases and diffs the
+   results, catching what the grep guard can't (wrong columns, drifted function
+   bodies, missing mirrors). CI runs it on every PR either way.
 
 6. **Ship:** branch + PR via `/ship`. In the PR body and to the user, state explicitly:
    **"SQL must be applied manually in the Supabase SQL Editor after merge."**
