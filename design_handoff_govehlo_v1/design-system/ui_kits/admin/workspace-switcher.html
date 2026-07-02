@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace Switcher — GoVehlo Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; overflow: hidden; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  @keyframes wsDropIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes wsFadeContent {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const WORKSPACES = [
+  { id: 'fam-j', name: 'Familien Jørgensen', members: 5, color: '#2D6A4F', initial: 'FJ', role: 'Owner', vehicle: 'Volvo XC40 · AB 12 345' },
+  { id: 'kontor', name: 'Kontor Bilpool', members: 8, color: '#52B788', initial: 'KB', role: 'Admin', vehicle: '3 vehicles' },
+  { id: 'nabo', name: 'Nabo-deling', members: 3, color: '#F4A261', initial: 'ND', role: 'Member', vehicle: 'Toyota Yaris · CD 45 678' },
+];
+
+const WORKSPACE_STATS = {
+  'fam-j': [
+    { label: 'Active members', value: '5' },
+    { label: 'Trips this period', value: '47' },
+    { label: 'Fuel entries', value: '12' },
+    { label: 'Pending settlements', value: '3' },
+  ],
+  'kontor': [
+    { label: 'Active members', value: '8' },
+    { label: 'Trips this period', value: '124' },
+    { label: 'Fuel entries', value: '38' },
+    { label: 'Pending settlements', value: '7' },
+  ],
+  'nabo': [
+    { label: 'Active members', value: '3' },
+    { label: 'Trips this period', value: '12' },
+    { label: 'Fuel entries', value: '4' },
+    { label: 'Pending settlements', value: '1' },
+  ],
+};
+
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', d: 'M3 3h6v6H3zM13 3h4v3h-4zM13 8h4v9h-4zM3 11h6v6H3z' },
+  { id: 'audit', label: 'Audit Log', d: 'M6 4.5h8M6 9h8M6 13.5h5' },
+  { id: 'health', label: 'System Health', d: 'M2 9h3l2-4 3 8 2-4h4' },
+];
+
+const RECENT_ACTIVITY = {
+  'fam-j': [
+    { actor: 'Christian', action: 'Created trip', detail: 'Lyngby → Holte, 12 km', time: '14:32' },
+    { actor: 'Lars', action: 'Logged fuel', detail: 'Circle K, 45,20 kr', time: '14:28' },
+    { actor: 'Sara', action: 'Requested payment', detail: '127,50 kr from Mette', time: '14:15' },
+    { actor: 'Mette', action: 'Created booking', detail: '27. jun, 09:00–17:00', time: '13:42' },
+    { actor: 'Anders', action: 'Marked as paid', detail: '52,00 kr to Lars', time: '13:30' },
+  ],
+  'kontor': [
+    { actor: 'Mikkel', action: 'Created trip', detail: 'Office → Kastrup, 24 km', time: '15:10' },
+    { actor: 'Julie', action: 'Logged fuel', detail: 'Shell Amager, 520 kr', time: '14:55' },
+    { actor: 'Thomas', action: 'Created booking', detail: 'VW ID.4, 28. jun', time: '14:30' },
+    { actor: 'Sofie', action: 'Updated trip', detail: 'Corrected end odo', time: '13:45' },
+    { actor: 'Rasmus', action: 'Requested payment', detail: '312,00 kr from pool', time: '12:20' },
+  ],
+  'nabo': [
+    { actor: 'Pernille', action: 'Created trip', detail: 'Virum → Sorgenfri, 4 km', time: '11:20' },
+    { actor: 'Henrik', action: 'Logged fuel', detail: 'OK Virum, 289 kr', time: '10:05' },
+    { actor: 'Christian', action: 'Closed period', detail: 'Maj 2026', time: 'Yesterday' },
+  ],
+};
+
+function WorkspaceSwitcher({ activeId, onSwitch }) {
+  const [open, setOpen] = React.useState(false);
+  const [hovered, setHovered] = React.useState(null);
+  const ref = React.useRef(null);
+  const active = WORKSPACES.find(w => w.id === activeId) || WORKSPACES[0];
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const avatarColor = (c) => c === '#F4A261' ? '#1A2E1F' : '#D8F3DC';
+
+  return (
+    <div ref={ref} style={{ position: 'relative', padding: '0 12px', marginBottom: 12 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'; }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+          padding: '10px 12px',
+          background: open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
+          border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+          transition: 'background 140ms ease',
+        }}
+      >
+        <div style={{
+          width: 28, height: 28, borderRadius: 8, background: active.color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: avatarColor(active.color),
+          fontSize: 11, fontWeight: 700, fontFamily: "'Nunito', sans-serif", flexShrink: 0,
+        }}>{active.initial}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{active.name}</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>{active.members} members</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{
+          flexShrink: 0, color: open ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.4)',
+          transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease',
+        }}>
+          <path d="M3.5 5.25L7 8.75L10.5 5.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          marginTop: 6, background: '#243A2A',
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 10, padding: 6,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          animation: 'wsDropIn 160ms ease-out',
+        }}>
+          {WORKSPACES.map((ws, i) => {
+            const isActive = ws.id === activeId;
+            const isHov = hovered === ws.id;
+            return (
+              <button
+                key={ws.id}
+                onClick={() => { onSwitch(ws.id); setOpen(false); }}
+                onMouseEnter={() => setHovered(ws.id)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                  padding: '8px 10px', border: 'none', textAlign: 'left',
+                  background: isActive ? 'rgba(255,255,255,0.08)' : isHov ? 'rgba(255,255,255,0.05)' : 'transparent',
+                  borderRadius: 8, cursor: 'pointer', marginTop: i > 0 ? 2 : 0,
+                  transition: 'background 120ms ease',
+                }}
+              >
+                <div style={{
+                  width: 24, height: 24, borderRadius: 6, background: ws.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: avatarColor(ws.color),
+                  fontSize: 9, fontWeight: 700, fontFamily: "'Nunito', sans-serif", flexShrink: 0,
+                }}>{ws.initial}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 12, fontWeight: isActive ? 600 : 500,
+                    color: isActive ? '#fff' : 'rgba(255,255,255,0.8)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>{ws.name}</div>
+                  <div style={{ fontSize: 10, color: isActive ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.35)' }}>
+                    {ws.members} members · {ws.role}
+                  </div>
+                </div>
+                {isActive && (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, color: '#52B788' }}>
+                    <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 4px' }}></div>
+          <button
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+              padding: '8px 10px', border: 'none', borderRadius: 8, cursor: 'pointer',
+              background: 'transparent', textAlign: 'left', transition: 'background 120ms ease',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: 'rgba(255,255,255,0.4)' }}>
+              <path d="M8 3.5V12.5M3.5 8H12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>Create new group</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [activeWs, setActiveWs] = React.useState('fam-j');
+  const [activePage, setActivePage] = React.useState('dashboard');
+  const [contentKey, setContentKey] = React.useState(0);
+  const ws = WORKSPACES.find(w => w.id === activeWs) || WORKSPACES[0];
+  const stats = WORKSPACE_STATS[activeWs];
+  const activity = RECENT_ACTIVITY[activeWs] || [];
+
+  const handleSwitch = (id) => {
+    setActiveWs(id);
+    setContentKey(k => k + 1);
+  };
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Sidebar */}
+      <aside style={{ width: 240, flexShrink: 0, background: '#1A2E1F', display: 'flex', flexDirection: 'column', color: '#fff' }}>
+        {/* Logo */}
+        <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#2D6A4F', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="18" height="18" viewBox="0 0 512 512" fill="none">
+              <path d="M 0 140 C 140 80 380 420 512 385" stroke="#D8F3DC" strokeWidth="44" fill="none" strokeLinecap="round" />
+              <circle cx="259" cy="253" r="22" fill="#F4A261" />
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, fontSize: 18, color: '#fff', letterSpacing: '-0.01em' }}>GoVehlo</div>
+            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2 }}>Admin</div>
+          </div>
+        </div>
+
+        {/* Workspace Switcher */}
+        <WorkspaceSwitcher activeId={activeWs} onSwitch={handleSwitch} />
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {NAV_ITEMS.map(item => {
+            const isActive = activePage === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActivePage(item.id)}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  borderRadius: 10, cursor: 'pointer', border: 'none', width: '100%', textAlign: 'left',
+                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.55)',
+                  fontFamily: "'Inter', sans-serif", fontWeight: isActive ? 600 : 400, fontSize: 14,
+                  transition: 'background 140ms ease, color 140ms ease',
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+                  <path d={item.d} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%', background: '#2D6A4F',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#D8F3DC', fontSize: 11, fontWeight: 700, fontFamily: "'Nunito', sans-serif",
+          }}>CJ</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Christian J.</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>{ws.role}</div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Top Bar */}
+        <header style={{
+          height: 56, flexShrink: 0, background: '#fff', borderBottom: '1px solid #E2EDE8',
+          display: 'flex', alignItems: 'center', padding: '0 24px', gap: 16,
+        }}>
+          <div style={{ flex: 1, maxWidth: 420, position: 'relative' }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ position: 'absolute', left: 10, top: 10, color: '#6B8F7A', pointerEvents: 'none' }}>
+              <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <input readOnly placeholder="Search events, members, actions…" style={{
+              width: '100%', height: 36, border: '1px solid #E2EDE8', borderRadius: 8,
+              padding: '0 12px 0 36px', fontSize: 13, fontFamily: "'Inter', sans-serif",
+              background: '#F7F9F8', outline: 'none', color: '#1A2E1F',
+            }} />
+          </div>
+          <div style={{ width: 1, height: 28, background: '#E2EDE8' }}></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%', background: '#2D6A4F',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#D8F3DC', fontSize: 9, fontWeight: 700, fontFamily: "'Nunito', sans-serif",
+            }}>CJ</div>
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#1A2E1F' }}>Christian J.</span>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main key={contentKey} style={{ flex: 1, overflow: 'auto', background: '#F7F9F8', padding: 24, animation: 'wsFadeContent 200ms ease-out' }}>
+          <div style={{ marginBottom: 20 }}>
+            <h1 style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, fontSize: 22, color: '#1A2E1F', margin: 0, lineHeight: 1.25 }}>
+              Dashboard
+            </h1>
+            <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: '#6B8F7A', margin: '2px 0 0' }}>
+              {ws.name} · {ws.vehicle}
+            </p>
+          </div>
+
+          {/* Stat tiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+            {stats.map((s, i) => (
+              <div key={i} style={{
+                background: '#fff', borderRadius: 12, padding: '16px 18px',
+                boxShadow: '0 1px 3px rgba(26,46,31,.08), 0 4px 12px rgba(26,46,31,.04)',
+              }}>
+                <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 500, color: '#6B8F7A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
+                <div style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 900, fontSize: 28, color: '#1A2E1F', lineHeight: 1.1, marginTop: 4 }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Recent activity */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 700, fontSize: 17, color: '#1A2E1F', margin: 0 }}>Recent activity</h2>
+            <span style={{ fontSize: 12, color: '#2D6A4F', fontWeight: 500, cursor: 'pointer' }}>View all →</span>
+          </div>
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(26,46,31,.08), 0 4px 12px rgba(26,46,31,.04)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#FAFCFB', borderBottom: '1px solid #E2EDE8' }}>
+                  {['Time', 'Actor', 'Action', 'Detail'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', fontSize: 10, fontWeight: 600, color: '#6B8F7A', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', fontFamily: "'Inter', sans-serif" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {activity.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: i < activity.length - 1 ? '1px solid #F0F4F2' : 'none' }}>
+                    <td style={{ padding: '10px 14px', fontFamily: "'Courier New', monospace", fontSize: 11, color: '#6B8F7A', whiteSpace: 'nowrap' }}>{row.time}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{
+                          width: 24, height: 24, borderRadius: '50%', background: '#2D6A4F',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#D8F3DC', fontSize: 9, fontWeight: 700, fontFamily: "'Nunito', sans-serif", flexShrink: 0,
+                        }}>{row.actor[0]}</div>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#1A2E1F', fontFamily: "'Inter', sans-serif" }}>{row.actor}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 500, color: '#3D5C48', fontFamily: "'Inter', sans-serif" }}>{row.action}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#6B8F7A', fontFamily: "'Inter', sans-serif" }}>{row.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!-- @dsCard group="Foundations" viewport="700x160" name="Border Radius" subtitle="--radius-sm through --radius-full — buttons, cards, pills" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #F7F9F8; padding: 20px 24px; font-family: var(--font-body); display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .box  { width: 60px; height: 60px; background: var(--color-mist); border: 2px solid var(--color-leaf); }
+    .name { font-family: var(--font-mono); font-size: 10px; color: #2D6A4F; }
+    .val  { font-size: 11px; font-weight: 600; color: #1A2E1F; }
+    .use  { font-size: 9px; color: #6B8F7A; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="item">
+    <div class="box" style="border-radius:8px;"></div>
+    <span class="name">--radius-sm</span>
+    <span class="val">8px</span>
+    <span class="use">Chips, tags</span>
+  </div>
+  <div class="item">
+    <div class="box" style="border-radius:12px;"></div>
+    <span class="name">--radius-md</span>
+    <span class="val">12px</span>
+    <span class="use">Buttons, inputs</span>
+  </div>
+  <div class="item">
+    <div class="box" style="border-radius:16px;"></div>
+    <span class="name">--radius-lg</span>
+    <span class="val">16px</span>
+    <span class="use">Cards (spec default)</span>
+  </div>
+  <div class="item">
+    <div class="box" style="border-radius:20px;"></div>
+    <span class="name">--radius-xl</span>
+    <span class="val">20px</span>
+    <span class="use">Sheets, modals</span>
+  </div>
+  <div class="item">
+    <div class="box" style="border-radius:9999px;"></div>
+    <span class="name">--radius-full</span>
+    <span class="val">9999px</span>
+    <span class="use">Pills, avatars, badges</span>
+  </div>
+</body>
+</html>

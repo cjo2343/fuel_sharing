@@ -1,0 +1,51 @@
+/* GoVehlo Color Tokens */
+:root {
+  /* ─── Brand Greens ─── */
+  --color-deep-forest:   #1A2E1F;   /* headings, heavy text on light */
+  --color-forest:        #2D6A4F;   /* primary — buttons, links, logo */
+  --color-leaf:          #52B788;   /* secondary — positive states, avatars, badges */
+  --color-mist:          #D8F3DC;   /* tint backgrounds — cards, avatar fills, dividers */
+
+  /* ─── Accent ─── */
+  --color-amber:         #F4A261;   /* money ONLY — costs owed, payment requests, fuel totals */
+  --color-amber-light:   #FDE8D8;   /* amber tint background */
+
+  /* ─── Surfaces & Neutral ─── */
+  --color-warm-white:    #F7F9F8;   /* app background */
+  --color-surface:       #FFFFFF;   /* card surface */
+  --color-border:        #E2EDE8;   /* dividers, input borders */
+  --color-border-strong: #C4D9CD;   /* stronger borders */
+
+  /* ─── Text ─── */
+  --text-primary:   var(--color-deep-forest);
+  --text-secondary: #3D5C48;
+  --text-muted:     #6B8F7A;
+  --text-on-forest: #FFFFFF;
+  --text-on-amber:  var(--color-deep-forest);
+
+  /* ─── Interaction States ─── */
+  --color-forest-hover:  #245940;
+  --color-forest-active: #1D4A34;
+  --color-amber-hover:   #E8905C;
+  --color-leaf-hover:    #3FA375;
+
+  /* ─── Semantic ─── */
+  --color-success:       var(--color-leaf);
+  --color-success-light: #D1F5E3;
+  --color-warning:       var(--color-amber);
+  --color-warning-light: var(--color-amber-light);
+  --color-error:         #D95050;
+  --color-error-light:   #FDEDED;
+
+  /* ─── Informational Blue — "requested" payment status ONLY ─── */
+  --color-blue:      #355d9c;
+  --color-blue-soft: #e9f0fb;
+
+  /* ─── Semantic Aliases ─── */
+  --color-primary:       var(--color-forest);
+  --color-primary-dark:  var(--color-deep-forest);
+  --color-primary-light: var(--color-leaf);
+  --color-background:    var(--color-warm-white);
+  --color-surface-tint:  var(--color-mist);
+  --color-accent:        var(--color-amber);
+}

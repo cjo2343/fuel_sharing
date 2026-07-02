@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "govehlo",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["server.py"],
+      "port": 4175
+    },
+    {
+      "name": "govehlo-web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4176", "--directory", "/Users/christian/Documents/fuel_sharing_02/govehlo-web"],
+      "port": 4176
+    },
+    {
+      "name": "govehlo-mobile-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/christian/Documents/fuel_sharing_02/govehlo-mobile", "run", "web"],
+      "port": 8081
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+/* GoVehlo Spacing Tokens — 4px base grid */
+:root {
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ─── Semantic Layout ─── */
+  --screen-padding-x: 16px;          /* horizontal screen padding */
+  --card-padding:     12px;          /* internal card padding */
+  --section-gap:      24px;          /* gap between page sections */
+  --item-gap:         8px;           /* gap between list items */
+  --nav-height:       64px;          /* bottom nav height */
+  --header-height:    72px;          /* app header height */
+  --touch-target:     44px;          /* minimum touch target */
+}
