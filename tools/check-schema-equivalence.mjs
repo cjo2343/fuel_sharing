@@ -53,6 +53,9 @@ create extension if not exists pgcrypto with schema extensions;
 create or replace function auth.jwt() returns jsonb
 language sql stable
 as 'select nullif(current_setting(''request.jwt.claims'', true), '''')::jsonb';
+create or replace function auth.uid() returns uuid
+language sql stable
+as 'select nullif(auth.jwt() ->> ''sub'', '''')::uuid';
 create publication supabase_realtime;
 `;
 
