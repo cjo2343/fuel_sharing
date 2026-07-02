@@ -29,11 +29,13 @@ The user merges every PR themselves. Never merge, never push to main.
 
 ## 3. Move the Jira ticket to In Progress (if not already)
 
-Jira: govehlo.atlassian.net, user `jira@chrjohn.dk`. The API token is the `ATATT…`
-string inside `.claude/settings.local.json` (gitignored — never commit or print it):
+Jira: govehlo.atlassian.net, user `jira@chrjohn.dk`. The API token lives on its own
+line in `fuel_sharing/.claude/.jira-token` (gitignored — never commit or print it).
+Run Jira curls from the fuel_sharing directory so the relative path resolves. To
+rotate: regenerate the token at id.atlassian.net and overwrite that one file.
 
 ```sh
-TOKEN=$(grep -oE 'ATATT[A-Za-z0-9._=-]+' .claude/settings.local.json | head -1)
+TOKEN=$(tr -d '[:space:]' < .claude/.jira-token)
 curl -s -u "jira@chrjohn.dk:$TOKEN" -X POST \
   -H 'Content-Type: application/json' \
   -d '{"transition":{"id":"31"}}' \
@@ -58,5 +60,5 @@ POST `/rest/api/3/issue` with an ADF description.)
 ## Cross-repo note
 
 govehlo-mobile uses project **GVM** and has its own copy of this skill; govehlo-web
-uses **GV**. The Jira token lives only in THIS repo's `.claude/settings.local.json` —
+uses **GV**. The Jira token lives only in THIS repo's `.claude/.jira-token` —
 run Jira curl commands from the fuel_sharing directory.
