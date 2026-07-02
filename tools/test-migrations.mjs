@@ -68,6 +68,7 @@ const expected = [
   "056_delete_my_account.sql",
   "057_expo_push_tokens.sql",
   "058_resolve_invite_volatile_fix.sql",
+  "059_member_joined_event.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
