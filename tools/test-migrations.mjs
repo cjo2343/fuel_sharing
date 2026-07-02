@@ -65,6 +65,7 @@ const expected = [
   "053_seed_open_period_on_workspace_create.sql",
   "054_settlement_integrity_rails.sql",
   "055_integrity_function_gates.sql",
+  "056_delete_my_account.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
