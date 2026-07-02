@@ -102,3 +102,19 @@ jobs:
       # guard in test-migrations.mjs cannot see semantic drift).
       - name: Verify schema equivalence
         run: node tools/check-schema-equivalence.mjs
+
+  functional-smoke:
+    name: Delete-account/push functional smoke (GV-180)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Replays supabase-schema.sql into a disposable Postgres 15, seeds a
+      # realistic two-ledger dataset, runs delete_my_account()/upsert_push_token()
+      # as impersonated JWT users, and asserts every scrub, succession, snapshot
+      # rewrite, sole-member cascade, and push-token purge (migrations 056/057).
+      # Structural checks (schema-equivalence) can't see this behaviour.
+      - name: Run functional smoke test
+        run: bash tools/test-functional-smoke.sh
