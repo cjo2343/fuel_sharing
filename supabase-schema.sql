@@ -11356,3 +11356,95 @@ values ('063_booking_fuel_stop', 'Structured fuel stop on car bookings + upsert_
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- Migration 064: insurance coverage/premium/deductible + write RPC (GVM-165).
+-- Mirrors supabase/migrations/064_insurance_details.sql: three more insurance
+-- columns on the ledger and a security-definer write path emitting an
+-- insurance_updated event (completes the migration-043 read-only stub).
+alter table public.ledgers
+  add column if not exists insurance_coverage        text,
+  add column if not exists insurance_premium_dkk      numeric(12, 2),
+  add column if not exists insurance_deductible_dkk   numeric(12, 2);
+
+create or replace function public.update_ledger_insurance(
+  target_ledger_id text,
+  provider_value text default null,
+  policy_no_value text default null,
+  coverage_value text default null,
+  renewal_value date default null,
+  premium_value numeric default null,
+  deductible_value numeric default null,
+  event_title text default null,
+  event_body text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor_member_id uuid;
+  changed_keys text[] := array[]::text[];
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Missing ledger id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_admin(target_ledger_id) then
+    raise exception 'Only ledger admins can update the insurance' using errcode = '42501';
+  end if;
+
+  actor_member_id := public.current_ledger_member_id(target_ledger_id);
+  if actor_member_id is null then
+    raise exception 'Could not match the current user to an active ledger member' using errcode = '42501';
+  end if;
+
+  update public.ledgers set
+    insurance_provider       = coalesce(provider_value, insurance_provider),
+    insurance_policy_no      = coalesce(policy_no_value, insurance_policy_no),
+    insurance_coverage       = coalesce(coverage_value, insurance_coverage),
+    insurance_renewal        = coalesce(renewal_value, insurance_renewal),
+    insurance_premium_dkk    = coalesce(premium_value, insurance_premium_dkk),
+    insurance_deductible_dkk = coalesce(deductible_value, insurance_deductible_dkk),
+    updated_at = now()
+  where id = target_ledger_id;
+
+  if not found then
+    raise exception 'Workspace not found' using errcode = '22023';
+  end if;
+
+  if provider_value is not null then changed_keys := array_append(changed_keys, 'provider'); end if;
+  if policy_no_value is not null then changed_keys := array_append(changed_keys, 'policy_no'); end if;
+  if coverage_value is not null then changed_keys := array_append(changed_keys, 'coverage'); end if;
+  if renewal_value is not null then changed_keys := array_append(changed_keys, 'renewal'); end if;
+  if premium_value is not null then changed_keys := array_append(changed_keys, 'premium'); end if;
+  if deductible_value is not null then changed_keys := array_append(changed_keys, 'deductible'); end if;
+
+  if nullif(event_title, '') is not null then
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id,
+      'insurance_updated',
+      event_title,
+      coalesce(event_body, ''),
+      actor_member_id,
+      nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('changed', to_jsonb(changed_keys))
+    );
+  end if;
+
+  return jsonb_build_object(
+    'ledger_id', target_ledger_id,
+    'event_type', 'insurance_updated'
+  );
+end;
+$$;
+
+grant execute on function public.update_ledger_insurance(text, text, text, text, date, numeric, numeric, text, text) to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('064_insurance_details', 'Add insurance coverage/premium/deductible to ledgers + update_ledger_insurance RPC (GVM-165).')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
