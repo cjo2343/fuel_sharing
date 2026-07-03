@@ -11817,3 +11817,395 @@ values ('066_expense_paid_by', 'Add paid_by_member_id to workspace_expenses + up
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+
+-- Migration 067: bind workspace expenses to a settlement period (GVM-173).
+-- Mirrors supabase/migrations/067_expense_period.sql: period_id column + index,
+-- and upsert_workspace_expense recreated with the target_open_period_id param.
+alter table public.workspace_expenses
+  add column if not exists period_id uuid references public.settlement_periods(id) on delete set null;
+
+create index if not exists workspace_expenses_period_idx
+  on public.workspace_expenses (period_id)
+  where deleted_at is null;
+
+drop function if exists public.upsert_workspace_expense(text, uuid, text, text, numeric, date, text, jsonb, uuid, text, text);
+
+create or replace function public.upsert_workspace_expense(
+  target_ledger_id text,
+  target_open_period_id uuid,
+  expense_id_value uuid default null,
+  category_value text default 'other',
+  description_value text default null,
+  amount_value numeric default 0,
+  expense_date_value date default null,
+  split_rule_value text default null,
+  split_config_value jsonb default null,
+  paid_by_value uuid default null,
+  event_title text default null,
+  event_body text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor_member_id uuid;
+  result_id uuid;
+  is_new boolean := expense_id_value is null;
+  normalized_event_type text;
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Missing ledger id' using errcode = '22023';
+  end if;
+
+  if target_open_period_id is null then
+    raise exception 'Missing open settlement period id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(target_ledger_id) then
+    raise exception 'Only ledger members can record expenses' using errcode = '42501';
+  end if;
+
+  actor_member_id := public.current_ledger_member_id(target_ledger_id);
+  if actor_member_id is null then
+    raise exception 'Could not match the current user to an active ledger member' using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+    from public.settlement_periods sp
+    where sp.id = target_open_period_id
+      and sp.ledger_id = target_ledger_id
+      and sp.status = 'open'
+      and sp.closed_at is null
+  ) then
+    raise exception 'Open settlement period was not found or was already closed' using errcode = '22023';
+  end if;
+
+  if split_rule_value is not null and split_rule_value not in ('equal', 'usage', 'custom') then
+    raise exception 'Invalid split rule' using errcode = '22023';
+  end if;
+
+  if is_new then
+    insert into public.workspace_expenses (
+      ledger_id, period_id, category, description, amount_dkk, expense_date,
+      split_rule, split_config, paid_by_member_id, created_by_member_id
+    ) values (
+      target_ledger_id,
+      target_open_period_id,
+      coalesce(nullif(category_value, ''), 'other'),
+      nullif(description_value, ''),
+      coalesce(amount_value, 0),
+      coalesce(expense_date_value, current_date),
+      split_rule_value,
+      split_config_value,
+      coalesce(paid_by_value, actor_member_id),
+      actor_member_id
+    )
+    returning id into result_id;
+    normalized_event_type := 'expense_added';
+  else
+    -- Only the creator or an admin may edit (the RLS update policy enforces this
+    -- too; re-checked here for a clear error). period_id is intentionally NOT
+    -- updated — an edit never moves an expense to a different period.
+    if not exists (
+      select 1 from public.workspace_expenses e
+      where e.id = expense_id_value
+        and e.ledger_id = target_ledger_id
+        and e.deleted_at is null
+        and (public.is_ledger_admin(target_ledger_id)
+             or e.created_by_member_id = actor_member_id)
+    ) then
+      raise exception 'Only the expense creator or a ledger admin can edit this expense' using errcode = '42501';
+    end if;
+
+    update public.workspace_expenses set
+      category          = coalesce(nullif(category_value, ''), category),
+      description       = nullif(description_value, ''),
+      amount_dkk        = coalesce(amount_value, amount_dkk),
+      expense_date      = coalesce(expense_date_value, expense_date),
+      split_rule        = split_rule_value,
+      split_config      = split_config_value,
+      paid_by_member_id = coalesce(paid_by_value, paid_by_member_id),
+      updated_at        = now()
+    where id = expense_id_value
+      and ledger_id = target_ledger_id;
+    result_id := expense_id_value;
+    normalized_event_type := 'expense_updated';
+  end if;
+
+  if nullif(event_title, '') is not null then
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id,
+      normalized_event_type,
+      event_title,
+      coalesce(event_body, ''),
+      actor_member_id,
+      nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('category', coalesce(nullif(category_value, ''), 'other'))
+    );
+  end if;
+
+  return jsonb_build_object(
+    'id', result_id,
+    'event_type', normalized_event_type
+  );
+end;
+$$;
+
+grant execute on function public.upsert_workspace_expense(text, uuid, uuid, text, text, numeric, date, text, jsonb, uuid, text, text) to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('067_expense_period', 'Bind workspace_expenses to a settlement period (period_id) + upsert RPC open-period param (GVM-173).')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
+
+
+-- Migration 068: fold workspace expenses into the settlement rails (GVM-173).
+-- Mirrors supabase/migrations/068_settlement_expenses.sql: calculate_period_settlement
+-- credits payers + debits per-member split shares (net includes expenses), and
+-- calculate_period_entry_fingerprint gains the expense id set. Last definition wins.
+create or replace function public.calculate_period_settlement(
+  target_ledger_id text,
+  target_period_id uuid
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Missing ledger id' using errcode = '22023';
+  end if;
+
+  if target_period_id is null then
+    raise exception 'Missing settlement period id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(target_ledger_id) then
+    raise exception 'Only ledger members can calculate settlements' using errcode = '42501';
+  end if;
+
+  with active_members as (
+    select lm.id, lm.name
+    from public.ledger_members lm
+    where lm.ledger_id = target_ledger_id
+      and lm.is_active = true
+  ),
+  live_trips as (
+    select t.id,
+           t.driver_member_id,
+           greatest(t.end_km - t.start_km, 0)::numeric as km
+    from public.trips t
+    where t.ledger_id = target_ledger_id
+      and t.period_id = target_period_id
+      and t.deleted_at is null
+  ),
+  trip_assignees as (
+    select lt.id as trip_id,
+           lt.km,
+           coalesce(
+             valid_participants.member_ids,
+             case when driver_check.id is not null then array[lt.driver_member_id] end
+           ) as assignees
+    from live_trips lt
+    left join lateral (
+      select array_agg(distinct tp.member_id) as member_ids
+      from public.trip_participants tp
+      join active_members am on am.id = tp.member_id
+      where tp.trip_id = lt.id
+    ) valid_participants on true
+    left join active_members driver_check on driver_check.id = lt.driver_member_id
+  ),
+  km_shares as (
+    select shared.member_id,
+           ta.km / array_length(ta.assignees, 1) as share_km
+    from trip_assignees ta
+    cross join lateral unnest(ta.assignees) as shared(member_id)
+    where ta.assignees is not null
+      and array_length(ta.assignees, 1) > 0
+  ),
+  member_km as (
+    -- Unrounded per-member km, reused both for the settlement km and as the
+    -- usage-split weight (the client weights usage on raw km).
+    select ks.member_id, sum(ks.share_km) as km_sum
+    from km_shares ks
+    group by ks.member_id
+  ),
+  fuel_paid as (
+    select fp.payer_member_id as member_id,
+           sum(fp.amount)::numeric as paid
+    from public.fuel_payments fp
+    where fp.ledger_id = target_ledger_id
+      and fp.period_id = target_period_id
+      and fp.deleted_at is null
+      and fp.payer_member_id is not null
+    group by fp.payer_member_id
+  ),
+  ledger_defaults as (
+    select l.expense_split_defaults as defaults
+    from public.ledgers l
+    where l.id = target_ledger_id
+  ),
+  period_expenses as (
+    -- Live expenses in this period whose payer is an active member (an expense
+    -- with no active payer is skipped entirely, matching the client).
+    select we.id,
+           we.amount_dkk,
+           we.paid_by_member_id,
+           we.split_config,
+           coalesce(nullif(we.split_rule, ''),
+                    (ld.defaults ->> we.category),
+                    'equal') as rule
+    from public.workspace_expenses we
+    cross join ledger_defaults ld
+    join active_members payer on payer.id = we.paid_by_member_id
+    where we.ledger_id = target_ledger_id
+      and we.period_id = target_period_id
+      and we.deleted_at is null
+      and we.amount_dkk > 0
+  ),
+  expense_weights as (
+    select pe.id as expense_id,
+           pe.amount_dkk,
+           am.id as member_id,
+           case pe.rule
+             when 'usage'  then coalesce(mk.km_sum, 0)
+             when 'custom' then coalesce((pe.split_config ->> am.id::text)::numeric, 0)
+             else 1::numeric
+           end as weight
+    from period_expenses pe
+    cross join active_members am
+    left join member_km mk on mk.member_id = am.id
+  ),
+  expense_weight_totals as (
+    select expense_id, sum(weight) as total_weight, count(*)::numeric as member_count
+    from expense_weights
+    group by expense_id
+  ),
+  expense_share as (
+    select ew.member_id,
+           sum(
+             case when ewt.total_weight > 0
+                  then round(ew.amount_dkk * ew.weight / ewt.total_weight, 2)
+                  else round(ew.amount_dkk / ewt.member_count, 2)
+             end
+           ) as share
+    from expense_weights ew
+    join expense_weight_totals ewt using (expense_id)
+    group by ew.member_id
+  ),
+  expense_paid as (
+    select pe.paid_by_member_id as member_id, sum(pe.amount_dkk)::numeric as paid
+    from period_expenses pe
+    group by pe.paid_by_member_id
+  ),
+  per_member as (
+    select am.id,
+           am.name,
+           round(coalesce(mk.km_sum, 0), 2) as km,
+           round(coalesce(f.paid, 0), 2) as fuel_paid,
+           round(coalesce(xp.paid, 0), 2) as expense_paid,
+           round(coalesce(xs.share, 0), 2) as expense_share
+    from active_members am
+    left join member_km mk on mk.member_id = am.id
+    left join fuel_paid f on f.member_id = am.id
+    left join expense_paid xp on xp.member_id = am.id
+    left join expense_share xs on xs.member_id = am.id
+  ),
+  totals as (
+    select coalesce(sum(pm.km), 0) as total_km,
+           coalesce(sum(pm.fuel_paid), 0) as total_paid,
+           coalesce(sum(pm.expense_paid), 0) as total_expenses
+    from per_member pm
+  )
+  select jsonb_build_object(
+    'totalKm', t.total_km,
+    'totalPaid', t.total_paid,
+    'totalExpenses', t.total_expenses,
+    'fuelRate', case when t.total_km > 0 then round(t.total_paid / t.total_km, 2) else 0 end,
+    'people', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', pm.id,
+        'name', pm.name,
+        'km', pm.km,
+        'fuelPaid', pm.fuel_paid,
+        'expensePaid', pm.expense_paid,
+        'expenseShare', pm.expense_share,
+        'tripCost', case when t.total_km > 0 then round(pm.km * (t.total_paid / t.total_km), 2) else 0 end,
+        'net', case when t.total_km > 0
+                    then round(pm.fuel_paid + pm.expense_paid - round(pm.km * (t.total_paid / t.total_km), 2) - pm.expense_share, 2)
+                    else round(pm.fuel_paid + pm.expense_paid - pm.expense_share, 2) end
+      ) order by pm.id::text collate "C")
+      from per_member pm
+    ), '[]'::jsonb)
+  )
+  into result
+  from totals t;
+
+  return result;
+end;
+$$;
+
+revoke all on function public.calculate_period_settlement(text, uuid) from public;
+revoke all on function public.calculate_period_settlement(text, uuid) from anon;
+grant execute on function public.calculate_period_settlement(text, uuid) to authenticated;
+
+-- Fingerprint now also covers the period's expense id set (sorted, byte-exact
+-- with the client's periodEntryFingerprint) so a changed expense invalidates a
+-- stale close just like a trip/fuel change.
+create or replace function public.calculate_period_entry_fingerprint(
+  target_ledger_id text,
+  target_period_id uuid
+)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select '{"trips":['
+    || coalesce((
+         select string_agg(to_json(t.id::text)::text, ',' order by t.id::text collate "C")
+         from public.trips t
+         where t.ledger_id = target_ledger_id
+           and t.period_id = target_period_id
+           and t.deleted_at is null
+       ), '')
+    || '],"fuel":['
+    || coalesce((
+         select string_agg(to_json(fp.id::text)::text, ',' order by fp.id::text collate "C")
+         from public.fuel_payments fp
+         where fp.ledger_id = target_ledger_id
+           and fp.period_id = target_period_id
+           and fp.deleted_at is null
+       ), '')
+    || '],"expenses":['
+    || coalesce((
+         select string_agg(to_json(we.id::text)::text, ',' order by we.id::text collate "C")
+         from public.workspace_expenses we
+         where we.ledger_id = target_ledger_id
+           and we.period_id = target_period_id
+           and we.deleted_at is null
+       ), '')
+    || ']}';
+$$;
+
+revoke all on function public.calculate_period_entry_fingerprint(text, uuid) from public;
+revoke all on function public.calculate_period_entry_fingerprint(text, uuid) from anon;
+grant execute on function public.calculate_period_entry_fingerprint(text, uuid) to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('068_settlement_expenses', 'Fold workspace expenses into calculate_period_settlement (payer credit + per-member split share, net includes expenses) and calculate_period_entry_fingerprint (expense id set) (GVM-173).')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
