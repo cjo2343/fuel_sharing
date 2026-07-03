@@ -74,6 +74,7 @@ const expected = [
   "062_drop_user_gps_from_fuel.sql",
   "063_booking_fuel_stop.sql",
   "064_insurance_details.sql",
+  "065_workspace_expenses.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
