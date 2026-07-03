@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/styles.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #1A2E1F; }
+    ::-webkit-scrollbar { width: 0; height: 0; }
+    @keyframes gvFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes gvToastIn { 0% { opacity: 0; transform: translate(-50%, 16px) scale(.96); } 100% { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:#1A2E1F;display:flex;align-items:flex-start;justify-content:center;padding:28px 24px 40px;font-family:'Inter',sans-serif;">
+
+  <!-- Phone shell -->
+  <div style="width:390px;border-radius:48px;overflow:hidden;flex-shrink:0;box-shadow:0 48px 96px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.08);background:#F7F9F8;display:flex;flex-direction:column;">
+
+    <!-- iOS status bar -->
+    <div style="height:44px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 26px;flex-shrink:0;">
+      <span style="font-family:'Inter',sans-serif;font-size:15px;font-weight:600;color:#fff;letter-spacing:-.01em;">16.09</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="white"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg>
+        <svg width="16" height="12" viewBox="0 0 20 14" fill="none"><path d="M10 12a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill="white"></path><path d="M3 7a10 10 0 0 1 14 0" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"></path><path d="M5.5 10a6 6 0 0 1 9 0" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"></path></svg>
+        <svg width="26" height="13" viewBox="0 0 26 13" fill="none"><rect x=".5" y=".5" width="21" height="12" rx="2.5" stroke="rgba(255,255,255,.4)"></rect><rect x="2" y="2" width="15" height="9" rx="1.5" fill="white"></rect><path d="M23 4.5v4" stroke="white" stroke-width="1.5" stroke-linecap="round"></path></svg>
+      </div>
+    </div>
+
+    <!-- App content -->
+    <div style="display:flex;flex-direction:column;height:766px;overflow:hidden;position:relative;background:#F7F9F8;">
+
+      <!-- Header -->
+      <div style="background:#2D6A4F;padding:14px 20px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:21px;color:#fff;letter-spacing:-.01em;">Booking</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onClick="{{ onEdit }}" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.14);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;">
+            <i data-lucide="pencil" style="width:17px;height:17px;stroke-width:2px;"></i>
+          </button>
+          <button onClick="{{ onClose }}" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.14);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;">
+            <i data-lucide="x" style="width:20px;height:20px;stroke-width:2px;"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scroll body -->
+      <div style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:13px;">
+
+        <!-- Booker + status -->
+        <div style="display:flex;align-items:center;gap:11px;animation:gvFadeIn .3s ease both;">
+          <div style="width:46px;height:46px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#fff;">{{ bookerInitials }}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#1A2E1F;line-height:1.15;">{{ purpose }}</div>
+            <div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin-top:1px;">{{ bookerName }} bookede bilen</div>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:5px;background:{{ statusBg }};padding:5px 11px;border-radius:999px;flex-shrink:0;">
+            <span style="width:6px;height:6px;border-radius:50%;background:{{ statusDot }};"></span>
+            <span style="font-family:'Inter',sans-serif;font-weight:600;font-size:11.5px;color:{{ statusColor }};">{{ statusLabel }}</span>
+          </div>
+        </div>
+
+        <!-- Facts grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;animation:gvFadeIn .3s ease .04s both;">
+          <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.06);"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:11px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Datoer</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;">6.–7. jul</div></div>
+          <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.06);"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:11px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Varighed</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;">2 dage</div></div>
+          <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.06);"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:11px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Distance</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;">{{ distanceLabel }}</div></div>
+          <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.06);"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:11px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Køretid</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;">{{ driveLabel }}</div></div>
+        </div>
+
+        <!-- Timeline with fuel stop -->
+        <sc-if value="{{ showFuel }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border-radius:18px;padding:18px 18px 6px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 6px 18px rgba(26,46,31,.05);animation:gvFadeIn .3s ease .08s both;">
+            <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:18px;">Rejseplan</div>
+            <div style="display:flex;gap:15px;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;"><div style="width:34px;height:34px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;color:#2D6A4F;"><i data-lucide="circle-dot" style="width:18px;height:18px;stroke-width:2.2px;"></i></div><div style="width:2px;flex:1;background:repeating-linear-gradient(#C7DDD0 0 4px,transparent 4px 8px);margin:4px 0;min-height:30px;"></div></div>
+              <div style="flex:1;padding-bottom:6px;"><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Afhentning</div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px;white-space:nowrap;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">{{ fromCity }}</span><span style="font-family:'Courier New',monospace;font-weight:700;font-size:13.5px;color:#2D6A4F;">man 09.00</span></div><div style="display:inline-block;margin-top:8px;font-family:'Inter',sans-serif;font-size:11.5px;color:#8AA396;">118 km ↓</div></div>
+            </div>
+            <div style="display:flex;gap:15px;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;"><div style="width:34px;height:34px;border-radius:50%;background:#fff;border:2px solid #E2EDE8;display:flex;align-items:center;justify-content:center;color:#2D6A4F;"><i data-lucide="fuel" style="width:17px;height:17px;stroke-width:2.2px;"></i></div><div style="width:2px;flex:1;background:repeating-linear-gradient(#C7DDD0 0 4px,transparent 4px 8px);margin:4px 0;min-height:30px;"></div></div>
+              <div style="flex:1;padding-bottom:6px;"><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Tankstop</div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px;white-space:nowrap;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">{{ fuelStation }}</span><span style="font-family:'Courier New',monospace;font-weight:700;font-size:13.5px;color:#E08A3C;">{{ fuelRate }} kr/L</span></div><div style="display:inline-block;margin-top:8px;font-family:'Inter',sans-serif;font-size:11.5px;color:#8AA396;">69 km ↓</div></div>
+            </div>
+            <div style="display:flex;gap:15px;">
+              <div style="flex-shrink:0;"><div style="width:34px;height:34px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;color:#fff;"><i data-lucide="flag" style="width:16px;height:16px;stroke-width:2.2px;"></i></div></div>
+              <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Aflevering</div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px;white-space:nowrap;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">{{ toCity }}</span><span style="font-family:'Courier New',monospace;font-weight:700;font-size:13.5px;color:#2D6A4F;">tir 18.00</span></div></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Timeline without fuel stop -->
+        <sc-if value="{{ routeNoFuel }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border-radius:18px;padding:18px 18px 6px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 6px 18px rgba(26,46,31,.05);">
+            <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:18px;">Rejseplan</div>
+            <div style="display:flex;gap:15px;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;"><div style="width:34px;height:34px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;color:#2D6A4F;"><i data-lucide="circle-dot" style="width:18px;height:18px;stroke-width:2.2px;"></i></div><div style="width:2px;flex:1;background:repeating-linear-gradient(#C7DDD0 0 4px,transparent 4px 8px);margin:4px 0;min-height:30px;"></div></div>
+              <div style="flex:1;padding-bottom:6px;"><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Afhentning</div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px;white-space:nowrap;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">{{ fromCity }}</span><span style="font-family:'Courier New',monospace;font-weight:700;font-size:13.5px;color:#2D6A4F;">man 09.00</span></div><div style="display:inline-block;margin-top:8px;font-family:'Inter',sans-serif;font-size:11.5px;color:#8AA396;">187 km ↓</div></div>
+            </div>
+            <div style="display:flex;gap:15px;">
+              <div style="flex-shrink:0;"><div style="width:34px;height:34px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;color:#fff;"><i data-lucide="flag" style="width:16px;height:16px;stroke-width:2.2px;"></i></div></div>
+              <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Aflevering</div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px;white-space:nowrap;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">{{ toCity }}</span><span style="font-family:'Courier New',monospace;font-weight:700;font-size:13.5px;color:#2D6A4F;">tir 18.00</span></div></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Route empty -->
+        <sc-if value="{{ routeEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border-radius:18px;padding:26px 16px 22px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 6px 18px rgba(26,46,31,.05);display:flex;flex-direction:column;align-items:center;text-align:center;">
+            <div style="width:56px;height:56px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;margin-bottom:12px;color:#2D6A4F;"><i data-lucide="map" style="width:26px;height:26px;stroke-width:2px;"></i></div>
+            <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15.5px;color:#1A2E1F;">Ingen rute planlagt endnu</div>
+            <div style="font-family:'Inter',sans-serif;font-size:13px;line-height:1.5;color:#6B8F7A;margin-top:5px;max-width:240px;">Planlæg ruten, så gruppen kan se hvor bilen skal hen.</div>
+            <button onClick="{{ onPlanRoute }}" style="margin-top:16px;display:inline-flex;align-items:center;gap:7px;background:#fff;border:1.5px solid #2D6A4F;border-radius:12px;padding:10px 20px;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#2D6A4F;cursor:pointer;"><i data-lucide="plus" style="width:16px;height:16px;stroke-width:2.4px;"></i>Planlæg rute</button>
+          </div>
+        </sc-if>
+
+        <div style="height:2px;flex-shrink:0;"></div>
+      </div>
+
+      <!-- Bottom action bar -->
+      <div style="flex-shrink:0;background:#F7F9F8;border-top:1px solid #E2EDE8;padding:12px 16px 16px;display:flex;flex-direction:column;gap:2px;">
+        <sc-if value="{{ routePlanned }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ onOpenRoute }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(45,106,79,.28);">
+            <i data-lucide="navigation" style="width:18px;height:18px;stroke-width:2.2px;"></i>
+            Åbn rute i
+          </button>
+        </sc-if>
+        <sc-if value="{{ routeEmpty }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ onPlanRoute }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(45,106,79,.28);">
+            <i data-lucide="plus" style="width:18px;height:18px;stroke-width:2.4px;"></i>
+            Planlæg rute
+          </button>
+        </sc-if>
+        <button onClick="{{ onCancel }}" style="width:100%;height:42px;background:none;border:none;font-family:'Inter',sans-serif;font-weight:600;font-size:14px;color:#B4453A;cursor:pointer;">Aflys booking</button>
+      </div>
+
+      <!-- Toast -->
+      <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;bottom:96px;z-index:60;animation:gvToastIn .28s cubic-bezier(.34,1.56,.64,1) both;">
+          <div style="display:flex;align-items:center;gap:9px;background:#1A2E1F;color:#fff;padding:12px 18px;border-radius:14px;box-shadow:0 12px 34px rgba(26,46,31,.4);white-space:nowrap;">
+            <i data-lucide="check-circle" style="width:18px;height:18px;stroke-width:2.2px;color:#52B788;"></i>
+            <span style="font-family:'Inter',sans-serif;font-size:13.5px;font-weight:500;">{{ toast }}</span>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 438, &quot;height&quot;: 900 },
+  &quot;bookerName&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Jonas&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Content&quot; },
+  &quot;purpose&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Weekendtur&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Content&quot; },
+  &quot;bookingStatus&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;aktiv&quot;, &quot;kommende&quot;, &quot;afsluttet&quot;], &quot;default&quot;: &quot;kommende&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;routePlanned&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;showFuelStop&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;State&quot; }
+}">
+class Component extends DCLogic {
+  state = { toast: null, routeOverride: null };
+
+  componentDidMount() { this.renderIcons(); }
+  componentDidUpdate() { this.renderIcons(); }
+  renderIcons() {
+    const run = () => { if (window.lucide) window.lucide.createIcons(); };
+    run();
+    [80, 250, 700].forEach(t => setTimeout(run, t));
+  }
+
+  showToast(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ toast: null }), 2600);
+  }
+
+  initials(name) {
+    const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'GV';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return parts.map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  }
+
+  renderVals() {
+    const status = this.props.bookingStatus ?? 'kommende';
+    const statusMap = {
+      aktiv:     { label: 'Aktiv nu',  bg: '#D8F3DC', dot: '#52B788', color: '#1A2E1F' },
+      kommende:  { label: 'Kommende',  bg: '#D8F3DC', dot: '#2D6A4F', color: '#1A2E1F' },
+      afsluttet: { label: 'Afsluttet', bg: '#EDEFED', dot: '#8AA396', color: '#5B6B60' },
+    };
+    const st = statusMap[status] || statusMap.kommende;
+
+    const routePlanned = this.state.routeOverride != null
+      ? this.state.routeOverride
+      : (this.props.routePlanned ?? true);
+    const showFuelStop = this.props.showFuelStop ?? true;
+    const bookerName = this.props.bookerName ?? 'Jonas';
+
+    return {
+      bookerName,
+      bookerInitials: this.initials(bookerName),
+      purpose: this.props.purpose ?? 'Weekendtur',
+
+      distanceLabel: routePlanned ? '187 km' : '—',
+      driveLabel:    routePlanned ? '2t 5m'  : '—',
+
+      statusLabel: st.label, statusBg: st.bg, statusDot: st.dot, statusColor: st.color,
+
+      routePlanned,
+      routeEmpty: !routePlanned,
+      showFuel: routePlanned && showFuelStop,
+      routeNoFuel: routePlanned && !showFuelStop,
+
+      fromCity: 'Aarhus',
+      toCity: 'Skagen',
+      fuelStation: 'Circle K',
+      fuelRate: '13,29',
+
+      toast: this.state.toast,
+
+      onClose:     () => this.showToast('Lukket. (demo)'),
+      onEdit:      () => this.showToast('Rediger booking. (demo)'),
+      onCancel:    () => this.showToast('Aflys booking. (demo)'),
+      onOpenRoute: () => this.showToast('Åbner rute i kort. (demo)'),
+      onPlanRoute: () => { this.setState({ routeOverride: true }); this.showToast('Rute tilføjet.'); },
+    };
+  }
+}
+</script>
+</body>
+</html>
