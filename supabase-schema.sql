@@ -11413,6 +11413,8 @@ begin
     raise exception 'Workspace not found' using errcode = '22023';
   end if;
 
+  -- Record which fields the save touched (keys only, no values — GDPR data
+  -- minimisation; the human-readable summary lives in event_body).
   if provider_value is not null then changed_keys := array_append(changed_keys, 'provider'); end if;
   if policy_no_value is not null then changed_keys := array_append(changed_keys, 'policy_no'); end if;
   if coverage_value is not null then changed_keys := array_append(changed_keys, 'coverage'); end if;
