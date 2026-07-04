@@ -14576,3 +14576,81 @@ values ('073_recurring_semiannual_cadence',
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ── Migration 074: idempotent inspection-due (syn) feed event (GVM-187) ──
+-- Client catch-up like recurring generation: emits at most one 'inspection_due'
+-- event per (ledger, syn date) when the owner-entered next-syn date comes within
+-- 30 days (or overdue). Re-emits only when the date changes.
+create or replace function public.emit_inspection_due_event(
+  target_ledger_id text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  -- Lead time: nudge once the syn deadline is within this many days (or overdue).
+  threshold_days int := 30;
+  syn_date date;
+  existing_id uuid;
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Missing ledger id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(target_ledger_id) then
+    raise exception 'Only ledger members can check inspection status' using errcode = '42501';
+  end if;
+
+  -- Owner-entered next-syn date lives in the vehicle metadata jsonb.
+  select nullif(l.vehicle_info ->> 'next_inspection_date', '')::date
+    into syn_date
+  from public.ledgers l
+  where l.id = target_ledger_id;
+
+  -- Nothing to nudge if it is unset or still comfortably in the future.
+  if syn_date is null or syn_date > current_date + threshold_days then
+    return jsonb_build_object('emitted', false, 'reason', 'not_due');
+  end if;
+
+  -- Idempotent: one feed event per (ledger, syn date). A new date (after the car
+  -- passes syn) is a distinct key, so the next deadline nudges afresh.
+  select le.id into existing_id
+  from public.ledger_events le
+  where le.ledger_id = target_ledger_id
+    and le.event_type = 'inspection_due'
+    and (le.metadata ->> 'inspection_date') = syn_date::text
+  limit 1;
+
+  if existing_id is not null then
+    return jsonb_build_object('emitted', false, 'reason', 'already_emitted');
+  end if;
+
+  insert into public.ledger_events (
+    ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+  ) values (
+    target_ledger_id,
+    'inspection_due',
+    case when syn_date < current_date then 'Syn er overskredet' else 'Syn forfalder snart' end,
+    case when syn_date < current_date
+      then 'Bilen skulle have været til syn ' || to_char(syn_date, 'DD-MM-YYYY') || '. Book en tid hurtigst muligt.'
+      else 'Bilen skal til syn senest ' || to_char(syn_date, 'DD-MM-YYYY') || '. Husk at booke en tid.'
+    end,
+    null,
+    null,
+    jsonb_build_object('inspection_date', syn_date::text)
+  );
+
+  return jsonb_build_object('emitted', true, 'inspection_date', syn_date::text);
+end;
+$$;
+
+grant execute on function public.emit_inspection_due_event(text) to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('074_inspection_due_event',
+        'Idempotent inspection-due (syn) feed event, client catch-up like recurring generation (GVM-187).')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
