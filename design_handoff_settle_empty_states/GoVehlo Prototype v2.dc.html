@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/styles.css">
+  <script src="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/_ds_bundle.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #1A2E1F; }
+    ::-webkit-scrollbar { width: 0; height: 0; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes popIn   { 0% { transform: scale(.94); opacity: 0; } 60% { transform: scale(1.02); } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes toastIn { 0% { opacity: 0; transform: translateY(16px) scale(.96); } 100% { opacity: 1; transform: none; } }
+    @keyframes tabIn   { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes pulseAmber { 0%, 100% { box-shadow: 0 0 0 0 rgba(244,162,97,0); } 35% { box-shadow: 0 0 0 4px rgba(244,162,97,.35); } }
+  </style>
+</helmet>
+
+<!-- Page background -->
+<div style="min-height:100vh;background:#1A2E1F;display:flex;align-items:flex-start;justify-content:center;padding:28px 24px 40px;">
+
+  <!-- Phone shell -->
+  <div style="width:390px;border-radius:48px;overflow:hidden;flex-shrink:0;box-shadow:0 48px 96px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.08),inset 0 0 0 1.5px rgba(255,255,255,.04);background:#F7F9F8;display:flex;flex-direction:column;">
+
+    <!-- iOS Status bar -->
+    <div style="height:44px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 28px;flex-shrink:0;">
+      <span style="font-family:'Inter',sans-serif;font-size:15px;font-weight:600;color:#fff;letter-spacing:-.01em;">9:41</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="white">
+          <rect x="0" y="8" width="3" height="4" rx=".5"></rect>
+          <rect x="4.5" y="5" width="3" height="7" rx=".5"></rect>
+          <rect x="9" y="2" width="3" height="10" rx=".5"></rect>
+          <rect x="13.5" y="0" width="3" height="12" rx=".5"></rect>
+        </svg>
+        <svg width="16" height="12" viewBox="0 0 20 14" fill="none">
+          <path d="M10 12a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill="white"></path>
+          <path d="M3 7a10 10 0 0 1 14 0" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"></path>
+          <path d="M5.5 10a6 6 0 0 1 9 0" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"></path>
+        </svg>
+        <svg width="26" height="13" viewBox="0 0 26 13" fill="none">
+          <rect x=".5" y=".5" width="21" height="12" rx="2.5" stroke="rgba(255,255,255,.35)"></rect>
+          <rect x="2" y="2" width="17" height="9" rx="1.5" fill="white"></rect>
+          <path d="M23 4.5v4" stroke="white" stroke-width="1.5" stroke-linecap="round"></path>
+        </svg>
+      </div>
+    </div>
+
+    <!-- App content area -->
+    <div style="display:flex;flex-direction:column;height:766px;overflow:hidden;position:relative;">
+
+      <!-- ===== ONBOARDING ===== -->
+      <sc-if value="{{ isOnboarding }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;display:flex;flex-direction:column;animation:fadeIn .2s ease;">
+
+          <!-- Step 0: Welcome -->
+          <sc-if value="{{ isStep0 }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;background:#2D6A4F;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px 48px;gap:0;">
+
+              <!-- Animated stage: car drives the winding road, crew hops in -->
+              <div style="width:264px;height:170px;border-radius:28px;background:#1A2E1F;margin-bottom:32px;box-shadow:0 14px 44px rgba(0,0,0,.38);overflow:hidden;animation:fadeIn .45s ease both;">
+                <svg width="100%" height="100%" viewBox="0 0 280 170" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                  <!-- Road: solid mist path that draws itself in -->
+                  <path id="gvRoad" d="M22 70 C80 20 118 22 140 76 C162 130 204 134 258 98" stroke="#D8F3DC" stroke-width="26" stroke-linecap="round" fill="none" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100">
+                    <animate attributeName="stroke-dashoffset" from="100" to="0" dur="0.9s" begin="0.15s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.2 1"></animate>
+                  </path>
+                  <!-- Dashed centreline, fades in after road draws -->
+                  <path d="M22 70 C80 20 118 22 140 76 C162 130 204 134 258 98" stroke="rgba(255,255,255,.45)" stroke-width="3.5" stroke-linecap="round" fill="none" stroke-dasharray="1 17" opacity="0">
+                    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="0.85s" fill="freeze"></animate>
+                  </path>
+
+                  <!-- Waiting friend A (LN) -->
+                  <g transform="translate(243,72)">
+                    <g opacity="0">
+                      <animate attributeName="opacity" from="0" to="1" dur="0.01s" begin="0.5s" fill="freeze"></animate>
+                      <animate attributeName="opacity" from="1" to="0" dur="0.32s" begin="2.55s" fill="freeze"></animate>
+                      <animateTransform attributeName="transform" type="scale" values="0;1.15;1" keyTimes="0;0.65;1" dur="0.42s" begin="0.5s" fill="freeze" calcMode="spline" keySplines="0.34 1.56 0.64 1;0.4 0 0.2 1"></animateTransform>
+                      <animateTransform attributeName="transform" type="scale" values="1;1.2;0" keyTimes="0;0.3;1" dur="0.36s" begin="2.55s" additive="sum" fill="freeze"></animateTransform>
+                      <circle cx="0" cy="0" r="10" fill="#52B788" stroke="#1A2E1F" stroke-width="2"></circle>
+                      <text x="0" y="0" dy=".34em" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="9" fill="#fff">LN</text>
+                    </g>
+                  </g>
+                  <!-- Waiting friend B (SA) -->
+                  <g transform="translate(266,114)">
+                    <g opacity="0">
+                      <animate attributeName="opacity" from="0" to="1" dur="0.01s" begin="0.66s" fill="freeze"></animate>
+                      <animate attributeName="opacity" from="1" to="0" dur="0.32s" begin="2.7s" fill="freeze"></animate>
+                      <animateTransform attributeName="transform" type="scale" values="0;1.15;1" keyTimes="0;0.65;1" dur="0.42s" begin="0.66s" fill="freeze" calcMode="spline" keySplines="0.34 1.56 0.64 1;0.4 0 0.2 1"></animateTransform>
+                      <animateTransform attributeName="transform" type="scale" values="1;1.2;0" keyTimes="0;0.3;1" dur="0.36s" begin="2.7s" additive="sum" fill="freeze"></animateTransform>
+                      <circle cx="0" cy="0" r="10" fill="#7EC8A4" stroke="#1A2E1F" stroke-width="2"></circle>
+                      <text x="0" y="0" dy=".34em" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="9" fill="#fff">SA</text>
+                    </g>
+                  </g>
+
+                  <!-- Car: drives out (CJ), picks up crew, drives back full, then parks & empties -->
+                  <g opacity="0">
+                    <!-- forward: start -> crew -->
+                    <animateMotion dur="1.7s" begin="0.9s" fill="freeze" rotate="0" calcMode="spline" keyTimes="0;1" keySplines="0.45 0 0.2 1">
+                      <mpath xlink:href="#gvRoad" href="#gvRoad"></mpath>
+                    </animateMotion>
+                    <!-- return: crew -> start (full car) -->
+                    <animateMotion dur="1.6s" begin="3.15s" fill="freeze" rotate="0" calcMode="spline" keyPoints="1;0" keyTimes="0;1" keySplines="0.45 0 0.55 1">
+                      <mpath xlink:href="#gvRoad" href="#gvRoad"></mpath>
+                    </animateMotion>
+                    <animate attributeName="opacity" from="0" to="1" dur="0.12s" begin="0.86s" fill="freeze"></animate>
+                    <!-- park & empty: car fades once back at start -->
+                    <animate attributeName="opacity" from="1" to="0" dur="0.35s" begin="4.85s" fill="freeze"></animate>
+                    <ellipse cx="0" cy="13" rx="19" ry="4" fill="rgba(0,0,0,.28)"></ellipse>
+                    <rect x="-19" y="-3" width="38" height="15" rx="7" fill="#F4A261"></rect>
+                    <rect x="-11" y="1" width="22" height="7" rx="3" fill="rgba(26,46,31,.22)"></rect>
+                    <circle cx="-10" cy="13" r="4.5" fill="#1A2E1F"></circle>
+                    <circle cx="10" cy="13" r="4.5" fill="#1A2E1F"></circle>
+                    <!-- driver CJ (always aboard) -->
+                    <circle cx="-8" cy="-8" r="7" fill="#2D6A4F" stroke="#fff" stroke-width="1.8"></circle>
+                    <text x="-8" y="-8" dy=".34em" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="6.5" fill="#fff">CJ</text>
+                    <!-- passengers LN, SA (appear once boarded) -->
+                    <g opacity="0">
+                      <animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="2.7s" fill="freeze"></animate>
+                      <circle cx="3" cy="-8" r="6.5" fill="#52B788" stroke="#fff" stroke-width="1.8"></circle>
+                      <text x="3" y="-8" dy=".34em" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="6" fill="#fff">LN</text>
+                    </g>
+                    <g opacity="0">
+                      <animate attributeName="opacity" from="0" to="1" dur="0.25s" begin="2.85s" fill="freeze"></animate>
+                      <circle cx="13" cy="-8" r="6" fill="#7EC8A4" stroke="#fff" stroke-width="1.8"></circle>
+                      <text x="13" y="-8" dy=".34em" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="5.5" fill="#fff">SA</text>
+                    </g>
+                  </g>
+
+                  <!-- Everyone gets out at the start and walks away -->
+                  <g transform="translate(24,72)">
+                    <!-- walker 1 (CJ) -->
+                    <g transform="translate(-2,4)"><g opacity="0">
+                      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.14;0.72;1" dur="1.4s" begin="4.8s" fill="freeze"></animate>
+                      <animateTransform attributeName="transform" type="translate" from="0 0" to="-34 40" dur="1.4s" begin="4.8s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.6 1"></animateTransform>
+                      <circle cx="0" cy="-4" r="4.5" fill="#2D6A4F" stroke="#fff" stroke-width="1.4"></circle>
+                      <rect x="-3.5" y="0" width="7" height="9" rx="3.5" fill="#2D6A4F"></rect>
+                    </g></g>
+                    <!-- walker 2 (LN) -->
+                    <g transform="translate(9,7)"><g opacity="0">
+                      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.14;0.72;1" dur="1.4s" begin="4.95s" fill="freeze"></animate>
+                      <animateTransform attributeName="transform" type="translate" from="0 0" to="-30 44" dur="1.4s" begin="4.95s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.6 1"></animateTransform>
+                      <circle cx="0" cy="-4" r="4.5" fill="#52B788" stroke="#fff" stroke-width="1.4"></circle>
+                      <rect x="-3.5" y="0" width="7" height="9" rx="3.5" fill="#52B788"></rect>
+                    </g></g>
+                    <!-- walker 3 (SA) -->
+                    <g transform="translate(4,-2)"><g opacity="0">
+                      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.14;0.72;1" dur="1.4s" begin="5.1s" fill="freeze"></animate>
+                      <animateTransform attributeName="transform" type="translate" from="0 0" to="-40 34" dur="1.4s" begin="5.1s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4 0 0.6 1"></animateTransform>
+                      <circle cx="0" cy="-4" r="4.5" fill="#7EC8A4" stroke="#fff" stroke-width="1.4"></circle>
+                      <rect x="-3.5" y="0" width="7" height="9" rx="3.5" fill="#7EC8A4"></rect>
+                    </g></g>
+                  </g>
+                </svg>
+              </div>
+
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:38px;color:#fff;margin:0 0 6px;letter-spacing:-.02em;animation:slideUp .5s ease-out 5.4s both;">GoVehlo</h1>
+              <p style="font-family:'Inter',sans-serif;font-size:17px;color:rgba(255,255,255,.7);margin:0 0 52px;text-align:center;text-wrap:pretty;animation:slideUp .5s ease-out 5.6s both;">Fill up. Drive fair.</p>
+              <button onClick="{{ onStart }}" style="width:100%;height:54px;background:#F4A261;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#1A2E1F;cursor:pointer;box-shadow:0 4px 20px rgba(244,162,97,.45);animation:popIn .5s cubic-bezier(.34,1.56,.64,1) 5.8s both;">Get started</button>
+              <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin:16px 0 0;text-align:center;animation:fadeIn .5s ease 6.1s both;">No spreadsheets. Just fair miles.</p>
+            </div>
+          </sc-if>
+
+          <!-- Step 1: Your name -->
+          <sc-if value="{{ isStep1 }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:#F7F9F8;display:flex;flex-direction:column;padding:32px 24px 40px;animation:popIn .25s cubic-bezier(.34,1.56,.64,1);">
+              <div style="display:flex;gap:6px;margin-bottom:36px;">
+                <div style="width:28px;height:4px;border-radius:2px;background:#2D6A4F;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+              </div>
+              <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;color:#1A2E1F;margin:0 0 8px;">What's your name?</h2>
+              <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 32px;">Used in greetings and trip attribution.</p>
+              <div style="background:#fff;border:2px solid #2D6A4F;border-radius:14px;padding:14px 16px;margin-bottom:12px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Your name</div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:22px;color:#1A2E1F;">Christian</div>
+              </div>
+              <div style="flex:1;"></div>
+              <button onClick="{{ onContinue }}" style="width:100%;height:54px;background:#2D6A4F;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Continue</button>
+            </div>
+          </sc-if>
+
+          <!-- Step 2: Create or join? -->
+          <sc-if value="{{ isStep2 }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:#F7F9F8;display:flex;flex-direction:column;padding:32px 24px 40px;animation:popIn .25s cubic-bezier(.34,1.56,.64,1);">
+              <div style="display:flex;gap:6px;margin-bottom:36px;">
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:28px;height:4px;border-radius:2px;background:#2D6A4F;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+              </div>
+              <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;color:#1A2E1F;margin:0 0 8px;">How do you want to start?</h2>
+              <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 32px;">You can always do both later.</p>
+
+              <!-- Create a group card -->
+              <button onClick="{{ onPickCreate }}" style="width:100%;background:#fff;border:2px solid #E2EDE8;border-radius:16px;padding:20px;margin-bottom:14px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:16px;transition:border-color 140ms ease, box-shadow 140ms ease;" style-hover="border-color:#2D6A4F;box-shadow:0 4px 16px rgba(45,106,79,.12);">
+                <div style="width:52px;height:52px;border-radius:14px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                </div>
+                <div style="flex:1;">
+                  <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin-bottom:3px;">Create a new group</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;line-height:1.4;">Start a car-sharing group and invite others to join.</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C4D9CD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+
+              <!-- Join a group card -->
+              <button onClick="{{ onPickJoin }}" style="width:100%;background:#fff;border:2px solid #E2EDE8;border-radius:16px;padding:20px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:16px;transition:border-color 140ms ease, box-shadow 140ms ease;" style-hover="border-color:#2D6A4F;box-shadow:0 4px 16px rgba(45,106,79,.12);">
+                <div style="width:52px;height:52px;border-radius:14px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                </div>
+                <div style="flex:1;">
+                  <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin-bottom:3px;">Join an existing group</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;line-height:1.4;">Got an invite code? Join your friends' group.</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C4D9CD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+
+              <div style="flex:1;"></div>
+            </div>
+          </sc-if>
+
+          <!-- Step 3: CREATE — Name your group -->
+          <sc-if value="{{ isStep3Create }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:#F7F9F8;display:flex;flex-direction:column;padding:32px 24px 40px;animation:popIn .25s cubic-bezier(.34,1.56,.64,1);">
+              <div style="display:flex;gap:6px;margin-bottom:36px;">
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:28px;height:4px;border-radius:2px;background:#2D6A4F;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+              </div>
+              <button onClick="{{ onBackToChoice }}" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:0;margin-bottom:20px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;font-weight:500;">Back</span>
+              </button>
+              <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;color:#1A2E1F;margin:0 0 8px;">Name your group</h2>
+              <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 32px;">Pick something everyone recognises.</p>
+
+              <div style="background:#fff;border:2px solid #2D6A4F;border-radius:14px;padding:14px 16px;margin-bottom:16px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Group name</div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:22px;color:#1A2E1F;">Familien Jørgensen</div>
+              </div>
+
+              <!-- Group avatar preview -->
+              <div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:14px 16px;border:1px solid #E2EDE8;">
+                <div style="width:44px;height:44px;border-radius:12px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#D8F3DC;flex-shrink:0;">FJ</div>
+                <div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Familien Jørgensen</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">1 member · just created</div>
+                </div>
+              </div>
+
+              <div style="flex:1;"></div>
+              <button onClick="{{ onCreateGroup }}" style="width:100%;height:54px;background:#2D6A4F;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Create group</button>
+            </div>
+          </sc-if>
+
+          <!-- Step 3: JOIN — Enter invite code -->
+          <sc-if value="{{ isStep3Join }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:#F7F9F8;display:flex;flex-direction:column;padding:32px 24px 40px;animation:popIn .25s cubic-bezier(.34,1.56,.64,1);">
+              <div style="display:flex;gap:6px;margin-bottom:36px;">
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:28px;height:4px;border-radius:2px;background:#2D6A4F;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+              </div>
+              <button onClick="{{ onBackToChoice }}" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:0;margin-bottom:20px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;font-weight:500;">Back</span>
+              </button>
+              <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;color:#1A2E1F;margin:0 0 8px;">Join a group</h2>
+              <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 32px;">Enter the code you got from your group's owner.</p>
+
+              <div style="background:#fff;border:2px solid #2D6A4F;border-radius:14px;padding:14px 16px;margin-bottom:16px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Invite code</div>
+                <div style="font-family:'Courier New',monospace;font-weight:700;font-size:26px;color:#1A2E1F;letter-spacing:.12em;">GV-7F2K</div>
+              </div>
+
+              <!-- Resolved group preview -->
+              <div style="display:flex;align-items:center;gap:12px;background:#D8F3DC;border-radius:14px;padding:14px 16px;border:1px solid #C4D9CD;">
+                <div style="width:20px;height:20px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Familien Jørgensen</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;">4 members · owned by Christian</div>
+                </div>
+              </div>
+
+              <div style="flex:1;"></div>
+              <button onClick="{{ onJoinGroup }}" style="width:100%;height:54px;background:#2D6A4F;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Join group</button>
+            </div>
+          </sc-if>
+
+          <!-- Step 4: CREATE — Invite your crew -->
+          <sc-if value="{{ isStep4Create }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:#F7F9F8;display:flex;flex-direction:column;padding:32px 24px 40px;animation:popIn .25s cubic-bezier(.34,1.56,.64,1);">
+              <div style="display:flex;gap:6px;margin-bottom:36px;">
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:28px;height:4px;border-radius:2px;background:#2D6A4F;"></div>
+              </div>
+
+              <div style="width:56px;height:56px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;color:#1A2E1F;margin:0 0 8px;">Group created!</h2>
+              <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 28px;line-height:1.5;">Share this code so others can join Familien Jørgensen.</p>
+
+              <!-- Invite code card -->
+              <div style="background:#fff;border-radius:16px;padding:20px;border:1px solid #E2EDE8;margin-bottom:16px;text-align:center;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Your invite code</div>
+                <div style="font-family:'Courier New',monospace;font-weight:900;font-size:36px;color:#1A2E1F;letter-spacing:.15em;margin-bottom:14px;">GV-7F2K</div>
+                <button onClick="{{ onCopyCode }}" style="height:40px;padding:0 24px;background:#D8F3DC;border:none;border-radius:10px;font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#2D6A4F;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background 140ms ease;" style-hover="background:#C4ECCE;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  Copy code
+                </button>
+              </div>
+
+              <!-- Or share link -->
+              <div style="background:#fff;border-radius:14px;padding:14px 16px;border:1px solid #E2EDE8;display:flex;align-items:center;gap:12px;">
+                <div style="flex:1;overflow:hidden;">
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Or share link</div>
+                  <div style="font-family:'Courier New',monospace;font-size:12px;color:#1A2E1F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">govehlo.app/join/GV-7F2K</div>
+                </div>
+                <button onClick="{{ onCopyLink }}" style="width:36px;height:36px;border-radius:10px;background:#D8F3DC;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 140ms ease;" style-hover="background:#C4ECCE;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                </button>
+              </div>
+
+              <div style="flex:1;"></div>
+              <button onClick="{{ onEnter }}" style="width:100%;height:54px;background:#F4A261;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#1A2E1F;cursor:pointer;box-shadow:0 4px 20px rgba(244,162,97,.4);">Enter GoVehlo</button>
+              <button onClick="{{ onEnter }}" style="width:100%;height:40px;background:none;border:none;font-family:'Inter',sans-serif;font-weight:500;font-size:14px;color:#6B8F7A;cursor:pointer;margin-top:6px;">I'll invite later</button>
+            </div>
+          </sc-if>
+
+          <!-- Step 4: JOIN — You're in! -->
+          <sc-if value="{{ isStep4Join }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:#F7F9F8;display:flex;flex-direction:column;padding:32px 24px 40px;animation:popIn .25s cubic-bezier(.34,1.56,.64,1);">
+              <div style="display:flex;gap:6px;margin-bottom:36px;">
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:8px;height:4px;border-radius:2px;background:#D8F3DC;"></div>
+                <div style="width:28px;height:4px;border-radius:2px;background:#2D6A4F;"></div>
+              </div>
+
+              <div style="width:56px;height:56px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;color:#1A2E1F;margin:0 0 8px;">You're in!</h2>
+              <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 24px;">Welcome to Familien Jørgensen. Here's your crew.</p>
+
+              <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:24px;">
+                <div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:12px;">
+                  <div style="width:44px;height:44px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;flex-shrink:0;">CJ</div>
+                  <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Christian Jørgensen</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">Owner</div></div>
+                  <span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Active</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:12px;">
+                  <div style="width:44px;height:44px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;flex-shrink:0;">LN</div>
+                  <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Lars Nielsen</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">Member</div></div>
+                  <span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Active</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:12px;">
+                  <div style="width:44px;height:44px;border-radius:50%;background:#F4A261;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;flex-shrink:0;">SA</div>
+                  <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Sara Andersen</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">Member</div></div>
+                  <span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Active</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;background:#D8F3DC;border-radius:14px;padding:12px;border:2px solid #52B788;">
+                  <div style="width:44px;height:44px;border-radius:50%;background:#7EC8A4;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;flex-shrink:0;">You</div>
+                  <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">You</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;font-weight:500;">Just joined</div></div>
+                  <span style="background:#2D6A4F;color:#fff;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">New</span>
+                </div>
+              </div>
+
+              <div style="flex:1;"></div>
+              <button onClick="{{ onEnter }}" style="width:100%;height:54px;background:#F4A261;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#1A2E1F;cursor:pointer;box-shadow:0 4px 20px rgba(244,162,97,.4);">Enter GoVehlo</button>
+            </div>
+          </sc-if>
+
+        </div>
+      </sc-if>
+
+      <!-- ===== MAIN APP ===== -->
+      <sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;height:100%;position:relative;animation:fadeIn .2s ease;">
+
+          <!-- Header: Home (tall) -->
+          <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#2D6A4F;padding:16px 16px 20px;flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;">
+              <div>
+                <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#fff;margin:0 0 2px;letter-spacing:-.01em;">Good morning, Christian.</h1>
+                <p style="font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,.6);margin:0;">Saved · 09:41</p>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;padding-top:2px;">
+                <button onClick="{{ goChat }}" style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.12);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                  <div style="position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#F4A261;border:2px solid #2D6A4F;"></div>
+                </button>
+                <button onClick="{{ goProfile }}" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.15);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                </button>
+              </div>
+            </div>
+          </sc-if>
+          <!-- Header: Log -->
+          <sc-if value="{{ isLog }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;">
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Log</h1>
+            </div>
+          </sc-if>
+          <!-- Header: Book -->
+          <sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;">
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Book</h1>
+            </div>
+          </sc-if>
+          <!-- Header: Settle -->
+          <sc-if value="{{ isSettle }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;">
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Settlement</h1>
+            </div>
+          </sc-if>
+          <!-- Header: Payments -->
+          <sc-if value="{{ isPay }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;">
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Payments</h1>
+            </div>
+          </sc-if>
+          <!-- Header: Chat -->
+          <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;">
+              <button onClick="{{ goHome }}" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Activity</h1>
+            </div>
+          </sc-if>
+          <!-- Header: Profile -->
+          <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;">
+              <button onClick="{{ goHome }}" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Car profile</h1>
+            </div>
+          </sc-if>
+          <!-- Header: History -->
+          <sc-if value="{{ isHistory }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;">
+              <button onClick="{{ goHome }}" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">History</h1>
+              <span style="background:rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:6px;padding:2px 8px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.02em;">OWNER</span>
+            </div>
+          </sc-if>
+          <!-- Header: Insights -->
+          <sc-if value="{{ isInsights }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#2D6A4F;padding:14px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;">
+              <button onClick="{{ goHome }}" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+              <h1 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;margin:0;">Insights</h1>
+              <span style="background:rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:6px;padding:2px 8px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.02em;">OWNER</span>
+            </div>
+          </sc-if>
+
+          <!-- Scrollable screen content -->
+          <div style="flex:1;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;">
+
+            <!-- HOME -->
+            <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
+
+                <!-- Balance card -->
+                <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;">
+                  <div style="flex:1;border-right:1px solid #E2EDE8;padding-right:16px;">
+                    <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#6B8F7A;margin-bottom:6px;">You owe</div>
+                    <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:34px;color:#F4A261;line-height:1;letter-spacing:-.02em;">52,00</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#F4A261;margin-top:1px;">kr</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:4px;">to Lars</div>
+                  </div>
+                  <div style="flex:1;padding-left:16px;">
+                    <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#6B8F7A;margin-bottom:6px;">Owed to you</div>
+                    <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:34px;color:#52B788;line-height:1;letter-spacing:-.02em;">120,50</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#52B788;margin-top:1px;">kr</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:4px;">from Sara</div>
+                  </div>
+                </div>
+
+                <!-- Car status -->
+                <sc-if value="{{ hasCar }}" hint-placeholder-val="{{ true }}">
+                <div style="background:#D1F5E3;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+                  <div style="width:42px;height:42px;border-radius:11px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg>
+                  </div>
+                  <div style="flex:1;">
+                    <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Car is free</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;margin-top:1px;">Available now</div>
+                  </div>
+                  <button onClick="{{ onOpenBooking }}" style="background:#2D6A4F;border:none;border-radius:10px;padding:8px 16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;cursor:pointer;min-height:36px;">Book</button>
+                </div>
+                </sc-if>
+                <sc-if value="{{ noCarYet }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ goProfile }}" style="background:#fff;border:2px dashed #2D6A4F;border-radius:16px;padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;width:100%;">
+                  <div style="width:42px;height:42px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  </div>
+                  <div style="flex:1;text-align:left;">
+                    <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Add your car</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:2px;">Set up your shared car to get started.</div>
+                  </div>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+                </sc-if>
+
+                <!-- Group -->
+                <div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;margin-bottom:10px;">Your group</div>
+                  <div style="display:flex;gap:14px;align-items:center;">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <div style="width:42px;height:42px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;position:relative;">CH<div style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#52B788;border:2px solid #F7F9F8;"></div></div>
+                      <span style="font-family:'Inter',sans-serif;font-size:10px;color:#3D5C48;font-weight:500;">You</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <div style="width:42px;height:42px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;position:relative;">LN<div style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#52B788;border:2px solid #F7F9F8;"></div></div>
+                      <span style="font-family:'Inter',sans-serif;font-size:10px;color:#3D5C48;font-weight:500;">Lars</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <div style="width:42px;height:42px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;position:relative;">ST<div style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#52B788;border:2px solid #F7F9F8;"></div></div>
+                      <span style="font-family:'Inter',sans-serif;font-size:10px;color:#3D5C48;font-weight:500;">Sara</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <div style="width:42px;height:42px;border-radius:50%;background:#F4A261;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;position:relative;">MA<div style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#C0CCC5;border:2px solid #F7F9F8;"></div></div>
+                      <span style="font-family:'Inter',sans-serif;font-size:10px;color:#3D5C48;font-weight:500;">Mikkel</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <div style="width:42px;height:42px;border-radius:50%;background:#7EC8A4;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;position:relative;">ES<div style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:#C0CCC5;border:2px solid #F7F9F8;"></div></div>
+                      <span style="font-family:'Inter',sans-serif;font-size:10px;color:#3D5C48;font-weight:500;">Emma</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <button onClick="{{ onAddMember }}" style="width:42px;height:42px;border-radius:50%;background:none;border:2px dashed #2D6A4F;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                      </button>
+                      <span style="font-family:'Inter',sans-serif;font-size:10px;color:#2D6A4F;font-weight:600;">Add</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Recent trips -->
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Recent trips</span>
+                    <button onClick="{{ goLog }}" style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;font-weight:600;background:none;border:none;cursor:pointer;">See all</button>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;">
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">CH</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Christian</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45231 → 45318 · 87 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">22,50 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">22 jun</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Lars</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45318 → 45502 · 184 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">47,00 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">18 jun</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">ST</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Sara</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45502 → 45571 · 69 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">17,60 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">15 jun</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Owner tools -->
+                <div style="margin-top:4px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Owner tools</span>
+                    <span style="background:#2D6A4F;color:#fff;border-radius:6px;padding:2px 8px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.02em;">OWNER</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <button onClick="{{ goHistory }}" style="background:#fff;border:1.5px solid #E2EDE8;border-radius:16px;padding:16px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="width:40px;height:40px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      </div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">History</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;line-height:1.3;">All trips, fuel logs and closed periods.</div>
+                    </button>
+                    <button onClick="{{ goInsights }}" style="background:#fff;border:1.5px solid #E2EDE8;border-radius:16px;padding:16px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="width:40px;height:40px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path></svg>
+                      </div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Insights</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;line-height:1.3;">Fuel stats, rates and station rankings.</div>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </sc-if>
+
+            <!-- LOG -->
+            <sc-if value="{{ isLog }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;">
+                <div style="display:flex;gap:8px;padding:12px 16px 6px;">
+                  <button onClick="{{ setTrip }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ tripTabBg }};color:{{ tripTabFg }};transition:background .14s ease;">Trip</button>
+                  <button onClick="{{ setFuel }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ fuelTabBg }};color:{{ fuelTabFg }};transition:background .14s ease;">Fuel</button>
+                </div>
+
+                <sc-if value="{{ isTrip }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:8px 16px 28px;display:flex;flex-direction:column;gap:10px;">
+                    <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">Log distance</div>
+                    <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Driver</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">Christian (you)</div></div>
+                    <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Date</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">24 jun 2026</div></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                      <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Start km</div><div style="font-family:'Courier New',monospace;font-size:16px;color:#1A2E1F;letter-spacing:.04em;">45 318</div></div>
+                      <div style="background:#fff;border:1.5px solid #2D6A4F;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">End km</div><div style="font-family:'Courier New',monospace;font-size:16px;color:#1A2E1F;letter-spacing:.04em;">45 405</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">87 km</div></div>
+                    </div>
+                    <div style="background:#D8F3DC;border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;">
+                      <div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;font-weight:500;">Your share</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;margin-top:2px;letter-spacing:.03em;">87 km × 2,47 kr/km</div></div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#F4A261;letter-spacing:-.02em;">214,89 kr</div>
+                    </div>
+                    <div><div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:#1A2E1F;margin-bottom:8px;">Split between</div><div style="display:flex;gap:7px;flex-wrap:wrap;"><span style="background:#2D6A4F;border-radius:9999px;padding:5px 12px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#fff;">Christian</span><span style="background:#D8F3DC;border-radius:9999px;padding:5px 12px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;">Lars</span><span style="background:#D8F3DC;border-radius:9999px;padding:5px 12px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;">+ Add</span></div></div>
+                    <button onClick="{{ onLogTrip }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);margin-top:4px;">Add trip</button>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ isFuel }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px 16px 28px;display:flex;flex-direction:column;gap:10px;">
+                    <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">Log fuel payment</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                      <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Paid by</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">Christian</div></div>
+                      <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Date</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">24 jun 2026</div></div>
+                      <div style="background:#fff;border:1.5px solid #2D6A4F;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Amount</div><div style="font-family:'Courier New',monospace;font-size:16px;color:#1A2E1F;letter-spacing:.03em;">495,90 kr</div></div>
+                      <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Liters</div><div style="font-family:'Courier New',monospace;font-size:16px;color:#1A2E1F;letter-spacing:.03em;">34,2 L</div></div>
+                    </div>
+                    <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Station</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">Circle K Roskilde</div></div>
+                    <div style="background:#D8F3DC;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+                      <div style="width:44px;height:24px;background:#2D6A4F;border-radius:12px;position:relative;cursor:pointer;flex-shrink:0;"><div style="position:absolute;right:2px;top:2px;width:20px;height:20px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2);"></div></div>
+                      <div><div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#1A2E1F;">Full tank</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Enables L/100 km stats</div></div>
+                    </div>
+                    <button onClick="{{ onLogFuel }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);margin-top:4px;">Add fuel</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- BOOK -->
+            <sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;">
+                <div style="display:flex;gap:8px;padding:12px 16px 6px;">
+                  <button onClick="{{ setBookView }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ bookViewTabBg }};color:{{ bookViewTabFg }};transition:background .14s ease;">Book</button>
+                  <button onClick="{{ setPlanView }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ planViewTabBg }};color:{{ planViewTabFg }};transition:background .14s ease;">Plan</button>
+                </div>
+
+                <sc-if value="{{ isBookView }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:8px 16px 16px;display:flex;flex-direction:column;gap:14px;">
+                    <div style="background:#D1F5E3;border-radius:16px;padding:16px;display:flex;align-items:center;gap:14px;">
+                      <div style="width:54px;height:54px;border-radius:14px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg>
+                      </div>
+                      <div style="flex:1;">
+                        <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;line-height:1.2;">Car is free</div>
+                        <div style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin-top:2px;">Available now · no bookings today</div>
+                      </div>
+                      <span style="background:#52B788;color:#fff;border-radius:9999px;padding:4px 12px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;">Free</span>
+                    </div>
+                    <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;margin-bottom:12px;">Week 26 · June 2026</div>
+                      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;">
+                        <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">M</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">T</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">W</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">T</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">F</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">S</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;padding-bottom:6px;">S</div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#F4A261;opacity:.5;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">22</span></div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#D8F3DC;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#2D6A4F;">23</span></div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#2D6A4F;box-shadow:0 2px 8px rgba(45,106,79,.35);"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;">24</span></div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#52B788;opacity:.45;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;">25</span></div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#F7F9F8;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#6B8F7A;">26</span></div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#F7F9F8;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#6B8F7A;">27</span></div>
+                        <div style="height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#F7F9F8;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#6B8F7A;">28</span></div>
+                      </div>
+                      <div style="display:flex;gap:14px;margin-top:12px;">
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:3px;background:#2D6A4F;"></div><span style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Today</span></div>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:3px;background:#52B788;opacity:.5;"></div><span style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Booked</span></div>
+                        <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:3px;background:#D8F3DC;"></div><span style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Free</span></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Upcoming</div>
+                      <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                        <div style="width:40px;height:40px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">ST</div>
+                        <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Sara</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">25 jun · 08:00 – 14:00</div></div>
+                        <span style="background:#FDE8D8;color:#A0522D;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Booked</span>
+                      </div>
+                    </div>
+                    <button onClick="{{ onOpenBooking }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Book car</button>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ isPlanView }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px 16px 16px;display:flex;flex-direction:column;gap:12px;">
+                    <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Estimate trip cost</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                      <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">From</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">Roskilde</div></div>
+                      <div style="background:#fff;border:1.5px solid #2D6A4F;border-radius:12px;padding:12px 14px;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">To</div><div style="font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;">Aarhus</div></div>
+                    </div>
+                    <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+                      <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Distance</div><div style="font-family:'Courier New',monospace;font-size:18px;color:#1A2E1F;letter-spacing:.04em;">174</div></div>
+                      <span style="font-family:'Inter',sans-serif;font-size:15px;color:#6B8F7A;font-weight:500;">km</span>
+                    </div>
+                    <div>
+                      <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:#1A2E1F;margin-bottom:8px;">People joining</div>
+                      <div style="display:flex;gap:7px;flex-wrap:wrap;">
+                        <span style="background:#2D6A4F;border-radius:9999px;padding:6px 12px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#fff;">Christian</span>
+                        <span style="background:#2D6A4F;border-radius:9999px;padding:6px 12px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#fff;">Sara</span>
+                        <span style="background:#D8F3DC;border-radius:9999px;padding:6px 12px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;">+ Add</span>
+                      </div>
+                    </div>
+                    <div style="background:#D8F3DC;border-radius:16px;padding:16px;">
+                      <div style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;font-weight:500;margin-bottom:4px;">Estimated cost per person</div>
+                      <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:4px;">
+                        <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:42px;color:#F4A261;letter-spacing:-.02em;line-height:1;">214,89</span>
+                        <span style="font-family:'Inter',sans-serif;font-size:18px;font-weight:600;color:#F4A261;opacity:.9;">kr</span>
+                      </div>
+                      <div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;">174 km × 2,47 kr/km ÷ 2 people</div>
+                    </div>
+                    <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+                      <div style="width:44px;height:24px;background:#D8F3DC;border-radius:12px;position:relative;cursor:pointer;border:1.5px solid #52B788;flex-shrink:0;"><div style="position:absolute;left:2px;top:2px;width:18px;height:18px;background:#6B8F7A;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.15);"></div></div>
+                      <div><div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#1A2E1F;">Return trip</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Double the distance estimate</div></div>
+                    </div>
+                    <button onClick="{{ onPlanTrip }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Save estimate</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- SETTLE -->
+            <sc-if value="{{ isSettle }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:tabIn .3s ease both;padding:0 16px 24px;">
+                <!-- Demo switcher (prototype only) -->
+                <div style="margin-top:12px;background:#EEF3F0;border:1px solid #E2EDE8;border-radius:12px;padding:6px;">
+                  <div style="display:flex;align-items:center;gap:6px;padding:2px 6px 6px;">
+                    <span style="width:6px;height:6px;border-radius:50%;background:#F4A261;display:inline-block;"></span>
+                    <span style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Preview state</span>
+                  </div>
+                  <div style="display:flex;gap:4px;">
+                    <button onClick="{{ setSettlePopulated }}" style="flex:1;border:none;border-radius:9px;padding:8px 4px;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .18s ease;-webkit-tap-highlight-color:transparent;{{ popStyle }}">Populated</button>
+                    <button onClick="{{ setSettleNew }}" style="flex:1;border:none;border-radius:9px;padding:8px 4px;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .18s ease;-webkit-tap-highlight-color:transparent;{{ newStyle }}">New group</button>
+                    <button onClick="{{ setSettleSettled }}" style="flex:1;border:none;border-radius:9px;padding:8px 4px;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .18s ease;-webkit-tap-highlight-color:transparent;{{ settledStyle }}">All settled</button>
+                  </div>
+                </div>
+
+                <sc-if value="{{ showPopulated }}" hint-placeholder-val="{{ true }}">
+                <div style="background:#D8F3DC;border-radius:12px;margin-top:12px;padding:10px 0;display:flex;">
+                  <div style="flex:1;text-align:center;border-right:1px solid rgba(45,106,79,.15);"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Rate</div><div style="font-family:'Courier New',monospace;font-size:14px;font-weight:600;color:#1A2E1F;margin-top:3px;">2,47 kr/km</div></div>
+                  <div style="flex:1;text-align:center;border-right:1px solid rgba(45,106,79,.15);"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Trips</div><div style="font-family:'Courier New',monospace;font-size:14px;font-weight:600;color:#1A2E1F;margin-top:3px;">1.357 kr</div></div>
+                  <div style="flex:1;text-align:center;"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Fuel</div><div style="font-family:'Courier New',monospace;font-size:14px;font-weight:600;color:#1A2E1F;margin-top:3px;">1.358 kr</div></div>
+                </div>
+
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:16px 0 8px;">You owe</div>
+                <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:44px;height:44px;border-radius:50%;background:#FDE8D8;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#F4A261;flex-shrink:0;">LN</div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;margin-bottom:2px;">You owe Lars</div><div style="display:flex;align-items:baseline;gap:3px;"><span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;color:#F4A261;letter-spacing:-.02em;line-height:1;">52,00</span><span style="font-family:'Inter',sans-serif;font-weight:600;font-size:15px;color:#F4A261;opacity:.8;">kr</span></div></div>
+                    <sc-if value="{{ larsRequested }}" hint-placeholder-val="{{ false }}">
+                      <span style="background:#FEF3E0;color:#B07A2A;border-radius:9999px;padding:6px 12px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;animation:popIn .42s cubic-bezier(.34,1.56,.64,1);">Requested</span>
+                    </sc-if>
+                    <sc-if value="{{ larsNotRequested }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ onRequestLars }}" style="padding:8px 16px;border-radius:12px;border:none;background:#F4A261;color:#1A2E1F;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;flex-shrink:0;min-height:38px;">Request</button>
+                    </sc-if>
+                  </div>
+                </div>
+
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:16px 0 8px;">Owed to you</div>
+                <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);transition:background .4s ease;">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:44px;height:44px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#52B788;flex-shrink:0;">ST</div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;margin-bottom:2px;">{{ saraOwedLabel }}</div><div style="display:flex;align-items:baseline;gap:3px;"><span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;color:#52B788;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;">{{ saraAmountText }}</span><span style="font-family:'Inter',sans-serif;font-weight:600;font-size:15px;color:#52B788;opacity:.8;">kr</span></div></div>
+                    <sc-if value="{{ saraSettled }}" hint-placeholder-val="{{ false }}">
+                      <div style="width:36px;height:36px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:popIn .5s cubic-bezier(.34,1.56,.64,1);">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ saraNotSettled }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ onMarkSaraPaid }}" style="padding:8px 16px;border-radius:12px;border:none;background:#52B788;color:#fff;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;flex-shrink:0;min-height:38px;">Mark paid</button>
+                    </sc-if>
+                  </div>
+
+                  <!-- Calculation disclosure -->
+                  <button onClick="{{ toggleCalc }}" style="margin-top:12px;width:100%;display:flex;align-items:center;justify-content:space-between;background:#F7F9F8;border:1px solid #E2EDE8;border-radius:10px;padding:9px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                    <span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#2D6A4F;">Calculation</span>
+                    <sc-if value="{{ calcClosed }}" hint-placeholder-val="{{ true }}">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </sc-if>
+                    <sc-if value="{{ calcOpen }}" hint-placeholder-val="{{ false }}">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                    </sc-if>
+                  </button>
+
+                  <sc-if value="{{ calcOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:12px 4px 2px;">
+                      <p style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;line-height:1.5;margin:0 0 10px;animation:slideUp .34s ease both;">Sara drove part of the shared distance, so she owes that share of the fuel pool — minus what she's already chipped in.</p>
+                      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;animation:slideUp .34s ease .05s both;">
+                        <span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;">Sara's distance</span>
+                        <span style="font-family:'Courier New',monospace;font-size:13px;color:#1A2E1F;">243 km · 30%</span>
+                      </div>
+                      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;animation:slideUp .34s ease .1s both;">
+                        <span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;">Sara's fuel share</span>
+                        <span style="font-family:'Courier New',monospace;font-size:13px;color:#1A2E1F;">405,50 kr</span>
+                      </div>
+                      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;animation:slideUp .34s ease .15s both;">
+                        <span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;">Already paid in</span>
+                        <span style="font-family:'Courier New',monospace;font-size:13px;color:#6B8F7A;">−285,00 kr</span>
+                      </div>
+                      <div style="height:1px;background:#E2EDE8;margin:6px 0;animation:fadeIn .34s ease .2s both;"></div>
+                      <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;animation:slideUp .34s ease .24s both;">
+                        <span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:700;color:#1A2E1F;">Sara still owes you</span>
+                        <span style="font-family:'Courier New',monospace;font-size:15px;font-weight:700;color:#52B788;">120,50 kr</span>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:16px 0 8px;">Settled</div>
+                <div style="display:flex;flex-direction:column;gap:8px;opacity:.65;">
+                  <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:#EAEFEC;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#6B8F7A;flex-shrink:0;">MA</div>
+                    <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;">Settled with Mikkel</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#6B8F7A;letter-spacing:-.01em;">34,00 kr</div></div>
+                    <span style="font-family:'Inter',sans-serif;font-size:11px;color:#52B788;font-weight:600;">✓ Settled</span>
+                  </div>
+                  <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:#EAEFEC;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#6B8F7A;flex-shrink:0;">ES</div>
+                    <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;">Settled with Emma</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#6B8F7A;letter-spacing:-.01em;">18,50 kr</div></div>
+                    <span style="font-family:'Inter',sans-serif;font-size:11px;color:#52B788;font-weight:600;">✓ Settled</span>
+                  </div>
+                </div>
+                </sc-if>
+
+                <!-- ===== EMPTY: NEW GROUP ===== -->
+                <sc-if value="{{ showEmptyNew }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:tabIn .35s ease both;padding-top:16px;">
+                    <div style="display:flex;align-items:center;gap:12px;background:#D8F3DC;border-radius:16px;padding:14px 16px;margin-bottom:16px;">
+                      <div style="width:40px;height:40px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </div>
+                      <div style="min-width:0;">
+                        <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">You're all caught up</div>
+                        <div style="font-family:'Inter',sans-serif;font-size:12px;color:#3F6350;margin-top:1px;">Nothing to settle yet — here's how it'll work.</div>
+                      </div>
+                    </div>
+
+                    <div style="background:#fff;border-radius:16px;padding:6px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;padding:14px 0 6px;">How GoVehlo settles up</div>
+                      <div style="display:flex;gap:13px;align-items:flex-start;padding:12px 0;border-top:1px solid #EEF3F0;">
+                        <div style="width:30px;height:30px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;color:#2D6A4F;flex-shrink:0;">1</div>
+                        <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Log your trips</div><div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;line-height:1.45;margin-top:2px;">Everyone records the km they drive.</div></div>
+                      </div>
+                      <div style="display:flex;gap:13px;align-items:flex-start;padding:12px 0;border-top:1px solid #EEF3F0;">
+                        <div style="width:30px;height:30px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;color:#2D6A4F;flex-shrink:0;">2</div>
+                        <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Log the fuel</div><div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;line-height:1.45;margin-top:2px;">Whoever fills up records the kr they spent.</div></div>
+                      </div>
+                      <div style="display:flex;gap:13px;align-items:flex-start;padding:12px 0 14px;border-top:1px solid #EEF3F0;">
+                        <div style="width:30px;height:30px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;color:#2D6A4F;flex-shrink:0;">3</div>
+                        <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">We split by distance</div><div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;line-height:1.45;margin-top:2px;">Costs divide by how far each person drove — automatically.</div></div>
+                      </div>
+                    </div>
+
+                    <div style="background:#F7F9F8;border:1px solid #E2EDE8;border-radius:14px;padding:13px 16px;margin-top:12px;text-align:center;">
+                      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px;">For example</div>
+                      <div style="font-family:'Courier New',monospace;font-size:14px;color:#1A2E1F;font-weight:700;">87 km × 2,47 kr/km = <span style="color:#F4A261;">214,89 kr</span></div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- ===== EMPTY: ALL SETTLED ===== -->
+                <sc-if value="{{ showEmptySettled }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:tabIn .35s ease both;">
+                    <div style="background:#D8F3DC;border-radius:12px;margin-top:12px;padding:10px 0;display:flex;">
+                      <div style="flex:1;text-align:center;border-right:1px solid rgba(45,106,79,.15);"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Rate</div><div style="font-family:'Courier New',monospace;font-size:14px;font-weight:600;color:#1A2E1F;margin-top:3px;">2,47 kr/km</div></div>
+                      <div style="flex:1;text-align:center;border-right:1px solid rgba(45,106,79,.15);"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Trips</div><div style="font-family:'Courier New',monospace;font-size:14px;font-weight:600;color:#1A2E1F;margin-top:3px;">1.357 kr</div></div>
+                      <div style="flex:1;text-align:center;"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Fuel</div><div style="font-family:'Courier New',monospace;font-size:14px;font-weight:600;color:#1A2E1F;margin-top:3px;">1.358 kr</div></div>
+                    </div>
+
+                    <div style="padding-top:40px;display:flex;flex-direction:column;align-items:center;text-align:center;">
+                      <div style="width:96px;height:96px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;margin-bottom:22px;animation:popIn .5s cubic-bezier(.34,1.56,.64,1);">
+                        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </div>
+                      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:24px;color:#1A2E1F;margin:0 0 10px;letter-spacing:-.02em;">You're all square</h2>
+                      <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;line-height:1.55;margin:0 0 24px;max-width:280px;">Everyone's paid up for June. Nice work — no requests waiting.</p>
+                      <div style="display:flex;align-items:center;gap:-8px;margin-bottom:8px;">
+                        <div style="width:38px;height:38px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;border:2px solid #F7F9F8;margin-right:-8px;">LN</div>
+                        <div style="width:38px;height:38px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;border:2px solid #F7F9F8;margin-right:-8px;">ST</div>
+                        <div style="width:38px;height:38px;border-radius:50%;background:#6B8F7A;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;border:2px solid #F7F9F8;margin-right:-8px;">MA</div>
+                        <div style="width:38px;height:38px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;border:2px solid #F7F9F8;">ES</div>
+                      </div>
+                      <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">4 people settled this period</div>
+                    </div>
+
+                    <button onClick="{{ onCloseJune }}" style="margin-top:40px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"></rect><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"></path><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                      <span style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#6B8F7A;">Close June &amp; start fresh</span>
+                    </button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- PAYMENTS -->
+            <sc-if value="{{ isPay }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:tabIn .3s ease both;padding:0 16px 24px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:14px 0 8px;">Unpaid requests</div>
+                <p style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0 0 14px;line-height:1.45;">Requested payments not yet marked paid.</p>
+
+                <!-- Lars - current period -->
+                <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:44px;height:44px;border-radius:50%;background:#FDE8D8;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#F4A261;flex-shrink:0;">LN</div>
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">You owe Lars</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:2px;">Jun 2026 · Requested 19 jun</div>
+                    </div>
+                    <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#F4A261;letter-spacing:-.02em;">52,00 kr</div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="background:#e9f0fb;color:#355d9c;border-radius:9999px;padding:4px 12px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Requested</span>
+                    <button onClick="{{ onPayLars }}" style="padding:8px 16px;border-radius:12px;border:none;background:#F4A261;color:#1A2E1F;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;min-height:38px;">Mark paid</button>
+                  </div>
+                </div>
+
+                <!-- Mikkel - closed period -->
+                <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:44px;height:44px;border-radius:50%;background:#FDE8D8;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#F4A261;flex-shrink:0;">MA</div>
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">You owe Mikkel</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:2px;">May 2026 · Requested 28 maj</div>
+                    </div>
+                    <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#F4A261;letter-spacing:-.02em;">89,00 kr</div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="background:#e9f0fb;color:#355d9c;border-radius:9999px;padding:4px 12px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Requested</span>
+                    <button onClick="{{ onPayMikkel }}" style="padding:8px 16px;border-radius:12px;border:none;background:#F4A261;color:#1A2E1F;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;min-height:38px;">Mark paid</button>
+                  </div>
+                  <button onClick="{{ goHistory }}" style="background:none;border:none;font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;font-weight:500;cursor:pointer;text-align:left;padding:0;">View closed period →</button>
+                </div>
+
+                <!-- Settled -->
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:14px 0 8px;">Settled</div>
+                <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;opacity:.6;">
+                  <div style="width:40px;height:40px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#52B788;flex-shrink:0;">ES</div>
+                  <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;">Paid to Emma</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#6B8F7A;letter-spacing:-.01em;">18,50 kr</div></div>
+                  <span style="font-family:'Inter',sans-serif;font-size:11px;color:#52B788;font-weight:600;">✓ Paid</span>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- CHAT / ACTIVITY -->
+            <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:tabIn .3s ease both;padding:0 16px 24px;display:flex;flex-direction:column;gap:0;">
+                <!-- Today -->
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:14px 0 10px;">Today</div>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;">
+                  <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;"><span style="font-weight:600;">Lars</span> logged a trip</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;margin-top:2px;">184 km · 47,00 kr</div></div>
+                    <span style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;flex-shrink:0;">2h ago</span>
+                  </div>
+                  <div style="background:#FEF3E0;border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;animation:pulseAmber 1.7s ease .5s 2;">
+                    <div style="width:38px;height:38px;border-radius:50%;background:#F4A261;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A2E1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 21 7 17 3"></polyline><line x1="21" y1="7" x2="9" y2="7"></line><polyline points="7 21 3 17 7 13"></polyline><line x1="3" y1="17" x2="15" y2="17"></line></svg></div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;"><span style="font-weight:600;">Sara</span> requested <span style="font-weight:700;color:#F4A261;">52,00 kr</span></div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:2px;">Tap to view in Settlement</div></div>
+                    <span style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;flex-shrink:0;">4h ago</span>
+                  </div>
+                </div>
+
+                <!-- Chat messages -->
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:14px 0 10px;">Messages</div>
+                <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;">
+                  <div style="display:flex;gap:8px;align-items:flex-end;">
+                    <div style="width:28px;height:28px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:10px;color:#fff;flex-shrink:0;">LN</div>
+                    <div style="background:#fff;border-radius:14px 14px 14px 4px;padding:10px 14px;max-width:260px;box-shadow:0 1px 3px rgba(26,46,31,.06);">
+                      <div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;line-height:1.4;">Skal vi tanke snart? Tror vi er nede på en kvart tank</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:4px;">Lars · 11:23</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:flex-end;flex-direction:row-reverse;">
+                    <div style="width:28px;height:28px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:10px;color:#fff;flex-shrink:0;">ST</div>
+                    <div style="background:#D8F3DC;border-radius:14px 14px 4px 14px;padding:10px 14px;max-width:260px;">
+                      <div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;line-height:1.4;">Jeg tanker i morgen efter arbejde!</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:4px;">Sara · 11:45</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:flex-end;flex-direction:row-reverse;">
+                    <div style="width:28px;height:28px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:10px;color:#fff;flex-shrink:0;">CH</div>
+                    <div style="background:#2D6A4F;border-radius:14px 14px 4px 14px;padding:10px 14px;max-width:260px;">
+                      <div style="font-family:'Inter',sans-serif;font-size:13px;color:#fff;line-height:1.4;">Perfekt, tak Sara!</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.5);margin-top:4px;">You · 12:02</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Yesterday -->
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding:14px 0 10px;">Yesterday</div>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px;">
+                  <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">CH</div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;"><span style="font-weight:600;">You</span> added fuel</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;margin-top:2px;">34,2 L · Circle K Roskilde</div></div>
+                    <span style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;flex-shrink:0;">Yesterday</span>
+                  </div>
+                  <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;">
+                    <div style="width:38px;height:38px;border-radius:50%;background:#7EC8A4;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">ES</div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;"><span style="font-weight:600;">Emma</span> booked the car</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:2px;">Saturday 28 jun · all day</div></div>
+                    <span style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;flex-shrink:0;">Yesterday</span>
+                  </div>
+                </div>
+
+                <!-- Message input -->
+                <div style="background:#fff;border-radius:14px;padding:10px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;margin-top:8px;">
+                  <div style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#C0CCC5;">Write a message...</div>
+                  <div style="width:36px;height:36px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- PROFILE / CAR -->
+            <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
+              <!-- Empty state: no car -->
+              <sc-if value="{{ noCarYet }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 32px;gap:0;">
+                  <div style="width:88px;height:88px;border-radius:22px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg>
+                  </div>
+                  <h2 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#1A2E1F;margin:0 0 6px;">No car added yet</h2>
+                  <p style="font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;margin:0 0 32px;text-align:center;text-wrap:pretty;">Add your shared car to start tracking trips and splitting fuel costs.</p>
+                  <button onClick="{{ onAddCar }}" style="width:100%;height:52px;background:#2D6A4F;border:none;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Add car</button>
+                </div>
+              </sc-if>
+              <!-- Car profile -->
+              <sc-if value="{{ hasCar }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
+
+                <!-- Car identity card -->
+                <div style="background:#fff;border-radius:16px;padding:20px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:16px;">
+                  <div style="width:64px;height:64px;border-radius:16px;background:#1A2E1F;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#D8F3DC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg>
+                  </div>
+                  <div style="flex:1;">
+                    <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:20px;color:#1A2E1F;letter-spacing:-.01em;">VW Golf</div>
+                    <div style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin-top:2px;">2019 · 1.5 TSI · Hvid</div>
+                    <div style="font-family:'Courier New',monospace;font-size:13px;color:#2D6A4F;font-weight:600;margin-top:4px;letter-spacing:.06em;">AB 12 345</div>
+                  </div>
+                </div>
+
+                <!-- Odometer -->
+                <div style="background:#D8F3DC;border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
+                  <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:#2D6A4F;">Current odometer</div>
+                  <div style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;color:#1A2E1F;letter-spacing:.04em;">{{ odoText }} km</div>
+                </div>
+
+                <!-- Next maintenance -->
+                <div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Next maintenance</div>
+                  <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:14px;">
+                    <div style="width:48px;height:48px;border-radius:12px;background:#FEF3E0;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F4A261" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                    </div>
+                    <div style="flex:1;">
+                      <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Service at 50.000 km</div>
+                      <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:2px;">~4.429 km remaining · est. aug 2026</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Repair history -->
+                <div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Repair history</div>
+                  <div style="display:flex;flex-direction:column;gap:8px;">
+                    <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                      <div style="width:40px;height:40px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      </div>
+                      <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#1A2E1F;">Oil + filter change</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:1px;">Mekonomen Roskilde · 12 mar 2026</div></div>
+                      <div style="font-family:'Courier New',monospace;font-size:13px;color:#F4A261;font-weight:600;flex-shrink:0;">1.850 kr</div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                      <div style="width:40px;height:40px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      </div>
+                      <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#1A2E1F;">Brake pads (front)</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:1px;">FDM Bilservice · 9 jan 2026</div></div>
+                      <div style="font-family:'Courier New',monospace;font-size:13px;color:#F4A261;font-weight:600;flex-shrink:0;">3.200 kr</div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                      <div style="width:40px;height:40px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      </div>
+                      <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#1A2E1F;">Winter tyre swap</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:1px;">Dæk-butikken · 18 nov 2025</div></div>
+                      <div style="font-family:'Courier New',monospace;font-size:13px;color:#F4A261;font-weight:600;flex-shrink:0;">600 kr</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Insurance -->
+                <div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Insurance</div>
+                  <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+                      <div style="width:48px;height:48px;border-radius:12px;background:#D1F5E3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                      </div>
+                      <div style="flex:1;">
+                        <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Tryg Bilforsikring</div>
+                        <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:2px;">Kasko + ansvar</div>
+                      </div>
+                      <span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;">Active</span>
+                    </div>
+                    <div style="border-top:1px solid #E2EDE8;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                      <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Policy</div><div style="font-family:'Courier New',monospace;font-size:13px;color:#1A2E1F;margin-top:2px;">TRY-482910</div></div>
+                      <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Renewal</div><div style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;margin-top:2px;">1 jan 2027</div></div>
+                      <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Premium</div><div style="font-family:'Courier New',monospace;font-size:13px;color:#1A2E1F;margin-top:2px;">485 kr/md</div></div>
+                      <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Deductible</div><div style="font-family:'Courier New',monospace;font-size:13px;color:#1A2E1F;margin-top:2px;">5.412 kr</div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Owner -->
+                <div style="background:#D8F3DC;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+                  <div style="width:40px;height:40px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;flex-shrink:0;">LN</div>
+                  <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#1A2E1F;">Car owner</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#2D6A4F;margin-top:1px;">Lars Nielsen</div></div>
+                  <span style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;flex-shrink:0;">Since jan 2024</span>
+                </div>
+
+              </div>
+              </sc-if>
+            </sc-if>
+
+            <!-- HISTORY -->
+            <sc-if value="{{ isHistory }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;">
+                <!-- Sub-tabs -->
+                <div style="display:flex;gap:8px;padding:12px 16px 6px;">
+                  <button onClick="{{ setHistTrips }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ histTripsTabBg }};color:{{ histTripsTabFg }};transition:background .14s ease;">Trips</button>
+                  <button onClick="{{ setHistFuel }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ histFuelTabBg }};color:{{ histFuelTabFg }};transition:background .14s ease;">Fuel</button>
+                  <button onClick="{{ setHistClosed }}" style="padding:7px 18px;border-radius:9999px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;min-height:36px;background:{{ histClosedTabBg }};color:{{ histClosedTabFg }};transition:background .14s ease;">Closed</button>
+                </div>
+
+                <!-- Trips -->
+                <sc-if value="{{ isHistTrips }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:8px 16px 24px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">CH</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Christian</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45231 → 45318 · 87 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">22,50 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">22 jun</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Lars</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45318 → 45502 · 184 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">47,00 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">18 jun</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">ST</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Sara</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45502 → 45571 · 69 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">17,60 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">15 jun</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">CH</div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Christian</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">45571 → 45660 · 89 km</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">22,75 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">12 jun</div></div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- Fuel -->
+                <sc-if value="{{ isHistFuel }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px 16px 24px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V3h12v12h4a2 2 0 0 1 2 2v3"></path><path d="M15 22v-4a2 2 0 0 1 2-2h2"></path><rect x="6" y="7" width="6" height="4"></rect></svg></div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Christian</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">34,2 L · 14,50 kr/L</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:1px;">Circle K Roskilde</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">495,90 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">22 jun</div><span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:2px 8px;font-size:10px;font-weight:600;font-family:'Inter',sans-serif;margin-top:3px;display:inline-block;">Full tank</span></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V3h12v12h4a2 2 0 0 1 2 2v3"></path><path d="M15 22v-4a2 2 0 0 1 2-2h2"></path><rect x="6" y="7" width="6" height="4"></rect></svg></div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Lars</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">28,5 L · 14,35 kr/L</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:1px;">Q8 København</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">409,00 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">15 jun</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 1px 6px rgba(26,46,31,.04);display:flex;align-items:center;gap:10px;">
+                      <div style="width:38px;height:38px;border-radius:8px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V3h12v12h4a2 2 0 0 1 2 2v3"></path><path d="M15 22v-4a2 2 0 0 1 2-2h2"></path><rect x="6" y="7" width="6" height="4"></rect></svg></div>
+                      <div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Sara</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.04em;">31,0 L · 14,60 kr/L</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:1px;">Shell Taastrup</div></div>
+                      <div style="text-align:right;flex-shrink:0;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F4A261;">452,60 kr</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;margin-top:1px;">8 jun</div><span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:2px 8px;font-size:10px;font-weight:600;font-family:'Inter',sans-serif;margin-top:3px;display:inline-block;">Full tank</span></div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- Closed periods -->
+                <sc-if value="{{ isHistClosed }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px 16px 24px;display:flex;flex-direction:column;gap:10px;">
+                    <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                        <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">May 2026</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:2px;">3 trips · 487 km</div></div>
+                        <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#F4A261;">891 kr</div>
+                      </div>
+                      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Trips</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">3</div></div>
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Distance</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">487 km</div></div>
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Fuel</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">895 kr</div></div>
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Rate</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">2,47</div></div>
+                      </div>
+                      <div style="display:flex;justify-content:flex-end;margin-top:8px;"><span style="font-family:'Inter',sans-serif;font-size:11px;color:#52B788;font-weight:600;">✓ Fully settled</span></div>
+                    </div>
+                    <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                        <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Apr 2026</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:2px;">5 trips · 612 km</div></div>
+                        <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#F4A261;">1.245 kr</div>
+                      </div>
+                      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Trips</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">5</div></div>
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Distance</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">612 km</div></div>
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Fuel</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">1.198 kr</div></div>
+                        <div style="border:1px solid #E2EDE8;border-radius:10px;padding:8px 10px;background:#fbfcfb;"><div style="font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Rate</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#1A2E1F;">2,39</div></div>
+                      </div>
+                      <div style="display:flex;justify-content:flex-end;margin-top:8px;"><span style="font-family:'Inter',sans-serif;font-size:11px;color:#52B788;font-weight:600;">✓ Fully settled</span></div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- INSIGHTS -->
+            <sc-if value="{{ isInsights }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
+                <!-- Fuel intelligence -->
+                <div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Fuel intelligence</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div style="border:1px solid #E2EDE8;border-radius:16px;background:#fff;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">DKK/km</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#1A2E1F;letter-spacing:-.02em;line-height:1;">2,47 kr</div>
+                    </div>
+                    <div style="border:1px solid #E2EDE8;border-radius:16px;background:#fff;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">DKK/L</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#1A2E1F;letter-spacing:-.02em;line-height:1;">14,50 kr</div>
+                    </div>
+                    <div style="border:1px solid #E2EDE8;border-radius:16px;background:#fff;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">L/100 km</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#1A2E1F;letter-spacing:-.02em;line-height:1;">5,3 L</div>
+                    </div>
+                    <div style="border:1px solid #E2EDE8;border-radius:16px;background:#fff;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Confidence</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#52B788;letter-spacing:-.02em;line-height:1;">High</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Monthly summary -->
+                <div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">June 2026</div>
+                  <div style="background:#1A2E1F;border-radius:14px;padding:12px 0;display:flex;">
+                    <div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,.1);">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.04em;">Distance</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#fff;margin-top:4px;">517 km</div>
+                    </div>
+                    <div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,.1);">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.04em;">Your share</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#F4A261;margin-top:4px;">214 kr</div>
+                    </div>
+                    <div style="flex:1;text-align:center;">
+                      <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.04em;">Trips</div>
+                      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#fff;margin-top:4px;">4</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Station insights -->
+                <div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Station insights</div>
+                  <div style="display:flex;flex-direction:column;gap:8px;">
+                    <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;justify-content:space-between;align-items:center;">
+                      <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Circle K Roskilde</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.04em;margin-top:2px;">14,50 kr/L · 3 receipts</div></div>
+                      <span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Best price</span>
+                    </div>
+                    <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;justify-content:space-between;align-items:center;">
+                      <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Shell Taastrup</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.04em;margin-top:2px;">14,60 kr/L · 2 receipts</div></div>
+                    </div>
+                    <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;justify-content:space-between;align-items:center;">
+                      <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Q8 København</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.04em;margin-top:2px;">14,63 kr/L · 2 receipts</div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+          </div>
+
+          <!-- Booking bottom sheet overlay -->
+      <sc-if value="{{ showBookingSheet }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;justify-content:flex-end;animation:fadeIn .15s ease;">
+          <!-- Backdrop -->
+          <div onClick="{{ onCloseBooking }}" style="position:absolute;inset:0;background:rgba(26,46,31,.45);"></div>
+          <!-- Sheet -->
+          <div style="position:relative;background:#F7F9F8;border-radius:24px 24px 0 0;padding:12px 20px 28px;box-shadow:0 -8px 40px rgba(26,46,31,.18);animation:slideUp .25s cubic-bezier(.34,1.56,.64,1);max-height:85%;overflow-y:auto;">
+            <!-- Handle -->
+            <div style="display:flex;justify-content:center;margin-bottom:16px;">
+              <div style="width:36px;height:4px;border-radius:2px;background:#C4D9CD;"></div>
+            </div>
+
+            <h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#1A2E1F;margin:0 0 4px;">Book the car</h3>
+            <p style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0 0 20px;">Set your dates. The group will see your booking.</p>
+
+            <!-- Start / End date -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+              <div style="background:#fff;border:2px solid #2D6A4F;border-radius:14px;padding:12px 14px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Start</div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">Today, 09:00</div>
+                <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:1px;">29. jun 2026</div>
+              </div>
+              <div style="background:#fff;border:2px solid #E2EDE8;border-radius:14px;padding:12px 14px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">End</div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">Today, 18:00</div>
+                <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:1px;">29. jun 2026</div>
+              </div>
+            </div>
+
+            <!-- Quick duration chips -->
+            <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px;">
+              <button style="padding:6px 14px;border-radius:9999px;border:1.5px solid #2D6A4F;background:#D8F3DC;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#2D6A4F;cursor:pointer;">Today</button>
+              <button style="padding:6px 14px;border-radius:9999px;border:1.5px solid #E2EDE8;background:#fff;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;cursor:pointer;">Tomorrow</button>
+              <button style="padding:6px 14px;border-radius:9999px;border:1.5px solid #E2EDE8;background:#fff;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;cursor:pointer;">This weekend</button>
+              <button style="padding:6px 14px;border-radius:9999px;border:1.5px solid #E2EDE8;background:#fff;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;cursor:pointer;">Custom</button>
+            </div>
+
+            <!-- Conflict strip -->
+            <div style="background:#FEF3E8;border:1.5px solid #F4C089;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+              <div style="width:36px;height:36px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">ST</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#1A2E1F;">Sara has the car tomorrow</div>
+                <div style="font-family:'Inter',sans-serif;font-size:12px;color:#A0522D;">30. jun · 08:00 – 14:00</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C4873D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </div>
+
+            <!-- Note -->
+            <div style="background:#fff;border:1.5px solid #E2EDE8;border-radius:14px;padding:12px 14px;margin-bottom:22px;">
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Note</div>
+              <div style="font-family:'Inter',sans-serif;font-size:15px;color:#A8C5B4;">Optional — e.g. "Weekend trip to Skagen"</div>
+            </div>
+
+            <!-- Summary -->
+            <div style="background:#D8F3DC;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:#2D6A4F;">1 day · 29. jun 09:00 – 18:00</span>
+            </div>
+
+            <!-- Confirm -->
+            <button onClick="{{ onConfirmBooking }}" style="width:100%;height:54px;background:#2D6A4F;border:none;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.3);">Confirm booking</button>
+            <button onClick="{{ onCloseBooking }}" style="width:100%;height:40px;background:none;border:none;font-family:'Inter',sans-serif;font-weight:500;font-size:14px;color:#6B8F7A;cursor:pointer;margin-top:4px;">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- Toast -->
+          <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;bottom:74px;left:12px;right:12px;z-index:200;background:#1A2E1F;color:#fff;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(26,46,31,.45);animation:toastIn .34s cubic-bezier(.34,1.56,.64,1);">
+              <span style="width:22px;height:22px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;color:#fff;">✓</span>
+              <span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;line-height:1.3;">{{ toast }}</span>
+              <button onClick="{{ dismissToast }}" style="background:none;border:none;color:rgba(255,255,255,.45);cursor:pointer;font-size:20px;line-height:1;padding:0;flex-shrink:0;">×</button>
+            </div>
+          </sc-if>
+
+          <!-- Bottom nav -->
+          <nav style="height:64px;background:#fff;border-top:1px solid #E2EDE8;box-shadow:0 -2px 12px rgba(26,46,31,.06);display:flex;flex-shrink:0;">
+            <button onClick="{{ goHome }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;cursor:pointer;color:{{ homeColor }};-webkit-tap-highlight-color:transparent;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:10px;font-weight:{{ homeWeight }};line-height:1;">Home</span>
+            </button>
+            <button onClick="{{ goLog }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;cursor:pointer;color:{{ logColor }};-webkit-tap-highlight-color:transparent;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L13 14l-4 1 1-4 8.5-8.5z"></path></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:10px;font-weight:{{ logWeight }};line-height:1;">Log</span>
+            </button>
+            <button onClick="{{ goBook }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;cursor:pointer;color:{{ bookColor }};-webkit-tap-highlight-color:transparent;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:10px;font-weight:{{ bookWeight }};line-height:1;">Book</span>
+            </button>
+            <button onClick="{{ goSettle }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;cursor:pointer;color:{{ settleColor }};-webkit-tap-highlight-color:transparent;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 21 7 17 3"></polyline><line x1="21" y1="7" x2="9" y2="7"></line><polyline points="7 21 3 17 7 13"></polyline><line x1="3" y1="17" x2="15" y2="17"></line></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:10px;font-weight:{{ settleWeight }};line-height:1;">Settle</span>
+            </button>
+            <button onClick="{{ goPay }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;cursor:pointer;color:{{ payColor }};-webkit-tap-highlight-color:transparent;position:relative;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:10px;font-weight:{{ payWeight }};line-height:1;">Pay</span>
+              <div style="position:absolute;top:4px;right:12px;width:16px;height:16px;border-radius:50%;background:#F4A261;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;font-size:9px;font-weight:700;color:#1A2E1F;">2</div>
+            </button>
+          </nav>
+
+        </div>
+      </sc-if>
+
+    </div>
+
+    <!-- Home indicator -->
+    <div style="height:34px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <div style="width:134px;height:5px;border-radius:3px;background:#1A2E1F;opacity:.16;"></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 438, &quot;height&quot;: 932}}">
+class Component extends DCLogic {
+  state = {
+    phase: 'onboarding',
+    step: 0,
+    onboardPath: null,
+    tab: 'home',
+    logView: 'trip',
+    toast: null,
+    larsRequested: false,
+    saraMarkedPaid: false,
+    hasCar: false,
+    historyView: 'trips',
+    bookView: 'book',
+    bookingSheet: false,
+    calcOpen: false,
+    settleDemo: 'populated',
+    saraAmount: null,
+    odo: null,
+  };
+
+  _timer = null;
+
+  showToast(msg) {
+    clearTimeout(this._timer);
+    this.setState({ toast: msg });
+    this._timer = setTimeout(() => this.setState({ toast: null }), 2800);
+  }
+
+  componentDidUpdate() {
+    // Roll the odometer up when the car profile is opened
+    const t = this.state.tab;
+    if (t !== this._prevTab) {
+      this._prevTab = t;
+      if (t === 'profile' && this.state.hasCar) this._rollOdo();
+    }
+  }
+
+  _rollOdo() {
+    if (this._odoRolling) return;
+    this._odoRolling = true;
+    const from = 45400, to = 45571, dur = 950, start = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - t, 3);
+      this.setState({ odo: Math.round(from + (to - from) * e) });
+      if (t < 1) requestAnimationFrame(step);
+      else this._odoRolling = false;
+    };
+    requestAnimationFrame(step);
+  }
+
+  renderVals() {
+    const { phase, step, tab, logView, historyView, bookView, bookingSheet, toast, larsRequested, saraMarkedPaid, calcOpen, saraAmount } = this.state;
+    const isApp = phase === 'app';
+    const rawSara = saraAmount == null ? 120.50 : saraAmount;
+    const saraAmountText = rawSara.toFixed(2).replace('.', ',');
+    const F = '#2D6A4F';
+    const M = '#6B8F7A';
+    const c = (t) => tab === t ? F : M;
+    const w = (t) => tab === t ? 600 : 400;
+    const sd = this.state.settleDemo;
+    const segOn = 'background:#2D6A4F;color:#fff;box-shadow:0 1px 2px rgba(26,46,31,.18);';
+    const segOff = 'background:transparent;color:#6B8F7A;';
+
+    return {
+      // Phase
+      isOnboarding: phase === 'onboarding',
+      isApp,
+
+      // Steps
+      isStep0: step === 0,
+      isStep1: step === 1,
+      isStep2: step === 2,
+      isStep3Create: step === 3 && this.state.onboardPath === 'create',
+      isStep3Join:   step === 3 && this.state.onboardPath === 'join',
+      isStep4Create: step === 4 && this.state.onboardPath === 'create',
+      isStep4Join:   step === 4 && this.state.onboardPath === 'join',
+
+      // Tabs (only true when app is visible)
+      isHome:   isApp && tab === 'home',
+      isLog:    isApp && tab === 'log',
+      isBook:   isApp && tab === 'book',
+      isSettle: isApp && tab === 'settle',
+      isPay:    isApp && tab === 'pay',
+      isChat:    isApp && tab === 'chat',
+      isProfile: isApp && tab === 'profile',
+      isHistory:  isApp && tab === 'history',
+      isInsights: isApp && tab === 'insights',
+
+      // Log sub-tabs
+      isTrip: logView === 'trip',
+      isFuel: logView === 'fuel',
+      tripTabBg: logView === 'trip' ? F : '#D8F3DC',
+      tripTabFg: logView === 'trip' ? '#fff' : F,
+      fuelTabBg: logView === 'fuel' ? F : '#D8F3DC',
+      fuelTabFg: logView === 'fuel' ? '#fff' : F,
+
+      // History sub-tabs
+      isHistTrips: historyView === 'trips',
+      isHistFuel: historyView === 'fuel',
+      isHistClosed: historyView === 'closed',
+      histTripsTabBg: historyView === 'trips' ? F : '#D8F3DC',
+      histTripsTabFg: historyView === 'trips' ? '#fff' : F,
+      histFuelTabBg: historyView === 'fuel' ? F : '#D8F3DC',
+      histFuelTabFg: historyView === 'fuel' ? '#fff' : F,
+      histClosedTabBg: historyView === 'closed' ? F : '#D8F3DC',
+      histClosedTabFg: historyView === 'closed' ? '#fff' : F,
+
+      // Booking sheet
+      showBookingSheet: bookingSheet,
+
+      // Book sub-tabs
+      isBookView: bookView === 'book',
+      isPlanView: bookView === 'plan',
+      bookViewTabBg: bookView === 'book' ? F : '#D8F3DC',
+      bookViewTabFg: bookView === 'book' ? '#fff' : F,
+      planViewTabBg: bookView === 'plan' ? F : '#D8F3DC',
+      planViewTabFg: bookView === 'plan' ? '#fff' : F,
+
+      // Nav colors
+      homeColor:   c('home'),   homeWeight:   w('home'),
+      logColor:    c('log'),    logWeight:    w('log'),
+      bookColor:   c('book'),   bookWeight:   w('book'),
+      settleColor: c('settle'), settleWeight: w('settle'),
+      payColor:    c('pay'),    payWeight:    w('pay'),
+
+      // Toast
+      toast,
+      hasToast: !!toast,
+
+      // Settlement state
+      larsRequested,
+      larsNotRequested: !larsRequested,
+      saraMarkedPaid,
+      saraNotMarkedPaid: !saraMarkedPaid,
+      saraSettled: saraMarkedPaid,
+      saraNotSettled: !saraMarkedPaid,
+      saraAmountText,
+      saraOwedLabel: saraMarkedPaid ? 'Settled with Sara' : 'Sara owes you',
+      calcOpen,
+      calcClosed: !calcOpen,
+      toggleCalc: () => this.setState({ calcOpen: !this.state.calcOpen }),
+
+      // Settle demo switcher
+      settleIsEmpty: sd !== 'populated',
+      showPopulated: sd === 'populated',
+      showEmptyNew:     sd === 'new',
+      showEmptySettled: sd === 'settled',
+      popStyle:     sd === 'populated' ? segOn : segOff,
+      newStyle:     sd === 'new' ? segOn : segOff,
+      settledStyle: sd === 'settled' ? segOn : segOff,
+      setSettlePopulated: () => this.setState({ settleDemo: 'populated' }),
+      setSettleNew:       () => this.setState({ settleDemo: 'new' }),
+      setSettleSettled:   () => this.setState({ settleDemo: 'settled' }),
+      onCloseJune: () => this.showToast('June closed. Fresh period started.'),
+
+      // Car state
+      hasCar: this.state.hasCar,
+      noCarYet: !this.state.hasCar,
+      odoText: (this.state.odo == null ? 45571 : this.state.odo).toLocaleString('da-DK'),
+      onAddCar: () => { this.setState({ hasCar: true }); this.showToast('VW Golf added!'); this._rollOdo(); },
+
+      // Onboarding handlers
+      onStart:    () => this.setState({ step: 1 }),
+      onContinue: () => this.setState({ step: 2 }),
+      onPickCreate: () => this.setState({ step: 3, onboardPath: 'create' }),
+      onPickJoin:   () => this.setState({ step: 3, onboardPath: 'join' }),
+      onBackToChoice: () => this.setState({ step: 2, onboardPath: null }),
+      onCreateGroup: () => this.setState({ step: 4 }),
+      onJoinGroup:   () => this.setState({ step: 4 }),
+      onCopyCode: () => this.showToast('Invite code copied!'),
+      onCopyLink: () => this.showToast('Link copied!'),
+      onEnter:    () => this.setState({ phase: 'app' }),
+
+      // Tab nav
+      goHome:   () => this.setState({ tab: 'home' }),
+      goLog:    () => this.setState({ tab: 'log' }),
+      goBook:   () => this.setState({ tab: 'book' }),
+      goSettle: () => this.setState({ tab: 'settle' }),
+      goPay:    () => this.setState({ tab: 'pay' }),
+      goChat:    () => this.setState({ tab: 'chat' }),
+      goProfile: () => this.setState({ tab: 'profile' }),
+      goHistory:  () => this.setState({ tab: 'history', historyView: 'trips' }),
+      goInsights: () => this.setState({ tab: 'insights' }),
+
+      // Log sub-tabs
+      setTrip: () => this.setState({ logView: 'trip' }),
+      setFuel: () => this.setState({ logView: 'fuel' }),
+
+      // History sub-tabs
+      setHistTrips:  () => this.setState({ historyView: 'trips' }),
+      setHistFuel:   () => this.setState({ historyView: 'fuel' }),
+      setHistClosed: () => this.setState({ historyView: 'closed' }),
+
+      // Book sub-tabs
+      setBookView: () => this.setState({ bookView: 'book' }),
+      setPlanView: () => this.setState({ bookView: 'plan' }),
+
+      // Actions
+      onLogTrip:    () => this.showToast('Trip logged — 87 km added.'),
+      onLogFuel:    () => this.showToast('Fuel logged — 34,2 L at 14,50 kr/L.'),
+      onOpenBooking:   () => this.setState({ bookingSheet: true }),
+      onCloseBooking:  () => this.setState({ bookingSheet: false }),
+      onConfirmBooking: () => { this.setState({ bookingSheet: false }); this.showToast('Car booked — 29. jun 09:00–18:00. Have a good trip!'); },
+      onRequestLars:  () => { this.setState({ larsRequested: true }); this.showToast('Payment request sent to Lars.'); },
+      onMarkSaraPaid: () => {
+        if (this.state.saraMarkedPaid || this._settling) return;
+        this._settling = true;
+        const from = 120.50, dur = 800, start = performance.now();
+        const stepFn = (now) => {
+          const t = Math.min(1, (now - start) / dur);
+          const eased = 1 - Math.pow(1 - t, 3);
+          this.setState({ saraAmount: from * (1 - eased) });
+          if (t < 1) { requestAnimationFrame(stepFn); }
+          else { this._settling = false; this.setState({ saraAmount: 0, saraMarkedPaid: true }); this.showToast('Sara paid you 120,50 kr. All settled!'); }
+        };
+        requestAnimationFrame(stepFn);
+      },
+      onAddMember:  () => this.showToast('Invite link copied. Share it with your friend!'),
+      onPayLars:    () => this.showToast('Marked paid to Lars. 52,00 kr settled.'),
+      onPlanTrip:   () => this.showToast('Estimate saved — 214,89 kr per person.'),
+      onPayMikkel:  () => this.showToast('Marked paid to Mikkel. 89,00 kr settled.'),
+      dismissToast: () => { clearTimeout(this._timer); this.setState({ toast: null }); },
+    };
+  }
+}
+</script>
+</body>
+</html>
