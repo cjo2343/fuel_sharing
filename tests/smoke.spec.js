@@ -617,7 +617,8 @@ test("requested payments lock settlement-affecting trip and fuel changes until r
   await expect(page.locator("body")).toContainText(/reopen/i);
 
   await reopenButton.evaluate((button) => button.click());
-  await waitForPaymentReopenSaved(page);
+  // Timeout raised 10s -> 30s for this call only: slow-CI flake, GV-201, seen on PRs #64/#70.
+  await waitForPaymentReopenSaved(page, { timeout: 30000 });
   await expect(page.locator("#auditLog")).toContainText("Payment reopened");
   await expect(page.locator("#auditLog")).toContainText(/Status: Requested .* Not requested/);
   await expect(page.locator("#startKm")).toBeEnabled();
