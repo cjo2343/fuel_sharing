@@ -78,6 +78,7 @@ const expected = [
   "066_expense_paid_by.sql",
   "067_expense_period.sql",
   "068_settlement_expenses.sql",
+  "069_recurring_expenses.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
