@@ -106,9 +106,9 @@ insert into public.trips (id, ledger_id, period_id, driver_member_id, trip_date,
   ('cccccccc-0000-0000-0000-000000000001', 'test-car', 'bbbbbbbb-0000-0000-0000-000000000001',
    'aaaaaaaa-0000-0000-0000-000000000001', current_date, 1000, 1100, 'Tur til sommerhuset',
    'aaaaaaaa-0000-0000-0000-000000000001');
-insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, user_lat, user_lng, station_lat, station_lng, created_by_member_id) values
+insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, station_lat, station_lng, created_by_member_id) values
   ('dddddddd-0000-0000-0000-000000000001', 'test-car', 'bbbbbbbb-0000-0000-0000-000000000001',
-   'aaaaaaaa-0000-0000-0000-000000000001', current_date, 300.00, 56.1572, 10.2107, 56.16, 10.21,
+   'aaaaaaaa-0000-0000-0000-000000000001', current_date, 300.00, 56.16, 10.21,
    'aaaaaaaa-0000-0000-0000-000000000001');
 
 -- Requested settlement => the 046 lock is ACTIVE for the open period.
@@ -205,9 +205,14 @@ begin
   if t.note is not null then raise exception 'FAIL trip note not scrubbed'; end if;
   if t.start_km <> 1000 or t.end_km <> 1100 then raise exception 'FAIL trip km changed!'; end if;
 
-  -- d. fuel: user coords scrubbed, amount + station coords intact
+  -- d. fuel: user-GPS columns dropped outright (migration 071, GV-196 — the
+  -- strongest form of "user coords scrubbed"); amount + station coords intact
   select * into f from public.fuel_payments where id = 'dddddddd-0000-0000-0000-000000000001';
-  if f.user_lat is not null or f.user_lng is not null then raise exception 'FAIL fuel user coords'; end if;
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'fuel_payments'
+      and column_name in ('user_lat', 'user_lng')
+  ) then raise exception 'FAIL fuel user-GPS columns still exist'; end if;
   if f.amount <> 300.00 or f.station_lat is null then raise exception 'FAIL fuel financial/station data changed!'; end if;
 
   -- e. bookings: future cancelled, both purposes scrubbed, past not deleted
