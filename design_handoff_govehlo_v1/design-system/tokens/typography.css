@@ -54,6 +54,14 @@
   --text-caption-family:      var(--font-body);
   --text-caption-line-height: 1.4;
 
+  /* Section Eyebrow — 11px Inter 600 — uppercase section headers */
+  --text-eyebrow-size:           11px;
+  --text-eyebrow-weight:         600;
+  --text-eyebrow-family:         var(--font-body);
+  --text-eyebrow-line-height:    1.4;
+  --text-eyebrow-letter-spacing: 0.06em;
+  --text-eyebrow-transform:      uppercase;
+
   /* Mono — 12px Courier New — odometer values, fuel amounts */
   --text-mono-size:           12px;
   --text-mono-weight:         400;
