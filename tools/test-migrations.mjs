@@ -85,6 +85,7 @@ const expected = [
   "073_recurring_semiannual_cadence.sql",
   "074_inspection_due_event.sql",
   "075_restore_recurring_and_expense_gates.sql",
+  "076_member_mobilepay_self_update.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
