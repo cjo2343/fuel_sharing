@@ -3,11 +3,12 @@
   /* ─── Brand Greens ─── */
   --color-deep-forest:   #1A2E1F;   /* headings, heavy text on light */
   --color-forest:        #2D6A4F;   /* primary — buttons, links, logo */
-  --color-leaf:          #52B788;   /* secondary — positive states, avatars, badges */
+  --color-leaf:          #52B788;   /* incoming / positive money (settled or not), avatars, badges */
+  --color-light-leaf:    #7EE0AB;   /* leaf on dark surfaces where #52B788 fails contrast */
   --color-mist:          #D8F3DC;   /* tint backgrounds — cards, avatar fills, dividers */
 
   /* ─── Accent ─── */
-  --color-amber:         #F4A261;   /* money ONLY — costs owed, payment requests, fuel totals */
+  --color-amber:         #F4A261;   /* money owed outward ONLY — costs you owe, payment requests, fuel totals */
   --color-amber-light:   #FDE8D8;   /* amber tint background */
 
   /* ─── Surfaces & Neutral ─── */
