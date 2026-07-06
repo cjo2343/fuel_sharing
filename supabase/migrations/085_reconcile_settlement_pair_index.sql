@@ -12,12 +12,18 @@
 -- row, so it INSERTed a fresh row directly at status 'paid' and tripped the 003
 -- trigger guard ('Request the payment before marking it paid').
 --
--- This migration: (1) drops the drifted full index (no-op on fresh installs),
--- (2) ensures the canonical partial index exists, and (3) re-declares the
--- function off migration 084's latest body with ONE change — the upsert's
+-- This migration: (1) drops the drifted full pair-uniqueness (no-op on fresh
+-- installs), (2) ensures the canonical partial index exists, and (3) re-declares
+-- the function off migration 084's latest body with ONE change — the upsert's
 -- conflict target gains ` where status <> 'cancelled'` so Postgres uses the
 -- partial index as arbiter and mark-as-paid UPDATEs instead of INSERTing.
 
+-- In prod the drifted pair-uniqueness is backed by a CONSTRAINT (which owns its
+-- index), so `drop index` is rejected — the constraint must be dropped and the
+-- index goes with it. The `drop index` line then covers any environment where it
+-- exists only as a bare index. Both are `if exists`, so both are no-ops on a
+-- fresh install where neither was ever created.
+alter table public.settlement_requests drop constraint if exists settlement_requests_period_from_to_unique;
 drop index if exists public.settlement_requests_period_from_to_unique;
 
 create unique index if not exists settlement_requests_current_pair_idx

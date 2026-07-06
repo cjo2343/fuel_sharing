@@ -16289,6 +16289,9 @@ set description = excluded.description,
 
 
 -- Migration 085: reconcile settlement pair unique index + ON CONFLICT predicate (GVM-241, GV-183)
+-- Drifted pair-uniqueness is a CONSTRAINT in prod (owns its index), so drop the
+-- constraint; the index drop covers any bare-index environment. Both no-op on fresh installs.
+alter table public.settlement_requests drop constraint if exists settlement_requests_period_from_to_unique;
 drop index if exists public.settlement_requests_period_from_to_unique;
 
 create or replace function public.upsert_settlement_request_status(
