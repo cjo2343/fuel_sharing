@@ -140,6 +140,7 @@ const scripts = [
   "node tools/check-runtime-assets.mjs",
   "node tools/test-release-readiness-guardrails.mjs",
   "node tools/check-ci-guardrails.mjs",
+  "node tools/check-token-drift.mjs",
 
   // Syntax and file checks
   "node --check utils.js",

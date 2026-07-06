@@ -17,6 +17,18 @@
   --color-border:        #E2EDE8;   /* dividers, input borders */
   --color-border-strong: #C4D9CD;   /* stronger borders */
 
+  /* ─── Disabled / read-only — neutral grey, deliberately NOT brand-green ─── */
+  --color-disabled-bg:     #F1F3F2;
+  --color-disabled-border: #DDE3E0;
+  --color-disabled-text:   #7A8983;
+
+  /* ─── Attention — non-amber status / health signal ───
+     THE colour for non-money warnings, conflicts, and health flags, so amber
+     stays money-only. Semantic --color-warning below intentionally remains amber
+     for the one sanctioned money-warning (InlineMessage warning variant, GVM-26). */
+  --color-attention:       #C4673D;
+  --color-attention-light: #FAEDE5;
+
   /* ─── Text ─── */
   --text-primary:   var(--color-deep-forest);
   --text-secondary: #3D5C48;
@@ -33,7 +45,7 @@
   /* ─── Semantic ─── */
   --color-success:       var(--color-leaf);
   --color-success-light: #D1F5E3;
-  --color-warning:       var(--color-amber);
+  --color-warning:       var(--color-amber);        /* money-warning ONLY (GVM-26); non-money → --color-attention */
   --color-warning-light: var(--color-amber-light);
   --color-error:         #D95050;
   --color-error-light:   #FDEDED;
