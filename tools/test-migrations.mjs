@@ -98,6 +98,7 @@ const expected = [
   "086_settlement_status_update_not_upsert.sql",
   "087_settlement_events_for_realtime.sql",
   "088_fix_trip_participants_period_check.sql",
+  "089_settlement_status_on_closed_period.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
