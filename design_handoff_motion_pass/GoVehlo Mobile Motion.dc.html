@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/styles.css">
+  <script src="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:#EFEDE6;font-family:system-ui,sans-serif}
+    .dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+    .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+    .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+    .dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}
+    .dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+    .dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+    .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+    .dv-olabel{display:flex;align-items:center;gap:8px;font:400 11px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.55);max-width:390px}
+    .dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+    .dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+    .dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(0,0,0,.5)}
+    @keyframes gvRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+    @keyframes gvPop{0%{opacity:0;transform:scale(.9)}60%{opacity:1;transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+    @keyframes gvToast{0%{opacity:0;transform:translateY(16px) scale(.96)}100%{opacity:1;transform:none}}
+    @keyframes gvShimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+    @keyframes gvSpin{to{transform:rotate(360deg)}}
+    @keyframes gvCheck{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+    @keyframes gvShuttle{0%{transform:translateX(0)}50%{transform:translateX(128px)}100%{transform:translateX(0)}}
+    @keyframes gvDashScroll{to{stroke-dashoffset:-28}}
+    @keyframes gvPulseBlue{0%,100%{box-shadow:0 0 0 0 rgba(53,93,156,0)}35%{box-shadow:0 0 0 5px rgba(53,93,156,.25)}}
+    @media (prefers-reduced-motion: reduce){*{animation-duration:.01ms !important;animation-delay:0ms !important;transition-duration:.01ms !important}}
+  </style>
+</helmet>
+
+<section class="dv-turn" id="t2">
+  <div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">The remaining screens — Log, Insights, History offline sync, sub-tab nav</span></div>
+  <div class="dv-opts">
+
+    <!-- ========== 2a LOG LIVE COST ========== -->
+    <div class="dv-opt" id="2a">
+      <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Log a trip — the cost preview springs in and ticks while you type; saving rolls the start-km forward <button onClick="{{ replayA2 }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Replay</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div data-screen-label="Mobile 2a — Log live cost" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;position:relative;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Log</div></div>
+          <div style="display:flex;gap:8px;padding:12px 16px 6px;">
+            <span style="background:#2D6A4F;color:#fff;border-radius:9999px;padding:8px 18px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;">Tur</span>
+            <span style="background:#fff;color:#3D5C48;border:1px solid #E2EDE8;border-radius:9999px;padding:8px 18px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;">Tank</span>
+          </div>
+          <div style="padding:10px 16px 16px;display:flex;flex-direction:column;gap:12px;">
+            <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Registrer distance</div>
+            <div style="display:flex;gap:12px;">
+              <div style="flex:1;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Start-km</div>
+                <div style="background:#F1F3F2;border:1px solid #DDE3E0;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'Inter',sans-serif;font-size:15px;color:#7A8983;">{{ startKm2aFmt }}</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#7A8983;">km</span></div>
+              </div>
+              <div style="flex:1;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Slut-km</div>
+                <div style="background:#fff;border:1px solid #C4D9CD;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:8px;">
+                  <input value="{{ endKm2a }}" onChange="{{ onEnd2a }}" placeholder="45.405" style="border:none;outline:none;padding:0;margin:0;width:100%;min-width:0;font-family:'Inter',sans-serif;font-size:15px;color:#1A2E1F;background:transparent;">
+                  <sc-if value="{{ has2aKm }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#2D6A4F;white-space:nowrap;">{{ km2aHint }}</span></sc-if>
+                  <span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;">km</span>
+                </div>
+              </div>
+            </div>
+            <sc-if value="{{ has2aCost }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#D8F3DC;border-radius:16px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both;">
+                <div style="flex:1;padding-right:8px;">
+                  <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;">Din andel</div>
+                  <div style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">{{ math2a }}</div>
+                </div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#F4A261;letter-spacing:-.02em;">{{ cost2a }}</div>
+              </div>
+            </sc-if>
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Deles mellem</div>
+              <div style="display:flex;gap:8px;">
+                <span style="background:#D8F3DC;color:#2D6A4F;border:1px solid #B8E6C8;border-radius:9999px;padding:8px 14px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;">Dig ✓</span>
+                <span style="background:#fff;color:#3D5C48;border:1px solid #E2EDE8;border-radius:9999px;padding:8px 14px;font-family:'Inter',sans-serif;font-size:13px;">Lars</span>
+                <span style="background:#fff;color:#3D5C48;border:1px solid #E2EDE8;border-radius:9999px;padding:8px 14px;font-family:'Inter',sans-serif;font-size:13px;">Sara</span>
+              </div>
+            </div>
+            <sc-if value="{{ save2aReady }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ save2a }}" style="width:100%;padding:14px;border-radius:14px;border:none;background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;cursor:pointer;box-shadow:0 2px 8px rgba(45,106,79,.3);animation:gvPop .35s cubic-bezier(.34,1.56,.64,1) both;transition:transform .08s cubic-bezier(.34,1.56,.64,1);" style-hover="background:#245940" style-active="transform:scale(.98)">Tilføj tur</button>
+            </sc-if>
+            <sc-if value="{{ save2aDisabled }}" hint-placeholder-val="{{ true }}">
+              <div style="width:100%;padding:14px;border-radius:14px;background:#F1F3F2;border:1px solid #DDE3E0;color:#7A8983;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;text-align:center;">Tilføj tur</div>
+            </sc-if>
+            <sc-if value="{{ save2aSaving }}" hint-placeholder-val="{{ false }}">
+              <div style="width:100%;padding:14px;border-radius:14px;background:#2D6A4F;opacity:.85;display:flex;align-items:center;justify-content:center;gap:8px;">
+                <div style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;animation:gvSpin .7s linear infinite;"></div>
+                <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Gemmer…</span>
+              </div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ toast2a }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:16px;right:16px;bottom:20px;background:#1A2E1F;border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(26,46,31,.3);animation:gvToast .34s cubic-bezier(.34,1.56,.64,1) both;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:#fff;">Tur registreret. Næste tur starter ved 45.405 km.</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 2b INSIGHTS ARRIVAL ========== -->
+    <div class="dv-opt" id="2b">
+      <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Insights arrival — stat tiles cascade in and count up, the confidence chip pops last <button onClick="{{ replay2b }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Replay</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div ref="{{ refB2 }}" data-screen-label="Mobile 2b — Insights arrival" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Indsigt</div></div>
+          <sc-if value="{{ show2b }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:16px;display:flex;flex-direction:column;gap:16px;">
+              <div>
+                <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:#3D5C48;margin-bottom:8px;">Brændstofindsigt</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                  <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 14px;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both;"><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-bottom:4px;">kr/km</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;"><span data-count-to="2.47" data-count-dec="2">2,47</span> kr</div></div>
+                  <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 14px;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both .07s;"><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-bottom:4px;">kr/L</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;"><span data-count-to="13.89" data-count-dec="2">13,89</span> kr</div></div>
+                  <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 14px;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both .14s;"><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-bottom:4px;">L/100 km</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;"><span data-count-to="6.2" data-count-dec="1">6,2</span> L</div></div>
+                  <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 14px;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both .21s;"><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-bottom:4px;">Sikkerhed</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#52B788;">Høj</div></div>
+                </div>
+              </div>
+              <div style="animation:gvRise .45s cubic-bezier(.4,0,.2,1) both .3s;">
+                <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:#3D5C48;margin-bottom:8px;text-transform:capitalize;">Juni 2026</div>
+                <div style="background:#1A2E1F;border-radius:16px;padding:14px 0;display:flex;">
+                  <div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,.1);"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Distance</div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:#fff;"><span data-count-to="412" data-count-dec="0">412</span> km</div></div>
+                  <div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,.1);"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Din andel</div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:#F4A261;"><span data-count-to="512.45" data-count-dec="2">512,45</span> kr</div></div>
+                  <div style="flex:1;text-align:center;"><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Ture</div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:#fff;"><span data-count-to="12" data-count-dec="0">12</span></div></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:#3D5C48;margin-bottom:8px;">Månedsoversigt</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);animation:gvRise .4s cubic-bezier(.4,0,.2,1) both .45s;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:14px;color:#1A2E1F;">Jun. 2026</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:3px;">12 ture · 412 km · <span style="color:#F4A261;">1.017,64 kr</span></div></div>
+                  <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);animation:gvRise .4s cubic-bezier(.4,0,.2,1) both .55s;"><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:14px;color:#1A2E1F;">Maj 2026</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:3px;">9 ture · 356 km · <span style="color:#F4A261;">879,32 kr</span></div></div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 2c OFFLINE SYNC ========== -->
+    <div class="dv-opt" id="2c">
+      <div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Offline → back online — the queued trip reconciles: banner clears, pending row syncs and settles <button onClick="{{ replayC2 }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Replay</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div data-screen-label="Mobile 2c — Offline sync" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Historik</div></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+            <div style="overflow:hidden;transition:max-height .45s cubic-bezier(.4,0,.2,1), opacity .35s ease;max-height:{{ c2BannerH }};opacity:{{ c2BannerOp }};">
+              <div style="background:#EAF3ED;border:1px solid #C4D9CD;border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D5C48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                <span style="font-family:'Inter',sans-serif;font-size:12px;color:#3D5C48;line-height:1.5;">Forbindelsen er væk. Ændringer gemmes lokalt og sendes, når du er online igen.</span>
+              </div>
+            </div>
+            <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Ture</div>
+            <div style="transition:opacity .4s ease;opacity:{{ c2RowOp }};">
+              <div style="display:flex;margin-bottom:6px;">
+                <sc-if value="{{ c2Offline }}" hint-placeholder-val="{{ true }}">
+                  <span style="background:#F1F3F2;border:1px solid #DDE3E0;color:#7A8983;border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:#7A8983;"></span>Afventer</span>
+                </sc-if>
+                <sc-if value="{{ c2Syncing }}" hint-placeholder-val="{{ false }}">
+                  <span style="background:#F1F3F2;border:1px solid #DDE3E0;color:#3D5C48;border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;border:1.5px solid rgba(45,106,79,.25);border-top-color:#2D6A4F;animation:gvSpin .7s linear infinite;display:inline-block;"></span>Sender…</span>
+                </sc-if>
+                <sc-if value="{{ c2Synced }}" hint-placeholder-val="{{ false }}">
+                  <span style="background:#D1F5E3;color:#2D6A4F;border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Synkroniseret</span>
+                </sc-if>
+              </div>
+              <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">CJ</div>
+                <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Dig · i dag</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.318 → 45.377 · 59 km</div></div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">145,73 kr</div>
+              </div>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+              <div style="width:38px;height:38px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+              <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Lars · 22 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.231 → 45.318 · 87 km</div></div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">214,89 kr</div>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+              <div style="width:38px;height:38px;border-radius:50%;background:#7EC8A4;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">SA</div>
+              <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Sara · 20 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.102 → 45.231 · 129 km</div></div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">318,63 kr</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 2d SUB-TAB SLIDE ========== -->
+    <div class="dv-opt" id="2d">
+      <div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Sub-tab switch — the active pill slides between tabs, content enters with a tabIn. Tap the tabs.</div>
+      <div class="dv-card" style="width:390px;">
+        <div data-screen-label="Mobile 2d — Sub-tab slide" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Historik</div></div>
+          <div style="padding:12px 16px 6px;">
+            <div style="position:relative;display:flex;background:#fff;border:1px solid #E2EDE8;border-radius:9999px;padding:4px;">
+              <div style="position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);background:#2D6A4F;border-radius:9999px;transition:transform .28s cubic-bezier(.34,1.3,.64,1);transform:{{ tab2dTf }};"></div>
+              <button onClick="{{ set2dTrips }}" style="flex:1;position:relative;background:none;border:none;padding:9px 0;border-radius:9999px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;color:{{ tab2dTripsColor }};transition:color .2s ease;">Ture</button>
+              <button onClick="{{ set2dFuel }}" style="flex:1;position:relative;background:none;border:none;padding:9px 0;border-radius:9999px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;color:{{ tab2dFuelColor }};transition:color .2s ease;">Tank</button>
+              <button onClick="{{ set2dPeriods }}" style="flex:1;position:relative;background:none;border:none;padding:9px 0;border-radius:9999px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;color:{{ tab2dPeriodsColor }};transition:color .2s ease;">Perioder</button>
+            </div>
+          </div>
+          <div style="padding:10px 16px 16px;">
+            <sc-if value="{{ is2dTrips }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:8px;animation:gvRise .3s cubic-bezier(.4,0,.2,1) both;">
+                <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                  <div style="width:38px;height:38px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Lars · 22 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.231 → 45.318 · 87 km</div></div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">214,89 kr</div>
+                </div>
+                <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                  <div style="width:38px;height:38px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">CJ</div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Dig · 20 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.102 → 45.231 · 129 km</div></div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">318,63 kr</div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ is2dFuel }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;animation:gvRise .3s cubic-bezier(.4,0,.2,1) both;">
+                <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                  <div style="width:38px;height:38px;border-radius:11px;background:#FDE8D8;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B06A2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"></line><line x1="4" y1="9" x2="14" y2="9"></line><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"></path><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"></path></svg></div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Circle K · 21 jun · Lars</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">38,2 L · 13,89 kr/L</div></div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">530,60 kr</div>
+                </div>
+                <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                  <div style="width:38px;height:38px;border-radius:11px;background:#FDE8D8;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B06A2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"></line><line x1="4" y1="9" x2="14" y2="9"></line><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"></path><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"></path></svg></div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Shell · 8 jun · Dig</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">35,0 L · 13,72 kr/L</div></div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">480,20 kr</div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ is2dPeriods }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;animation:gvRise .3s cubic-bezier(.4,0,.2,1) both;">
+                <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">Juni 2026</span><span style="background:#D1F5E3;color:#2D6A4F;border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Åben</span></div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Åbnet 1. juni 2026</div>
+                </div>
+                <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#1A2E1F;">Maj 2026</span><span style="background:#F1F3F2;color:#7A8983;border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;">Lukket</span></div>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Lukket 31. maj 2026</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;margin-top:8px;">Se afregningsoversigt →</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="dv-next">Try next: "auto-type slower in <a class="dv-oid" href="#2a">2a</a>" · "add a bar chart that grows in to <a class="dv-oid" href="#2b">2b</a>" · "show <a class="dv-oid" href="#2c">2c</a> failing and going to the blocked state"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Mobile motion polish — four moments the app currently handles flatly (extends the GVM-129 motion pack)</span></div>
+  <div class="dv-opts">
+
+    <!-- ========== 1a HOME ARRIVAL ========== -->
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Home arrival — skeleton shimmer instead of the full-screen spinner, then a staggered cascade with balance count-up <button onClick="{{ replayA }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Replay</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div ref="{{ refA }}" data-screen-label="Mobile 1a — Home arrival" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="background:#2D6A4F;padding:18px 16px 20px;flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;">
+            <div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;letter-spacing:-.02em;">Godmorgen, Christian.</div>
+              <div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.65);margin-top:3px;">Alt er synkroniseret</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></div>
+              <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+            </div>
+          </div>
+
+          <!-- Skeleton state -->
+          <sc-if value="{{ aLoading }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
+              <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;gap:16px;">
+                <div style="flex:1;display:flex;flex-direction:column;gap:8px;"><div style="height:11px;width:60%;border-radius:6px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div><div style="height:24px;width:45%;border-radius:6px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:8px;"><div style="height:11px;width:60%;border-radius:6px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div><div style="height:24px;width:45%;border-radius:6px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div></div>
+              </div>
+              <div style="background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;flex-shrink:0;"></div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:7px;"><div style="height:12px;width:50%;border-radius:6px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div><div style="height:9px;width:30%;border-radius:6px;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div></div>
+              </div>
+              <div style="display:flex;gap:16px;padding:4px 2px;">
+                <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div>
+                <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div>
+                <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(90deg,#D8F3DC 25%,#EAF8EE 50%,#D8F3DC 75%);background-size:400px 100%;animation:gvShimmer 1.3s linear infinite;"></div>
+              </div>
+              <div style="background:#fff;border-radius:16px;height:64px;box-shadow:0 1px 3px rgba(26,46,31,.07);"></div>
+            </div>
+          </sc-if>
+
+          <!-- Loaded state -->
+          <sc-if value="{{ aReady }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px;display:flex;flex-direction:column;gap:14px;">
+              <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;animation:gvRise .35s cubic-bezier(.4,0,.2,1) both;">
+                <div style="flex:1;border-right:1px solid #E2EDE8;">
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Du skylder</div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:24px;color:#F4A261;line-height:1;"><span data-count-to="52" data-count-dec="0">52</span> kr</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:4px;">til Lars</div>
+                </div>
+                <div style="flex:1;padding-left:16px;">
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Du får</div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:24px;color:#52B788;line-height:1;"><span data-count-to="87.50" data-count-dec="2">87,50</span> kr</div>
+                  <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:4px;">fra Sara</div>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;animation:gvRise .35s cubic-bezier(.4,0,.2,1) both;animation-delay:.08s;">
+                <div style="width:42px;height:42px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 16H9m10 0h3v-3.15a1 1 0 0 0-.84-.99L16 11l-2.7-3.6a1 1 0 0 0-.8-.4H5.24a2 2 0 0 0-1.8 1.1l-.8 1.63A6 6 0 0 0 2 12.42V16h2"></path><circle cx="6.5" cy="16.5" r="2.5"></circle><circle cx="16.5" cy="16.5" r="2.5"></circle></svg></div>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Bilen er ledig</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#3D5C48;margin-top:1px;">Ledig nu</div></div>
+                <button onClick="{{ noop }}" style="background:#D8F3DC;border:none;border-radius:12px;padding:10px 16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#2D6A4F;cursor:pointer;">Book</button>
+              </div>
+              <div style="animation:gvRise .35s cubic-bezier(.4,0,.2,1) both;animation-delay:.16s;">
+                <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;margin-bottom:10px;">Jeres gruppe</div>
+                <div style="display:flex;gap:16px;">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:48px;height:48px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#fff;">CJ</div><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;">Dig</span></div>
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:48px;height:48px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#fff;">LN</div><span style="font-family:'Inter',sans-serif;font-size:11px;color:#3D5C48;">Lars</span></div>
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:48px;height:48px;border-radius:50%;background:#7EC8A4;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#fff;">SA</div><span style="font-family:'Inter',sans-serif;font-size:11px;color:#3D5C48;">Sara</span></div>
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><div style="width:48px;height:48px;border-radius:50%;border:1.5px dashed #C4D9CD;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div><span style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Tilføj</span></div>
+                </div>
+              </div>
+              <div style="animation:gvRise .35s cubic-bezier(.4,0,.2,1) both;animation-delay:.24s;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Seneste ture</div><span style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;cursor:pointer;">Se alle</span></div>
+                <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                  <div style="width:38px;height:38px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Lars · 22 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.231 → 45.318 · 87 km</div></div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">214,89 kr</div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 1b MARK AS PAID ========== -->
+    <div class="dv-opt" id="1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Mark as paid — check draws itself, status chip pops, toast confirms. Tap the button. <button onClick="{{ resetB }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Reset</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div data-screen-label="Mobile 1b — Mark as paid" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;position:relative;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Afregning</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.65);margin-top:2px;">Juni · 412 km delt</div></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+            <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Balancer</div>
+            <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:12px;transition:opacity .4s cubic-bezier(.4,0,.2,1);">
+              <div style="width:44px;height:44px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#2D6A4F;flex-shrink:0;">SA</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;margin-bottom:2px;">Sara skylder dig</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#52B788;line-height:1;">87,50 kr</span>
+                  <sc-if value="{{ bPaid }}" hint-placeholder-val="{{ false }}">
+                    <span style="background:#D1F5E3;color:#2D6A4F;border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both .15s;">Betalt</span>
+                  </sc-if>
+                </div>
+              </div>
+              <sc-if value="{{ bNotPaid }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ markPaidB }}" style="padding:10px 16px;border-radius:12px;border:none;background:#52B788;color:#fff;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;flex-shrink:0;transition:transform .08s cubic-bezier(.34,1.56,.64,1);" style-hover="background:#3FA375" style-active="transform:scale(.95)">Markér som betalt</button>
+              </sc-if>
+              <sc-if value="{{ bPaid }}" hint-placeholder-val="{{ false }}">
+                <div style="width:40px;height:40px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:gvPop .45s cubic-bezier(.34,1.56,.64,1) both;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" stroke-dasharray="24" style="animation:gvCheck .4s cubic-bezier(.4,0,.2,1) both .15s;"></polyline></svg>
+                </div>
+              </sc-if>
+            </div>
+            <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;opacity:.9;">
+              <div style="width:44px;height:44px;border-radius:50%;background:#FDE8D8;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#B06A2C;flex-shrink:0;">LN</div>
+              <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;margin-bottom:2px;">Du skylder Lars</div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#F4A261;line-height:1;">52 kr</div></div>
+              <span style="background:#e9f0fb;color:#355d9c;border-radius:9999px;padding:6px 12px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;">Anmodet</span>
+            </div>
+          </div>
+          <sc-if value="{{ bToast }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:16px;right:16px;bottom:20px;background:#1A2E1F;border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(26,46,31,.3);animation:gvToast .34s cubic-bezier(.34,1.56,.64,1) both;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <span style="font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:#fff;">Betaling registreret. Sara har fået besked.</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 1c PULL TO REFRESH ========== -->
+    <div class="dv-opt" id="1c">
+      <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Branded pull-to-refresh — the road-and-dot replaces the stock spinner; new data pops in <button onClick="{{ replayC }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Replay</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div data-screen-label="Mobile 1c — Pull to refresh" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Historik</div></div>
+          <div style="flex:1;position:relative;overflow:hidden;">
+            <!-- refresh zone -->
+            <div style="position:absolute;top:0;left:0;right:0;height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
+              <svg width="160" height="22" viewBox="0 0 160 22">
+                <path d="M 4 11 H 156" fill="none" stroke="#D8F3DC" stroke-width="10" stroke-linecap="round"></path>
+                <sc-if value="{{ cRefreshing }}" hint-placeholder-val="{{ false }}">
+                  <path d="M 4 11 H 156" fill="none" stroke="rgba(45,106,79,.25)" stroke-width="2" stroke-dasharray="6 8" style="animation:gvDashScroll .5s linear infinite;"></path>
+                  <g style="animation:gvShuttle 1.4s cubic-bezier(.45,0,.55,1) infinite;"><circle cx="16" cy="11" r="7" fill="#F4A261"></circle><circle cx="13.5" cy="8.5" r="2.5" fill="rgba(255,255,255,.45)"></circle></g>
+                </sc-if>
+              </svg>
+              <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#6B8F7A;">{{ cLabel }}</span>
+            </div>
+            <!-- content that pulls down -->
+            <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:#F7F9F8;padding:16px;display:flex;flex-direction:column;gap:10px;transform:{{ cTransform }};transition:transform .5s cubic-bezier(.34,1.3,.64,1);">
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Juni</div>
+              <sc-if value="{{ cNew }}" hint-placeholder-val="{{ false }}">
+                <div style="background:#fff;border:1px solid #B8E6C8;border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;animation:gvPop .45s cubic-bezier(.34,1.56,.64,1) both;">
+                  <div style="width:38px;height:38px;border-radius:50%;background:#7EC8A4;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">SA</div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Sara · lige nu</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.318 → 45.342 · 24 km</div></div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">59,28 kr</div>
+                </div>
+              </sc-if>
+              <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">LN</div>
+                <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Lars · 22 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.231 → 45.318 · 87 km</div></div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">214,89 kr</div>
+              </div>
+              <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;flex-shrink:0;">CJ</div>
+                <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Dig · 20 jun</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">45.102 → 45.231 · 129 km</div></div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">318,63 kr</div>
+              </div>
+              <div style="background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:12px;">
+                <div style="width:38px;height:38px;border-radius:11px;background:#FDE8D8;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B06A2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"></line><line x1="4" y1="9" x2="14" y2="9"></line><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"></path><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"></path></svg></div>
+                <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-weight:500;font-size:13px;color:#1A2E1F;">Tankning · Circle K</div><div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;letter-spacing:.03em;margin-top:2px;">38,2 L · 13,89 kr/L</div></div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:15px;color:#F4A261;">530,60 kr</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 1d REQUEST PAYMENT ========== -->
+    <div class="dv-opt" id="1d">
+      <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Request payment — press, brief spinner, then the blue "Anmodet" chip pops with a one-shot pulse. Tap the button. <button onClick="{{ resetD }}" style="margin-left:auto;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;cursor:pointer;flex-shrink:0;">↺ Reset</button></div>
+      <div class="dv-card" style="width:390px;">
+        <div data-screen-label="Mobile 1d — Request payment" style="height:600px;background:#F7F9F8;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="background:#2D6A4F;padding:16px;flex-shrink:0;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#fff;">Afregning</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.65);margin-top:2px;">Juni · 412 km delt</div></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+            <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;">Balancer</div>
+            <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:12px;">
+              <div style="width:44px;height:44px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#2D6A4F;flex-shrink:0;">LN</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Inter',sans-serif;font-weight:500;font-size:12px;color:#6B8F7A;margin-bottom:2px;">Lars skylder dig</div>
+                <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#52B788;line-height:1;">52 kr</div>
+              </div>
+              <sc-if value="{{ dIdle }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ requestD }}" style="padding:10px 18px;border-radius:12px;border:none;background:#F4A261;color:#1A2E1F;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;flex-shrink:0;box-shadow:0 2px 8px rgba(244,162,97,.35);transition:transform .08s cubic-bezier(.34,1.56,.64,1);" style-hover="background:#E8905C" style-active="transform:scale(.95)">Anmod</button>
+              </sc-if>
+              <sc-if value="{{ dSending }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:10px 18px;border-radius:12px;background:#F4A261;opacity:.85;display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                  <div style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(26,46,31,.25);border-top-color:#1A2E1F;animation:gvSpin .7s linear infinite;"></div>
+                  <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Sender…</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ dSent }}" hint-placeholder-val="{{ false }}">
+                <span style="background:#e9f0fb;color:#355d9c;border-radius:9999px;padding:8px 14px;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;animation:gvPop .4s cubic-bezier(.34,1.56,.64,1) both, gvPulseBlue 1.2s ease .35s 1;">Anmodet</span>
+              </sc-if>
+            </div>
+            <sc-if value="{{ dSent }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#e9f0fb;border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;animation:gvRise .4s cubic-bezier(.4,0,.2,1) both .2s;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#355d9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span style="font-family:'Inter',sans-serif;font-size:12px;color:#355d9c;line-height:1.5;">Lars har fået besked. Beløbet markeres som betalt, når du har modtaget det på MobilePay.</span>
+              </div>
+            </sc-if>
+            <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;line-height:1.5;padding:0 2px;">87 km × 2,47 kr/km — beregnet af turene i juni.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="dv-next">Try next: "make the <a class="dv-oid" href="#1a">1a</a> count-up slower" · "give <a class="dv-oid" href="#1b">1b</a> a settle-down where the paid card sinks to the bottom" · "show <a class="dv-oid" href="#1c">1c</a> with a drag gesture"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = {
+    aPhase: 'loading',      // 1a: loading -> ready
+    bPaid: false, bToast: false,
+    cPhase: 'idle', cNew: false,
+    dPhase: 'idle',         // idle -> sending -> sent
+    // turn 2
+    endKm2a: '', startKm2a: 45318, savePhase2a: 'idle', toast2a: false,
+    show2b: true,
+    net2c: 'offline',       // offline -> syncing -> synced
+    tab2d: 'trips',
+  };
+
+  b2Root = null;
+
+  timers = [];
+  aRoot = null;
+
+  componentDidMount() {
+    this.reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.runA();
+    this.after(600, () => this.runC());
+    this.after(800, () => this.autoType2a('45405'));
+    this.after(300, () => this.countUp(this.b2Root));
+    this.after(1200, () => this.runC2());
+  }
+
+  componentWillUnmount() { this.timers.forEach(clearTimeout); }
+  after(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+
+  easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+  countUp(root) {
+    if (!root || this.reduced) return;
+    root.querySelectorAll('[data-count-to]').forEach(el => {
+      const to = parseFloat(el.getAttribute('data-count-to'));
+      const dec = parseInt(el.getAttribute('data-count-dec') || '0', 10);
+      if (!(to > 0)) return;
+      const start = performance.now(), dur = 800;
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / dur);
+        el.textContent = (to * this.easeOut(t)).toFixed(dec).replace('.', ',');
+        if (t < 1 && el.isConnected) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  // --- 1a Home arrival ---
+  runA() {
+    this.setState({ aPhase: 'loading' });
+    this.after(this.reduced ? 200 : 1500, () => {
+      this.setState({ aPhase: 'ready' });
+      this.after(80, () => this.countUp(this.aRoot));
+    });
+  }
+
+  // --- 2a Log live cost (auto-types the end odometer) ---
+  autoType2a(digits) {
+    if (this.reduced) { this.setState({ endKm2a: digits }); return; }
+    let i = 0;
+    const step = () => {
+      i++;
+      this.setState({ endKm2a: digits.slice(0, i) });
+      if (i < digits.length) this.after(150, step);
+    };
+    this.after(100, step);
+  }
+
+  // --- 2b Insights (remount + count) ---
+  runB2() {
+    this.setState({ show2b: false });
+    this.after(50, () => {
+      this.setState({ show2b: true });
+      this.after(150, () => this.countUp(this.b2Root));
+    });
+  }
+
+  // --- 2c offline sync reconciliation ---
+  runC2() {
+    this.setState({ net2c: 'offline' });
+    this.after(2200, () => this.setState({ net2c: 'syncing' }));
+    this.after(3300, () => this.setState({ net2c: 'synced' }));
+  }
+
+  fmtThousands(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
+  // --- 1c Pull to refresh ---
+  runC() {
+    this.setState({ cPhase: 'idle', cNew: false });
+    this.after(300, () => this.setState({ cPhase: 'pull' }));
+    this.after(500, () => this.setState({ cPhase: 'refresh' }));
+    this.after(2300, () => this.setState({ cPhase: 'idle' }));
+    this.after(2650, () => this.setState({ cNew: true }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const end2a = parseInt(s.endKm2a || '0', 10) || 0;
+    const km2a = Math.max(0, end2a - s.startKm2a);
+    return {
+      // 1a
+      aLoading: s.aPhase === 'loading',
+      aReady: s.aPhase === 'ready',
+      refA: (el) => { if (el) this.aRoot = el; },
+      replayA: () => this.runA(),
+      // 1b
+      bPaid: s.bPaid,
+      bNotPaid: !s.bPaid,
+      bToast: s.bToast,
+      markPaidB: () => {
+        this.setState({ bPaid: true });
+        this.after(350, () => this.setState({ bToast: true }));
+        this.after(3000, () => this.setState({ bToast: false }));
+      },
+      resetB: () => this.setState({ bPaid: false, bToast: false }),
+      // 1c
+      cRefreshing: s.cPhase === 'refresh',
+      cLabel: s.cPhase === 'refresh' ? 'Opdaterer…' : (s.cPhase === 'pull' ? 'Slip for at opdatere' : ''),
+      cTransform: s.cPhase === 'idle' ? 'translateY(0px)' : 'translateY(72px)',
+      cNew: s.cNew,
+      replayC: () => this.runC(),
+      // 1d
+      dIdle: s.dPhase === 'idle',
+      dSending: s.dPhase === 'sending',
+      dSent: s.dPhase === 'sent',
+      requestD: () => {
+        this.setState({ dPhase: 'sending' });
+        this.after(this.reduced ? 100 : 900, () => this.setState({ dPhase: 'sent' }));
+      },
+      resetD: () => this.setState({ dPhase: 'idle' }),
+      noop: () => {},
+      // 2a
+      endKm2a: s.endKm2a,
+      onEnd2a: (e) => this.setState({ endKm2a: e.target.value.replace(/[^0-9]/g, '').slice(0, 6) }),
+      startKm2aFmt: this.fmtThousands(s.startKm2a),
+      has2aKm: km2a > 0,
+      km2aHint: km2a + ' km',
+      has2aCost: km2a > 0,
+      math2a: km2a + ' km × 2,47 kr/km',
+      cost2a: (km2a * 2.47).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' kr',
+      save2aReady: km2a > 0 && s.savePhase2a === 'idle',
+      save2aDisabled: km2a <= 0 && s.savePhase2a === 'idle',
+      save2aSaving: s.savePhase2a === 'saving',
+      save2a: () => {
+        this.setState({ savePhase2a: 'saving' });
+        this.after(900, () => {
+          this.setState({ savePhase2a: 'idle', toast2a: true, startKm2a: 45405, endKm2a: '' });
+          this.after(2800, () => this.setState({ toast2a: false }));
+        });
+      },
+      toast2a: s.toast2a,
+      replayA2: () => {
+        this.setState({ endKm2a: '', startKm2a: 45318, savePhase2a: 'idle', toast2a: false });
+        this.autoType2a('45405');
+      },
+      // 2b
+      show2b: s.show2b,
+      refB2: (el) => { if (el) this.b2Root = el; },
+      replay2b: () => this.runB2(),
+      // 2c
+      c2Offline: s.net2c === 'offline',
+      c2Syncing: s.net2c === 'syncing',
+      c2Synced: s.net2c === 'synced',
+      c2BannerH: s.net2c === 'offline' ? '80px' : '0px',
+      c2BannerOp: s.net2c === 'offline' ? 1 : 0,
+      c2RowOp: s.net2c === 'synced' ? 1 : 0.65,
+      replayC2: () => this.runC2(),
+      // 2d
+      tab2dTf: 'translateX(' + (['trips', 'fuel', 'periods'].indexOf(s.tab2d) * 100) + '%)',
+      is2dTrips: s.tab2d === 'trips',
+      is2dFuel: s.tab2d === 'fuel',
+      is2dPeriods: s.tab2d === 'periods',
+      tab2dTripsColor: s.tab2d === 'trips' ? '#FFFFFF' : '#3D5C48',
+      tab2dFuelColor: s.tab2d === 'fuel' ? '#FFFFFF' : '#3D5C48',
+      tab2dPeriodsColor: s.tab2d === 'periods' ? '#FFFFFF' : '#3D5C48',
+      set2dTrips: () => this.setState({ tab2d: 'trips' }),
+      set2dFuel: () => this.setState({ tab2d: 'fuel' }),
+      set2dPeriods: () => this.setState({ tab2d: 'periods' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

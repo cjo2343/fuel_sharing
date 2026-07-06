@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/styles.css">
+  <script src="_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:#EFEDE6;font-family:system-ui,sans-serif}
+    .dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+    .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+    .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+    .dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}
+    .dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+    .dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+    .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+    .dv-olabel{display:flex;align-items:center;gap:8px;font:400 11px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.55)}
+    .dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+    .dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+    .dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(0,0,0,.5)}
+    @keyframes gvRise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+    @keyframes gvPop{0%{opacity:0;transform:scale(.92)}60%{opacity:1;transform:scale(1.02)}100%{opacity:1;transform:scale(1)}}
+    @keyframes gvFade{from{opacity:0}to{opacity:1}}
+    @media (prefers-reduced-motion: reduce){*{animation-duration:.01ms !important;animation-delay:0ms !important;transition-duration:.01ms !important}}
+  </style>
+</helmet>
+
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Landing page welcome intro — two choreographies (Danish-first, EN toggle, scroll reveals below the fold)</span></div>
+  <div class="dv-opts">
+
+    <!-- ============================== OPTION 1a ============================== -->
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Staged arrival — content rises first, the road draws in behind it, stats count up <button onClick="{{ replayA }}" style="margin-left:6px;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;color:#1a1a1a;cursor:pointer;">↺ Replay intro</button></div>
+      <div class="dv-card" style="width:1180px;">
+        <div ref="{{ refPageA }}" data-screen-label="Landing 1a — Staged arrival" style="height:720px;overflow-y:auto;overflow-x:hidden;background:#F7F9F8;position:relative;">
+
+          <!-- NAV -->
+          <nav style="position:sticky;top:0;z-index:100;background:rgba(26,46,31,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:0 48px;height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="32" height="32" viewBox="0 0 512 512" style="border-radius:7px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"></circle></svg>
+              <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:20px;color:#fff;letter-spacing:-.02em;">GoVehlo</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:32px;">
+              <span data-i18n="nav.features" style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);cursor:pointer;font-weight:500;" style-hover="color:rgba(255,255,255,.9)">Funktioner</span>
+              <span data-i18n="nav.how" style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);cursor:pointer;font-weight:500;" style-hover="color:rgba(255,255,255,.9)">Sådan virker det</span>
+              <button onClick="{{ noop }}" data-i18n="nav.cta" style="background:#2D6A4F;border:none;border-radius:10px;padding:8px 20px;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;cursor:pointer;" style-hover="background:#245940">Kom i gang</button>
+              <button onClick="{{ toggleLang }}" data-lang-toggle="true" style="background:transparent;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:5px 10px;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:rgba(255,255,255,.7);cursor:pointer;" style-hover="color:#fff;border-color:rgba(255,255,255,.5)">EN</button>
+            </div>
+          </nav>
+
+          <!-- HERO -->
+          <section style="background:#1A2E1F;padding:80px 48px;position:relative;overflow:hidden;min-height:540px;">
+            <sc-if value="{{ showHeroA }}" hint-placeholder-val="{{ true }}">
+              <div style="position:absolute;top:0;left:0;right:0;bottom:0;">
+                <svg data-hero-svg="true" viewBox="0 0 1600 500" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;display:block;">
+                  <path d="M -50 320 C 400 80 1200 420 1650 180" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="74" stroke-linecap="round"></path>
+                  <path data-road="true" d="M -50 320 C 400 80 1200 420 1650 180" fill="none" stroke="#D8F3DC" stroke-width="68" stroke-linecap="round" opacity="0.3"></path>
+                  <path data-dash="true" d="M -50 320 C 400 80 1200 420 1650 180" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="3.5" stroke-dasharray="22 35" stroke-linecap="round" style="opacity:0;"></path>
+                  <g data-dot="true" style="opacity:0;"><circle r="44" fill="rgba(244,162,97,0.1)"></circle><circle r="32" fill="rgba(244,162,97,0.15)"></circle><circle r="22" fill="#F4A261"></circle><circle cx="-7" cy="-7" r="8" fill="rgba(255,255,255,0.45)"></circle></g>
+                </svg>
+              </div>
+              <div style="position:relative;z-index:1;max-width:540px;">
+                <div data-i18n="hero.eyebrow" style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#F4A261;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;animation:gvRise .5s cubic-bezier(.4,0,.2,1) both;animation-delay:.05s;">Brændstofdeling for delebiler</div>
+                <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:56px;color:#fff;margin:0 0 20px;letter-spacing:-.03em;line-height:1.05;">
+                  <span data-i18n="hero.t1" style="display:block;animation:gvRise .6s cubic-bezier(.33,1.3,.62,1) both;animation-delay:.16s;">Tank op.</span>
+                  <span data-i18n="hero.t2" style="display:block;animation:gvRise .6s cubic-bezier(.33,1.3,.62,1) both;animation-delay:.27s;">Del retfærdigt.</span>
+                </h1>
+                <p data-i18n="hero.desc" style="font-family:'Inter',sans-serif;font-size:18px;color:rgba(255,255,255,.55);margin:0 0 36px;line-height:1.6;max-width:420px;text-wrap:pretty;animation:gvRise .55s cubic-bezier(.4,0,.2,1) both;animation-delay:.4s;">Registrér ture på kilometerstanden, del brændstofudgifter forholdsmæssigt, og gør op uden de akavede samtaler.</p>
+                <div style="display:flex;gap:14px;align-items:center;animation:gvPop .5s cubic-bezier(.34,1.56,.64,1) both;animation-delay:.55s;">
+                  <a href="GoVehlo Prototype v2.dc.html" data-i18n="hero.try" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 28px;background:#2D6A4F;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;box-shadow:0 2px 8px rgba(45,106,79,.3);" style-hover="background:#245940">Prøv appen</a>
+                  <a href="#1a" data-i18n="hero.learn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 28px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;font-family:'Inter',sans-serif;font-weight:600;font-size:15px;color:rgba(255,255,255,.8);" style-hover="background:rgba(255,255,255,.12)">Læs mere</a>
+                </div>
+                <div style="display:flex;gap:24px;margin-top:40px;animation:gvRise .55s cubic-bezier(.4,0,.2,1) both;animation-delay:.72s;">
+                  <div><div data-count-to="5" data-count-dec="0" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">5</div><div data-i18n="hero.s1" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">venner deler</div></div>
+                  <div style="width:1px;background:rgba(255,255,255,.08);"></div>
+                  <div><div data-count-to="2.47" data-count-dec="2" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">2,47</div><div data-i18n="hero.s2" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">kr pr. km</div></div>
+                  <div style="width:1px;background:rgba(255,255,255,.08);"></div>
+                  <div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">0</div><div data-i18n="hero.s3" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">regneark</div></div>
+                </div>
+              </div>
+            </sc-if>
+          </section>
+
+          <!-- FEATURES -->
+          <section style="padding:80px 48px;background:#F7F9F8;">
+            <div data-reveal="true" style="text-align:center;margin-bottom:48px;">
+              <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <svg width="24" height="24" viewBox="0 0 512 512" style="border-radius:6px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle></svg>
+                <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:18px;color:#2D6A4F;letter-spacing:-.02em;">GoVehlo</span>
+              </div>
+              <h2 data-i18n="feat.heading" style="font-family:'Nunito',sans-serif;font-weight:800;font-size:36px;color:#1A2E1F;margin:0;letter-spacing:-.02em;">Alt, jeres delebil har brug for</h2>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;max-width:1000px;margin:0 auto;">
+              <div data-reveal="true" data-reveal-delay="0" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
+                <h3 data-i18n="feat1.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Registrér ture</h3>
+                <p data-i18n="feat1.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Indtast kilometerstand ved start og slut. Vi beregner km og pris.</p>
+              </div>
+              <div data-reveal="true" data-reveal-delay="70" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#FEF3E0;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F4A261" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 21 7 17 3"></polyline><line x1="21" y1="7" x2="9" y2="7"></line><polyline points="7 21 3 17 7 13"></polyline><line x1="3" y1="17" x2="15" y2="17"></line></svg></div>
+                <h3 data-i18n="feat2.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Del udgifterne</h3>
+                <p data-i18n="feat2.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Retfærdig deling pr. km. Ingen gætterier, ingen regneark.</p>
+              </div>
+              <div data-reveal="true" data-reveal-delay="140" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></div>
+                <h3 data-i18n="feat3.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Book bilen</h3>
+                <p data-i18n="feat3.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Se hvem der har bilen, og hvornår den er ledig — med ét blik.</p>
+              </div>
+              <div data-reveal="true" data-reveal-delay="210" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#D1F5E3;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg></div>
+                <h3 data-i18n="feat4.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Planlæg forud</h3>
+                <p data-i18n="feat4.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Beregn turens pris, før du kører. Ingen overraskelser.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- HOW IT WORKS -->
+          <section style="padding:80px 48px;background:#F7F9F8;position:relative;overflow:hidden;">
+            <div data-reveal="true" style="text-align:center;margin-bottom:48px;">
+              <div data-i18n="how.eyebrow" style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Enkelt af design</div>
+              <h2 data-i18n="how.heading" style="font-family:'Nunito',sans-serif;font-weight:800;font-size:36px;color:#1A2E1F;margin:0;letter-spacing:-.02em;">Sådan virker det</h2>
+            </div>
+            <div style="position:relative;max-width:860px;margin:0 auto;">
+              <svg data-reveal="true" data-draw-road="true" viewBox="0 0 980 160" preserveAspectRatio="none" style="position:absolute;top:0;left:-60px;width:calc(100% + 120px);height:160px;pointer-events:none;">
+                <path data-steps-road="true" d="M -30 95 C 160 30 300 120 490 55 C 680 -10 800 110 1010 45" fill="none" stroke="rgba(216,243,220,0.55)" stroke-width="44" stroke-linecap="round"></path>
+                <path data-steps-dash="true" d="M -30 95 C 160 30 300 120 490 55 C 680 -10 800 110 1010 45" fill="none" stroke="rgba(45,106,79,0.08)" stroke-width="3" stroke-dasharray="18 30" stroke-linecap="round"></path>
+              </svg>
+              <div style="display:flex;position:relative;">
+                <div data-reveal="true" data-reveal-delay="0" style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:44px;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#2D6A4F;box-shadow:0 4px 16px rgba(45,106,79,.25);display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;">1</div>
+                  <h3 data-i18n="step1.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Opret jeres gruppe</h3>
+                  <p data-i18n="step1.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Inviter vennerne, der deler bilen. Ét tryk for at være med.</p>
+                </div>
+                <div data-reveal="true" data-reveal-delay="90" style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:8px;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#2D6A4F;box-shadow:0 4px 16px rgba(45,106,79,.25);display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;">2</div>
+                  <h3 data-i18n="step2.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Registrér ture og brændstof</h3>
+                  <p data-i18n="step2.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Indtast kilometerstand og kvitteringer. Vi klarer regnestykket.</p>
+                </div>
+                <div data-reveal="true" data-reveal-delay="180" style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:36px;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#F4A261;box-shadow:0 4px 16px rgba(244,162,97,.3);display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#1A2E1F;">3</div>
+                  <h3 data-i18n="step3.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Gør op</h3>
+                  <p data-i18n="step3.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Bed om betaling eller markér som betalt. Ingen akavede samtaler.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- CTA -->
+          <section style="padding:80px 48px;background:#2D6A4F;text-align:center;">
+            <div data-reveal="true">
+              <div style="display:inline-flex;align-items:center;gap:14px;margin-bottom:24px;">
+                <svg width="44" height="44" viewBox="0 0 512 512" style="border-radius:11px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"></circle></svg>
+                <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:32px;color:#fff;letter-spacing:-.01em;">GoVehlo</span>
+              </div>
+              <h2 data-i18n="cta.heading" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:40px;color:#fff;margin:0 0 12px;letter-spacing:-.02em;">Klar til at dele retfærdigt?</h2>
+              <p data-i18n="cta.desc" style="font-family:'Inter',sans-serif;font-size:17px;color:rgba(255,255,255,.6);margin:0 0 32px;">Din bil. Dit hold. Retfærdige udgifter.</p>
+              <a href="GoVehlo Prototype v2.dc.html" data-i18n="cta.btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:56px;padding:0 36px;background:#fff;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#2D6A4F;box-shadow:0 4px 24px rgba(26,46,31,.3);" style-hover="background:#D8F3DC">Prøv appen</a>
+            </div>
+          </section>
+
+          <!-- COMING SOON -->
+          <section style="padding:80px 48px;background:#D8F3DC;text-align:center;">
+            <div data-reveal="true">
+              <div data-i18n="soon.eyebrow" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#2D6A4F;margin-bottom:12px;">Snart tilgængelig</div>
+              <h2 data-i18n="soon.heading" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:36px;color:#2D6A4F;margin:0 0 12px;letter-spacing:-.02em;">GoVehlo er på vej</h2>
+              <p data-i18n="soon.desc" style="font-family:'Inter',sans-serif;font-size:17px;color:#3D5C48;max-width:520px;margin:0 auto 32px;line-height:1.5;">Vi lægger sidste hånd på appen. Den kommer til iOS og Android — knapperne går live den dag, vi lancerer.</p>
+              <div style="display:inline-flex;flex-wrap:wrap;justify-content:center;gap:16px;">
+                <span style="display:inline-flex;align-items:center;gap:10px;height:56px;padding:0 20px;border-radius:16px;background:#2D6A4F;color:#fff;cursor:default;opacity:.5;user-select:none;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M16.365 1.43c0 1.14-.434 2.23-1.205 3.06-.83.9-2.19 1.6-3.32 1.51-.13-1.12.42-2.3 1.16-3.05.82-.84 2.27-1.46 3.36-1.52zM20.5 17.2c-.61 1.41-.9 2.04-1.69 3.29-1.1 1.74-2.65 3.91-4.57 3.93-1.71.02-2.15-1.11-4.47-1.1-2.32.01-2.8 1.12-4.51 1.1-1.92-.02-3.39-1.98-4.49-3.72C-2.36 16.79-2.7 10.1.34 6.54 1.42 5.24 3.1 4.43 4.66 4.43c1.59 0 2.59 1.11 3.9 1.11 1.27 0 2.05-1.11 3.89-1.11 1.39 0 2.86.76 3.91 2.07-3.43 1.88-2.88 6.78.14 8.7z"></path></svg>
+                  <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.1;text-align:left;"><small data-i18n="soon.appstore" style="font-family:'Inter',sans-serif;font-size:10px;letter-spacing:.02em;opacity:.8;">Kommer snart i</small><strong style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">App Store</strong></span>
+                </span>
+                <span style="display:inline-flex;align-items:center;gap:10px;height:56px;padding:0 20px;border-radius:16px;background:#2D6A4F;color:#fff;cursor:default;opacity:.5;user-select:none;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M3.6 2.1 13.9 12 3.6 21.9c-.37-.2-.6-.6-.6-1.1V3.2c0-.5.23-.9.6-1.1z" fill="#34A853"></path><path d="m17.1 8.6 3.3 1.9c.8.5.8 1.6 0 2.1l-3.3 1.9-2.4-2.5 2.4-2.4z" fill="#FBBC04"></path><path d="M3.6 2.1c.18-.1.4-.1.6-.1.27 0 .54.07.78.21l9.02 5.2-2.1 2.1L3.6 2.1z" fill="#EA4335"></path><path d="m11.9 14.6 2.1 2.1-9.02 5.2c-.24.14-.51.21-.78.21-.2 0-.42 0-.6-.1l8.3-7.4z" fill="#4285F4"></path></svg>
+                  <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.1;text-align:left;"><small data-i18n="soon.googleplay" style="font-family:'Inter',sans-serif;font-size:10px;letter-spacing:.02em;opacity:.8;">Kommer snart på</small><strong style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">Google Play</strong></span>
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <!-- FOOTER -->
+          <footer style="background:#1A2E1F;padding:40px 48px;display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="28" height="28" viewBox="0 0 512 512" style="border-radius:6px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle></svg>
+              <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:#fff;letter-spacing:-.02em;">GoVehlo</span>
+            </div>
+            <div style="text-align:right;">
+              <div data-i18n="footer.copy" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.25);">Tank op. Del retfærdigt. · 2026</div>
+              <div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:4px;"><span style="color:rgba(255,255,255,.55);text-decoration:underline;cursor:pointer;">Privatlivspolitik</span></div>
+            </div>
+          </footer>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================== OPTION 1b ============================== -->
+    <div class="dv-opt" id="1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Drive-in — the road draws first, the car arrives and the content follows it in <button onClick="{{ replayB }}" style="margin-left:6px;border:1px solid rgba(0,0,0,.18);background:#fff;border-radius:999px;padding:3px 10px;font:600 10.5px system-ui,sans-serif;color:#1a1a1a;cursor:pointer;">↺ Replay intro</button></div>
+      <div class="dv-card" style="width:1180px;">
+        <div ref="{{ refPageB }}" data-screen-label="Landing 1b — Drive-in" style="height:720px;overflow-y:auto;overflow-x:hidden;background:#F7F9F8;position:relative;">
+
+          <!-- NAV -->
+          <nav style="position:sticky;top:0;z-index:100;background:rgba(26,46,31,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:0 48px;height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="32" height="32" viewBox="0 0 512 512" style="border-radius:7px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"></circle></svg>
+              <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:20px;color:#fff;letter-spacing:-.02em;">GoVehlo</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:32px;">
+              <span data-i18n="nav.features" style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);cursor:pointer;font-weight:500;" style-hover="color:rgba(255,255,255,.9)">Funktioner</span>
+              <span data-i18n="nav.how" style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);cursor:pointer;font-weight:500;" style-hover="color:rgba(255,255,255,.9)">Sådan virker det</span>
+              <button onClick="{{ noop }}" data-i18n="nav.cta" style="background:#2D6A4F;border:none;border-radius:10px;padding:8px 20px;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;cursor:pointer;" style-hover="background:#245940">Kom i gang</button>
+              <button onClick="{{ toggleLang }}" data-lang-toggle="true" style="background:transparent;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:5px 10px;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:rgba(255,255,255,.7);cursor:pointer;" style-hover="color:#fff;border-color:rgba(255,255,255,.5)">EN</button>
+            </div>
+          </nav>
+
+          <!-- HERO -->
+          <section style="background:#1A2E1F;padding:80px 48px;position:relative;overflow:hidden;min-height:540px;">
+            <sc-if value="{{ showHeroB }}" hint-placeholder-val="{{ true }}">
+              <div style="position:absolute;top:0;left:0;right:0;bottom:0;">
+                <svg data-hero-svg="true" viewBox="0 0 1600 500" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;display:block;">
+                  <path d="M -50 320 C 400 80 1200 420 1650 180" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="74" stroke-linecap="round"></path>
+                  <path data-road="true" d="M -50 320 C 400 80 1200 420 1650 180" fill="none" stroke="#D8F3DC" stroke-width="68" stroke-linecap="round" opacity="0.3"></path>
+                  <path data-dash="true" d="M -50 320 C 400 80 1200 420 1650 180" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="3.5" stroke-dasharray="22 35" stroke-linecap="round" style="opacity:0;"></path>
+                  <g data-dot="true" style="opacity:0;"><circle r="44" fill="rgba(244,162,97,0.1)"></circle><circle r="32" fill="rgba(244,162,97,0.15)"></circle><circle r="22" fill="#F4A261"></circle><circle cx="-7" cy="-7" r="8" fill="rgba(255,255,255,0.45)"></circle></g>
+                </svg>
+              </div>
+              <div style="position:relative;z-index:1;max-width:540px;">
+                <div data-i18n="hero.eyebrow" style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#F4A261;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;animation:gvRise .55s cubic-bezier(.34,1.4,.64,1) both;animation-delay:1s;">Brændstofdeling for delebiler</div>
+                <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:56px;color:#fff;margin:0 0 20px;letter-spacing:-.03em;line-height:1.05;">
+                  <span data-i18n="hero.t1" style="display:block;animation:gvRise .65s cubic-bezier(.34,1.4,.64,1) both;animation-delay:1.2s;">Tank op.</span>
+                  <span data-i18n="hero.t2" style="display:block;animation:gvRise .65s cubic-bezier(.34,1.4,.64,1) both;animation-delay:1.34s;">Del retfærdigt.</span>
+                </h1>
+                <p data-i18n="hero.desc" style="font-family:'Inter',sans-serif;font-size:18px;color:rgba(255,255,255,.55);margin:0 0 36px;line-height:1.6;max-width:420px;text-wrap:pretty;animation:gvRise .6s cubic-bezier(.34,1.4,.64,1) both;animation-delay:1.52s;">Registrér ture på kilometerstanden, del brændstofudgifter forholdsmæssigt, og gør op uden de akavede samtaler.</p>
+                <div style="display:flex;gap:14px;align-items:center;animation:gvPop .55s cubic-bezier(.34,1.56,.64,1) both;animation-delay:1.74s;">
+                  <a href="GoVehlo Prototype v2.dc.html" data-i18n="hero.try" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 28px;background:#2D6A4F;border-radius:14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#fff;box-shadow:0 2px 8px rgba(45,106,79,.3);" style-hover="background:#245940">Prøv appen</a>
+                  <a href="#1b" data-i18n="hero.learn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 28px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;font-family:'Inter',sans-serif;font-weight:600;font-size:15px;color:rgba(255,255,255,.8);" style-hover="background:rgba(255,255,255,.12)">Læs mere</a>
+                </div>
+                <div style="display:flex;gap:24px;margin-top:40px;animation:gvRise .6s cubic-bezier(.34,1.4,.64,1) both;animation-delay:2s;">
+                  <div><div data-count-to="5" data-count-dec="0" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">5</div><div data-i18n="hero.s1" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">venner deler</div></div>
+                  <div style="width:1px;background:rgba(255,255,255,.08);"></div>
+                  <div><div data-count-to="2.47" data-count-dec="2" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">2,47</div><div data-i18n="hero.s2" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">kr pr. km</div></div>
+                  <div style="width:1px;background:rgba(255,255,255,.08);"></div>
+                  <div><div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:28px;color:#52B788;line-height:1;">0</div><div data-i18n="hero.s3" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:2px;">regneark</div></div>
+                </div>
+              </div>
+            </sc-if>
+          </section>
+
+          <!-- FEATURES -->
+          <section style="padding:80px 48px;background:#F7F9F8;">
+            <div data-reveal="true" style="text-align:center;margin-bottom:48px;">
+              <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <svg width="24" height="24" viewBox="0 0 512 512" style="border-radius:6px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle></svg>
+                <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:18px;color:#2D6A4F;letter-spacing:-.02em;">GoVehlo</span>
+              </div>
+              <h2 data-i18n="feat.heading" style="font-family:'Nunito',sans-serif;font-weight:800;font-size:36px;color:#1A2E1F;margin:0;letter-spacing:-.02em;">Alt, jeres delebil har brug for</h2>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;max-width:1000px;margin:0 auto;">
+              <div data-reveal="true" data-reveal-delay="0" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
+                <h3 data-i18n="feat1.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Registrér ture</h3>
+                <p data-i18n="feat1.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Indtast kilometerstand ved start og slut. Vi beregner km og pris.</p>
+              </div>
+              <div data-reveal="true" data-reveal-delay="70" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#FEF3E0;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F4A261" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 21 7 17 3"></polyline><line x1="21" y1="7" x2="9" y2="7"></line><polyline points="7 21 3 17 7 13"></polyline><line x1="3" y1="17" x2="15" y2="17"></line></svg></div>
+                <h3 data-i18n="feat2.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Del udgifterne</h3>
+                <p data-i18n="feat2.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Retfærdig deling pr. km. Ingen gætterier, ingen regneark.</p>
+              </div>
+              <div data-reveal="true" data-reveal-delay="140" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></div>
+                <h3 data-i18n="feat3.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Book bilen</h3>
+                <p data-i18n="feat3.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Se hvem der har bilen, og hvornår den er ledig — med ét blik.</p>
+              </div>
+              <div data-reveal="true" data-reveal-delay="210" style="background:#fff;border-radius:16px;padding:24px 20px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;flex-direction:column;gap:12px;" style-hover="box-shadow:0 4px 16px rgba(26,46,31,.1);transform:translateY(-2px)">
+                <div style="width:48px;height:48px;border-radius:12px;background:#D1F5E3;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg></div>
+                <h3 data-i18n="feat4.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Planlæg forud</h3>
+                <p data-i18n="feat4.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;margin:0;line-height:1.5;">Beregn turens pris, før du kører. Ingen overraskelser.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- HOW IT WORKS -->
+          <section style="padding:80px 48px;background:#F7F9F8;position:relative;overflow:hidden;">
+            <div data-reveal="true" style="text-align:center;margin-bottom:48px;">
+              <div data-i18n="how.eyebrow" style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#2D6A4F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Enkelt af design</div>
+              <h2 data-i18n="how.heading" style="font-family:'Nunito',sans-serif;font-weight:800;font-size:36px;color:#1A2E1F;margin:0;letter-spacing:-.02em;">Sådan virker det</h2>
+            </div>
+            <div style="position:relative;max-width:860px;margin:0 auto;">
+              <svg data-reveal="true" data-draw-road="true" viewBox="0 0 980 160" preserveAspectRatio="none" style="position:absolute;top:0;left:-60px;width:calc(100% + 120px);height:160px;pointer-events:none;">
+                <path data-steps-road="true" d="M -30 95 C 160 30 300 120 490 55 C 680 -10 800 110 1010 45" fill="none" stroke="rgba(216,243,220,0.55)" stroke-width="44" stroke-linecap="round"></path>
+                <path data-steps-dash="true" d="M -30 95 C 160 30 300 120 490 55 C 680 -10 800 110 1010 45" fill="none" stroke="rgba(45,106,79,0.08)" stroke-width="3" stroke-dasharray="18 30" stroke-linecap="round"></path>
+              </svg>
+              <div style="display:flex;position:relative;">
+                <div data-reveal="true" data-reveal-delay="0" style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:44px;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#2D6A4F;box-shadow:0 4px 16px rgba(45,106,79,.25);display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;">1</div>
+                  <h3 data-i18n="step1.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Opret jeres gruppe</h3>
+                  <p data-i18n="step1.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Inviter vennerne, der deler bilen. Ét tryk for at være med.</p>
+                </div>
+                <div data-reveal="true" data-reveal-delay="90" style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:8px;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#2D6A4F;box-shadow:0 4px 16px rgba(45,106,79,.25);display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#fff;">2</div>
+                  <h3 data-i18n="step2.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Registrér ture og brændstof</h3>
+                  <p data-i18n="step2.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Indtast kilometerstand og kvitteringer. Vi klarer regnestykket.</p>
+                </div>
+                <div data-reveal="true" data-reveal-delay="180" style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:36px;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#F4A261;box-shadow:0 4px 16px rgba(244,162,97,.3);display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;color:#1A2E1F;">3</div>
+                  <h3 data-i18n="step3.t" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:17px;color:#1A2E1F;margin:0;">Gør op</h3>
+                  <p data-i18n="step3.d" style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;margin:0;line-height:1.5;max-width:200px;">Bed om betaling eller markér som betalt. Ingen akavede samtaler.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- CTA -->
+          <section style="padding:80px 48px;background:#2D6A4F;text-align:center;">
+            <div data-reveal="true">
+              <div style="display:inline-flex;align-items:center;gap:14px;margin-bottom:24px;">
+                <svg width="44" height="44" viewBox="0 0 512 512" style="border-radius:11px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="rgba(255,255,255,0.40)" stroke-width="5" stroke-dasharray="30 38" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle><circle cx="251" cy="245" r="10" fill="rgba(255,255,255,0.45)"></circle></svg>
+                <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:32px;color:#fff;letter-spacing:-.01em;">GoVehlo</span>
+              </div>
+              <h2 data-i18n="cta.heading" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:40px;color:#fff;margin:0 0 12px;letter-spacing:-.02em;">Klar til at dele retfærdigt?</h2>
+              <p data-i18n="cta.desc" style="font-family:'Inter',sans-serif;font-size:17px;color:rgba(255,255,255,.6);margin:0 0 32px;">Din bil. Dit hold. Retfærdige udgifter.</p>
+              <a href="GoVehlo Prototype v2.dc.html" data-i18n="cta.btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;height:56px;padding:0 36px;background:#fff;border-radius:16px;font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;color:#2D6A4F;box-shadow:0 4px 24px rgba(26,46,31,.3);" style-hover="background:#D8F3DC">Prøv appen</a>
+            </div>
+          </section>
+
+          <!-- COMING SOON -->
+          <section style="padding:80px 48px;background:#D8F3DC;text-align:center;">
+            <div data-reveal="true">
+              <div data-i18n="soon.eyebrow" style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#2D6A4F;margin-bottom:12px;">Snart tilgængelig</div>
+              <h2 data-i18n="soon.heading" style="font-family:'Nunito',sans-serif;font-weight:900;font-size:36px;color:#2D6A4F;margin:0 0 12px;letter-spacing:-.02em;">GoVehlo er på vej</h2>
+              <p data-i18n="soon.desc" style="font-family:'Inter',sans-serif;font-size:17px;color:#3D5C48;max-width:520px;margin:0 auto 32px;line-height:1.5;">Vi lægger sidste hånd på appen. Den kommer til iOS og Android — knapperne går live den dag, vi lancerer.</p>
+              <div style="display:inline-flex;flex-wrap:wrap;justify-content:center;gap:16px;">
+                <span style="display:inline-flex;align-items:center;gap:10px;height:56px;padding:0 20px;border-radius:16px;background:#2D6A4F;color:#fff;cursor:default;opacity:.5;user-select:none;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M16.365 1.43c0 1.14-.434 2.23-1.205 3.06-.83.9-2.19 1.6-3.32 1.51-.13-1.12.42-2.3 1.16-3.05.82-.84 2.27-1.46 3.36-1.52zM20.5 17.2c-.61 1.41-.9 2.04-1.69 3.29-1.1 1.74-2.65 3.91-4.57 3.93-1.71.02-2.15-1.11-4.47-1.1-2.32.01-2.8 1.12-4.51 1.1-1.92-.02-3.39-1.98-4.49-3.72C-2.36 16.79-2.7 10.1.34 6.54 1.42 5.24 3.1 4.43 4.66 4.43c1.59 0 2.59 1.11 3.9 1.11 1.27 0 2.05-1.11 3.89-1.11 1.39 0 2.86.76 3.91 2.07-3.43 1.88-2.88 6.78.14 8.7z"></path></svg>
+                  <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.1;text-align:left;"><small data-i18n="soon.appstore" style="font-family:'Inter',sans-serif;font-size:10px;letter-spacing:.02em;opacity:.8;">Kommer snart i</small><strong style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">App Store</strong></span>
+                </span>
+                <span style="display:inline-flex;align-items:center;gap:10px;height:56px;padding:0 20px;border-radius:16px;background:#2D6A4F;color:#fff;cursor:default;opacity:.5;user-select:none;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M3.6 2.1 13.9 12 3.6 21.9c-.37-.2-.6-.6-.6-1.1V3.2c0-.5.23-.9.6-1.1z" fill="#34A853"></path><path d="m17.1 8.6 3.3 1.9c.8.5.8 1.6 0 2.1l-3.3 1.9-2.4-2.5 2.4-2.4z" fill="#FBBC04"></path><path d="M3.6 2.1c.18-.1.4-.1.6-.1.27 0 .54.07.78.21l9.02 5.2-2.1 2.1L3.6 2.1z" fill="#EA4335"></path><path d="m11.9 14.6 2.1 2.1-9.02 5.2c-.24.14-.51.21-.78.21-.2 0-.42 0-.6-.1l8.3-7.4z" fill="#4285F4"></path></svg>
+                  <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.1;text-align:left;"><small data-i18n="soon.googleplay" style="font-family:'Inter',sans-serif;font-size:10px;letter-spacing:.02em;opacity:.8;">Kommer snart på</small><strong style="font-family:'Nunito',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">Google Play</strong></span>
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <!-- FOOTER -->
+          <footer style="background:#1A2E1F;padding:40px 48px;display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="28" height="28" viewBox="0 0 512 512" style="border-radius:6px;flex-shrink:0;"><rect width="512" height="512" rx="112" fill="#27AE60"></rect><path d="M 0 140 C 140 80 380 420 512 385" fill="none" stroke="#D8F3DC" stroke-width="44" stroke-linecap="round"></path><circle cx="259" cy="253" r="26" fill="#FBBF24"></circle></svg>
+              <span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;color:#fff;letter-spacing:-.02em;">GoVehlo</span>
+            </div>
+            <div style="text-align:right;">
+              <div data-i18n="footer.copy" style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.25);">Tank op. Del retfærdigt. · 2026</div>
+              <div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.35);margin-top:4px;"><span style="color:rgba(255,255,255,.55);text-decoration:underline;cursor:pointer;">Privatlivspolitik</span></div>
+            </div>
+          </footer>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="dv-next">Try next: "make <a class="dv-oid" href="#1a">1a</a> faster" · "in <a class="dv-oid" href="#1b">1b</a>, let the car leave a dash trail" · "apply <a class="dv-oid" href="#1b">1b</a>'s timing to the mobile welcome screen"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;defaultLang&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;da&quot;, &quot;en&quot;], &quot;default&quot;: &quot;da&quot;, &quot;tsType&quot;: &quot;'da' | 'en'&quot;, &quot;section&quot;: &quot;Landing&quot; },
+  &quot;introSpeed&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;min&quot;: 0.5, &quot;max&quot;: 2, &quot;step&quot;: 0.25, &quot;default&quot;: 1, &quot;unit&quot;: &quot;×&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Landing&quot; }
+}">
+class Component extends DCLogic {
+  state = { showHeroA: true, showHeroB: true, lang: 'da' };
+
+  pages = {};
+  timers = { A: [], B: [] };
+  hero = { A: { mode: 'idle' }, B: { mode: 'idle' } };
+
+  // Intro choreography per option (ms). A = content-first, B = road-first.
+  CFG = {
+    A: { roadDelay: 350, roadDur: 950, dashAt: 1250, ambientAt: 1350, statsAt: 850, drive: null },
+    B: { roadDelay: 100, roadDur: 850, dashAt: 900, statsAt: 2150, drive: { at: 950, dur: 1900, to: 0.55 }, ambientAt: null },
+  };
+
+  EN = {
+    'nav.features': 'Features', 'nav.how': 'How it works', 'nav.cta': 'Get started',
+    'hero.eyebrow': 'Shared car fuel tracking', 'hero.t1': 'Fill up.', 'hero.t2': 'Drive fair.',
+    'hero.desc': 'Track trips by odometer, split fuel costs proportionally, and settle up without the awkward conversations.',
+    'hero.try': 'Try the app', 'hero.learn': 'Learn more',
+    'hero.s1': 'friends sharing', 'hero.s2': 'kr per km', 'hero.s3': 'spreadsheets',
+    'feat.heading': 'Everything your shared car needs',
+    'feat1.t': 'Track trips', 'feat1.d': 'Log odometer start and end. We calculate the km and cost.',
+    'feat2.t': 'Split costs', 'feat2.d': 'Fair per-km fuel sharing. No guesswork, no spreadsheets.',
+    'feat3.t': 'Book the car', 'feat3.d': "See who has the car and when it's free at a glance.",
+    'feat4.t': 'Plan ahead', 'feat4.d': 'Estimate trip costs before you drive. No surprises.',
+    'how.eyebrow': 'Simple by design', 'how.heading': 'How it works',
+    'step1.t': 'Create your group', 'step1.d': 'Invite the friends who share the car. One tap to join.',
+    'step2.t': 'Log trips and fuel', 'step2.d': 'Enter odometer readings and fuel receipts. We handle the maths.',
+    'step3.t': 'Settle up', 'step3.d': 'Request payment or mark as paid. No awkward conversations.',
+    'cta.heading': 'Ready to drive fair?', 'cta.desc': 'Your car. Your crew. Fair costs.', 'cta.btn': 'Try the app',
+    'soon.eyebrow': 'Launching soon', 'soon.heading': 'GoVehlo is on its way',
+    'soon.desc': "We're putting the finishing touches on the app. It's coming to iOS and Android — these buttons go live the day we launch.",
+    'soon.appstore': 'Coming soon to the', 'soon.googleplay': 'Coming soon to',
+    'footer.copy': 'Fill up. Drive fair. · 2026',
+  };
+
+  componentDidMount() {
+    this.reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (this.props.defaultLang === 'en' && this.state.lang !== 'en') {
+      this.setState({ lang: 'en' });
+    }
+    setTimeout(() => { this.applyLang(this.stateLang()); this.initReveals(); }, 60);
+    this.startIntro('A');
+    this.startIntro('B');
+    this._loop = (now) => { this.tick(now); this._raf = requestAnimationFrame(this._loop); };
+    this._raf = requestAnimationFrame(this._loop);
+  }
+
+  componentWillUnmount() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    ['A', 'B'].forEach(o => this.timers[o].forEach(clearTimeout));
+    if (this.io) this.io.disconnect();
+  }
+
+  stateLang() { return this.state.lang || 'da'; }
+  speed() { const s = Number(this.props.introSpeed); return (s > 0.1 && s < 10) ? s : 1; }
+
+  // --- bezier road geometry (verbatim from production landing.js) ---
+  bez(t) {
+    const p0 = { x: -50, y: 320 }, p1 = { x: 400, y: 80 }, p2 = { x: 1200, y: 420 }, p3 = { x: 1650, y: 180 };
+    const u = 1 - t;
+    return {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+    };
+  }
+  easeInOut(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+  invEase(v) { // inverse of easeInOut via bisection
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (this.easeInOut(mid) < v) lo = mid; else hi = mid; }
+    return (lo + hi) / 2;
+  }
+
+  after(opt, ms, fn) { this.timers[opt].push(setTimeout(fn, ms / this.speed())); }
+
+  tween(dur, onFrame, onDone) {
+    const start = performance.now(), d = dur / this.speed();
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / d);
+      onFrame(this.easeOut(t));
+      if (t < 1) requestAnimationFrame(step); else if (onDone) onDone();
+    };
+    requestAnimationFrame(step);
+  }
+
+  refPage(opt, el) { if (el) this.pages[opt] = el; }
+
+  startIntro(opt) {
+    const root = this.pages[opt];
+    const h = this.hero[opt];
+    if (!root) { this.after(opt, 80, () => this.startIntro(opt)); return; }
+    h.svg = root.querySelector('[data-hero-svg]');
+    h.road = root.querySelector('[data-road]');
+    h.dash = root.querySelector('[data-dash]');
+    h.dot = root.querySelector('[data-dot]');
+    if (!h.svg || !h.road || !h.dot) { this.after(opt, 80, () => this.startIntro(opt)); return; }
+    const cfg = this.CFG[opt];
+
+    // Hover-follow (production behavior)
+    if (!h.svg.__gvHover) {
+      h.svg.__gvHover = true;
+      h.svg.style.cursor = 'crosshair';
+      h.svg.addEventListener('mouseenter', () => { if (h.mode === 'ambient') h.hovering = true; });
+      h.svg.addEventListener('mouseleave', () => {
+        h.hovering = false;
+        if (h.mode === 'ambient') h.amStart = performance.now() - this.invEase(Math.max(0.01, Math.min(0.99, h.curT || 0.5))) * 10000;
+      });
+      h.svg.addEventListener('mousemove', (e) => {
+        const rect = h.svg.getBoundingClientRect();
+        h.mouseT = Math.max(0.02, Math.min(0.98, (e.clientX - rect.left) / rect.width));
+      });
+    }
+
+    if (this.reduced) {
+      h.dash.style.opacity = '1';
+      h.dot.style.opacity = '1';
+      const p = this.bez(0.5);
+      h.dot.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
+      h.mode = 'reduced';
+      return;
+    }
+
+    // Road draw-in
+    const L = h.road.getTotalLength();
+    h.road.style.strokeDasharray = String(L);
+    h.road.style.strokeDashoffset = String(L);
+    const road = h.road;
+    this.after(opt, cfg.roadDelay, () => this.tween(cfg.roadDur,
+      (e) => { if (road.isConnected) road.style.strokeDashoffset = String(L * (1 - e)); },
+      () => { if (road.isConnected) { road.style.strokeDasharray = 'none'; road.style.strokeDashoffset = '0'; } }
+    ));
+
+    // Dashed centerline fades in
+    const dash = h.dash;
+    this.after(opt, cfg.dashAt, () => { if (dash.isConnected) { dash.style.transition = 'opacity .6s ease'; dash.style.opacity = '1'; } });
+
+    // Dot: drive-in (B) or ambient cruise from the left edge (A)
+    h.mode = 'wait';
+    if (cfg.drive) {
+      this.after(opt, cfg.drive.at, () => {
+        h.dot.style.opacity = '1';
+        h.mode = 'drive';
+        h.driveStart = performance.now();
+        h.driveDur = cfg.drive.dur / this.speed();
+        h.driveTo = cfg.drive.to;
+      });
+    } else {
+      this.after(opt, cfg.ambientAt, () => {
+        h.dot.style.opacity = '1';
+        h.mode = 'ambient';
+        h.amStart = performance.now();
+      });
+    }
+
+    // Stat count-ups
+    this.after(opt, cfg.statsAt, () => {
+      root.querySelectorAll('[data-count-to]').forEach(el => {
+        const to = parseFloat(el.getAttribute('data-count-to'));
+        const dec = parseInt(el.getAttribute('data-count-dec') || '0', 10);
+        if (!(to > 0)) return;
+        this.tween(900, (e) => { el.textContent = (to * e).toFixed(dec).replace('.', ','); },
+          () => { el.textContent = to.toFixed(dec).replace('.', ','); });
+      });
+    });
+  }
+
+  tick(now) {
+    ['A', 'B'].forEach(opt => {
+      const h = this.hero[opt];
+      if (!h.dot || !h.dot.isConnected || h.mode === 'reduced' || h.mode === 'idle') return;
+      if (h.dash && h.dash.isConnected && h.dash.style.opacity !== '0') {
+        h.dash.setAttribute('stroke-dashoffset', (-((now / 18) % 57)).toFixed(1));
+      }
+      let t = null;
+      if (h.mode === 'drive') {
+        const k = Math.min(1, (now - h.driveStart) / h.driveDur);
+        t = -0.03 + (h.driveTo + 0.03) * this.easeInOut(k);
+        if (k >= 1) {
+          h.mode = 'ambient';
+          h.amStart = now - this.invEase(h.driveTo) * 10000;
+        }
+      } else if (h.mode === 'ambient') {
+        if (h.hovering) {
+          h.curT = (h.curT ?? 0.5) + ((h.mouseT ?? 0.5) - (h.curT ?? 0.5)) * 0.12;
+          t = h.curT;
+        } else {
+          t = this.easeInOut(((now - h.amStart) % 10000) / 10000);
+        }
+      }
+      if (t != null) {
+        h.curT = t;
+        const p = this.bez(t);
+        h.dot.setAttribute('transform', 'translate(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ')');
+      }
+    });
+  }
+
+  // --- scroll reveals ---
+  initReveals() {
+    if (!('IntersectionObserver' in window)) return;
+    if (!this.io) {
+      this.io = new IntersectionObserver((entries) => {
+        entries.forEach(en => {
+          if (!en.isIntersecting) return;
+          const el = en.target;
+          this.io.unobserve(el);
+          if (el.hasAttribute('data-draw-road')) { this.drawStepsRoad(el); return; }
+          el.style.opacity = '';
+          el.style.transform = '';
+        });
+      }, { threshold: 0.18 });
+    }
+    ['A', 'B'].forEach(opt => {
+      const root = this.pages[opt];
+      if (!root) return;
+      root.querySelectorAll('[data-reveal]').forEach(el => {
+        if (el.__gvReveal) return;
+        el.__gvReveal = true;
+        if (!this.reduced) {
+          if (el.hasAttribute('data-draw-road')) {
+            const p = el.querySelector('[data-steps-road]');
+            if (p) {
+              const L = p.getTotalLength();
+              p.style.strokeDasharray = String(L);
+              p.style.strokeDashoffset = String(L);
+            }
+            const d = el.querySelector('[data-steps-dash]');
+            if (d) d.style.opacity = '0';
+          } else {
+            el.style.transition = 'opacity .6s cubic-bezier(.4,0,.2,1), transform .6s cubic-bezier(.4,0,.2,1)';
+            el.style.transitionDelay = (el.getAttribute('data-reveal-delay') || '0') + 'ms';
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+          }
+        }
+        this.io.observe(el);
+      });
+    });
+  }
+
+  drawStepsRoad(svg) {
+    const p = svg.querySelector('[data-steps-road]');
+    const d = svg.querySelector('[data-steps-dash]');
+    if (p && !this.reduced) {
+      const L = p.getTotalLength();
+      this.tween(1000, (e) => { if (p.isConnected) p.style.strokeDashoffset = String(L * (1 - e)); },
+        () => { if (p.isConnected) { p.style.strokeDasharray = 'none'; p.style.strokeDashoffset = '0'; } });
+    }
+    if (d) { d.style.transition = 'opacity .7s ease .5s'; d.style.opacity = '1'; }
+  }
+
+  // --- i18n (mirrors production landing.js: Danish in the DOM, EN dict here) ---
+  applyLang(lang) {
+    ['A', 'B'].forEach(opt => {
+      const root = this.pages[opt];
+      if (!root) return;
+      root.querySelectorAll('[data-i18n]').forEach(el => {
+        if (!el.hasAttribute('data-da')) el.setAttribute('data-da', el.innerHTML);
+        const key = el.getAttribute('data-i18n');
+        el.innerHTML = (lang === 'en' && this.EN[key] != null) ? this.EN[key] : el.getAttribute('data-da');
+      });
+      root.querySelectorAll('[data-lang-toggle]').forEach(b => { b.textContent = lang === 'en' ? 'DA' : 'EN'; });
+    });
+  }
+
+  replay(opt) {
+    this.timers[opt].forEach(clearTimeout);
+    this.timers[opt] = [];
+    this.hero[opt].mode = 'idle';
+    this.setState({ ['showHero' + opt]: false });
+    setTimeout(() => {
+      this.setState({ ['showHero' + opt]: true });
+      setTimeout(() => { this.startIntro(opt); this.applyLang(this.stateLang()); }, 60);
+    }, 50);
+  }
+
+  renderVals() {
+    return {
+      showHeroA: this.state.showHeroA,
+      showHeroB: this.state.showHeroB,
+      refPageA: (el) => this.refPage('A', el),
+      refPageB: (el) => this.refPage('B', el),
+      replayA: () => this.replay('A'),
+      replayB: () => this.replay('B'),
+      toggleLang: () => {
+        const lang = this.stateLang() === 'en' ? 'da' : 'en';
+        this.setState({ lang });
+        requestAnimationFrame(() => this.applyLang(lang));
+      },
+      noop: () => {},
+    };
+  }
+}
+</script>
+</body>
+</html>
