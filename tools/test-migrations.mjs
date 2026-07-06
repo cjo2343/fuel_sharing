@@ -92,6 +92,7 @@ const expected = [
   "080_close_reminder_push.sql",
   "081_payment_reminders.sql",
   "082_reminder_claim_hardening.sql",
+  "083_revoke_security_definer_public.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
