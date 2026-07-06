@@ -27,6 +27,10 @@ const CANONICAL = 'design_handoff_govehlo_v1/design-system/tokens/colors.css';
 const DERIVED = [
   { label: 'govehlo-web', file: '../govehlo-web/govehlo-tokens.css', kind: 'css' },
   { label: 'govehlo-mobile', file: '../govehlo-mobile/src/theme/colors.ts', kind: 'ts' },
+  // Vendored snapshot the mobile repo's own vitest guard (GV-221) checks colors.ts
+  // against, so a mobile-only edit is caught in mobile CI without fuel_sharing present.
+  // Checked here so the snapshot itself can't silently drift from canonical.
+  { label: 'govehlo-mobile snapshot', file: '../govehlo-mobile/src/theme/__tests__/canonical-tokens.json', kind: 'json' },
 ];
 
 // Collapse the three naming conventions onto one key:
@@ -60,6 +64,14 @@ function parseTsHex(source) {
   return map;
 }
 
+function parseJsonHex(source) {
+  const map = new Map();
+  for (const [key, value] of Object.entries(JSON.parse(source))) {
+    if (typeof value === 'string' && HEX.test(value)) map.set(normalise(key), value.toUpperCase());
+  }
+  return map;
+}
+
 const canonicalPath = path.join(root, CANONICAL);
 if (!fs.existsSync(canonicalPath)) {
   console.error(`check-token-drift: canonical token file not found at ${CANONICAL}`);
@@ -82,7 +94,7 @@ for (const { label, file, kind } of DERIVED) {
   }
   checkedAny = true;
   const source = fs.readFileSync(abs, 'utf8');
-  const derived = kind === 'ts' ? parseTsHex(source) : parseCssHex(source);
+  const derived = kind === 'ts' ? parseTsHex(source) : kind === 'json' ? parseJsonHex(source) : parseCssHex(source);
 
   const missing = [];
   const mismatched = [];
