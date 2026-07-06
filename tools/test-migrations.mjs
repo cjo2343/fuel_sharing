@@ -88,6 +88,7 @@ const expected = [
   "076_member_mobilepay_self_update.sql",
   "077_active_member_expense_writes.sql",
   "078_rpc_write_pattern.sql",
+  "079_set_member_name.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
