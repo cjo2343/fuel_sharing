@@ -153,3 +153,29 @@ assert.equal(
 console.log(
   `ok - all ${definers.length} SECURITY DEFINER functions revoke EXECUTE from PUBLIC (GV-211)`,
 );
+
+// Scheduled engine RPCs (claim_due_*) are called by the daily scheduler with the
+// service-role key AND have PUBLIC revoked, so they MUST explicitly grant EXECUTE to
+// service_role — otherwise the call leans on Supabase's implicit privileges and can
+// break (Codex P1: claim_due_settlement_confirmations shipped without the grant).
+const grantSvcRe =
+  /grant\s+execute\s+on\s+function\s+(?:public\.)?"?([a-zA-Z_][a-zA-Z0-9_]*)"?\s*\(([^)]*)\)\s+to\s+service_role/gi;
+const serviceRoleGranted = new Set();
+while ((m = grantSvcRe.exec(schema)) !== null) {
+  serviceRoleGranted.add(`${m[1]}(${normArgs(m[2])})`);
+}
+
+const claimOffenders = definers
+  .filter((e) => e.name.startsWith("claim_due_") && !serviceRoleGranted.has(e.sig))
+  .map((e) => `public.${e.name}(${e.argstr})`);
+
+assert.equal(
+  claimOffenders.length,
+  0,
+  `Scheduled claim RPCs (claim_due_*) must "grant execute on function ... to service_role" ` +
+    `— the daily scheduler calls them with the service-role key and PUBLIC is revoked (Codex P1):\n  ` +
+    claimOffenders.join("\n  "),
+);
+
+const claimCount = definers.filter((e) => e.name.startsWith("claim_due_")).length;
+console.log(`ok - all ${claimCount} claim_due_* RPCs grant EXECUTE to service_role (Codex P1)`);
