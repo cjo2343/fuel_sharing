@@ -63,9 +63,16 @@ file contract below; skipping a step fails CI.
    results, catching what the grep guard can't (wrong columns, drifted function
    bodies, missing mirrors). CI runs it on every PR either way.
 
-6. **Ship:** branch + PR via `/ship`. In the PR body and to the user, state explicitly:
+6. **Bump the admin drift constant (GV-172):** in **govehlo-web**, set
+   `EXPECTED_LATEST_MIGRATION` in `functions/api/owner/migrations.js` to this
+   migration's number. The admin Health page compares it against what's actually
+   applied in prod, so the console shows "not applied" the moment a migration merges
+   but hasn't been run in the SQL Editor. Skipping this bump makes the drift check
+   silently under-report.
+
+7. **Ship:** branch + PR via `/ship`. In the PR body and to the user, state explicitly:
    **"SQL must be applied manually in the Supabase SQL Editor after merge."**
 
-7. **After the user merges:** do not treat the migration as live until the user
+8. **After the user merges:** do not treat the migration as live until the user
    confirms they applied it. Features that depend on it should fail gracefully until
    then.
