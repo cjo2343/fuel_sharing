@@ -18284,3 +18284,17 @@ values ('092_tank_baseline',
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- Migration 093: grant claim_due_settlement_confirmations to service_role (Codex P1)
+-- Mirror of supabase/migrations/093_grant_settlement_confirmations_service_role.sql.
+-- ══════════════════════════════════════════════════════════════════════════
+
+grant execute on function public.claim_due_settlement_confirmations(integer, integer) to service_role;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('093_grant_settlement_confirmations_service_role',
+        'Grant execute on claim_due_settlement_confirmations to service_role (Codex P1) — matches the other claim_due_* scheduled RPCs; migration 090 revoked PUBLIC but never granted service_role.')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
