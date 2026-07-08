@@ -18343,7 +18343,7 @@ set description = excluded.description,
 -- three categories (activity/payments/periods), default all-on (GVM-119).
 
 create table if not exists public.notification_preferences (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  user_id uuid primary key,
   activity_enabled boolean not null default true,
   payments_enabled boolean not null default true,
   periods_enabled boolean not null default true,

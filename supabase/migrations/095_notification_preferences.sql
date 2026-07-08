@@ -8,11 +8,12 @@
 --   periods  → close-period reminders
 -- Default all-on: a user with no row (or a null column) is notified. The push hooks
 -- read this table with the service role (bypassing RLS) and drop a recipient's token
--- for a category they've turned off. The FK to auth.users cascades on account
--- deletion, so delete_my_account (GVM-115) purges prefs without re-declaration.
+-- for a category they've turned off. No FK to auth.users — matching expo_push_tokens
+-- (057), since the schema-equivalence harness has no auth schema. The row holds no
+-- PII (three booleans + a uuid); purging it on account deletion is a follow-up.
 
 create table if not exists public.notification_preferences (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  user_id uuid primary key,
   activity_enabled boolean not null default true,
   payments_enabled boolean not null default true,
   periods_enabled boolean not null default true,
