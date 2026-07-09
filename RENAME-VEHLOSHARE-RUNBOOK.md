@@ -14,6 +14,26 @@ Legend: **[YOU]** = operator/dashboard/DNS action · **[CLAUDE]** = code/config 
 
 ---
 
+## Progress (2026-07-09) — done vs remaining
+
+**Done — non-disruptive infra groundwork (no user-facing brand change yet):**
+- **Phase 1 (domain):** `vehloshare.app` + `www` live on the Pages project; `vehloshare.com` 301 → `.app`. TLS valid.
+- **Admin URL cutover** (done ahead of Phase 1 step 4): `admin.vehloshare.app` is the canonical, Cloudflare-Access-gated console; legacy `admin.govehlo.dk` 301s to it; the `/admin` bypass on every public origin is guarded (govehlo-web #82/#83). Supabase magic-link redirect allowlisted for the new host.
+- **Phase 2 (partial):** `vehloshare.app` verified as a Sweego sending domain (SPF/DKIM/DMARC all green). Sender **not** switched yet.
+
+**NOT started — the actual GoVehlo → VehloShare brand/identity sweep (deliberate):**
+- **Phase 3 (app identity)** — app.json still name "GoVehlo", scheme `govehlo://`, bundle id `dk.govehlo.app`, `applinks:govehlo.app`. Apple-gated + would break the working `govehlo://` dev/auth loop.
+- **Phase 4 (universal links)** — needs the Apple Team ID.
+- **Phase 5 (string sweep + repos + services)** — every user-facing "GoVehlo" (landing title, "GoVehlo Admin", email templates, `manifest.json`, mobile UI), repo renames, Sentry org, Supabase display name. The landing/admin content shares the **live `govehlo.dk`** Pages project, so rebranding it flips the live site to VehloShare before launch.
+- **Phase 2 step 3** — switch the Supabase SMTP sender to `no-reply@vehloshare.app` (govehlo.dk is still the live sender).
+- **Phase 6** — the `govehlo.dk` → `vehloshare.app` 301 cutover.
+
+**Sequencing:** No Apple Developer account exists yet — it gates App Store name reservation, the `app.vehloshare` App ID, iOS entitlements, TestFlight, and Phase 4. The sweep is one coordinated cutover at launch prep, not a piecemeal now.
+
+**Nothing is broken.** The only cosmetic gap: the console is served from `admin.vehloshare.app` but still titled "GoVehlo Admin" — fixed in the Phase 5 string sweep.
+
+---
+
 ## Good news up front (things that DON'T have to change)
 
 - **The Supabase database does not move.** Project ref stays `kdudfqzglhydmzntqosb`. No
