@@ -32,10 +32,45 @@ function lineNumberAt(text, index) {
   return text.slice(0, index).split("\n").length;
 }
 
+// Blank out `--` line comments and '...' string literals so the DECLARE/BEGIN
+// scan only sees actual code. Dollar-quoted bodies ($$…$$) are kept verbatim —
+// that is where real declarations live. Prose like "re-declare" in a comment or
+// a tracker-insert description string used to open phantom DECLARE blocks that
+// swallowed a later function's parameter list (GV-252 / guard gap on GV-248).
+// Newlines are preserved so reported line numbers stay accurate.
+function maskNonCode(sql) {
+  let out = "";
+  let state = "code"; // code | line_comment | squote | dollar
+  let dollarTag = "";
+  for (let i = 0; i < sql.length; ) {
+    const c = sql[i];
+    if (state === "code") {
+      const dq = sql.slice(i).match(/^\$[a-zA-Z0-9_]*\$/);
+      if (dq) { out += dq[0]; i += dq[0].length; state = "dollar"; dollarTag = dq[0]; continue; }
+      if (c === "-" && sql[i + 1] === "-") { out += "  "; i += 2; state = "line_comment"; continue; }
+      if (c === "'") { out += " "; i += 1; state = "squote"; continue; }
+      out += c; i += 1; continue;
+    }
+    if (state === "dollar") {
+      if (sql.startsWith(dollarTag, i)) { out += dollarTag; i += dollarTag.length; state = "code"; dollarTag = ""; continue; }
+      out += c; i += 1; continue;
+    }
+    if (state === "line_comment") {
+      if (c === "\n") { out += "\n"; i += 1; state = "code"; continue; }
+      out += c === "\t" ? "\t" : " "; i += 1; continue;
+    }
+    // squote
+    if (c === "'" && sql[i + 1] === "'") { out += "  "; i += 2; continue; }
+    if (c === "'") { out += " "; i += 1; state = "code"; continue; }
+    out += c === "\n" ? "\n" : " "; i += 1; continue;
+  }
+  return out;
+}
+
 const problems = [];
 
 for (const file of sqlFiles) {
-  const sql = readFileSync(file, "utf8");
+  const sql = maskNonCode(readFileSync(file, "utf8"));
   const declarationBlocks = sql.matchAll(/\bDECLARE\b([\s\S]*?)\bBEGIN\b/gi);
 
   for (const blockMatch of declarationBlocks) {

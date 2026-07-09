@@ -109,6 +109,7 @@ const expected = [
   "097_tighten_trips_read_policy.sql",
   "098_settlement_rule_overrides.sql",
   "099_rls_security_fixes.sql",
+  "100_fix_rate_limit_ambiguity.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
