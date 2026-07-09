@@ -21,16 +21,33 @@ Legend: **[YOU]** = operator/dashboard/DNS action · **[CLAUDE]** = code/config 
 - **Admin URL cutover** (done ahead of Phase 1 step 4): `admin.vehloshare.app` is the canonical, Cloudflare-Access-gated console; legacy `admin.govehlo.dk` 301s to it; the `/admin` bypass on every public origin is guarded (govehlo-web #82/#83). Supabase magic-link redirect allowlisted for the new host.
 - **Phase 2 (partial):** `vehloshare.app` verified as a Sweego sending domain (SPF/DKIM/DMARC all green). Sender **not** switched yet.
 
-**NOT started — the actual GoVehlo → VehloShare brand/identity sweep (deliberate):**
-- **Phase 3 (app identity)** — app.json still name "GoVehlo", scheme `govehlo://`, bundle id `dk.govehlo.app`, `applinks:govehlo.app`. Apple-gated + would break the working `govehlo://` dev/auth loop.
+**Done — Phase 5 display-string sweep (deliberate early flip, 2026-07-09):** shipped ahead of
+cutover on purpose — the site has no traffic yet, so there's no cost to flipping public-facing
+copy now. This was a deliberate call, not an accidental merge; the earlier "HOLD until cutover"
+framing for this piece is obsolete. govehlo-web **#87** (merge `3bd8e7e`): landing title,
+"VehloShare Admin" console title, `manifest.json`, all `email-templates/*.html`, `landing.js`,
+the privatliv page. govehlo-mobile **#264** (merge `6364a07`): 14 files incl. the SignInScreen
+wordmark and `expo.name` → "VehloShare", plus `485b14e` (iOS location-permission string).
+
+**NOT started — everything gated on the Apple Developer account (deliberate):**
+- **Phase 3 (app identity)** — bundle id `dk.govehlo.app`, scheme `govehlo://`, `slug`,
+  `applinks:govehlo.app`, home-screen name / `CFBundleDisplayName`. Apple-gated + would break the
+  working `govehlo://` dev/auth loop.
 - **Phase 4 (universal links)** — needs the Apple Team ID.
-- **Phase 5 (string sweep + repos + services)** — every user-facing "GoVehlo" (landing title, "GoVehlo Admin", email templates, `manifest.json`, mobile UI), repo renames, Sentry org, Supabase display name. The landing/admin content shares the **live `govehlo.dk`** Pages project, so rebranding it flips the live site to VehloShare before launch.
-- **Phase 2 step 3** — switch the Supabase SMTP sender to `no-reply@vehloshare.app` (govehlo.dk is still the live sender).
+- **Phase 5 (repos + services)** — GitHub repo renames, Sentry org display name, Supabase project
+  display name still say "govehlo".
+- **Phase 2 step 3** — switch the Supabase SMTP sender to `no-reply@vehloshare.app` (govehlo.dk is
+  still the live sender — the SENDER domain is held, unlike the display copy above).
 - **Phase 6** — the `govehlo.dk` → `vehloshare.app` 301 cutover.
 
-**Sequencing:** No Apple Developer account exists yet — it gates App Store name reservation, the `app.vehloshare` App ID, iOS entitlements, TestFlight, and Phase 4. The sweep is one coordinated cutover at launch prep, not a piecemeal now.
+**Sequencing:** No Apple Developer account exists yet — it gates App Store name reservation, the
+`app.vehloshare` App ID, iOS entitlements, TestFlight, and Phase 4. The identity/infra sweep
+(bundle id, scheme, repo/service renames, domain 301) is one coordinated cutover at launch prep;
+the display-string sweep above shipped separately because it carries no Apple/infra risk.
 
-**Nothing is broken.** The only cosmetic gap: the console is served from `admin.vehloshare.app` but still titled "GoVehlo Admin" — fixed in the Phase 5 string sweep.
+**Nothing is broken.** `govehlo.dk` keeps serving, the `govehlo://` scheme still works, and the
+app still builds against the old bundle id — only the visible copy changed. The console is served
+from `admin.vehloshare.app` and now correctly titled "VehloShare Admin" (shipped in #87).
 
 ---
 
@@ -204,3 +221,59 @@ Notes:
 - Quick non-authoritative pre-checks: search the App Store app for "VehloShare"; a web search
   (done 2026-07-09 — no obvious car-sharing collision). These don't replace the ASC check.
 - Trademark (EUIPO/DKPTO) is a *separate* question from Apple's name uniqueness.
+
+---
+
+## Cutover-day checklist — what's still held for the Apple-gated cutover
+
+The single record of what still has to happen for the identity/infra sweep (bundle id, scheme,
+universal links, repo/service renames, domain 301). The display-string sweep already shipped
+early (Phase 5's user-facing copy — see the Progress section above), so item 3's web/email line
+below is marked done. Gated on the Apple Developer account; do the rest as one coordinated pass.
+Ordered so nothing breaks mid-flip.
+
+### 0. Apple (unblocks the app side)  [YOU]
+- [ ] Enroll in the Apple Developer Program.
+- [ ] Register App ID **`app.vehloshare`** with the **Associated Domains** capability.
+- [ ] Reserve the App Store name **"VehloShare"** (create the app record; no submit needed).
+
+### 1. App identity — mobile (after Apple)  [CLAUDE + YOU]
+- [ ] `app.json`: `scheme` → `vehloshare://`; `ios.bundleIdentifier` + `android.package` → `app.vehloshare`; `ios.associatedDomains` → `applinks:vehloshare.app`; `android.intentFilters` host → `vehloshare.app`. (`expo.name` already done, mobile #264.)
+- [ ] Native projects: rename `ios/` folder + Xcode project + entitlements; `CFBundleDisplayName` → "VehloShare"; AndroidManifest. (Or `expo prebuild` and commit.)
+- [ ] Repoint the API base: `EXPO_PUBLIC_API_URL` → `https://vehloshare.app` (currently defaults to `https://govehlo.dk` in every `src/lib/*` proxy).
+- [ ] **[YOU]** add `vehloshare://auth/callback` to the Supabase redirect allowlist; then rebuild + reinstall all dev/TestFlight builds (the scheme is compiled in — old installs only answer `govehlo://` until rebuilt).
+- [ ] `govehlo-mobile/src/lib/notifications.ts:57` — Android notification CHANNEL name is still
+  `'GoVehlo'`. User-visible in Android Settings → App notifications, so it needs a deliberate
+  rename at cutover, not a sweep-agent find/replace — the file is local-only-guarded (per the
+  worktree-agent leak lesson), so an automated sweep won't reach it safely.
+
+### 2. Universal links — Phase 4 (after Apple)  [CLAUDE + YOU]
+- [ ] Host `/.well-known/apple-app-site-association` (`appID` `TEAMID.app.vehloshare`, paths `/join/*`,`/auth/*`) + `assetlinks.json` on `vehloshare.app`; `_headers` serves AASA as `application/json`, `_middleware` must not intercept `/.well-known/*`.
+- [ ] Switch auth `redirect_to` + join links to `https://vehloshare.app/...` (keep `vehloshare://` fallback) + a web fallback page.
+- [ ] **[YOU]** Supabase redirect allowlist: add `https://vehloshare.app/**`.
+
+### 3. Public web + email flip  [CLAUDE done / YOU]
+- [x] **Done (2026-07-09):** govehlo-web **#87** merged (`3bd8e7e`) — GoVehlo→VehloShare display
+  copy (landing, admin, email templates, privatliv, generic push titles) is live. Deliberate early
+  flip, not part of the held identity/infra sweep — see the Progress section above.
+- [ ] **[YOU]** Supabase → SMTP: switch sender → `no-reply@vehloshare.app`; **re-paste** the rebranded email templates into Supabase (the repo copies aren't live).
+- [ ] **[YOU]** Cloudflare Email Routing on `vehloshare.app` (MX + forward rules) for `support@` / `services@vehloshare.app`, mirroring govehlo.dk.
+
+### 4. Domain 301 — LAST  [YOU]
+- [ ] **Only after mobile is rebuilt pointing at vehloshare.app:** `301` `govehlo.dk` → `vehloshare.app`. ⚠️ A plain 301 turns the app's `/api/*` **POSTs into GETs (drops the body)** — if any old build might still call govehlo.dk, use **308** for `/api/*` (preserves method+body), 301 for pages.
+- [ ] Keep `govehlo.dk` in the Supabase auth allowlist through the transition (Decision 3).
+
+### 5. Repos & services  [YOU]
+- [ ] Rename GitHub repos `govehlo-web` → `vehloshare-web`, `govehlo-mobile` → `vehloshare-mobile` (GitHub keeps redirects; Cloudflare Pages + EAS track by repo *id* so usually survive — **verify auto-deploy still fires** and update local git remotes). `fuel_sharing` has no "govehlo" in its name — rename optional.
+- [ ] Sentry org + Supabase project **display names** → VehloShare (cosmetic; Supabase ref/URL unchanged).
+
+### 6. Store listings — before any submission  [YOU]
+- [ ] `store/apple/*.json`, `store/google/*.json`, `store/privacy-policy.html`,
+  `store/apple/review-notes.txt` still carry GoVehlo metadata (name, descriptions, support URL,
+  reviewer notes). Rewrite for VehloShare before the first App Store / Play submission — these
+  aren't touched by the code sweeps above.
+
+### 7. Cleanup  [YOU + CLAUDE]
+- [ ] Retire `govehlo.dk`'s Sweego records + the old sender once nothing references them.
+- [ ] **[CLAUDE]** sweep the `CLAUDE.md` files + remaining internal-doc references GoVehlo → VehloShare.
+- [ ] Update the mobile `PRIVACY_URL` / support mailto (`src/screens/CarProfile/CarProfilePrivacyScreen.tsx`) to `vehloshare.app` once inbound routing exists.
