@@ -9,7 +9,7 @@ decommissioned (GV-103) and the PWA's service worker is kill-switched from goveh
 The live products are:
 
 - **govehlo-mobile** — the React Native app (App Store target)
-- **govehlo-web** — Cloudflare Pages: landing page, admin console (admin.govehlo.dk), `/api/*` Functions
+- **govehlo-web** — Cloudflare Pages: landing page, admin console (admin.vehloshare.app), `/api/*` Functions
 
 What this repo is still **load-bearing** for:
 
