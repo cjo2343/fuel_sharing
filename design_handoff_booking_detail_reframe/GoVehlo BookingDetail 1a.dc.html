@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    html, body { margin:0; padding:0; background:#1A2E1F; }
+    * { box-sizing:border-box; }
+    .gv-mono { font-family:'Courier New',monospace; }
+    ::-webkit-scrollbar { width:0; height:0; }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:#1A2E1F;display:flex;align-items:flex-start;justify-content:center;padding:28px 24px 40px;font-family:'Inter',sans-serif;">
+  <div data-screen-label="BookingDetail" style="width:390px;border-radius:44px;overflow:hidden;background:#F7F9F8;box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+
+    <!-- status bar -->
+    <div style="height:44px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 26px;flex-shrink:0;">
+      <span style="font-size:15px;font-weight:600;color:#fff;">09.41</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="white"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg>
+        <svg width="26" height="13" viewBox="0 0 26 13" fill="none"><rect x=".5" y=".5" width="21" height="12" rx="2.5" stroke="rgba(255,255,255,.4)"></rect><rect x="2" y="2" width="15" height="9" rx="1.5" fill="white"></rect><path d="M23 4.5v4" stroke="white" stroke-width="1.5" stroke-linecap="round"></path></svg>
+      </div>
+    </div>
+
+    <!-- AppHeader -->
+    <div style="background:#2D6A4F;padding:15px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <i data-lucide="chevron-left" style="width:23px;height:23px;color:#fff;stroke-width:2.2px;"></i>
+        <span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:20px;color:#fff;">Booking</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.15);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;"><i data-lucide="pencil" style="width:17px;height:17px;color:#fff;"></i></button>
+        <button style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.15);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;"><i data-lucide="x" style="width:19px;height:19px;color:#fff;"></i></button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;height:720px;overflow:hidden;background:#F7F9F8;">
+      <div style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:13px;">
+
+        <!-- AVAILABILITY BAND -->
+        <div style="background:#D8F3DC;border-radius:18px;padding:17px 17px 16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
+            <span style="font-size:11px;font-weight:700;letter-spacing:.09em;color:#2D6A4F;">{{ availEyebrow }}</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;background:#fff;padding:5px 11px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:{{ statusDot }};"></span><span style="font-size:11.5px;font-weight:600;color:#1A2E1F;">{{ statusLabel }}</span></span>
+          </div>
+          <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;line-height:1.08;color:#1A2E1F;">{{ freeDate }}, <span class="gv-mono" style="font-weight:700;">{{ freeTime }}</span></div>
+          <div style="font-size:13px;color:#3F6B52;margin-top:6px;">{{ subline }}</div>
+        </div>
+
+        <!-- FACTS -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.06);"><div style="font-size:11px;font-weight:500;letter-spacing:.05em;color:#6B8F7A;text-transform:uppercase;margin-bottom:4px;">Booket</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;">{{ bookedRange }}</div></div>
+          <div style="background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.06);"><div style="font-size:11px;font-weight:500;letter-spacing:.05em;color:#6B8F7A;text-transform:uppercase;margin-bottom:4px;">Varighed</div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;">{{ duration }}</div></div>
+        </div>
+
+        <!-- PLANLAGT RUTE (has-route) -->
+        <sc-if value="{{ routePlanned }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border-radius:18px;padding:16px 16px 14px;box-shadow:0 1px 2px rgba(26,46,31,.05);border:1px solid #EEF3F0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <span style="display:flex;align-items:center;gap:6px;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;"><i data-lucide="route" style="width:15px;height:15px;color:#6B8F7A;"></i>Planlagt rute</span>
+              <span class="gv-mono" style="font-size:11.5px;color:#8AA396;">{{ routeSummary }}</span>
+            </div>
+            <div style="display:flex;gap:14px;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;"><i data-lucide="circle-dot" style="width:20px;height:20px;color:#2D6A4F;"></i><div style="width:2px;flex:1;min-height:24px;background:repeating-linear-gradient(#C7DDD0 0 4px,transparent 4px 8px);margin:3px 0;"></div></div>
+              <div style="flex:1;padding-bottom:11px;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">{{ fromLabel }}</div><div style="font-size:11.5px;color:#8AA396;margin-top:1px;">Start · hjemadresse</div></div>
+            </div>
+            <sc-if value="{{ showFuel }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:14px;">
+                <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;"><i data-lucide="fuel" style="width:18px;height:18px;color:#6B8F7A;"></i><div style="width:2px;flex:1;min-height:24px;background:repeating-linear-gradient(#C7DDD0 0 4px,transparent 4px 8px);margin:3px 0;"></div></div>
+                <div style="flex:1;padding-bottom:11px;"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">{{ fuelStation }}</span><span class="gv-mono" style="font-size:12.5px;font-weight:700;color:#B4611A;background:#FBEAD8;padding:2px 7px;border-radius:6px;">{{ fuelRate }} kr/L</span></div><div style="font-size:11.5px;color:#8AA396;margin-top:2px;">{{ fuelKmIn }} km inde</div></div>
+              </div>
+            </sc-if>
+            <div style="display:flex;gap:14px;">
+              <div style="flex-shrink:0;"><i data-lucide="map-pin" style="width:19px;height:19px;color:#2D6A4F;"></i></div>
+              <div style="flex:1;"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">{{ toLabel }}</span><span class="gv-mono" style="font-size:11.5px;color:#8AA396;">{{ estArrival }}</span></div><div style="font-size:11.5px;color:#8AA396;margin-top:1px;">Vendepunkt</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #EEF3F0;color:#8AA396;"><i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i><span style="font-size:12px;">Retur til {{ fromLabel }}</span></div>
+          </div>
+        </sc-if>
+
+        <!-- EMPTY (no-route) -->
+        <sc-if value="{{ routeEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border-radius:18px;padding:26px 16px 22px;box-shadow:0 1px 2px rgba(26,46,31,.05);border:1px solid #EEF3F0;display:flex;flex-direction:column;align-items:center;text-align:center;">
+            <div style="width:56px;height:56px;border-radius:50%;background:#D8F3DC;display:flex;align-items:center;justify-content:center;margin-bottom:12px;"><i data-lucide="map" style="width:26px;height:26px;color:#2D6A4F;"></i></div>
+            <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15.5px;color:#1A2E1F;">Ingen rute planlagt endnu</div>
+            <div style="font-size:13px;line-height:1.5;color:#6B8F7A;margin-top:5px;max-width:240px;">Planlæg ruten, så gruppen kan se hvor bilen skal hen.</div>
+          </div>
+        </sc-if>
+
+        <div style="height:2px;flex-shrink:0;"></div>
+      </div>
+
+      <!-- ACTION BAR -->
+      <div style="flex-shrink:0;background:#F7F9F8;border-top:1px solid #E2EDE8;padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:9px;">
+          <sc-if value="{{ routePlanned }}" hint-placeholder-val="{{ true }}">
+            <button style="flex:1;height:50px;background:#2D6A4F;border:none;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(45,106,79,.28);"><i data-lucide="navigation" style="width:18px;height:18px;"></i>Åbn rute</button>
+          </sc-if>
+          <sc-if value="{{ routeEmpty }}" hint-placeholder-val="{{ false }}">
+            <button style="flex:1;height:50px;background:#2D6A4F;border:none;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Nunito',sans-serif;font-weight:700;font-size:16px;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(45,106,79,.28);"><i data-lucide="plus" style="width:18px;height:18px;stroke-width:2.4px;"></i>Planlæg rute</button>
+          </sc-if>
+          <button style="height:50px;width:50px;background:#fff;border:1.5px solid #D6E4DC;border-radius:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><i data-lucide="pencil" style="width:19px;height:19px;color:#2D6A4F;"></i></button>
+        </div>
+        <button style="height:40px;background:none;border:none;font-weight:600;font-size:14px;color:#B4453A;cursor:pointer;">Aflys booking</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 438, &quot;height&quot;: 860 },
+  &quot;bookingStatus&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;kommende&quot;, &quot;i gang&quot;, &quot;afsluttet&quot;], &quot;default&quot;: &quot;kommende&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;routePlanned&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;showFuelStop&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;State&quot; },
+  &quot;bookerName&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Rikke&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Content&quot; },
+  &quot;purpose&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;weekendtur&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Content&quot; },
+  &quot;freeDate&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;tirsdag 7. jul&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Content&quot; },
+  &quot;freeTime&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;18.00&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Content&quot; }
+}">
+class Component extends DCLogic {
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+  icons() {
+    const run = () => { if (window.lucide) window.lucide.createIcons(); };
+    run(); [100, 300, 800].forEach(t => setTimeout(run, t));
+  }
+  renderVals() {
+    const status = this.props.bookingStatus ?? 'kommende';
+    const map = {
+      kommende:  { label: 'Kommende',  dot: '#2D6A4F', eyebrow: 'LEDIG IGEN' },
+      'i gang':  { label: 'I gang',    dot: '#52B788', eyebrow: 'BILEN ER UDE — LEDIG IGEN' },
+      afsluttet: { label: 'Afsluttet', dot: '#8AA396', eyebrow: 'VAR LEDIG IGEN' },
+    };
+    const st = map[status] || map.kommende;
+    const routePlanned = this.props.routePlanned ?? true;
+    const showFuelStop = this.props.showFuelStop ?? true;
+    const booker = this.props.bookerName ?? 'Rikke';
+    const purpose = (this.props.purpose ?? 'weekendtur').toLowerCase();
+
+    return {
+      availEyebrow: st.eyebrow, statusLabel: st.label, statusDot: st.dot,
+      freeDate: this.props.freeDate ?? 'tirsdag 7. jul',
+      freeTime: this.props.freeTime ?? '18.00',
+      subline: booker + ' bookede bilen til ' + purpose,
+      bookedRange: this.props.bookedRange ?? '6.–7. jul',
+      duration: this.props.duration ?? '2 dage',
+
+      routePlanned, routeEmpty: !routePlanned,
+      showFuel: routePlanned && showFuelStop,
+      routeSummary: this.props.routeSummary ?? '187 km · 2t 5m',
+      fromLabel: this.props.fromLabel ?? 'Aarhus',
+      toLabel: this.props.toLabel ?? 'Skagen',
+      estArrival: this.props.estArrival ?? 'est. ank. ca. 11.05',
+      fuelStation: this.props.fuelStation ?? 'Circle K',
+      fuelRate: this.props.fuelRate ?? '13,29',
+      fuelKmIn: this.props.fuelKmIn ?? '69',
+    };
+  }
+}
+</script>
+</body>
+</html>
