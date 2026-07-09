@@ -106,6 +106,7 @@ const expected = [
   "094_app_announcements.sql",
   "095_notification_preferences.sql",
   "096_purge_notification_preferences_on_delete.sql",
+  "097_tighten_trips_read_policy.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
