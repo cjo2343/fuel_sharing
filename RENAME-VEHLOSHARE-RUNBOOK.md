@@ -12,6 +12,18 @@ cheapest this will ever be. Every week of new infra on `govehlo.*` raises the co
 
 Legend: **[YOU]** = operator/dashboard/DNS action · **[CLAUDE]** = code/config change I do.
 
+**Sequencing — Apple Developer account gates the tail end.** There is no Apple Developer
+account yet (it's a launch-prep step). Enrollment gates: reserving the App Store name,
+registering the `app.vehloshare` App ID + provisioning, the iOS Associated Domains entitlement,
+TestFlight, and **all of Phase 4** (the AASA needs a real Team ID). So Phase 1 (domain, DONE) is
+safely front-loaded, but Phases 3-step-3 / 4 and the app-identity + email + code-string cutover
+are best run together during launch prep — piecemeal changes now would break the working
+`govehlo://` dev/auth loop and prematurely rebrand the shared `govehlo.dk` Pages project.
+
+**Status (2026-07-09):** Phase 1 complete — `vehloshare.app` + `www` live on Pages (valid TLS,
+serving the landing), `vehloshare.com` 301 → `.app`. Everything else awaits Apple enrollment /
+launch prep.
+
 ---
 
 ## Good news up front (things that DON'T have to change)
