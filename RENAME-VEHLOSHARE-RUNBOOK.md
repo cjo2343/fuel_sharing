@@ -204,3 +204,44 @@ Notes:
 - Quick non-authoritative pre-checks: search the App Store app for "VehloShare"; a web search
   (done 2026-07-09 — no obvious car-sharing collision). These don't replace the ASC check.
 - Trademark (EUIPO/DKPTO) is a *separate* question from Apple's name uniqueness.
+
+---
+
+## Cutover-day checklist — EVERYTHING held (nothing below is done yet)
+
+The single record of what still has to happen. Gated on the Apple Developer account; do as one
+coordinated pass. Ordered so nothing breaks mid-flip.
+
+### 0. Apple (unblocks the app side)  [YOU]
+- [ ] Enroll in the Apple Developer Program.
+- [ ] Register App ID **`app.vehloshare`** with the **Associated Domains** capability.
+- [ ] Reserve the App Store name **"VehloShare"** (create the app record; no submit needed).
+
+### 1. App identity — mobile (after Apple)  [CLAUDE + YOU]
+- [ ] `app.json`: `scheme` → `vehloshare://`; `ios.bundleIdentifier` + `android.package` → `app.vehloshare`; `ios.associatedDomains` → `applinks:vehloshare.app`; `android.intentFilters` host → `vehloshare.app`. (`expo.name` already done, mobile #264.)
+- [ ] Native projects: rename `ios/` folder + Xcode project + entitlements; `CFBundleDisplayName` → "VehloShare"; AndroidManifest. (Or `expo prebuild` and commit.)
+- [ ] Repoint the API base: `EXPO_PUBLIC_API_URL` → `https://vehloshare.app` (currently defaults to `https://govehlo.dk` in every `src/lib/*` proxy).
+- [ ] **[YOU]** add `vehloshare://auth/callback` to the Supabase redirect allowlist; then rebuild + reinstall all dev/TestFlight builds (the scheme is compiled in — old installs only answer `govehlo://` until rebuilt).
+
+### 2. Universal links — Phase 4 (after Apple)  [CLAUDE + YOU]
+- [ ] Host `/.well-known/apple-app-site-association` (`appID` `TEAMID.app.vehloshare`, paths `/join/*`,`/auth/*`) + `assetlinks.json` on `vehloshare.app`; `_headers` serves AASA as `application/json`, `_middleware` must not intercept `/.well-known/*`.
+- [ ] Switch auth `redirect_to` + join links to `https://vehloshare.app/...` (keep `vehloshare://` fallback) + a web fallback page.
+- [ ] **[YOU]** Supabase redirect allowlist: add `https://vehloshare.app/**`.
+
+### 3. Public web + email flip  [CLAUDE done / YOU]
+- [ ] Merge **govehlo-web #87** — GoVehlo→VehloShare display copy (landing, admin, email templates, privatliv, generic push titles). *Prepared; safe to merge whenever you accept the public brand showing.*
+- [ ] **[YOU]** Supabase → SMTP: switch sender → `no-reply@vehloshare.app`; **re-paste** the rebranded email templates into Supabase (the repo copies aren't live).
+- [ ] **[YOU]** Cloudflare Email Routing on `vehloshare.app` (MX + forward rules) for `support@` / `services@vehloshare.app`, mirroring govehlo.dk.
+
+### 4. Domain 301 — LAST  [YOU]
+- [ ] **Only after mobile is rebuilt pointing at vehloshare.app:** `301` `govehlo.dk` → `vehloshare.app`. ⚠️ A plain 301 turns the app's `/api/*` **POSTs into GETs (drops the body)** — if any old build might still call govehlo.dk, use **308** for `/api/*` (preserves method+body), 301 for pages.
+- [ ] Keep `govehlo.dk` in the Supabase auth allowlist through the transition (Decision 3).
+
+### 5. Repos & services  [YOU]
+- [ ] Rename GitHub repos `govehlo-web` → `vehloshare-web`, `govehlo-mobile` → `vehloshare-mobile` (GitHub keeps redirects; Cloudflare Pages + EAS track by repo *id* so usually survive — **verify auto-deploy still fires** and update local git remotes). `fuel_sharing` has no "govehlo" in its name — rename optional.
+- [ ] Sentry org + Supabase project **display names** → VehloShare (cosmetic; Supabase ref/URL unchanged).
+
+### 6. Cleanup  [YOU + CLAUDE]
+- [ ] Retire `govehlo.dk`'s Sweego records + the old sender once nothing references them.
+- [ ] **[CLAUDE]** sweep the `CLAUDE.md` files + remaining internal-doc references GoVehlo → VehloShare.
+- [ ] Update the mobile `PRIVACY_URL` / support mailto (`src/screens/CarProfile/CarProfilePrivacyScreen.tsx`) to `vehloshare.app` once inbound routing exists.
