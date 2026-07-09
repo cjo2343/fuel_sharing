@@ -89,8 +89,17 @@ old host. Retire only once nothing references it.
 2. Add `vehloshare.app` (and `www`) as **custom domains on the govehlo-web Pages project**.
 3. Decide canonical = `vehloshare.app`. Leave `govehlo.dk` serving for now (redirect comes at
    cutover, Phase 6).
-4. If admin is renamed too: plan `admin.vehloshare.app` (mirrors `admin.govehlo.dk`), Cloudflare
-   Access rule updated. (Can defer — admin can stay on govehlo.dk longer than the app domain.)
+4. **Admin console URL (`admin.govehlo.dk` → `admin.vehloshare.app`).** Deferred to cutover, but
+   order matters — the console is gated by **Cloudflare Access** on the subdomain *plus* Supabase:
+   - ✅ **Done now (govehlo-web #82, GV-230):** adding `vehloshare.app` + `www` as Pages domains
+     reopened the `/admin` bypass (`vehloshare.app/admin/` served the console skipping Access).
+     `_middleware.js` now redirects `{vehloshare.app,www}/admin*` → the gated `admin.govehlo.dk`.
+   - ⚠️ **[YOU] Do NOT add `admin.vehloshare.app` as a Pages custom domain until its Cloudflare
+     Access policy exists** — otherwise `admin.vehloshare.app/admin/` is reachable gated only by
+     Supabase (same bypass, new host). Create the Access application/policy first (mirror the
+     `admin.govehlo.dk` identity + `APP_OWNER_EMAILS` rules), *then* add the custom domain.
+   - **[CLAUDE] at cutover:** flip `ADMIN_HOST` in `_middleware.js` to `admin.vehloshare.app` and
+     add its root-convenience redirect; repoint the public-origin `/admin*` redirects there.
 
 ---
 
