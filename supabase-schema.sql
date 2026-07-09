@@ -18702,3 +18702,17 @@ values ('096_purge_notification_preferences_on_delete',
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- Migration 097: tighten trips read policy to is_ledger_member (GV-176) — the one
+-- remaining loose ledger-scoped read policy (email match with no is_active check).
+drop policy if exists "Ledger members can read trips" on public.trips;
+create policy "Ledger members can read trips" on public.trips
+  for select to authenticated
+  using (public.is_ledger_member(ledger_id));
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('097_tighten_trips_read_policy',
+        'trips read policy uses is_ledger_member (requires is_active) instead of an email-only match, so a deactivated member whose email still matches can no longer read trips (GV-176).')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
