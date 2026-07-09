@@ -25,6 +25,19 @@ Legend: **[YOU]** = operator/dashboard/DNS action · **[CLAUDE]** = code/config 
 
 ---
 
+## Domain portfolio (roles are fixed — don't blur them)
+
+Exactly **one** canonical domain: `vehloshare.app`. Everything else is a 301 redirect to it.
+Two "canonical" domains = a universal-link mismatch (the entitlement lists only
+`vehloshare.app`) plus split-brain email/SEO.
+
+| Domain | Role | Setup |
+|---|---|---|
+| **vehloshare.app** | **Canonical — the only source of truth.** App `associatedDomains`, universal-link files (`/.well-known/*`), auth/join links, and the Sweego email sending domain all live here. | Cloudflare zone → Pages custom domain; Sweego SPF/DKIM/DMARC; hosts the association files. |
+| **vehloshare.com** | Redirect only (brand / type-in protection). | Cloudflare zone + a 301 → `vehloshare.app`. **No** email, **no** universal links, **not** a Pages app domain. |
+| **vehloshare.dk** | Optional, redirect only (DK-first market). | Same as `.com`: 301 → `vehloshare.app`. |
+| **govehlo.dk** | Legacy — redirect only after cutover (Decision 3). | Keep serving until cutover, then 301 → `vehloshare.app`; keep in the Supabase auth allowlist through the transition. |
+
 ## Decisions to lock before starting
 
 ### Decision 1 — Bundle id
