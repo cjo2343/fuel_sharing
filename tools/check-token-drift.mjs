@@ -13,14 +13,24 @@
 // and fails if a derived copy is missing a canonical colour or gives it a different
 // value. It runs as part of `npm run validate` (and therefore the pre-push hook) with
 // the sibling repos checked out side-by-side, which is the authoring path where drift
-// is introduced. When a sibling isn't present (e.g. fuel_sharing CI in isolation) that
-// copy is skipped with a notice rather than failing.
+// is introduced.
+//
+// fuel_sharing's own CI (.github/workflows/validate.yml) checks out this repo alone —
+// the siblings are never present there, and each of govehlo-web/govehlo-mobile has its
+// own isolated CI — so a missing sibling can't be treated as a hard failure by default;
+// that would make `npm run validate` red in every CI run forever. Instead a missing
+// sibling prints a loud warning (never a silent pass) and the script exits 0 unless
+// --strict is passed, in which case a missing sibling is a failure too. --strict is for
+// a future umbrella workflow that checks out all three repos side by side (GV-223); it
+// is not used anywhere yet as of GV-256.
 //
 // Values that resolve to another token (`var(--color-...)` aliases) are canonical-only
 // indirection and are not required in the derived copies, so they are skipped here.
 
 import fs from 'node:fs';
 import path from 'node:path';
+
+const strict = process.argv.includes('--strict');
 
 const root = process.cwd();
 const CANONICAL = 'design_handoff_govehlo_v1/design-system/tokens/colors.css';
@@ -84,15 +94,18 @@ if (canonical.size === 0) {
 }
 
 let failed = false;
-let checkedAny = false;
+const checked = [];
+const skipped = [];
 
 for (const { label, file, kind } of DERIVED) {
   const abs = path.join(root, file);
   if (!fs.existsSync(abs)) {
-    console.log(`check-token-drift: ${label} not checked out at ${file} — skipping (not a failure).`);
+    skipped.push(label);
+    console.warn(`⚠ check-token-drift: ${label} not found at ${file} — token drift NOT checked for that repo.`);
+    if (strict) failed = true;
     continue;
   }
-  checkedAny = true;
+  checked.push(label);
   const source = fs.readFileSync(abs, 'utf8');
   const derived = kind === 'ts' ? parseTsHex(source) : kind === 'json' ? parseJsonHex(source) : parseCssHex(source);
 
@@ -116,15 +129,26 @@ for (const { label, file, kind } of DERIVED) {
   for (const key of missing) console.error(`  - missing colour: ${key} (defined in canonical, absent in ${label})`);
 }
 
-if (!checkedAny) {
-  console.log('check-token-drift: no sibling repos checked out — nothing to compare (skipped).');
+console.log(
+  `check-token-drift: summary — checked: ${checked.length ? checked.join(', ') : 'none'}` +
+  ` | skipped: ${skipped.length ? skipped.join(', ') : 'none'}.`
+);
+
+if (skipped.length > 0 && !strict) {
+  console.warn(
+    '⚠ check-token-drift: this run did NOT verify every derived copy — re-run with the missing ' +
+    'sibling repo(s) checked out alongside fuel_sharing for a complete check (or pass --strict to fail loudly).'
+  );
 }
 
 if (failed) {
   console.error(
     '\nDerived token copies must stay in sync with the canonical source:\n' +
     `  ${CANONICAL}\n` +
-    'Update the derived copy (or the canonical file) so every canonical colour is present with the same value.'
+    'Update the derived copy (or the canonical file) so every canonical colour is present with the same value.' +
+    (strict && skipped.length > 0
+      ? '\n--strict also requires every sibling repo to be checked out; the skipped repo(s) above must be present too.'
+      : '')
   );
   process.exit(1);
 }
