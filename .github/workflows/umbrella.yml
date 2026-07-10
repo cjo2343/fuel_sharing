@@ -1,0 +1,163 @@
+# Umbrella cross-repo consistency checks (GV-267).
+#
+# fuel_sharing is the platform repo: it owns the shared Supabase schema and the
+# canonical design tokens, but several invariants span all three GoVehlo repos
+# (fuel_sharing, govehlo-web, govehlo-mobile). Each repo's own CI only ever sees
+# itself, so cross-repo drift — a token hex that diverged, a migration constant
+# left un-bumped, a rebranded invite host that only got changed on one side —
+# slips through every per-repo pipeline. This workflow checks out all three side
+# by side and asserts the invariants that no single repo's CI can.
+#
+# ---------------------------------------------------------------------------
+# REQUIRED SECRET: CROSS_REPO_TOKEN
+# ---------------------------------------------------------------------------
+# govehlo-web and govehlo-mobile are private, so checking them out needs a token
+# with cross-repo read access. Create a *fine-grained* Personal Access Token:
+#   - Repository access: govehlo-web AND govehlo-mobile (fuel_sharing itself is
+#     reachable with the default GITHUB_TOKEN, but granting all three is fine).
+#   - Permissions: Contents → Read-only. Nothing else is needed.
+# Save it on THIS repo (fuel_sharing) as an Actions secret named
+# CROSS_REPO_TOKEN (Settings → Secrets and variables → Actions).
+#
+# If the secret is absent or revoked, this workflow does NOT fail: the preflight
+# job emits a loud ::warning:: annotation and the checks are skipped. A red X on
+# a scheduled cross-repo audit would train everyone to ignore it; a visible
+# warning that the audit could not run is the correct signal.
+# ---------------------------------------------------------------------------
+
+name: Umbrella cross-repo checks
+
+on:
+  schedule:
+    # Weekly, Mondays 06:00 UTC. Cadence is low on purpose — this catches slow
+    # drift between repos, it is not a per-PR gate.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Secrets are not available to job-level `if:` conditions, so a tiny preflight
+  # job probes the secret's presence and exposes it as an output the real job can
+  # gate on. This is what lets the workflow SKIP (not fail) when the token is gone.
+  preflight:
+    name: Check cross-repo token
+    runs-on: ubuntu-latest
+    outputs:
+      has_token: ${{ steps.probe.outputs.has_token }}
+    steps:
+      - name: Probe CROSS_REPO_TOKEN
+        id: probe
+        env:
+          CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+        run: |
+          if [ -n "$CROSS_REPO_TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+            echo "CROSS_REPO_TOKEN present — running cross-repo checks."
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Umbrella checks skipped::CROSS_REPO_TOKEN is not set on fuel_sharing — cross-repo drift checks were SKIPPED, not run. Add a fine-grained PAT (Contents: Read on govehlo-web + govehlo-mobile) as the Actions secret CROSS_REPO_TOKEN to enable them."
+          fi
+
+  umbrella:
+    name: Cross-repo consistency
+    needs: preflight
+    if: needs.preflight.outputs.has_token == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Check out all three repos as siblings. check-token-drift.mjs --strict runs
+      # from the fuel_sharing checkout and resolves the derived token copies at
+      # ../govehlo-web and ../govehlo-mobile, so the directory names and layout
+      # below must match those relative paths exactly.
+      #   $GITHUB_WORKSPACE/
+      #     fuel_sharing/     <- this repo (working-directory for the steps)
+      #     govehlo-web/      <- ../govehlo-web
+      #     govehlo-mobile/   <- ../govehlo-mobile
+      - name: Check out fuel_sharing
+        uses: actions/checkout@v4
+        with:
+          path: fuel_sharing
+
+      - name: Check out govehlo-web
+        uses: actions/checkout@v4
+        with:
+          repository: cjo2343/govehlo-web
+          path: govehlo-web
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+
+      - name: Check out govehlo-mobile
+        uses: actions/checkout@v4
+        with:
+          repository: cjo2343/govehlo-mobile
+          path: govehlo-mobile
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # 1. Design-token drift, strict. With all three repos present, a missing or
+      #    drifted derived copy is a hard failure (outside the umbrella, a missing
+      #    sibling is only a warning — see the header of the script).
+      - name: Design-token drift (strict, all three repos)
+        working-directory: fuel_sharing
+        run: node tools/check-token-drift.mjs --strict
+
+      # 2. Migration-constant drift. govehlo-web's owner console hard-codes the
+      #    latest migration it expects to be applied (EXPECTED_LATEST_MIGRATION);
+      #    fuel_sharing/supabase/migrations/ is the source of truth. A migration PR
+      #    that forgot to bump the console constant is exactly this mismatch.
+      - name: Migration constant vs. highest migration
+        run: |
+          set -euo pipefail
+          MIG_FILE="govehlo-web/functions/api/owner/migrations.js"
+          EXPECTED=$(grep -oE 'EXPECTED_LATEST_MIGRATION[[:space:]]*=[[:space:]]*[0-9]+' "$MIG_FILE" | grep -oE '[0-9]+')
+          if [ -z "${EXPECTED:-}" ]; then
+            echo "::error::Could not extract EXPECTED_LATEST_MIGRATION from $MIG_FILE"
+            exit 1
+          fi
+          HIGHEST=$(ls fuel_sharing/supabase/migrations/ | grep -oE '^[0-9]{3}' | sort -n | tail -1)
+          if [ -z "${HIGHEST:-}" ]; then
+            echo "::error::Could not determine the highest migration number in fuel_sharing/supabase/migrations/"
+            exit 1
+          fi
+          echo "EXPECTED_LATEST_MIGRATION (govehlo-web) = $EXPECTED"
+          echo "highest migration NNN (fuel_sharing)    = $HIGHEST"
+          if [ "$((10#$EXPECTED))" -ne "$((10#$HIGHEST))" ]; then
+            echo "::error title=Migration constant drift::govehlo-web EXPECTED_LATEST_MIGRATION ($EXPECTED) does not match the highest migration in fuel_sharing ($HIGHEST). Bump EXPECTED_LATEST_MIGRATION in govehlo-web/functions/api/owner/migrations.js, or land the missing migration."
+            exit 1
+          fi
+          echo "Migration constant is in sync."
+
+      # 3. Invite-host consistency (post-rebrand, GV-262). The mobile invite link
+      #    host and the web join route must agree: mobile must build
+      #    https://vehloshare.app/join/<code>, and govehlo-web must serve that path.
+      - name: Invite-host consistency (mobile link <-> web route)
+        run: |
+          set -euo pipefail
+          ONBOARDING="govehlo-mobile/src/lib/onboarding.ts"
+          if grep -qE 'return `https://vehloshare\.app/join/' "$ONBOARDING"; then
+            echo "mobile inviteLink host = vehloshare.app (OK)"
+          else
+            echo "::error title=Invite host drift::govehlo-mobile inviteLink() in $ONBOARDING does not return the expected https://vehloshare.app/join/ host."
+            exit 1
+          fi
+          JOIN_ROUTE="govehlo-web/functions/join/[code].js"
+          if [ -f "$JOIN_ROUTE" ]; then
+            echo "web join route present at $JOIN_ROUTE (OK)"
+          else
+            echo "::error title=Missing web join route::govehlo-web is missing $JOIN_ROUTE, so vehloshare.app/join/<code> links have no handler."
+            exit 1
+          fi
+          echo "Invite host and web join route are consistent."
+
+      # 4. Type-drift check (GV-223) — PLACEHOLDER.
+      #    Intended to assert the shared domain types (e.g. settlement / event
+      #    shapes) stay in sync between govehlo-web and govehlo-mobile. Left
+      #    commented until GV-223 defines the canonical type surface and its guard.
+      # - name: Shared-type drift (GV-223)
+      #   run: node fuel_sharing/tools/check-type-drift.mjs --strict
