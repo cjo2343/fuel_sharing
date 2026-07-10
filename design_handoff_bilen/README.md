@@ -3,11 +3,15 @@
 ## Overview
 The **Bilen** ("The car") screen is GoVehlo's car-detail page, redesigned around a single idea: a Danish licence-plate (nummerplade) lookup can pre-fill most of a car's facts, but four things only the owner knows must still be completed. The redesign turns a flat detail page into a **guided profile** that clearly separates auto-filled data (**Fra registret** — "from the registry") from **needs-input** tasks (**Skal udfyldes** — "must be completed").
 
-The four owner-supplied items are:
+The four **required** owner-supplied tasks are:
 1. **Tankstørrelse** — fuel-tank size (not reliable in the registry)
 2. **Forsikringsdetaljer** — insurance coverage, renewal, premium, deductible
 3. **Ejerafgift som fast udgift** — turning the ownership tax into a recurring shared expense
 4. **Tankstatus** — current fuel level + odometer reading (seeds the range/consumption estimate)
+
+Two further sections round out the profile but are **not** part of the required-completion count:
+- **Syn** — vehicle-inspection info, **Fra registret** and read-only: next inspection date + last result ("Godkendt").
+- **Reparationshistorik** — an **owner-logged** repair/service log (**Tilføjet af dig**). Optional and ongoing rather than a one-time task; each entry's cost can be **split as a shared expense** like fuel or ejerafgift.
 
 ## About the Design Files
 The file in this bundle (`GoVehlo Bilen.dc.html`) is a **design reference created in HTML** — a prototype that shows the intended look, content, and behaviour. It is **not production code to copy directly**. It is authored as a "Design Component" and depends on a proprietary runtime (`support.js`) and design-system stylesheets that will not be present in your codebase.
@@ -18,10 +22,10 @@ The task is to **recreate these designs in the GoVehlo app's existing environmen
 **High-fidelity (hifi).** Colours, typography, spacing, radii, and copy are final and should be matched pixel-for-pixel using the codebase's existing GoVehlo design-system primitives. All copy is Danish and is final — do not translate or paraphrase.
 
 ## Layout note — the HTML canvas vs. the actual screen
-The HTML is a **presentation canvas** on a dark green background showing several 320px-wide phone mockups side by side. **Only the phone contents are the product.** The dark canvas, the section intro headings ("Two tracks…", "The four things you complete"), the B1/B2/S1–S4 badges, and the spec table at the bottom are documentation scaffolding — **do not build them**. Build:
+The HTML is a **presentation canvas** on a dark green background showing several 320px-wide phone mockups side by side. **Only the phone contents are the product.** The dark canvas, the section intro headings ("Two tracks…", "The four tasks — plus the repair log"), the B1/B2/S1–S5 badges, and the spec table at the bottom are documentation scaffolding — **do not build them**. Build:
 
-- **The Bilen screen** in two states (after-lookup with tasks pending, and complete) — this is the chosen **split-tracks** design.
-- **Four bottom sheets** that open from the task affordances.
+- **The Bilen screen** in two states (after-lookup with tasks pending, and complete) — this is the chosen **split-tracks** design. Each state includes a read-only **Syn** section and a **Reparationshistorik** section (empty in B1, populated in B2).
+- **Five bottom sheets** — the four completion tasks (S1–S4) plus **S5 "Tilføj reparation"** for logging a repair into Reparationshistorik.
 
 An earlier explored direction ("Direction A — guided completion") exists in the source but is set `display:none` and is **archived/rejected — ignore it**. The chosen direction is **split tracks**.
 
@@ -41,6 +45,8 @@ An earlier explored direction ("Direction A — guided completion") exists in th
      - Row copy: "Vælg tankstørrelse / Vi kan ikke slå den præcise størrelse op." · "Tilføj forsikringsdetaljer / Dækning, fornyelse, præmie, selvrisiko." · "Opret ejerafgift som fast udgift / 460 kr halvårligt fra registret." · "Angiv tankstatus / Benzin i tanken nu + km-tæller."
   3. **"Fra registret" group** — section title + small "Automatisk" badge (leaf check, `#E3F0E8` bg, `#2D6A4F` text). White card, rows: "Mærke/model → VW T-Roc", "Brændstof · forbrug → Benzin · 4,8", "Næste syn → 27. jan 2028", "Ejerafgift → 460 kr/halvår" (value in **amber mono**). Each row: 18px muted icon + label (`#6B8F7A`) + value (`#1A2E1F`, 600). Rows separated by `1px solid #EEF3F0`.
   4. **Muted incomplete card** — one white card listing not-yet-filled fields with italic muted-grey (`#C0CCC5`) values: "Tankstørrelse → Ikke angivet", "Tankstatus → Ikke angivet", "Forsikringsdetaljer → Kun navn". Calm, no shouting CTA per row (the CTAs live only in the task card at top).
+  5. **Syn section** (Fra registret, read-only) — section title "Syn" + "Fra registret" badge. White card, two rows: "Næste syn → 27. jan 2028" (calendar icon), "Sidste syn → [green \"Godkendt\" pill] 27. jan 2026" (check-circle icon). No edit affordance — it's registry data.
+  6. **Reparationshistorik — empty state** (Tilføjet af dig) — section title + grey "Tilføjet af dig" badge. A **dashed** white card (`1.5px dashed #B7D3C3`, 16px radius), centred: 42px mist tile with a **wrench** icon, "Ingen reparationer endnu" (Nunito 700, 14px), helper "Log reparationer og service. Udgiften kan deles med jer, der bruger bilen.", and a Forest "+ Tilføj reparation" link.
 
 ### 2. Bilen — main screen (state: complete) · ref `B2`
 **Purpose:** Every field filled; the profile reads calm and confirmed.
@@ -51,6 +57,11 @@ Same shell as B1. Differences:
 - **Tankstatus card** — "Anslået niveau nu" 68% · 37 L, green progress bar at 68%, "Rækkevidde ~770 km", and a caption "Opdateret i dag ved 96.500 km" (km value in mono). "Opdater" link.
 - **Forsikring card** — header row with shield tile, "Tryg Forsikring A/S / Kasko + ansvar", green "Aktiv" pill; then a 2×2 grid: Fornyelse 1. jan 2027, Præmie **485 kr/md** (amber mono), Selvrisiko **5.412 kr** (amber mono), Dækning Kasko. Uppercase 10px labels.
 - **Ejerafgift card** — receipt tile + "460 kr halvårligt" (amber mono) + "Grøn ejerafgift · fra registret"; row "Næste betaling → 12. juli 2026"; a leaf-check confirmation line "Oprettet som fast udgift".
+- **Syn section** — identical to B1 (read-only): "Næste syn → 27. jan 2028", "Sidste syn → Godkendt · 27. jan 2026".
+- **Reparationshistorik — populated** — section header with "Tilføjet af dig" badge and a "Tilføj" link. White card listing repair entries; each entry = 40px mist wrench tile + a title row (name in Nunito 700 left, **cost in amber mono** right) + a meta sub-line "date · værksted · ved [km] km" (km in mono) + a status affordance. Two sample entries:
+  - "Nye vinterdæk / 4.280 kr" · "27. nov 2025 · Dæk & Fælge ApS · ved 92.400 km" · green **"Delt med 3"** pill (already split).
+  - "Bremseklodser for / 1.850 kr" · "14. sep 2025 · AutoMester · ved 89.100 km" · outlined **"Del udgift"** chip (not yet split — tap to open the split flow).
+  A footer "+ Tilføj reparation" button (`#FBFDFC` bg) opens S5.
 
 ### 3. Edit sheet — Tankstørrelse · ref `S1`
 Bottom sheet: 24px top radius, white, grab-handle (`38×4px #D9E4DE`). Title "Vælg tankstørrelse" (Nunito 800, 19px), helper "Find den i instruktionsbogen eller på tankdækslet. Vi bruger den til rækkevidde." Then a **3-column chip grid**: 45 L, 50 L, **55 L (selected)**, 60 L, 65 L, "Anden". Selected chip: `2px solid #2D6A4F`, `#EAF4EE` bg, text `#1A5138`, corner check. Unselected: `1.5px solid #E2EDE8`. Forest **"Gem"** button (full width, 48px, 13px radius) at bottom.
@@ -64,11 +75,15 @@ Title "Angiv tankstatus", helper "Bilen har kørt siden sidste syn — fortæl o
 ### 6. Edit sheet — Ejerafgift → fast udgift · ref `S4`
 Title "Opret som fast udgift", helper "Vi lægger ejerafgiften i budgettet, så den deles automatisk hver periode." An **amber-tinted amount card** (`#FEF7F0` bg, `#F6D9BC` border): "460 kr" (amber mono, 20px) + "Grøn ejerafgift · fra registret" (`#A0522D`). **Interval** segmented control: Månedligt / **Halvårligt (selected)** / Årligt. Row "Næste betaling → 12. juli 2026". **This is the one money-action button** — it uses the **amber** variant (`#F4A261` bg, Deep-Forest `#1A2E1F` text): "Opret fast udgift".
 
+### 7. Edit sheet — Tilføj reparation · ref `S5`
+Opens from any "Tilføj reparation" affordance (the B1 empty state, the B2 footer, or the B2 section "Tilføj" link). Title "Tilføj reparation". Fields: **Hvad blev lavet** (text, "Nye vinterdæk"), a two-column row **Dato** (date field, "27. nov 2025") + **Km-tæller** (mono, "92.400"), **Værksted (valgfrit)** (text, "Dæk & Fælge ApS"), and **Beløb** (input showing the amount in **amber mono** "4.280" with a "kr" suffix — money treatment). Below, a **"Del udgift med crew"** toggle row (`#F2F7F4` bg) shown **on** (Forest track), sub-line "Deles ligeligt mellem 3 personer" — this is what makes the repair a splittable shared expense. Forest **"Gem reparation"** button. (Save button is Forest, not amber: the action is "log a repair", not a money transfer — amber stays on the amount field only.)
+
 ---
 
 ## Interactions & Behavior
 - **Task rows (B1 "Skal udfyldes" card)** open the matching bottom sheet: Tankstørrelse→S1, Forsikring→S2, Ejerafgift→S4, Tankstatus→S3.
-- **"Rediger" / "Opdater"** links on filled sections re-open the corresponding sheet pre-populated.
+- **"Tilføj reparation"** (B1 empty-state link, B2 header link, B2 footer button) opens **S5**. Saving appends an entry to Reparationshistorik. If "Del udgift med crew" is on, the entry is created as a shared expense and shows the "Delt med N" pill; if off, it shows a "Del udgift" chip that opens the split flow later.
+- **"Rediger" / "Opdater"** links on filled sections re-open the corresponding sheet pre-populated. Syn has no edit affordance (registry-owned).
 - **Bottom sheets** slide up from the bottom; use spring easing `cubic-bezier(0.34, 1.56, 0.64, 1)` for the enter, ~340ms. Grab-handle + tap-outside/swipe-down to dismiss.
 - **Saving a sheet** dismisses it and updates the corresponding section on the Bilen screen; the two-track band counts update, and once all four tasks are done the screen transitions from the B1 state to the B2 (complete) state.
 - **Buttons** — press = `scale(0.97)` spring; hover/press = darken bg ~10%. Amber save button (S4) only.
@@ -77,8 +92,9 @@ Title "Opret som fast udgift", helper "Vi lægger ejerafgiften i budgettet, så 
 
 ## State Management
 Per-car profile object with two provenance groups:
-- **`fromRegistry`** (read-only, editable-if-wrong): make/model, year, fuelType, consumption, nextInspection (`næste syn`), ownershipTax amount.
+- **`fromRegistry`** (read-only, editable-if-wrong): make/model, year, fuelType, consumption, `syn {nextInspection, lastInspection: {date, result}}`, ownershipTax amount.
 - **`ownerSupplied`** (the four tasks): `tankSize` (L), `insurance {coverage, renewalDate, premium, deductible}`, `ownershipTaxRecurring {interval, nextPayment, created:bool}`, `fuelStatus {levelPct, litersEstimate, odometerNow, updatedAt}`.
+- **`repairs`** (owner-logged, array; not part of the completion count): each `{description, date, workshop?, odometer, amount, shared:bool, sharedWith:number}`. `amount` renders amber mono; when `shared`, the entry is also a shared expense split among `sharedWith` people.
 - **Derived:** `completedTaskCount` / total (drives the two-track band and the B1↔B2 state), fuel `range` estimate (from tankSize × levelPct × consumption), and running fuel level (each logged trip decrements from the last `fuelStatus` reading).
 - A boolean `isComplete` = all four owner tasks done → renders the B2 layout and the "Alt er sat op" style confirmation.
 
@@ -107,13 +123,15 @@ Shadows: green-tinted (`rgba(26,46,31,…)`). Cards: `0 1px 3px rgba(26,46,31,.0
 Motion: spring `cubic-bezier(0.34,1.56,0.64,1)` for interactive/enter; standard `cubic-bezier(0.4,0,0.2,1)` for colour/opacity. Durations 80/140/220/340ms.
 
 ## Assets
-- **Icons:** Lucide (2px stroke) — the mock inlines equivalents: `fuel`, `shield`, `file-text`/receipt, `calendar`, `droplet`, `gauge`, `chevron-right`, `chevron-down`, `check`, `x`. Use the codebase's existing icon set (Lucide names above) rather than the inline SVGs here.
+- **Icons:** Lucide (2px stroke) — the mock inlines equivalents: `fuel`, `shield`, `file-text`/receipt, `calendar`, `droplet`, `gauge`, `wrench` (Reparationshistorik), `check-circle` (sidste syn), `upload`/share (the "Del udgift" chip), `plus` ("Tilføj reparation"), `chevron-right`, `chevron-down`, `check`, `x`. Use the codebase's existing icon set (Lucide names above) rather than the inline SVGs here.
 - **No photographic or brand imagery** is used on this screen.
 
 ## Files
-- `GoVehlo Bilen.dc.html` — the design reference (canvas with B1, B2, S1–S4, plus a rejected Direction-A and a spec table). Build only the phone contents described above.
+- `GoVehlo Bilen.dc.html` — the design reference (canvas with B1, B2, S1–S5, plus a rejected Direction-A and a spec table). Build only the phone contents described above.
 - `screenshots/01-overview.png` — the chosen split-tracks screen, B1 (left) + B2 (right), top.
 - `screenshots/04-tracks-lower.png` — lower portions of B1 (Fra registret + muted incomplete) and B2 (Tankstatus + Forsikring).
+- `screenshots/06-syn-repair.png` — the **Syn** section and **Reparationshistorik** in both states (B1 empty state left, B2 populated list right).
 - `screenshots/02-sheets.png` — edit sheets S1 (Tankstørrelse) + S2 (Forsikring), top.
 - `screenshots/05-sheets-2.png` — edit sheets S3 (Tankstatus) + S4 (Ejerafgift).
+- `screenshots/07-s5-repair-sheet.png` — edit sheet **S5** (Tilføj reparation) with the split-with-crew toggle.
 - `screenshots/03-spec.png` — field-provenance spec table (documentation reference, not a screen to build).
