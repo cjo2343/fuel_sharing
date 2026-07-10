@@ -5,6 +5,7 @@
   "scripts": {
     "validate": "node tools/run-validations.mjs",
     "check:schema-equivalence": "node tools/check-schema-equivalence.mjs",
+    "check:role-matrix": "node tools/test-rls-role-matrix.mjs",
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "hooks:install": "git config core.hooksPath .githooks"
   }
