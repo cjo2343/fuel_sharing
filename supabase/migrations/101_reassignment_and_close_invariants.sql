@@ -370,6 +370,18 @@ $$;
 revoke execute on function public.close_settlement_period(text, uuid, jsonb) from public;
 grant execute on function public.close_settlement_period(text, uuid, jsonb) to authenticated;
 
+-- Data fix: existing periods created before this migration carry the English
+-- 'Current period' default label (visible as identical cards on the Historik >
+-- Perioder screen). Rename them to the same Danish 'Juli 2026' style derived
+-- from when each period was opened. Fresh installs never have such rows, so
+-- this data-only statement is intentionally NOT mirrored in supabase-schema.sql
+-- (the equivalence check compares schema objects, not data).
+update public.settlement_periods
+set label = (array['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'])[extract(month from opened_at)::int]
+            || ' ' || extract(year from opened_at)::int,
+    updated_at = now()
+where label = 'Current period';
+
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values ('101_reassignment_and_close_invariants',
         'Identity-reassignment protection: one shared BEFORE UPDATE trigger (enforce_identity_reassignment) on trips/fuel_payments/car_bookings lets only a ledger admin or the row creator change driver_member_id/payer_member_id/member_id, covering both the SECURITY DEFINER upsert RPCs and direct PostgREST updates (42501). close_settlement_period re-declared off 087 to enforce rule_require_requests_before_close (every money-moving settlement pair needs a requested-or-later request row unless the workspace flag is false, GVM-278) and to label the new open period in Danish (Juli 2026 style) instead of English Current period (GV-253).')
