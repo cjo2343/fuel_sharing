@@ -1,3 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-npm run prepush
+# Slim pre-push guard (GV-266): the fast, dependency-free schema/token checks.
+# No Python, no Docker — the heavier schema-equivalence / functional-smoke
+# checks run in CI. Enable locally with `npm run hooks:install`.
+npm run validate
