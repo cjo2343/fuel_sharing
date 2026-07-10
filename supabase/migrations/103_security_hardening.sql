@@ -406,6 +406,32 @@ create policy "Ledger members can read ledgers" on public.ledgers for select to 
 drop policy if exists "Ledger members can read members" on public.ledger_members;
 create policy "Ledger members can read members" on public.ledger_members for select to authenticated using (public.is_ledger_member(ledger_id));
 
+-- Prod drift discovered at first apply (2026-07-10): the live database carries
+-- legacy-named copies of the car_share_ledgers write policies ("Ledger MEMBERS
+-- can insert/update JSON ledger") that predate the 005 file's "admins" naming
+-- and still reference the trapdoor, so the function drop below was blocked
+-- (2BP01). Drop them by name, then sweep ANY remaining policy whose expression
+-- still references the function, so no other unrecorded name drift can block
+-- the drop. Both are no-ops on a fresh install.
+drop policy if exists "Ledger members can insert JSON ledger" on public.car_share_ledgers;
+drop policy if exists "Ledger members can update JSON ledger" on public.car_share_ledgers;
+
+do $sweep$
+declare
+  leftover_policy record;
+begin
+  for leftover_policy in
+    select pol.schemaname, pol.tablename, pol.policyname
+    from pg_policies pol
+    where coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, '')
+          like '%is_ledger_bootstrap_open%'
+  loop
+    execute format('drop policy %I on %I.%I',
+                   leftover_policy.policyname, leftover_policy.schemaname, leftover_policy.tablename);
+  end loop;
+end
+$sweep$;
+
 -- With no policy referencing it, drop the function. The
 -- lock_ledger_bootstrap_when_admin_email_attached trigger and the
 -- bootstrap_locked_at column are intentionally kept (no dependency, removing
