@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <style>
+    html, body { margin:0; padding:0; background:#0F1C15; }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.14); border-radius:6px; }
+    a { color:#7EE0AB; }
+    a:hover { color:#A8ECC6; }
+  </style>
+</helmet>
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#1A2E1F"/>
+    <path d="M22 62 C40 30 52 30 60 55 C66 74 76 74 82 60" stroke="#D8F3DC" stroke-width="9" stroke-linecap="round" fill="none"/>
+    <circle cx="60" cy="55" r="6" fill="#F4A261"/>
+  </svg>
+</template>
+
+<div style="min-height:100vh;background:radial-gradient(120% 90% at 50% 0%, #17291D 0%, #0F1C15 60%);font-family:'Inter',sans-serif;padding:44px 40px 120px;box-sizing:border-box;">
+
+  <!-- Page title -->
+  <div style="max-width:1200px;margin:0 auto 8px;">
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px;">GoVehlo · Reframe explorations</div>
+    <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:38px;color:#fff;margin:0 0 12px;letter-spacing:-.02em;line-height:1.05;">Hjem · Aktivitet · Bilprofil</h1>
+    <p style="font-family:'Inter',sans-serif;font-size:15px;color:rgba(255,255,255,.62);margin:0;max-width:640px;line-height:1.6;text-wrap:pretty;">Three briefs, each explored as side-by-side options with an implementable spec table. Reference any option by its badge — e.g. <span style="color:#7EE0AB;font-weight:600;">1a</span> — in chat.</p>
+  </div>
+
+  <!-- ============ BRIEF 01 — HOME ============ -->
+  <section id="brief1" data-screen-label="Brief 01 — Home" style="max-width:1200px;margin:56px auto 0;">
+        <!-- Section header -->
+    <div style="margin-bottom:30px;">
+      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;">Brief 01 — Hjem</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:27px;color:#fff;margin:0 0 10px;letter-spacing:-.01em;">Én tilstandsmodel, ét klart fokus</h2>
+      <p style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);margin:0;max-width:700px;line-height:1.6;text-wrap:pretty;">Three overlapping gates decide the lead today, so first-run shows <b style="color:#F4A261;font-weight:600;">"Tilføj din bil" twice</b> and an <b style="color:#F4A261;font-weight:600;">"I er kvit"</b> money card before money can exist. Both options below collapse Home to two explicit states — <b style="color:#fff;font-weight:600;">A (setting up)</b> where onboarding owns the lead, <b style="color:#fff;font-weight:600;">B (running)</b> where the dashboard does — with one source of truth for next actions.</p>
+    </div>
+
+    <!-- STATE A options -->
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.1em;text-transform:uppercase;margin-bottom:18px;">State A — setting up · two directions for the lead</div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-bottom:44px;">
+
+      <!-- 1a -->
+      <div id="1a" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">1a</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Tjeklisten ejer skærmen</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:54px;">One checklist card owns every next-action. The empty space is earned by a calm "how it works" explainer — never a second CTA. No money card.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px 16px;display:flex;align-items:flex-start;justify-content:space-between;">
+            <div><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0 0 2px;letter-spacing:-.01em;">Godmorgen, Christian.</h3><p style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.6);margin:0;">Gemt · 09:41</p></div>
+            <div style="display:flex;gap:7px;padding-top:1px;">
+              <div style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+            </div>
+          </div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:12px;background:#F7F9F8;">
+            <!-- checklist card -->
+            <div style="background:#fff;border-radius:15px;padding:15px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;letter-spacing:-.01em;">Kom godt i gang</span><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;">0 af 3</span></div>
+              <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:3px;">Tre hurtige trin til fair benzindeling.</div>
+              <div style="height:6px;border-radius:3px;background:#EEF3F0;overflow:hidden;margin:13px 0 4px;"><div style="width:0%;height:100%;background:#52B788;border-radius:3px;"></div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid #2D6A4F;background:#fff;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;color:#2D6A4F;flex-shrink:0;">1</div>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Tilføj din bil</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Opret jeres delebil.</div></div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #EEF3F0;">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid #C4D9CD;background:#fff;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;color:#6B8F7A;flex-shrink:0;">2</div>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Inviter din gruppe</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Del udgifter med familie og venner.</div></div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #EEF3F0;">
+                <div style="width:26px;height:26px;border-radius:50%;border:2px solid #C4D9CD;background:#fff;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;color:#6B8F7A;flex-shrink:0;">3</div>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Log din første tur</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;">Følg de km, I kører.</div></div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </div>
+              <button style="width:100%;height:46px;margin-top:10px;background:#2D6A4F;border:none;border-radius:12px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.28);">Tilføj din bil</button>
+            </div>
+            <!-- explainer earns the void (no CTA) -->
+            <div style="background:#D8F3DC;border-radius:15px;padding:14px;">
+              <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#1A2E1F;margin-bottom:9px;">Sådan bliver benzin fair</div>
+              <div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:8px;"><div style="width:20px;height:20px;border-radius:6px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#2D6A4F;line-height:1.4;">Alle logger de km, de kører.</div></div>
+              <div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:8px;"><div style="width:20px;height:20px;border-radius:6px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"></path></svg></div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#2D6A4F;line-height:1.4;">Benzin deles efter kørte km.</div></div>
+              <div style="display:flex;gap:9px;align-items:flex-start;"><div style="width:20px;height:20px;border-radius:6px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"></path></svg></div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#2D6A4F;line-height:1.4;">Afregn i ét tryk med MobilePay.</div></div>
+            </div>
+            <!-- solo group -->
+            <div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;margin-bottom:9px;">Jeres gruppe</div>
+              <div style="display:flex;gap:14px;align-items:flex-start;">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="width:40px;height:40px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;position:relative;">CH<div style="position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:#52B788;border:2px solid #F7F9F8;"></div></div><span style="font-family:'Inter',sans-serif;font-size:10px;color:#3D5C48;font-weight:500;">Dig</span></div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="width:40px;height:40px;border-radius:50%;border:2px dashed #2D6A4F;display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div><span style="font-family:'Inter',sans-serif;font-size:10px;color:#2D6A4F;font-weight:600;">Inviter</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1b -->
+      <div id="1b" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">1b</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Spotlight på ét trin</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:54px;">Only the current step is a full action; steps 2–3 preview as muted "next up" rows. Strongest single answer to "what now?", at the cost of showing the whole path.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px 16px;display:flex;align-items:flex-start;justify-content:space-between;">
+            <div><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0 0 2px;letter-spacing:-.01em;">Godmorgen, Christian.</h3><p style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.6);margin:0;">Gemt · 09:41</p></div>
+            <div style="display:flex;gap:7px;padding-top:1px;">
+              <div style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+            </div>
+          </div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:12px;background:#F7F9F8;">
+            <!-- progress eyebrow -->
+            <div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#6B8F7A;letter-spacing:.06em;text-transform:uppercase;">Kom godt i gang</span><div style="flex:1;height:5px;border-radius:3px;background:#EEF3F0;overflow:hidden;"><div style="width:33%;height:100%;background:#52B788;"></div></div><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;">1/3</span></div>
+            <!-- spotlight card -->
+            <div style="background:#fff;border-radius:16px;padding:18px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);text-align:center;">
+              <div style="width:56px;height:56px;border-radius:16px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div>
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#52B788;letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px;">Trin 1 af 3</div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:20px;color:#1A2E1F;letter-spacing:-.01em;margin-bottom:6px;">Tilføj din bil</div>
+              <div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#6B8F7A;line-height:1.5;margin:0 auto 14px;max-width:220px;">Opret jeres delebil, så I kan begynde at logge ture og dele benzin fair.</div>
+              <button style="width:100%;height:48px;background:#2D6A4F;border:none;border-radius:13px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.28);">Tilføj din bil</button>
+            </div>
+            <!-- next up preview (not CTAs) -->
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#6B8F7A;letter-spacing:.06em;text-transform:uppercase;margin-bottom:9px;">Derefter</div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="background:#fff;border-radius:12px;padding:11px 13px;box-shadow:0 1px 3px rgba(26,46,31,.06);display:flex;align-items:center;gap:11px;opacity:.72;"><div style="width:24px;height:24px;border-radius:50%;border:2px solid #C4D9CD;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;color:#6B8F7A;flex-shrink:0;">2</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Inviter din gruppe</div></div>
+                <div style="background:#fff;border-radius:12px;padding:11px 13px;box-shadow:0 1px 3px rgba(26,46,31,.06);display:flex;align-items:center;gap:11px;opacity:.72;"><div style="width:24px;height:24px;border-radius:50%;border:2px solid #C4D9CD;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:11px;color:#6B8F7A;flex-shrink:0;">3</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Log din første tur</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Handover + State B -->
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.1em;text-transform:uppercase;margin-bottom:18px;">The handover moment → State B</div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-bottom:40px;">
+
+      <!-- 1c handover -->
+      <div id="1c" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#52B788;color:#08321E;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">1c</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Overgangen</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:54px;">When the 3rd step completes, a one-time celebration fires, then the checklist is gone forever — no manual "Skjul" needed.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#1A2E1F;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#1A2E1F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:56px 26px 60px;">
+            <div style="width:78px;height:78px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;margin-bottom:22px;box-shadow:0 0 0 10px rgba(82,183,136,.16),0 0 0 22px rgba(82,183,136,.07);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></div>
+            <h3 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:23px;color:#fff;margin:0 0 8px;letter-spacing:-.01em;">I er klar!</h3>
+            <p style="font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.65);margin:0 0 26px;line-height:1.55;">Bil, gruppe og første tur er på plads. Nu deler I benzin fair — helt automatisk.</p>
+            <button style="width:100%;height:48px;background:#52B788;border:none;border-radius:13px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#08321E;cursor:pointer;">Se jeres oversigt</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1d State B -->
+      <div id="1d" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#3D5C48;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">1d</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">State B — running</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:54px;">The mature dashboard (unchanged target). Balance leads, then car status, group, latest trips, Mere. Checklist never returns. Shown here for reference — this is what A hands over to.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px 16px;display:flex;align-items:flex-start;justify-content:space-between;">
+            <div><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0 0 2px;letter-spacing:-.01em;">God aften, Christian.</h3><p style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.6);margin:0;">Gemt · 18:04</p></div>
+            <div style="display:flex;gap:7px;padding-top:1px;">
+              <div style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;position:relative;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><div style="position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:#F4A261;border:1.5px solid #2D6A4F;"></div></div>
+              <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>
+            </div>
+          </div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:12px;background:#F7F9F8;">
+            <!-- balance -->
+            <div style="background:#fff;border-radius:15px;padding:15px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#6B8F7A;margin-bottom:5px;">Du skylder</div>
+              <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-family:'Nunito',sans-serif;font-weight:900;font-size:32px;color:#F4A261;line-height:1;letter-spacing:-.02em;">100,00</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#F4A261;">kr</span></div>
+              <div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:4px;">til mobil2</div>
+            </div>
+            <!-- car banner -->
+            <div style="background:#FEF3E0;border-radius:15px;padding:13px 14px;display:flex;align-items:center;gap:11px;">
+              <div style="width:38px;height:38px;border-radius:10px;background:#F4A261;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A2E1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div>
+              <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">I brug af Dianna</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#A0522D;margin-top:1px;">Indtil 18.00</div></div>
+              <button style="background:#2D6A4F;border:none;border-radius:9px;padding:7px 14px;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;cursor:pointer;">Book</button>
+            </div>
+            <!-- group -->
+            <div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;margin-bottom:9px;">Jeres gruppe</div>
+              <div style="display:flex;gap:12px;align-items:center;">
+                <div style="width:38px;height:38px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;">CH</div>
+                <div style="width:38px;height:38px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;">DI</div>
+                <div style="width:38px;height:38px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;">M2</div>
+              </div>
+            </div>
+            <!-- recent trips -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Seneste ture</span><span style="font-family:'Inter',sans-serif;font-size:11px;color:#2D6A4F;font-weight:600;">Se alle</span></div>
+              <div style="background:#fff;border-radius:12px;padding:11px;box-shadow:0 1px 3px rgba(26,46,31,.06);display:flex;align-items:center;gap:10px;"><div style="width:34px;height:34px;border-radius:8px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;">DI</div><div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;">Dianna</div><div style="font-family:'Courier New',monospace;font-size:10px;color:#6B8F7A;">96 411 → 96 500 · 89 km</div></div><div style="font-family:'Inter',sans-serif;font-weight:600;font-size:12px;color:#F4A261;">44,00 kr</div></div>
+            </div>
+            <!-- mere -->
+            <div style="background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+              <div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;font-weight:500;">Historik</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;font-weight:500;">Indsigt</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;font-weight:500;">Udgifter</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- decision table -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:24px 26px;max-width:900px;">
+      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-bottom:4px;">State decision table</div>
+      <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.5);margin:0 0 18px;">One gate replaces the three overlapping flags. Evaluated top-down; first match wins.</p>
+      <div style="display:grid;grid-template-columns:1.1fr 1.5fr 1.6fr 1fr;gap:0;font-family:'Inter',sans-serif;font-size:12.5px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">State</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Condition</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Lead / owns screen</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Money card</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">A — setting up</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);font-family:'Courier New',monospace;font-size:11.5px;">!hasCar || members ≤ 1 || trips === 0</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Kom godt i gang checklist (single). CTA = first incomplete step.</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Hidden</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Handover</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);font-family:'Courier New',monospace;font-size:11.5px;">3rd step transitions done→true this session</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">One-time celebration, then falls through to B.</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Hidden</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">B — running</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);font-family:'Courier New',monospace;font-size:11.5px;">hasCar && members ≥ 2 && trips ≥ 1</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Balance → car status → group → Seneste ture → Mere. Checklist gone forever.</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Shown</div>
+      </div>
+      <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin:14px 0 0;line-height:1.55;">Notes · Manual "Skjul" is removed in A — the checklist is dismissed only by completion, so it can never linger. The old dashed "Tilføj din bil" empty-state card is deleted; step 1 is the sole affordance. "Se alle" (Seneste ture) and Mere→Historik are deduped by keeping only <b style="color:rgba(255,255,255,.7);font-weight:600;">Mere → Historik</b> as the canonical entry and dropping the redundant "Se alle" link.</p>
+    </div>
+
+  </section>
+
+  <!-- ============ BRIEF 02 — AKTIVITET ============ -->
+  <section id="brief2" data-screen-label="Brief 02 — Aktivitet" style="max-width:1200px;margin:80px auto 0;">
+        <!-- Section header -->
+    <div style="margin-bottom:30px;">
+      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;">Brief 02 — Aktivitet</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:27px;color:#fff;margin:0 0 10px;letter-spacing:-.01em;">The sparse feed shouldn't look broken</h2>
+      <p style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);margin:0;max-width:700px;line-height:1.6;text-wrap:pretty;">The mature chat-style feed is inverted (newest at the bottom) and stays. But at 1–~8 items the inverted list <b style="color:#F4A261;font-weight:600;">pins two events to the bottom of a blank screen</b> — reads as a bug. Both options anchor sparse content at the top and fill the void with purpose; they differ in how warm the two lonely items feel.</p>
+    </div>
+
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-bottom:40px;">
+
+      <!-- 2c zero -->
+      <div id="2c" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#3D5C48;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">2c</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Zero — the invite</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:72px;">Nothing has happened yet. A centered welcome names what will appear here and invites the first message. Input stays reachable.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px;display:flex;align-items:center;gap:11px;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0;">Aktivitet</h3></div>
+          <div style="display:flex;flex-direction:column;height:472px;background:#F7F9F8;">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;">
+              <div style="width:72px;height:72px;border-radius:22px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;margin-bottom:18px;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+              <h4 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:20px;color:#1A2E1F;margin:0 0 8px;letter-spacing:-.01em;">Sig hej til hinanden</h4>
+              <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:#6B8F7A;margin:0;line-height:1.55;max-width:230px;">Her samles alt hvad der sker i jeres gruppe — ture, tankninger, betalinger og beskeder.</p>
+            </div>
+            <div style="padding:12px 14px;flex-shrink:0;"><div style="background:#fff;border-radius:13px;padding:10px 13px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;"><span style="flex:1;font-family:'Inter',sans-serif;font-size:13px;color:#C0CCC5;">Skriv en besked…</span><div style="width:32px;height:32px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2a sparse upright + welcome header -->
+      <div id="2a" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">2a</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Sparse — header fills the void</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:72px;">Upright, top-anchored. A slim welcome header holds the top with purpose; the two events keep their normal card language and sit right under the day divider. No dead space above.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px;display:flex;align-items:center;gap:11px;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0;">Aktivitet</h3></div>
+          <div style="display:flex;flex-direction:column;height:472px;background:#F7F9F8;">
+            <div style="flex:1;overflow:hidden;padding:14px 14px 0;display:flex;flex-direction:column;gap:0;">
+              <!-- welcome header block -->
+              <div style="background:#D8F3DC;border-radius:15px;padding:14px;display:flex;gap:11px;align-items:flex-start;margin-bottom:16px;">
+                <div style="width:34px;height:34px;border-radius:10px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg></div>
+                <div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#1A2E1F;margin-bottom:2px;">Her samles alt hvad der sker</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#2D6A4F;line-height:1.45;">Ture, tankninger, betalinger og jeres beskeder — nyeste nederst.</div></div>
+              </div>
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding-bottom:9px;">I dag</div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="background:#fff;border-radius:13px;padding:11px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;">
+                  <div style="width:34px;height:34px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;color:#fff;flex-shrink:0;">DI</div>
+                  <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#1A2E1F;"><b style="font-weight:600;">Dianna</b> loggede en tur</div><div style="font-family:'Courier New',monospace;font-size:10px;color:#6B8F7A;margin-top:2px;">89 km · 44,00 kr</div></div>
+                  <span style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;">2t</span>
+                </div>
+                <div style="background:#FEF3E0;border:1px solid #F6D9BC;border-radius:13px;padding:12px;">
+                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                    <div style="width:34px;height:34px;border-radius:50%;background:#F4A261;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1A2E1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+                    <div style="flex:1;min-width:0;"><div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#1A2E1F;"><b style="font-weight:600;">Sara</b> anmodede om betaling</div><div style="font-family:'Inter',sans-serif;font-size:10px;color:#A0522D;margin-top:1px;">4t siden</div></div>
+                    <span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#1A2E1F;">100,00 kr</span>
+                  </div>
+                  <button style="width:100%;height:38px;background:#2D6A4F;border:none;border-radius:10px;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">Betal 100,00 kr <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+                </div>
+              </div>
+            </div>
+            <div style="padding:12px 14px;flex-shrink:0;"><div style="background:#fff;border-radius:13px;padding:10px 13px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;"><span style="flex:1;font-family:'Inter',sans-serif;font-size:13px;color:#C0CCC5;">Skriv en besked…</span><div style="width:32px;height:32px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2b sparse chat-first warmth -->
+      <div id="2b" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">2b</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Sparse — chat-first warmth</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:72px;">A GoVehlo intro bubble opens the thread, and lonely system events adopt the chat rhythm (avatar + inline row) so two items read as a living conversation, not floating cards. The money card keeps its amber action.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px;display:flex;align-items:center;gap:11px;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0;">Aktivitet</h3></div>
+          <div style="display:flex;flex-direction:column;height:472px;background:#F7F9F8;">
+            <div style="flex:1;overflow:hidden;padding:14px 14px 0;display:flex;flex-direction:column;">
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;padding-bottom:12px;text-align:center;">I dag</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <!-- intro bubble -->
+                <div style="display:flex;gap:8px;align-items:flex-end;">
+                  <div style="width:26px;height:26px;border-radius:50%;background:#1A2E1F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7EE0AB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div>
+                  <div style="background:#fff;border-radius:14px 14px 14px 4px;padding:10px 13px;box-shadow:0 1px 3px rgba(26,46,31,.06);max-width:230px;"><div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#1A2E1F;line-height:1.45;">Velkommen! Her samles ture, tankninger, betalinger og beskeder. Skriv løs 👋</div><div style="font-family:'Inter',sans-serif;font-size:9.5px;color:#6B8F7A;margin-top:4px;">GoVehlo</div></div>
+                </div>
+                <!-- system event as chat entry -->
+                <div style="display:flex;gap:8px;align-items:flex-end;">
+                  <div style="width:26px;height:26px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:9px;color:#fff;flex-shrink:0;">DI</div>
+                  <div style="background:#fff;border-radius:14px 14px 14px 4px;padding:9px 13px;box-shadow:0 1px 3px rgba(26,46,31,.06);max-width:230px;display:flex;align-items:center;gap:9px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg>
+                    <div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#1A2E1F;"><b style="font-weight:600;">Dianna</b> loggede 89 km</div><div style="font-family:'Courier New',monospace;font-size:9.5px;color:#6B8F7A;margin-top:1px;">44,00 kr · 11.02</div></div>
+                  </div>
+                </div>
+                <!-- payment request keeps amber action -->
+                <div style="display:flex;gap:8px;align-items:flex-end;">
+                  <div style="width:26px;height:26px;border-radius:50%;background:#52B788;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:9px;color:#fff;flex-shrink:0;">SA</div>
+                  <div style="background:#FEF3E0;border:1px solid #F6D9BC;border-radius:14px 14px 14px 4px;padding:11px 13px;max-width:236px;">
+                    <div style="font-family:'Inter',sans-serif;font-size:12px;color:#1A2E1F;margin-bottom:2px;"><b style="font-weight:600;">Sara</b> anmodede om <b style="font-weight:700;color:#B4610F;">100,00 kr</b></div>
+                    <div style="font-family:'Inter',sans-serif;font-size:10px;color:#A0522D;margin-bottom:9px;">for benzin · 11.20</div>
+                    <button style="width:100%;height:36px;background:#2D6A4F;border:none;border-radius:9px;font-family:'Nunito',sans-serif;font-weight:700;font-size:12.5px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">Betal 100,00 kr <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:12px 14px;flex-shrink:0;"><div style="background:#fff;border-radius:13px;padding:10px 13px;box-shadow:0 1px 3px rgba(26,46,31,.07);display:flex;align-items:center;gap:10px;"><span style="flex:1;font-family:'Inter',sans-serif;font-size:13px;color:#C0CCC5;">Skriv en besked…</span><div style="width:32px;height:32px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- switch spec table -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:24px 26px;max-width:940px;">
+      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-bottom:4px;">Capacity states & the flip</div>
+      <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.5);margin:0 0 18px;">The layout mode is driven by measured content height vs the scroll viewport — never by a raw item count.</p>
+      <div style="display:grid;grid-template-columns:0.9fr 1.5fr 1.5fr 1.2fr;gap:0;font-family:'Inter',sans-serif;font-size:12.5px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">State</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Enter when</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Layout</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Scroll anchor</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Zero</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);font-family:'Courier New',monospace;font-size:11.5px;">items.length === 0</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Centered welcome hero + input</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">— (no scroll)</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Sparse</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);font-family:'Courier New',monospace;font-size:11.5px;">content.scrollHeight ≤ viewport.clientHeight</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Upright, welcome header on top, items grow downward</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Top (<code style="font-family:'Courier New',monospace;">flex-start</code>)</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Full</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);font-family:'Courier New',monospace;font-size:11.5px;">content.scrollHeight &gt; viewport.clientHeight</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Inverted, newest at bottom, older faded (unchanged)</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Bottom (pinned)</div>
+      </div>
+      <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin:14px 0 0;line-height:1.55;">The flip · Re-measure after mount and after every append (<code style="font-family:'Courier New',monospace;color:rgba(255,255,255,.6);">ResizeObserver</code> on the content wrapper). Sparse is already top-anchored, so the newest item sits at the fold; when it first overflows, switch to bottom-pinned in the same frame and set <code style="font-family:'Courier New',monospace;color:rgba(255,255,255,.6);">scrollTop = scrollHeight</code> — the last card doesn't move, so there is no visible jump. Add a small hysteresis (~24px) so a card hovering exactly at the threshold can't flicker between modes.</p>
+    </div>
+
+  </section>
+
+  <!-- ============ BRIEF 03 — BILPROFIL ============ -->
+  <section id="brief3" data-screen-label="Brief 03 — Bilprofil" style="max-width:1200px;margin:80px auto 0;">
+        <!-- Section header -->
+    <div style="margin-bottom:30px;">
+      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;">Brief 03 — Bilprofil</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:27px;color:#fff;margin:0 0 10px;letter-spacing:-.01em;">Make the front door honest</h2>
+      <p style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);margin:0;max-width:700px;line-height:1.6;text-wrap:pretty;">A <b style="color:#fff;font-weight:600;">gear</b> icon labelled <b style="color:#fff;font-weight:600;">"Indstillinger"</b> opens a screen titled <b style="color:#F4A261;font-weight:600;">"Bilprofil"</b> that leads with a car card. Icon, label and title must agree. The fix is an IA split — three directions below.</p>
+    </div>
+
+    <!-- Navigation map -->
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.1em;text-transform:uppercase;margin-bottom:18px;">Navigation map</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:44px;">
+      <!-- before -->
+      <div style="flex:1;min-width:340px;background:rgba(196,66,54,.06);border:1px solid rgba(196,66,54,.28);border-radius:16px;padding:20px 22px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;"><span style="width:8px;height:8px;border-radius:50%;background:#C0392B;"></span><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;color:#E8907F;">I dag — brudt</span></div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;"><div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.55);">"Indstillinger"</span></div>
+          <svg width="26" height="14" viewBox="0 0 26 14" fill="none" stroke="#C0392B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="7" x2="22" y2="7"></line><polyline points="16 2 23 7 16 12"></polyline></svg>
+          <div style="background:rgba(255,255,255,.06);border:1px dashed rgba(196,66,54,.5);border-radius:10px;padding:10px 14px;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;">Titel: "Bilprofil"</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#E8907F;margin-top:2px;">leads with a car card + odometer</div></div>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.5);margin:16px 0 0;line-height:1.5;">Gear + a11y label say "settings"; the destination is a car profile. "Log ud" hides under "car profile"; in a car-less workspace the gear opens the add-car empty state, so settings vanish entirely.</p>
+      </div>
+      <!-- after -->
+      <div style="flex:1;min-width:340px;background:rgba(82,183,136,.06);border:1px solid rgba(82,183,136,.3);border-radius:16px;padding:20px 22px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;"><span style="width:8px;height:8px;border-radius:50%;background:#52B788;"></span><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;color:#7EE0AB;">Foreslået — 3c</span></div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;"><div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.55);">"Indstillinger"</span></div>
+            <svg width="26" height="14" viewBox="0 0 26 14" fill="none" stroke="#52B788" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="7" x2="22" y2="7"></line><polyline points="16 2 23 7 16 12"></polyline></svg>
+            <div style="background:rgba(82,183,136,.12);border:1px solid rgba(82,183,136,.4);border-radius:10px;padding:10px 14px;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;">Titel: "Indstillinger"</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#7EE0AB;margin-top:2px;">scoped: Denne bil · Din konto</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;"><div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div><span style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.55);">Bil-banner</span></div>
+            <svg width="26" height="14" viewBox="0 0 26 14" fill="none" stroke="#52B788" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="7" x2="22" y2="7"></line><polyline points="16 2 23 7 16 12"></polyline></svg>
+            <div style="background:rgba(82,183,136,.12);border:1px solid rgba(82,183,136,.4);border-radius:10px;padding:10px 14px;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;color:#fff;">Titel: "Bilen"</div><div style="font-family:'Inter',sans-serif;font-size:11px;color:#7EE0AB;margin-top:2px;">odometer, stats, Bilen/Afregning/Gruppe</div></div>
+          </div>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.5);margin:16px 0 0;line-height:1.5;">Icon, label and title agree. The car has a natural home reachable from its Home banner; the gear is always settings — it survives a car-less workspace.</p>
+      </div>
+    </div>
+
+    <!-- three hub options -->
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.1em;text-transform:uppercase;margin-bottom:18px;">The hub screen · three directions</div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-bottom:40px;">
+
+      <!-- 3a Direction A -->
+      <div id="3a" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">3a</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">A — two destinations</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:72px;">Cleanest mental model. Gear opens pure settings (app + account); the car lives entirely at "Bilen", reached from its Home banner. Costs one extra entry point.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px;display:flex;align-items:center;gap:11px;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0;">Indstillinger</h3></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:16px;background:#F7F9F8;height:472px;overflow:hidden;">
+            <!-- ledger switcher -->
+            <div style="background:#1A2E1F;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;">
+              <div style="width:34px;height:34px;border-radius:9px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div>
+              <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.5);">Aktivt regnskab</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">Johnsens bil</div></div>
+              <span style="font-family:'Inter',sans-serif;font-size:11px;color:#7EE0AB;font-weight:600;">Skift</span>
+            </div>
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">App</div>
+              <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+                <div style="padding:13px 14px;display:flex;align-items:center;gap:11px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Notifikationer</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+                <div style="padding:13px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Data &amp; privatliv</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Konto</div>
+              <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+                <div style="padding:13px 14px;display:flex;align-items:center;gap:11px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">MobilePay-nummer</span><span style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;">50 12 …</span></div>
+                <div style="padding:13px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#2D6A4F;font-weight:600;">Log ud</span></div>
+                <div style="padding:13px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#C0392B;">Slet konto</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3b Direction B -->
+      <div id="3b" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">3b</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">B — one honest hub</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:72px;">Cheapest change: keep one screen, retitle it "Indstillinger", demote the car to the first section. Still two-in-one, but the naming no longer lies.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px;display:flex;align-items:center;gap:11px;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0;">Indstillinger</h3></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:14px;background:#F7F9F8;height:472px;overflow:hidden;">
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Jeres bil</div>
+              <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);padding:12px 14px;display:flex;align-items:center;gap:11px;">
+                <div style="width:36px;height:36px;border-radius:9px;background:#1A2E1F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#D8F3DC" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Johnsen</div><div style="font-family:'Courier New',monospace;font-size:11px;color:#2D6A4F;letter-spacing:.05em;">BK32190 · 96.500 km</div></div>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </div>
+            </div>
+            <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+              <div style="padding:12px 14px;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Afregning</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Gruppe</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+            </div>
+            <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+              <div style="padding:12px 14px;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Notifikationer</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Konto</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#2D6A4F;font-weight:600;">Log ud</span></div>
+            </div>
+            <p style="font-family:'Inter',sans-serif;font-size:10.5px;color:#6B8F7A;line-height:1.5;margin:0;">One flat list mixes per-car (Afregning, Gruppe) and per-account (Konto) settings — honest title, but the scope boundary is still implicit.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3c Direction C recommended -->
+      <div id="3c" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:#52B788;color:#08321E;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">3c</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">C — scoped hub</span>
+          <span style="background:rgba(82,183,136,.18);color:#7EE0AB;font-family:'Inter',sans-serif;font-weight:700;font-size:10px;padding:2px 8px;border-radius:6px;letter-spacing:.04em;">ANBEFALET</span>
+        </div>
+        <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.55);line-height:1.5;margin:0 0 14px;min-height:72px;">Honest title, and the workspace/account split is made explicit with two labelled groups. Ledger switcher sits on top; the car deep-links to the full "Bilen" profile.</p>
+        <div style="width:300px;border-radius:38px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 2px rgba(82,183,136,.5);display:flex;flex-direction:column;">
+          <div style="height:32px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#fff;">9:41</span><span style="width:15px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;"></span></div>
+          <div style="background:#2D6A4F;padding:12px 14px;display:flex;align-items:center;gap:11px;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#fff;margin:0;">Indstillinger</h3></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:14px;background:#F7F9F8;height:472px;overflow:hidden;">
+            <!-- ledger switcher -->
+            <div style="background:#1A2E1F;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;">
+              <div style="width:32px;height:32px;border-radius:9px;background:#2D6A4F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div>
+              <div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.5);">Aktivt regnskab</div><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">Johnsens bil</div></div>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7EE0AB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Denne bil</div>
+              <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+                <div style="padding:12px 14px;display:flex;align-items:center;gap:11px;"><div style="width:30px;height:30px;border-radius:8px;background:#1A2E1F;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D8F3DC" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-4h10l2 4h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="17.5" r="2.5"></circle></svg></div><div style="flex:1;"><div style="font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;font-weight:600;">Bilen</div><div style="font-family:'Courier New',monospace;font-size:9.5px;color:#6B8F7A;">BK32190 · 96.500 km</div></div><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+                <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Afregning</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+                <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Gruppe</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#6B8F7A;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Din konto</div>
+              <div style="background:#fff;border-radius:13px;box-shadow:0 1px 3px rgba(26,46,31,.06);overflow:hidden;">
+                <div style="padding:12px 14px;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Notifikationer</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+                <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;">Konto &amp; MobilePay</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+                <div style="padding:12px 14px;border-top:1px solid #EEF3F0;display:flex;align-items:center;gap:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#2D6A4F;font-weight:600;">Log ud</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- decision table -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:24px 26px;max-width:940px;">
+      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-bottom:4px;">Front-door decision table</div>
+      <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.5);margin:0 0 18px;">Every state keeps icon, a11y label and destination title in agreement. Recommended: <b style="color:#7EE0AB;font-weight:600;">3c</b>.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1.1fr 1.5fr;gap:0;font-family:'Inter',sans-serif;font-size:12.5px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Entry</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">a11y label</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Destination title</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Contains</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Gear (header)</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">"Indstillinger"</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">"Indstillinger"</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Ledger switcher · Denne bil (Bilen · Afregning · Gruppe) · Din konto (Notifikationer · Konto · Log ud · Slet)</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Car banner (Home)</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">"Åbn bilen"</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">"Bilen"</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Car card · odometer · stats (Ture · Tankninger · Brændstof) · Bilen/Afregning/Gruppe sub-pages</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Car-less workspace</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">gear: "Indstillinger"</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">"Indstillinger" (unchanged)</div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Gear still opens settings. "Denne bil" group collapses to a single "Tilføj din bil" row → add-car flow. Settings never disappear.</div>
+      </div>
+      <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin:14px 0 0;line-height:1.55;">Scope · Workspace-scoped items (Afregning, Gruppe, the car) sit under the active ledger shown by the switcher; account-scoped items (Notifikationer, Konto) are the same across every ledger. Multi-workspace users switch ledgers from the top card, which stays reachable in every state — including car-less.</p>
+    </div>
+
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>
