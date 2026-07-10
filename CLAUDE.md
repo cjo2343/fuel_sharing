@@ -1,31 +1,29 @@
-# GoVehlo — Fuel Sharing Ledger (legacy repo)
+# GoVehlo — platform repo (shared schema + design source of truth)
 
 Shared-car fuel tracking and cost splitting for small groups in Denmark.
 
-## ⚠️ Repo status: runtime retired
+## Repo status: platform repo
 
-The web app in this repo is **no longer deployed anywhere**. Render hosting was
-decommissioned (GV-103) and the PWA's service worker is kill-switched from govehlo-web.
-The live products are:
+This repo is **not a deployed application**. It is the platform backbone the two
+live GoVehlo products share — both run on **one shared Supabase database**, and this
+repo is the single source of truth for its schema and for the canonical design system.
 
 - **govehlo-mobile** — the React Native app (App Store target)
 - **govehlo-web** — Cloudflare Pages: landing page, admin console (admin.vehloshare.app), `/api/*` Functions
 
-What this repo is still **load-bearing** for:
+What this repo is **load-bearing** for:
 
 | Asset | Role |
 |---|---|
 | `supabase/migrations/` | **Single source of truth for the shared Supabase schema** — both live products run on this database |
 | `supabase-schema.sql` | Consolidated fresh-install schema (must mirror every migration) |
-| `tools/test-migrations.mjs`, `tools/test-sql-ambiguity-guard.mjs` | CI guards for the above |
-| `design_handoff_govehlo_v1/` | Design-system source of truth (referenced by both live repos) |
+| `tools/` | CI guards: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `test-functional-smoke.sh` |
+| `design_handoff_*/`, `design_briefs_*/` | Design-system source of truth (referenced by both live repos) |
 | `Design/` | Brand source assets (icon SVG, brand guidelines) |
+| `RENAME-VEHLOSHARE-RUNBOOK.md` | Active GoVehlo → VehloShare rename runbook |
 
-Everything else (`app.js`, `server.py`, the PWA files, most of `tools/`) is **frozen
-legacy code**. Do not extend it, "fix" it, or spend effort on its 140-test validation
-suite beyond keeping `npm run validate` green when you touch migrations. It remains
-useful only as a reference implementation (e.g. `settlement-calculations.js` is the
-tested original of the mobile app's `settlement-calc.ts`).
+There is no runtime, build step, or app code to extend here. The only work is
+migrations, the schema mirror, design tokens, and the CI guards that protect them.
 
 ## Database migrations — the contract
 
@@ -50,8 +48,14 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
 Use the `/new-migration` skill — it scaffolds all of this.
 
 ```sh
-npm run validate       # migration + module checks — run before every commit
+npm run validate                 # fast: migration guard + SQL ambiguity guard + token drift (run before every commit)
+npm run check:schema-equivalence # Docker: replays migrations vs consolidated schema and diffs
+npm run test:functional-smoke    # Docker: runs delete_my_account / push-token RPCs and asserts scrubs
 ```
+
+`npm run validate` is dependency-free (three Node checks, no Python or Docker). It
+runs in CI and, if you enable the hook with `npm run hooks:install`, on every push.
+The two Docker-backed checks run as their own CI jobs.
 
 ## Design system (v1)
 
@@ -101,12 +105,10 @@ Source of truth: `design_handoff_govehlo_v1/design-system/`
   **GVM** (mobile). Use the `/ship` skill for the PR + Jira mechanics.
 - `gh` must run as `env -u GH_TOKEN -u GITHUB_TOKEN gh …`.
 
-## Legacy runtime (frozen — reference only)
+## Legacy runtime (archived at a tag)
 
-Vanilla JS modules (no framework/build step) + Python `server.py`; formerly Render-hosted
-PWA. `app.js` (22k lines) was mid-modularization: `workspace-session.js`,
-`render-api-client.js` extracted; helpers `settlement-calculations.js`,
-`permission-helpers.js`, `fuel-price-helpers.js`, `audit-log.js`, `booking-calendar.js`,
-`trip-actions.js`, `trip-rendering.js`, `fuel-rendering.js`. Runs locally via
-`npm start` (→ http://localhost:4175/) with data in `ledger-data.json` if you ever need
-to compare behavior against the original.
+The retired legacy PWA runtime (`app.js`, `server.py`, the PWA files, and the
+~140-test legacy validation suite) was removed from `main` in GV-266 and archived at
+the git tag **`legacy-runtime-final`**. `git checkout legacy-runtime-final` if you ever
+need the original reference implementation — e.g. `settlement-calculations.js`, the
+tested original of the mobile app's `settlement-calc.ts`.
