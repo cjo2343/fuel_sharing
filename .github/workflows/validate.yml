@@ -47,6 +47,29 @@ jobs:
       - name: Verify schema equivalence
         run: node tools/check-schema-equivalence.mjs
 
+  role-matrix:
+    name: RLS role-matrix behavioral suite (GV-248)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Replays supabase-schema.sql into a disposable Postgres 15 with a
+      # Supabase-faithful prelude (anon/authenticated/service_role, default
+      # privileges, auth.jwt()), builds a debtor->creditor fixture through the
+      # real RPCs, then runs every financial transition as REAL role/actor
+      # combinations and asserts allow/deny + resulting state. Catches
+      # behavioural holes (GV-259 cancel sweep, GV-260 amount mismatch) that the
+      # structural schema-equivalence check cannot see.
+      - name: Run role-matrix suite
+        run: npm run check:role-matrix
+
   functional-smoke:
     name: Delete-account/push functional smoke (GV-180)
     runs-on: ubuntu-latest
