@@ -19433,3 +19433,219 @@ values ('101_reassignment_and_close_invariants',
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- Migration 102: reminder claim-lease + confirm-after-send (GV-254)
+-- Mirror of supabase/migrations/102_reminder_claim_confirm.sql (function
+-- bodies byte-identical for the GV-175 equivalence check).
+-- ══════════════════════════════════════════════════════════════════════════
+
+alter table public.settlement_requests add column if not exists reminder_claimed_at timestamptz;
+alter table public.settlement_periods add column if not exists close_reminder_claimed_at timestamptz;
+
+-- ── claim_due_close_reminders: lease-claim only (event moves to confirm) ────────────
+create or replace function public.claim_due_close_reminders(
+  batch_limit integer default 200
+)
+returns table (period_id uuid, ledger_id text, label text, admin_emails text[])
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  with target as (
+    select sp.id
+    from public.settlement_periods sp
+    join public.ledgers l on l.id = sp.ledger_id
+    where sp.status = 'open'
+      and l.close_reminder_enabled = true
+      and sp.opened_at <= now() - interval '30 days'
+      and (sp.close_reminder_claimed_at is null
+           or sp.close_reminder_claimed_at <= now() - interval '15 minutes')
+      and (sp.last_close_reminder_at is null
+           or sp.last_close_reminder_at <= now() - interval '7 days')
+    order by sp.opened_at
+    limit greatest(coalesce(batch_limit, 200), 0)
+    for update of sp skip locked
+  ),
+  claimed as (
+    update public.settlement_periods sp
+    set close_reminder_claimed_at = now(),
+        updated_at = now()
+    from target t
+    where sp.id = t.id
+    returning sp.id as period_id, sp.ledger_id as ledger_id, sp.label as label
+  )
+  select c.period_id,
+         c.ledger_id,
+         c.label,
+         coalesce(
+           array_agg(lower(lm.email)) filter (where lm.email is not null),
+           array[]::text[]
+         ) as admin_emails
+  from claimed c
+  left join public.ledger_members lm
+    on lm.ledger_id = c.ledger_id
+   and lm.role = 'admin'
+   and lm.is_active = true
+   and lm.email is not null
+  group by c.period_id, c.ledger_id, c.label;
+end;
+$$;
+
+revoke all on function public.claim_due_close_reminders(integer) from public;
+revoke all on function public.claim_due_close_reminders(integer) from anon;
+revoke all on function public.claim_due_close_reminders(integer) from authenticated;
+grant execute on function public.claim_due_close_reminders(integer) to service_role;
+
+-- ── claim_due_payment_reminders: lease-claim only (event moves to confirm) ──────────
+create or replace function public.claim_due_payment_reminders(
+  batch_limit integer default 200
+)
+returns table (request_id uuid, ledger_id text, debtor_email text, creditor_name text, amount numeric)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  with target as (
+    select sr.id
+    from public.settlement_requests sr
+    join public.ledger_members debtor on debtor.id = sr.from_member_id
+    where sr.status = 'requested'
+      and sr.reminder_count < 3
+      and debtor.is_active = true
+      and debtor.email is not null
+      and (sr.reminder_claimed_at is null
+           or sr.reminder_claimed_at <= now() - interval '15 minutes')
+      and (
+        (sr.reminder_count = 0
+          and sr.requested_at is not null
+          and sr.requested_at <= now() - interval '3 days')
+        or (sr.reminder_count between 1 and 2
+          and sr.last_reminder_at is not null
+          and sr.last_reminder_at <= now() - interval '7 days')
+      )
+    order by sr.requested_at
+    limit greatest(coalesce(batch_limit, 200), 0)
+    for update of sr skip locked
+  ),
+  claimed as (
+    update public.settlement_requests sr
+    set reminder_claimed_at = now(),
+        updated_at = now()
+    from target t
+    where sr.id = t.id
+    returning sr.id as request_id,
+              sr.ledger_id as ledger_id,
+              sr.from_member_id as debtor_id,
+              sr.to_member_id as creditor_id,
+              sr.amount as amount
+  )
+  select c.request_id,
+         c.ledger_id,
+         lower(debtor.email) as debtor_email,
+         creditor.name as creditor_name,
+         c.amount
+  from claimed c
+  left join public.ledger_members debtor on debtor.id = c.debtor_id
+  left join public.ledger_members creditor on creditor.id = c.creditor_id;
+end;
+$$;
+
+revoke all on function public.claim_due_payment_reminders(integer) from public;
+revoke all on function public.claim_due_payment_reminders(integer) from anon;
+revoke all on function public.claim_due_payment_reminders(integer) from authenticated;
+grant execute on function public.claim_due_payment_reminders(integer) to service_role;
+
+-- ── confirm_close_reminders: advance cadence + log event after a successful send ────
+create or replace function public.confirm_close_reminders(period_ids uuid[])
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  with confirmed as (
+    update public.settlement_periods sp
+    set last_close_reminder_at = now(),
+        close_reminder_claimed_at = null,
+        updated_at = now()
+    where sp.id = any(period_ids)
+      and sp.close_reminder_claimed_at is not null
+    returning sp.id as period_id, sp.ledger_id as ledger_id, sp.label as label
+  ),
+  logged as (
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    )
+    select c.ledger_id, 'close_reminder_sent', 'Lukkepåmindelse sendt', '',
+           null, null,
+           jsonb_build_object(
+             'period_id', c.period_id,
+             'label', c.label
+           )
+    from confirmed c
+    returning 1
+  )
+  select count(*)::integer from confirmed;
+$$;
+
+revoke all on function public.confirm_close_reminders(uuid[]) from public;
+revoke all on function public.confirm_close_reminders(uuid[]) from anon;
+revoke all on function public.confirm_close_reminders(uuid[]) from authenticated;
+grant execute on function public.confirm_close_reminders(uuid[]) to service_role;
+
+-- ── confirm_payment_reminders: advance cadence + log event after a successful send ──
+create or replace function public.confirm_payment_reminders(request_ids uuid[])
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  with confirmed as (
+    update public.settlement_requests sr
+    set reminder_count = sr.reminder_count + 1,
+        last_reminder_at = now(),
+        reminder_claimed_at = null,
+        updated_at = now()
+    where sr.id = any(request_ids)
+      and sr.reminder_claimed_at is not null
+    returning sr.id as request_id,
+              sr.ledger_id as ledger_id,
+              sr.from_member_id as debtor_id,
+              sr.to_member_id as creditor_id,
+              sr.amount as amount,
+              sr.reminder_count as reminder_count
+  ),
+  logged as (
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    )
+    select c.ledger_id, 'payment_reminder_sent', 'Betalingspåmindelse sendt', '',
+           null, null,
+           jsonb_build_object(
+             'settlement_request_id', c.request_id,
+             'from_member_id', c.debtor_id,
+             'to_member_id', c.creditor_id,
+             'amount', c.amount,
+             'reminder_count', c.reminder_count
+           )
+    from confirmed c
+    returning 1
+  )
+  select count(*)::integer from confirmed;
+$$;
+
+revoke all on function public.confirm_payment_reminders(uuid[]) from public;
+revoke all on function public.confirm_payment_reminders(uuid[]) from anon;
+revoke all on function public.confirm_payment_reminders(uuid[]) from authenticated;
+grant execute on function public.confirm_payment_reminders(uuid[]) to service_role;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values ('102_reminder_claim_confirm',
+        'Reminder delivery two-phase claim lease (GV-254): claim_due_payment_reminders / claim_due_close_reminders re-declared off 091 to only stamp a *_claimed_at lease (15-min expiry) instead of advancing cadence counters or logging events, so a failed Expo send no longer burns a reminder slot or delays the next close nudge. New service_role-only confirm_payment_reminders(uuid[]) / confirm_close_reminders(uuid[]) advance the counters + insert the payment_reminder_sent / close_reminder_sent ledger_events row, called by the web hooks only after a successful send. At-least-once (rare duplicate on a confirm-call failure) over at-most-once. Return shapes unchanged.')
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();

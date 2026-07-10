@@ -111,6 +111,7 @@ const expected = [
   "099_rls_security_fixes.sql",
   "100_fix_rate_limit_ambiguity.sql",
   "101_reassignment_and_close_invariants.sql",
+  "102_reminder_claim_confirm.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
