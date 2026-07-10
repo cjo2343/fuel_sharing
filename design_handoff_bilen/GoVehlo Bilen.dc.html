@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <style>
+    html, body { margin:0; padding:0; background:#0F1C15; }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.14); border-radius:6px; }
+    a { color:#7EE0AB; } a:hover { color:#A8ECC6; }
+  </style>
+  <template id="__bundler_thumbnail">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#1A2E1F"/><path d="M20 62 C40 30 52 30 60 55 C66 74 76 74 82 60" stroke="#D8F3DC" stroke-width="9" stroke-linecap="round" fill="none"/><circle cx="60" cy="55" r="6" fill="#F4A261"/></svg>
+  </template>
+</helmet>
+
+<div style="min-height:100vh;background:radial-gradient(120% 90% at 50% 0%, #17291D 0%, #0F1C15 60%);font-family:'Inter',sans-serif;padding:44px 40px 120px;box-sizing:border-box;">
+
+  <div style="max-width:1240px;margin:0 auto 8px;">
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px;">GoVehlo · Bilen — car details redesign</div>
+    <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:38px;color:#fff;margin:0 0 12px;letter-spacing:-.02em;line-height:1.05;">Fra registret → færdig bilprofil</h1>
+    <p style="font-family:'Inter',sans-serif;font-size:15px;color:rgba(255,255,255,.62);margin:0;max-width:680px;line-height:1.6;text-wrap:pretty;">The raw detail page becomes a guided profile: what the nummerplade lookup filled is clearly marked <b style="color:#7EE0AB;font-weight:600;">Fra registret</b>, and the four things only the owner can know are surfaced as <b style="color:#fff;font-weight:600;">needs-input</b> tasks — tankstørrelse, forsikringsdetaljer, ejerafgift som fast udgift, and tankstatus. The chosen layout is the <b style="color:#fff;font-weight:600;">split-tracks</b> design (B1 after lookup, B2 complete), with the four edit sheets below.</p>
+  </div>
+
+  <section id="dirA" data-screen-label="Direction A (archived)" style="display:none;">
+        <div style="margin-bottom:28px;">
+      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;">Direction A — guided completion</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;color:#fff;margin:0 0 10px;letter-spacing:-.01em;">One scroll, guided by a completion card</h2>
+      <p style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);margin:0;max-width:700px;line-height:1.6;text-wrap:pretty;">A completion card leads the screen and lists exactly what's missing; every section below carries a <b style="color:#7EE0AB;font-weight:600;">Fra registret</b> / <b style="color:#fff;font-weight:600;">Tilføjet af dig</b> tag, and unfilled fields become a forest "Angiv/Tilføj" row in place. When everything's done the card flips to the calm green status.</p>
+    </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- A1 after lookup -->
+      <div id="A1" style="width:320px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">A1</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Lige efter opslag</span>
+        </div>
+        <div style="width:320px;border-radius:40px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:34px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#fff;">9.41</span><div style="display:flex;gap:5px;align-items:center;"><svg width="15" height="10" viewBox="0 0 17 12" fill="#fff"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg><span style="width:16px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;display:inline-block;"></span></div></div>
+          <div style="background:#2D6A4F;padding:12px 16px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#fff;margin:0;">Bilen</h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:18px;background:#F7F9F8;">
+
+            <!-- completion card -->
+            <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+              <div style="display:flex;align-items:center;gap:13px;margin-bottom:14px;">
+                <svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" fill="none" stroke="#EEF3F0" stroke-width="5"></circle><circle cx="23" cy="23" r="19" fill="none" stroke="#52B788" stroke-width="5" stroke-linecap="round" stroke-dasharray="119.4" stroke-dashoffset="68" transform="rotate(-90 23 23)"></circle><text x="23" y="23" dy=".35em" text-anchor="middle" font-family="Nunito,sans-serif" font-weight="800" font-size="13" fill="#1A2E1F">3/7</text></svg>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;letter-spacing:-.01em;">Færdiggør din bilprofil</div><div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#6B8F7A;margin-top:2px;">4 ting mangler, før alt er sat op.</div></div>
+              </div>
+              <button style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 0;border:none;background:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;">
+                <span style="width:22px;height:22px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;"></span>
+                <span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;font-weight:500;">Vælg tankstørrelse</span>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Angiv</span>
+              </button>
+              <button style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 0;border:none;border-top:1px solid #EEF3F0;background:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;">
+                <span style="width:22px;height:22px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;"></span>
+                <span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;font-weight:500;">Tilføj forsikringsdetaljer</span>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Tilføj</span>
+              </button>
+              <button style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 0;border:none;border-top:1px solid #EEF3F0;background:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;">
+                <span style="width:22px;height:22px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;"></span>
+                <span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;font-weight:500;">Opret ejerafgift som fast udgift</span>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Opret</span>
+              </button>
+              <button style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 0;border:none;border-top:1px solid #EEF3F0;background:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;">
+                <span style="width:22px;height:22px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;"></span>
+                <span style="flex:1;font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;font-weight:500;">Angiv tankstatus</span>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Angiv</span>
+              </button>
+            </div>
+
+            <!-- Bildetaljer -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Bildetaljer</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Fra registret</span></div><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;padding:2px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Brændstoftype</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">Benzin</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Forbrug</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">4,8 L/100km</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Mærke/model</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">VW T-Roc</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Årgang</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">2020</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><span style="width:18px;height:18px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;box-sizing:border-box;"></span><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#1A2E1F;font-weight:500;">Tankstørrelse</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Vælg</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></div>
+              </div>
+            </div>
+
+            <!-- Tankstatus needs input -->
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Tankstatus</span></div>
+              <button style="width:100%;background:#fff;border:1.5px dashed #B7D3C3;border-radius:16px;padding:15px;display:flex;align-items:center;gap:13px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;">
+                <div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path><line x1="6" y1="15" x2="9" y2="15"></line></svg></div>
+                <div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Angiv tankstatus</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:2px;line-height:1.4;">Hvor fuld er tanken, og hvad viser km-tælleren nu?</div></div>
+                <span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Angiv</span>
+              </button>
+            </div>
+
+            <!-- Forsikring name only -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Forsikring</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;">Delvist fra registret</span></div><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+                <div style="padding:14px 16px;display:flex;align-items:center;gap:13px;"><div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div><div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Tryg Forsikring A/S</div></div><span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 11px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;">Aktiv</span></div>
+                <button style="width:100%;padding:12px 16px;border:none;border-top:1px solid #EEF3F0;background:#FBFDFC;display:flex;align-items:center;gap:11px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;"><span style="width:18px;height:18px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;box-sizing:border-box;"></span><span style="flex:1;font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;font-weight:500;">Tilføj dækning, fornyelse, præmie &amp; selvrisiko</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+              </div>
+            </div>
+
+            <!-- Ejerafgift not yet recurring -->
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Ejerafgift</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;">Fra registret</span></div>
+              <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+                <div style="padding:14px 16px;display:flex;align-items:center;gap:13px;"><div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h11l5 5v15H4z"></path><path d="M8 7h4M8 11h8M8 15h8"></path></svg></div><div style="flex:1;"><div style="font-family:'Courier New',monospace;font-weight:700;font-size:16px;color:#F4A261;">460 kr halvårligt</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Grøn ejerafgift · fra registret</div></div></div>
+                <button style="width:100%;padding:12px 16px;border:none;border-top:1px solid #EEF3F0;background:#FBFDFC;display:flex;align-items:center;gap:11px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;"><span style="width:18px;height:18px;border-radius:50%;border:2px solid #2D6A4F;flex-shrink:0;box-sizing:border-box;"></span><span style="flex:1;font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;font-weight:500;">Opret som fast udgift</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Opret</span></button>
+              </div>
+            </div>
+
+            <!-- Syn done -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Syn</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;">Fra registret</span></div><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:12px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Næste syn</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">27. jan 2028</span></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- A2 complete -->
+      <div id="A2" style="width:320px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="background:#52B788;color:#08321E;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">A2</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Færdig profil</span>
+        </div>
+        <div style="width:320px;border-radius:40px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:34px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#fff;">9.41</span><div style="display:flex;gap:5px;align-items:center;"><svg width="15" height="10" viewBox="0 0 17 12" fill="#fff"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg><span style="width:16px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;display:inline-block;"></span></div></div>
+          <div style="background:#2D6A4F;padding:12px 16px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#fff;margin:0;">Bilen</h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:18px;background:#F7F9F8;">
+
+            <!-- status -->
+            <div style="background:#fff;border-radius:16px;padding:15px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:12px;"><div style="width:34px;height:34px;border-radius:50%;background:#D1F5E3;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1A7A47" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">Alt er sat op</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;margin-top:1px;">Næste syn 27. jan 2028</div></div></div>
+
+            <!-- Bildetaljer -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Bildetaljer</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Fra registret</span></div><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;padding:2px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Brændstoftype</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">Benzin</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Forbrug</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">4,8 L/100km</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Tankstørrelse</span><span style="display:inline-flex;align-items:center;gap:5px;"><span style="font-family:'Inter',sans-serif;font-size:9.5px;font-weight:600;color:#6B8F7A;background:#EEF3F0;padding:1px 6px;border-radius:5px;">Dig</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">55 L</span></span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Årgang</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">2020</span></div>
+              </div>
+            </div>
+
+            <!-- Tankstatus filled -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Tankstatus</span><span style="display:inline-flex;align-items:center;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;background:#EEF3F0;padding:2px 7px;border-radius:6px;">Tilføjet af dig</span></div><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Opdater</span></div>
+              <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;">Anslået niveau nu</span><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#1A2E1F;">68% · 37 L</span></div>
+                <div style="height:8px;border-radius:4px;background:#EEF3F0;overflow:hidden;margin-bottom:12px;"><div style="width:68%;height:100%;background:#52B788;border-radius:4px;"></div></div>
+                <div style="display:flex;justify-content:space-between;padding-top:11px;border-top:1px solid #EEF3F0;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;">Rækkevidde</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">~770 km</span></div>
+                <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:8px;">Opdateret i dag ved <span style="font-family:'Courier New',monospace;">96.500 km</span></div>
+              </div>
+            </div>
+
+            <!-- Forsikring full -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Forsikring</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+                <div style="padding:14px 16px;display:flex;align-items:center;gap:13px;border-bottom:1px solid #EEF3F0;"><div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div><div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Tryg Forsikring A/S</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Kasko + ansvar</div></div><span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 11px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;">Aktiv</span></div>
+                <div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Fornyelse</div><div style="font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;margin-top:2px;">1. jan 2027</div></div>
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Præmie</div><div style="font-family:'Courier New',monospace;font-size:13.5px;color:#F4A261;font-weight:700;margin-top:2px;">485 kr/md</div></div>
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Selvrisiko</div><div style="font-family:'Courier New',monospace;font-size:13.5px;color:#F4A261;font-weight:700;margin-top:2px;">5.412 kr</div></div>
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Dækning</div><div style="font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;margin-top:2px;">Kasko</div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ejerafgift recurring -->
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Ejerafgift</span></div>
+              <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;align-items:center;gap:13px;margin-bottom:12px;"><div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h11l5 5v15H4z"></path><path d="M8 7h4M8 11h8M8 15h8"></path></svg></div><div style="flex:1;"><div style="font-family:'Courier New',monospace;font-weight:700;font-size:16px;color:#F4A261;">460 kr halvårligt</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Grøn ejerafgift · fra registret</div></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:11px;border-top:1px solid #EEF3F0;"><span style="display:flex;align-items:center;gap:7px;font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg>Næste betaling</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">12. juli 2026</span></div>
+                <div style="display:flex;align-items:center;gap:7px;margin-top:10px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span style="font-family:'Inter',sans-serif;font-size:12.5px;color:#2D6A4F;font-weight:600;">Oprettet som fast udgift</span></div>
+              </div>
+            </div>
+
+            <!-- Syn -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Syn</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;">Fra registret</span></div><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:12px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Næste syn</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">27. jan 2028</span></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <section id="dirB" data-screen-label="Direction B — split tracks" style="max-width:1240px;margin:80px auto 0;">
+        <div style="margin-bottom:28px;">
+      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;">Bilen — chosen design (split tracks)</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;color:#fff;margin:0 0 10px;letter-spacing:-.01em;">Two tracks: review the auto data, do your part</h2>
+      <p style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);margin:0;max-width:700px;line-height:1.6;text-wrap:pretty;">A two-track band splits the profile into <b style="color:#7EE0AB;font-weight:600;">Fra registret</b> (already done, trust it) and <b style="color:#fff;font-weight:600;">Skal udfyldes</b> (your job). All the work lives in one "Skal udfyldes af dig" card up top; the sections below stay calm — empty fields read "Ikke angivet" rather than shouting a CTA in every section.</p>
+    </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- B1 after lookup -->
+      <div id="B1" style="width:320px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="background:#2D6A4F;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">B1</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Lige efter opslag</span>
+        </div>
+        <div style="width:320px;border-radius:40px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:34px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#fff;">9.41</span><div style="display:flex;gap:5px;align-items:center;"><svg width="15" height="10" viewBox="0 0 17 12" fill="#fff"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg><span style="width:16px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;display:inline-block;"></span></div></div>
+          <div style="background:#2D6A4F;padding:12px 16px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#fff;margin:0;">Bilen</h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:18px;background:#F7F9F8;">
+
+            <!-- two-track band -->
+            <div style="display:flex;gap:10px;">
+              <div style="flex:1;background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);"><div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;">Fra registret</span></div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;">3 felter</div></div>
+              <div style="flex:1;background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);border:1.5px solid #2D6A4F;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;"><span style="width:13px;height:13px;border-radius:50%;border:2px solid #2D6A4F;box-sizing:border-box;flex-shrink:0;"></span><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;">Skal udfyldes</span></div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;">4 mangler</div></div>
+            </div>
+
+            <!-- Skal udfyldes card -->
+            <div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;margin-bottom:9px;">Skal udfyldes af dig</div>
+              <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+                <button style="width:100%;padding:13px 15px;border:none;background:none;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;"><div style="width:36px;height:36px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path></svg></div><div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13.5px;color:#1A2E1F;">Vælg tankstørrelse</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Vi kan ikke slå den præcise størrelse op.</div></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                <button style="width:100%;padding:13px 15px;border:none;border-top:1px solid #EEF3F0;background:none;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;"><div style="width:36px;height:36px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div><div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13.5px;color:#1A2E1F;">Tilføj forsikringsdetaljer</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Dækning, fornyelse, præmie, selvrisiko.</div></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                <button style="width:100%;padding:13px 15px;border:none;border-top:1px solid #EEF3F0;background:none;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;"><div style="width:36px;height:36px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h11l5 5v15H4z"></path><path d="M8 7h4M8 11h8M8 15h8"></path></svg></div><div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13.5px;color:#1A2E1F;">Opret ejerafgift som fast udgift</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">460 kr halvårligt fra registret.</div></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                <button style="width:100%;padding:13px 15px;border:none;border-top:1px solid #EEF3F0;background:none;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;"><div style="width:36px;height:36px;border-radius:10px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path><line x1="6" y1="15" x2="9" y2="15"></line></svg></div><div style="flex:1;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:13.5px;color:#1A2E1F;">Angiv tankstatus</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Benzin i tanken nu + km-tæller.</div></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+              </div>
+            </div>
+
+            <!-- Fra registret group -->
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Fra registret</span><span style="display:inline-flex;align-items:center;gap:3px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#2D6A4F;background:#E3F0E8;padding:2px 7px;border-radius:6px;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Automatisk</span></div>
+              <div style="background:#fff;border-radius:16px;padding:2px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Mærke/model</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">VW T-Roc</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Brændstof · forbrug</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">Benzin · 4,8</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Næste syn</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">27. jan 2028</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h11l5 5v15H4z"></path><path d="M8 7h4M8 11h8"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Ejerafgift</span><span style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#F4A261;">460 kr/halvår</span></div>
+              </div>
+            </div>
+
+            <!-- muted incomplete sections -->
+            <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+              <div style="padding:13px 16px;display:flex;align-items:center;gap:12px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#1A2E1F;">Tankstørrelse</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#C0CCC5;font-style:italic;">Ikke angivet</span></div>
+              <div style="padding:13px 16px;display:flex;align-items:center;gap:12px;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path><line x1="6" y1="15" x2="9" y2="15"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#1A2E1F;">Tankstatus</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#C0CCC5;font-style:italic;">Ikke angivet</span></div>
+              <div style="padding:13px 16px;display:flex;align-items:center;gap:12px;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#1A2E1F;">Forsikringsdetaljer</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#C0CCC5;font-style:italic;">Kun navn</span></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- B2 complete -->
+      <div id="B2" style="width:320px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="background:#52B788;color:#08321E;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">B2</span>
+          <span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Færdig profil</span>
+        </div>
+        <div style="width:320px;border-radius:40px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:34px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#fff;">9.41</span><div style="display:flex;gap:5px;align-items:center;"><svg width="15" height="10" viewBox="0 0 17 12" fill="#fff"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg><span style="width:16px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;display:inline-block;"></span></div></div>
+          <div style="background:#2D6A4F;padding:12px 16px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;color:#fff;margin:0;">Bilen</h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:18px;background:#F7F9F8;">
+
+            <!-- two-track complete -->
+            <div style="display:flex;gap:10px;">
+              <div style="flex:1;background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);"><div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;">Fra registret</span></div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;">3 felter</div></div>
+              <div style="flex:1;background:#fff;border-radius:14px;padding:13px 14px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);"><div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#6B8F7A;">Tilføjet af dig</span></div><div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;color:#1A2E1F;">4 felter</div></div>
+            </div>
+
+            <!-- Bildetaljer -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Bildetaljer</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;padding:2px 16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Brændstoftype</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">Benzin</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Forbrug</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">4,8 L/100km</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11v6H3z"></path><path d="M14 14h3l2 2v2h-5"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Tankstørrelse</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">55 L</span></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #EEF3F0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:14px;color:#6B8F7A;">Årgang</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">2020</span></div>
+              </div>
+            </div>
+
+            <!-- Tankstatus -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Tankstatus</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Opdater</span></div>
+              <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;">Anslået niveau nu</span><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#1A2E1F;">68% · 37 L</span></div>
+                <div style="height:8px;border-radius:4px;background:#EEF3F0;overflow:hidden;margin-bottom:12px;"><div style="width:68%;height:100%;background:#52B788;border-radius:4px;"></div></div>
+                <div style="display:flex;justify-content:space-between;padding-top:11px;border-top:1px solid #EEF3F0;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;">Rækkevidde</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">~770 km</span></div>
+                <div style="font-family:'Inter',sans-serif;font-size:11px;color:#6B8F7A;margin-top:8px;">Opdateret i dag ved <span style="font-family:'Courier New',monospace;">96.500 km</span></div>
+              </div>
+            </div>
+
+            <!-- Forsikring full -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;">Forsikring</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#2D6A4F;font-weight:600;">Rediger</span></div>
+              <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+                <div style="padding:14px 16px;display:flex;align-items:center;gap:13px;border-bottom:1px solid #EEF3F0;"><div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div><div style="flex:1;min-width:0;"><div style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#1A2E1F;">Tryg Forsikring A/S</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Kasko + ansvar</div></div><span style="background:#D1F5E3;color:#1A7A47;border-radius:9999px;padding:3px 11px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;flex-shrink:0;">Aktiv</span></div>
+                <div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Fornyelse</div><div style="font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;margin-top:2px;">1. jan 2027</div></div>
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Præmie</div><div style="font-family:'Courier New',monospace;font-size:13.5px;color:#F4A261;font-weight:700;margin-top:2px;">485 kr/md</div></div>
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Selvrisiko</div><div style="font-family:'Courier New',monospace;font-size:13.5px;color:#F4A261;font-weight:700;margin-top:2px;">5.412 kr</div></div>
+                  <div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#6B8F7A;text-transform:uppercase;letter-spacing:.04em;">Dækning</div><div style="font-family:'Inter',sans-serif;font-size:13.5px;color:#1A2E1F;margin-top:2px;">Kasko</div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ejerafgift recurring -->
+            <div>
+              <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#1A2E1F;margin-bottom:9px;">Ejerafgift</div>
+              <div style="background:#fff;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);">
+                <div style="display:flex;align-items:center;gap:13px;margin-bottom:12px;"><div style="width:40px;height:40px;border-radius:11px;background:#D8F3DC;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h11l5 5v15H4z"></path><path d="M8 7h4M8 11h8M8 15h8"></path></svg></div><div style="flex:1;"><div style="font-family:'Courier New',monospace;font-weight:700;font-size:16px;color:#F4A261;">460 kr halvårligt</div><div style="font-family:'Inter',sans-serif;font-size:11.5px;color:#6B8F7A;margin-top:1px;">Grøn ejerafgift · fra registret</div></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:11px;border-top:1px solid #EEF3F0;"><span style="display:flex;align-items:center;gap:7px;font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg>Næste betaling</span><span style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:#1A2E1F;">12. juli 2026</span></div>
+                <div style="display:flex;align-items:center;gap:7px;margin-top:10px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span style="font-family:'Inter',sans-serif;font-size:12.5px;color:#2D6A4F;font-weight:600;">Oprettet som fast udgift</span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <section id="sheets" data-screen-label="Edit sheets" style="max-width:1240px;margin:80px auto 0;">
+        <div style="margin-bottom:26px;">
+      <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;">Edit sheets</div>
+      <h2 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:26px;color:#fff;margin:0 0 10px;letter-spacing:-.01em;">The four things you complete</h2>
+      <p style="font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.6);margin:0;max-width:700px;line-height:1.6;text-wrap:pretty;">Bottom sheets, shared by both directions. Each opens from its "Angiv/Tilføj/Opret" affordance. Auto-known values are shown as locked context so the user only fills what's genuinely theirs.</p>
+    </div>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- S1 Tankstørrelse -->
+      <div id="S1" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:#3D5C48;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">S1</span><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">Tankstørrelse</span></div>
+        <div style="width:300px;background:#fff;border-radius:24px;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);padding:8px 18px 20px;">
+          <div style="width:38px;height:4px;border-radius:2px;background:#D9E4DE;margin:6px auto 16px;"></div>
+          <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#1A2E1F;margin-bottom:4px;">Vælg tankstørrelse</div>
+          <div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#6B8F7A;line-height:1.5;margin-bottom:16px;">Find den i instruktionsbogen eller på tankdækslet. Vi bruger den til rækkevidde.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">45 L</div>
+            <div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">50 L</div>
+            <div style="border:2px solid #2D6A4F;background:#EAF4EE;border-radius:12px;padding:12px 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#1A5138;position:relative;">55 L<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;top:6px;right:6px;"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+            <div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">60 L</div>
+            <div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;">65 L</div>
+            <div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 0;text-align:center;font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#6B8F7A;">Anden</div>
+          </div>
+          <button style="width:100%;height:48px;margin-top:8px;background:#2D6A4F;border:none;border-radius:13px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.28);">Gem</button>
+        </div>
+      </div>
+
+      <!-- S2 Forsikring -->
+      <div id="S2" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:#3D5C48;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">S2</span><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">Forsikringsdetaljer</span></div>
+        <div style="width:300px;background:#fff;border-radius:24px;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);padding:8px 18px 20px;">
+          <div style="width:38px;height:4px;border-radius:2px;background:#D9E4DE;margin:6px auto 16px;"></div>
+          <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#1A2E1F;margin-bottom:14px;">Forsikringsdetaljer</div>
+          <div style="background:#F2F7F4;border-radius:11px;padding:10px 13px;display:flex;align-items:center;gap:9px;margin-bottom:16px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span style="flex:1;font-family:'Inter',sans-serif;font-size:12.5px;color:#1A2E1F;font-weight:600;">Tryg Forsikring A/S · Aktiv</span><span style="font-family:'Inter',sans-serif;font-size:10px;color:#6B8F7A;">fra registret</span></div>
+          <div style="margin-bottom:11px;"><label style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;display:block;margin-bottom:6px;">Dækning</label><div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'Inter',sans-serif;font-size:14px;color:#1A2E1F;">Kasko + ansvar</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></div></div>
+          <div style="margin-bottom:11px;"><label style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;display:block;margin-bottom:6px;">Fornyelsesdato</label><div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'Inter',sans-serif;font-size:14px;color:#1A2E1F;">1. jan 2027</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B8F7A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg></div></div>
+          <div style="display:flex;gap:10px;margin-bottom:18px;">
+            <div style="flex:1;"><label style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;display:block;margin-bottom:6px;">Præmie</label><div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;font-family:'Courier New',monospace;font-size:14px;color:#1A2E1F;">485 kr/md</div></div>
+            <div style="flex:1;"><label style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;display:block;margin-bottom:6px;">Selvrisiko</label><div style="border:1.5px solid #E2EDE8;border-radius:12px;padding:12px 14px;font-family:'Courier New',monospace;font-size:14px;color:#1A2E1F;">5.412 kr</div></div>
+          </div>
+          <button style="width:100%;height:48px;background:#2D6A4F;border:none;border-radius:13px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.28);">Gem detaljer</button>
+        </div>
+      </div>
+
+      <!-- S3 Tankstatus -->
+      <div id="S3" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:#3D5C48;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">S3</span><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">Tankstatus</span></div>
+        <div style="width:300px;background:#fff;border-radius:24px;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);padding:8px 18px 20px;">
+          <div style="width:38px;height:4px;border-radius:2px;background:#D9E4DE;margin:6px auto 16px;"></div>
+          <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#1A2E1F;margin-bottom:4px;">Angiv tankstatus</div>
+          <div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#6B8F7A;line-height:1.5;margin-bottom:18px;">Bilen har kørt siden sidste syn — fortæl os, hvor den står nu.</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;">Benzin i tanken</span><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;color:#1A2E1F;">≈ 37 L · 68%</span></div>
+          <div style="position:relative;height:12px;border-radius:6px;background:#EEF3F0;margin-bottom:6px;"><div style="width:68%;height:100%;background:#52B788;border-radius:6px;"></div><div style="position:absolute;left:68%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(26,46,31,.25);border:2px solid #52B788;"></div></div>
+          <div style="display:flex;justify-content:space-between;font-family:'Inter',sans-serif;font-size:10.5px;color:#6B8F7A;margin-bottom:16px;"><span>Tom</span><span>Fuld</span></div>
+          <label style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;display:block;margin-bottom:6px;">Kilometertæller nu</label>
+          <div style="border:1.5px solid #2D6A4F;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;"><span style="font-family:'Courier New',monospace;font-size:16px;color:#1A2E1F;letter-spacing:.04em;">96.500</span><span style="font-family:'Inter',sans-serif;font-size:13px;color:#6B8F7A;">km</span></div>
+          <button style="width:100%;height:48px;background:#2D6A4F;border:none;border-radius:13px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;cursor:pointer;box-shadow:0 4px 16px rgba(45,106,79,.28);">Gem</button>
+        </div>
+      </div>
+
+      <!-- S4 Ejerafgift -->
+      <div id="S4" style="width:300px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:#3D5C48;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:12px;padding:3px 9px;border-radius:7px;">S4</span><span style="font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;color:#fff;">Ejerafgift → fast udgift</span></div>
+        <div style="width:300px;background:#fff;border-radius:24px;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);padding:8px 18px 20px;">
+          <div style="width:38px;height:4px;border-radius:2px;background:#D9E4DE;margin:6px auto 16px;"></div>
+          <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;color:#1A2E1F;margin-bottom:4px;">Opret som fast udgift</div>
+          <div style="font-family:'Inter',sans-serif;font-size:12.5px;color:#6B8F7A;line-height:1.5;margin-bottom:16px;">Vi lægger ejerafgiften i budgettet, så den deles automatisk hver periode.</div>
+          <div style="background:#FEF7F0;border:1px solid #F6D9BC;border-radius:14px;padding:14px;margin-bottom:14px;"><div style="font-family:'Courier New',monospace;font-weight:700;font-size:20px;color:#F4A261;">460 kr</div><div style="font-family:'Inter',sans-serif;font-size:12px;color:#A0522D;margin-top:2px;">Grøn ejerafgift · fra registret</div></div>
+          <label style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#6B8F7A;display:block;margin-bottom:6px;">Interval</label>
+          <div style="display:flex;gap:6px;margin-bottom:14px;"><div style="flex:1;border:1.5px solid #E2EDE8;border-radius:10px;padding:9px 0;text-align:center;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:#6B8F7A;">Månedligt</div><div style="flex:1;border:2px solid #2D6A4F;background:#EAF4EE;border-radius:10px;padding:9px 0;text-align:center;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:700;color:#1A5138;">Halvårligt</div><div style="flex:1;border:1.5px solid #E2EDE8;border-radius:10px;padding:9px 0;text-align:center;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:#6B8F7A;">Årligt</div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid #EEF3F0;border-bottom:1px solid #EEF3F0;margin-bottom:16px;"><span style="font-family:'Inter',sans-serif;font-size:13px;color:#1A2E1F;">Næste betaling</span><span style="font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:#1A2E1F;">12. juli 2026</span></div>
+          <button style="width:100%;height:48px;background:#F4A261;border:none;border-radius:13px;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#1A2E1F;cursor:pointer;box-shadow:0 4px 16px rgba(244,162,97,.32);">Opret fast udgift</button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <section id="spec" style="max-width:1240px;margin:72px auto 0;">
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:24px 26px;max-width:960px;">
+      <div style="font-family:'Nunito',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-bottom:4px;">Field provenance & completion spec</div>
+      <p style="font-family:'Inter',sans-serif;font-size:12.5px;color:rgba(255,255,255,.5);margin:0 0 18px;">What the nummerplade lookup fills vs what the owner must supply. The profile is "complete" when all four <b style="color:#7EE0AB;font-weight:600;">Skal udfyldes</b> rows are done.</p>
+      <div style="display:grid;grid-template-columns:1.2fr 1.1fr 1.9fr;gap:0;font-family:'Inter',sans-serif;font-size:12.5px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Field</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Source</div>
+        <div style="background:rgba(255,255,255,.07);padding:10px 13px;font-weight:700;color:#7EC8A4;">Behaviour</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Mærke/model · årgang · brændstoftype · forbrug</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#7EE0AB;">Fra registret</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Prefilled, read-only (editable via Rediger if wrong).</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Næste syn</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#7EE0AB;">Fra registret</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Prefilled, read-only.</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Ejerafgift — beløb</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#7EE0AB;">Fra registret</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Amount locked; user confirms interval and creates it as a recurring expense <span style="font-family:'Courier New',monospace;color:rgba(255,255,255,.55);">(S4)</span>.</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Tankstørrelse</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#F0B688;">Skal vælges</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">User picks from common sizes or enters own — not reliably in the registry <span style="font-family:'Courier New',monospace;color:rgba(255,255,255,.55);">(S1)</span>.</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Forsikring — navn + status</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#7EE0AB;">Fra registret</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">Prefilled as locked context inside the edit sheet.</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Forsikring — dækning · fornyelse · præmie · selvrisiko</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#F0B688;">Skal udfyldes</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">User adds all four; præmie & selvrisiko render in amber mono (money) <span style="font-family:'Courier New',monospace;color:rgba(255,255,255,.55);">(S2)</span>.</div>
+
+        <div style="padding:11px 13px;color:#fff;font-weight:600;border-top:1px solid rgba(255,255,255,.07);">Tankstatus — niveau + km nu</div>
+        <div style="padding:11px 13px;border-top:1px solid rgba(255,255,255,.07);"><span style="color:#F0B688;">Skal angives</span></div>
+        <div style="padding:11px 13px;color:rgba(255,255,255,.75);border-top:1px solid rgba(255,255,255,.07);">User sets fuel level + current odometer; drives the rækkevidde estimate <span style="font-family:'Courier New',monospace;color:rgba(255,255,255,.55);">(S3)</span>.</div>
+      </div>
+      <p style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.45);margin:14px 0 0;line-height:1.55;">Why tankstatus is manual · the car has been driven since the last syn, so neither the registry nor the odometer-at-syn reflects the current fuel level. The owner's one-time reading seeds the running estimate, which each logged trip then decrements. Colour · "needs input" affordances use forest (action), never amber — amber stays reserved for money (præmie, selvrisiko, ejerafgift).</p>
+    </div>
+
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>
