@@ -57,22 +57,27 @@ file contract below; skipping a step fails CI.
    create-or-replace statements plus the tracker insert, so a fresh install replaying
    the consolidated schema ends in the same state (last definition wins).
 
-5. **Validate:** `npm run validate` must pass. Then run
+5. **Regenerate the shared DB types (GV-223):** `npm run gen:db-types` (needs
+   Docker) rewrites `types/database.ts` from the consolidated schema — commit it
+   together with the migration. CI's `check:db-types` fails the PR when the
+   committed types are stale.
+
+6. **Validate:** `npm run validate` must pass. Then run
    `npm run check:schema-equivalence` (needs Docker) — it replays the migrations
    and the consolidated schema into disposable Postgres databases and diffs the
    results, catching what the grep guard can't (wrong columns, drifted function
    bodies, missing mirrors). CI runs it on every PR either way.
 
-6. **Bump the admin drift constant (GV-172):** in **govehlo-web**, set
+7. **Bump the admin drift constant (GV-172):** in **govehlo-web**, set
    `EXPECTED_LATEST_MIGRATION` in `functions/api/owner/migrations.js` to this
    migration's number. The admin Health page compares it against what's actually
    applied in prod, so the console shows "not applied" the moment a migration merges
    but hasn't been run in the SQL Editor. Skipping this bump makes the drift check
    silently under-report.
 
-7. **Ship:** branch + PR via `/ship`. In the PR body and to the user, state explicitly:
+8. **Ship:** branch + PR via `/ship`. In the PR body and to the user, state explicitly:
    **"SQL must be applied manually in the Supabase SQL Editor after merge."**
 
-8. **After the user merges:** do not treat the migration as live until the user
+9. **After the user merges:** do not treat the migration as live until the user
    confirms they applied it. Features that depend on it should fail gracefully until
    then.

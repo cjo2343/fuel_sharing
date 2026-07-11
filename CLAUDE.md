@@ -17,7 +17,8 @@ What this repo is **load-bearing** for:
 |---|---|
 | `supabase/migrations/` | **Single source of truth for the shared Supabase schema** — both live products run on this database |
 | `supabase-schema.sql` | Consolidated fresh-install schema (must mirror every migration) |
-| `tools/` | CI guards: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `test-functional-smoke.sh` |
+| `types/database.ts` | Canonical generated DB/RPC types (GV-223) — vendored byte-identically by both client repos; regenerate with `npm run gen:db-types` |
+| `tools/` | CI guards: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `generate-db-types.mjs`, `test-functional-smoke.sh` |
 | `design_handoff_*/`, `design_briefs_*/` | Design-system source of truth (referenced by both live repos) |
 | `Design/` | Brand source assets (icon SVG, brand guidelines) |
 | `RENAME-VEHLOSHARE-RUNBOOK.md` | Active GoVehlo → VehloShare rename runbook |
@@ -39,23 +40,27 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
 4. Mirror the change in `supabase-schema.sql`: append a create-or-replace block plus the
    tracker insert at the end (last definition wins on replay — the consolidated schema
    must produce the same end state as a fresh install running every migration).
-5. Run `npm run validate` — it enforces 1–4.
-6. RPCs that write domain events follow the migration 051/052 pattern: trailing
+5. Regenerate the shared DB types: `npm run gen:db-types` (Docker) and commit the
+   refreshed `types/database.ts` — CI's `check:db-types` fails when it is stale.
+6. Run `npm run validate` — it enforces 1–4.
+7. RPCs that write domain events follow the migration 051/052 pattern: trailing
    `event_title` / `event_body` params, insert into `ledger_events`, actor via
    `public.current_ledger_member_id()`, email via `auth.jwt() ->> 'email'`.
-7. New RPCs called by clients need `grant execute ... to authenticated`.
+8. New RPCs called by clients need `grant execute ... to authenticated`.
 
 Use the `/new-migration` skill — it scaffolds all of this.
 
 ```sh
 npm run validate                 # fast: migration guard + SQL ambiguity guard + token drift (run before every commit)
 npm run check:schema-equivalence # Docker: replays migrations vs consolidated schema and diffs
+npm run gen:db-types             # Docker: regenerates types/database.ts from the consolidated schema (GV-223)
+npm run check:db-types           # Docker: fails if the committed types/database.ts is stale
 npm run test:functional-smoke    # Docker: runs delete_my_account / push-token RPCs and asserts scrubs
 ```
 
 `npm run validate` is dependency-free (three Node checks, no Python or Docker). It
 runs in CI and, if you enable the hook with `npm run hooks:install`, on every push.
-The two Docker-backed checks run as their own CI jobs.
+The Docker-backed checks run as their own CI jobs.
 
 ## Design system (v1)
 

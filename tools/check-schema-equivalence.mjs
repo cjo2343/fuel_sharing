@@ -12,6 +12,8 @@
 //   1. Starts a disposable Postgres 15 container (matches Supabase), repo
 //      mounted read-only. All psql/pg_dump run INSIDE the container, so the
 //      host needs only Docker.
+//      (Container + prelude bootstrap is shared with generate-db-types.mjs —
+//      see tools/lib/replay-container.mjs.)
 //   2. Applies a Supabase-stub prelude to two fresh databases: roles
 //      anon/authenticated/service_role, auth.jwt(), the extensions schema with
 //      pgcrypto (Supabase preinstalls it there, which is why migration 001's
@@ -31,33 +33,17 @@
 //
 // Usage: node tools/check-schema-equivalence.mjs   (also wired into CI)
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { IMAGE, startPostgres, createDbWithPrelude, psql as psqlIn, removeContainer } from "./lib/replay-container.mjs";
 
-const IMAGE = "postgres:15-alpine";
 const CONTAINER = `govehlo-schema-eq-${process.pid}`;
 const REPO = process.cwd();
 const MIGRATIONS_DIR = "supabase/migrations";
 const DB_MIGRATIONS = "migrations_replay";
 const DB_SCHEMA = "schema_replay";
-
-const PRELUDE = `
-do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
-do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
-do $$ begin create role service_role nologin; exception when duplicate_object then null; end $$;
-create schema if not exists auth;
-create schema if not exists extensions;
-create extension if not exists pgcrypto with schema extensions;
-create or replace function auth.jwt() returns jsonb
-language sql stable
-as 'select nullif(current_setting(''request.jwt.claims'', true), '''')::jsonb';
-create or replace function auth.uid() returns uuid
-language sql stable
-as 'select nullif(auth.jwt() ->> ''sub'', '''')::uuid';
-create publication supabase_realtime;
-`;
 
 function log(msg) {
   process.stdout.write(`${msg}\n`);
@@ -69,57 +55,32 @@ function fail(msg) {
   process.exit(1);
 }
 
-function docker(args, opts = {}) {
-  return execFileSync("docker", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, ...opts });
-}
-
 function cleanup() {
-  spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
+  removeContainer(CONTAINER);
 }
 
 function psql(db, extraArgs) {
-  const res = spawnSync(
-    "docker",
-    ["exec", CONTAINER, "psql", "-v", "ON_ERROR_STOP=1", "-q", "-U", "postgres", "-d", db, ...extraArgs],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  return res;
+  return psqlIn(CONTAINER, db, extraArgs);
 }
 
 // ── 1. Container ──────────────────────────────────────────────────────────────
-try {
-  execFileSync("docker", ["info"], { stdio: "ignore" });
-} catch {
-  fail("Docker is not available (daemon not running?). This check needs Docker to host disposable Postgres.");
-}
-
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
 process.on("SIGTERM", () => { cleanup(); process.exit(143); });
 
 log(`⏳ Starting ${IMAGE} as ${CONTAINER}…`);
-docker([
-  "run", "-d", "--name", CONTAINER,
-  "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
-  "-v", `${REPO}:/work:ro`,
-  IMAGE,
-]);
-
-let ready = false;
-for (let i = 0; i < 60; i++) {
-  const res = spawnSync("docker", ["exec", CONTAINER, "pg_isready", "-U", "postgres"], { stdio: "ignore" });
-  if (res.status === 0) { ready = true; break; }
-  execFileSync("sleep", ["1"]);
+try {
+  startPostgres(CONTAINER, REPO);
+} catch (err) {
+  fail(err.message);
 }
-if (!ready) fail("Postgres did not become ready within 60s.");
-// pg_isready can flip true between the bootstrap restart; settle briefly.
-execFileSync("sleep", ["2"]);
 
 // ── 2. Databases + prelude ───────────────────────────────────────────────────
 for (const db of [DB_MIGRATIONS, DB_SCHEMA]) {
-  const created = spawnSync("docker", ["exec", CONTAINER, "createdb", "-U", "postgres", db], { encoding: "utf8" });
-  if (created.status !== 0) fail(`createdb ${db} failed:\n${created.stderr}`);
-  const res = psql(db, ["-c", PRELUDE]);
-  if (res.status !== 0) fail(`Prelude failed on ${db}:\n${res.stderr}`);
+  try {
+    createDbWithPrelude(CONTAINER, db);
+  } catch (err) {
+    fail(err.message);
+  }
 }
 log("✅ Prelude applied (roles, auth.jwt(), extensions.pgcrypto, supabase_realtime).");
 

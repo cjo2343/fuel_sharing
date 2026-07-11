@@ -5,8 +5,13 @@
   "scripts": {
     "validate": "node tools/run-validations.mjs",
     "check:schema-equivalence": "node tools/check-schema-equivalence.mjs",
+    "gen:db-types": "node tools/generate-db-types.mjs",
+    "check:db-types": "node tools/generate-db-types.mjs --check",
     "check:role-matrix": "node tools/test-rls-role-matrix.mjs",
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "hooks:install": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "supabase": "2.109.1"
   }
 }

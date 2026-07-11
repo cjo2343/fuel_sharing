@@ -47,6 +47,32 @@ jobs:
       - name: Verify schema equivalence
         run: node tools/check-schema-equivalence.mjs
 
+  db-types:
+    name: Shared DB/RPC types drift (GV-223)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Installs the exact-pinned supabase CLI (devDependency) — the generator
+      # byte-compares its output, so the CLI version must not float.
+      - name: Install Node dependencies
+        run: npm ci
+
+      # Replays supabase-schema.sql into a disposable Postgres 15 and re-runs
+      # `supabase gen types typescript`, then byte-compares against the
+      # committed types/database.ts. Fails when a schema change merged without
+      # regenerating the canonical shared types (npm run gen:db-types).
+      - name: Verify committed DB types are fresh
+        run: npm run check:db-types
+
   role-matrix:
     name: RLS role-matrix behavioral suite (GV-248)
     runs-on: ubuntu-latest
