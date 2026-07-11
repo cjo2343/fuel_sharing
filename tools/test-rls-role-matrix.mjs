@@ -657,25 +657,40 @@ end`,
       then raise exception 'CASEFAIL repairs-ligeligt-close-with-matching-request: period not closed'; end if;`,
   }),
   queryCase({
-    name: "repairs-inactive-payer-excluded-every-mode",
-    desc: "a repair whose creator D is inactive at computation time is excluded from the nets, in every repairs_split_mode",
+    name: "repairs-inactive-payer-credited-when-folded",
+    desc: "credit-only (GV-274): an inactive payer's repair is retained — they are credited exactly what they paid with zero share and the period nets to zero when the mode folds; only deles_ikke (which folds nothing) drops them",
     setup: [
-      step(SUPER, `insert into public.vehicle_repairs (ledger_id, repair_date, description, cost_dkk, created_by_member_id)
-        values ('${WS1}', current_date, 'Logged by an inactive member', 999.00, '${ID.D}');`),
+      // Only A + B active so the split universe is clean; D is the fixture's inactive member.
+      step(SUPER, `update public.ledger_members set is_active = false where id in ('${ID.C}', '${ID.G}');`),
+      step(SUPER, `insert into public.vehicle_repairs (ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id)
+        values ('${WS1}', current_date, 'Logget, derefter inaktiv', 100.00, '${ID.D}', '${ID.D}');`),
     ],
     actor: A,
-    assert: `declare s jsonb; a_net numeric; b_net numeric; total_repairs numeric; mode text;
+    assert: `declare s jsonb; d_net numeric; d_paid numeric; d_share numeric; total_repairs numeric; sum_net numeric; mode text; d_present boolean;
 begin
-  foreach mode in array array['efter_koersel', 'ligeligt', 'deles_ikke'] loop
+  -- Folded modes: the inactive payer D is credited exactly what they paid, bears
+  -- ZERO share (the 100 kr splits over the ACTIVE members only), and everything
+  -- still nets to zero — the mode-independent invariants of the credit-only rule.
+  foreach mode in array array['ligeligt', 'efter_koersel'] loop
     update public.ledgers set repairs_split_mode = mode where id = '${WS1}';
     s := public.calculate_period_settlement('${WS1}', '${P1}');
-    a_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
-    b_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+    d_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
+    d_paid := (select (p->>'repairPaid')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
+    d_share := (select (p->>'repairShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
     total_repairs := (s->>'totalRepairs')::numeric;
-    if a_net is distinct from 300 or b_net is distinct from -300 or total_repairs is distinct from 0 then
-      raise exception 'CASEFAIL repairs-inactive-payer-excluded-every-mode: mode=% A=% B=% totalRepairs=% (expected 300/-300/0 -- D is inactive, repair must be excluded)', mode, a_net, b_net, total_repairs;
+    sum_net := (select sum((p->>'net')::numeric) from jsonb_array_elements(s->'people') p);
+    if d_net is distinct from 100 or d_paid is distinct from 100 or d_share is distinct from 0 or total_repairs is distinct from 100 or sum_net is distinct from 0 then
+      raise exception 'CASEFAIL repairs-inactive-payer-credited-when-folded: mode=% Dnet=% DrepairPaid=% DrepairShare=% totalRepairs=% sumNet=% (expected 100/100/0/100/0 -- inactive payer is credit-only)', mode, d_net, d_paid, d_share, total_repairs, sum_net;
     end if;
   end loop;
+  -- deles_ikke folds no repairs, so D paid nothing that counts and must NOT appear.
+  update public.ledgers set repairs_split_mode = 'deles_ikke' where id = '${WS1}';
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  d_present := exists (select 1 from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
+  total_repairs := (s->>'totalRepairs')::numeric;
+  if d_present or total_repairs is distinct from 0 then
+    raise exception 'CASEFAIL repairs-inactive-payer-credited-when-folded: deles_ikke Dpresent=% totalRepairs=% (expected false/0 -- an inactive member who paid nothing is excluded)', d_present, total_repairs;
+  end if;
 end`,
   }),
   rpcCase({
@@ -843,6 +858,158 @@ begin
     from jsonb_array_elements(s->'people') p;
   if total_repairs is distinct from 120.00 or share_sum is distinct from 120.00 then
     raise exception 'CASEFAIL repairs-created-at-scoping: totalRepairs=% shareSum=% (expected 120.00/120.00 — the old-dated repair must fold into the period it was logged in)', total_repairs, share_sum;
+  end if;
+end`,
+  }),
+
+  // ── 8. Release-blocker remediation (migration 112: GV-273/274/275) ───────────
+  // GV-273 — repairs freeze once the period they were logged in closes. now() is
+  // fixed within a transaction, so the repair is created at now() and the period
+  // is closed with closed_at = now() + 1s to put created_at strictly inside the
+  // closed [opened_at, closed_at) window.
+  rpcCase({
+    name: "repair-update-blocked-in-closed-period",
+    desc: "creator B's soft-delete of a repair is rejected once its period is closed (GV-273 lock trigger, 22023)",
+    setup: [
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id, created_at)
+        values ('a1a1a1a1-0000-0000-0000-000000000001', '${WS1}', current_date, 'Låst reparation', 100.00, '${ID.B}', '${ID.B}', now());`),
+      step(SUPER, `update public.settlement_periods set status = 'closed', closed_at = now() + interval '1 second' where id = '${P1}';`),
+    ],
+    actor: B,
+    op: `update public.vehicle_repairs set deleted_at = now() where id = 'a1a1a1a1-0000-0000-0000-000000000001';`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-delete-blocked-in-closed-period",
+    desc: "admin A's hard DELETE of a repair is rejected once its period is closed (GV-273 lock trigger, 22023)",
+    setup: [
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id, created_at)
+        values ('a1a1a1a1-0000-0000-0000-000000000002', '${WS1}', current_date, 'Låst reparation 2', 100.00, '${ID.B}', '${ID.B}', now());`),
+      step(SUPER, `update public.settlement_periods set status = 'closed', closed_at = now() + interval '1 second' where id = '${P1}';`),
+    ],
+    actor: A,
+    op: `delete from public.vehicle_repairs where id = 'a1a1a1a1-0000-0000-0000-000000000002';`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-update-allowed-in-open-period",
+    desc: "creator B edits a repair while its period is still OPEN — the GV-273 lock does not apply (ok)",
+    setup: [
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id, created_at)
+        values ('a1a1a1a1-0000-0000-0000-000000000003', '${WS1}', current_date, 'Åben reparation', 100.00, '${ID.B}', '${ID.B}', now());`),
+    ],
+    actor: B,
+    op: `update public.vehicle_repairs set description = 'Opdateret i åben periode' where id = 'a1a1a1a1-0000-0000-0000-000000000003';`,
+    expect: "ok",
+    post: `if (select description from public.vehicle_repairs where id = 'a1a1a1a1-0000-0000-0000-000000000003') <> 'Opdateret i åben periode'
+      then raise exception 'CASEFAIL repair-update-allowed-in-open-period: the open-period edit did not persist'; end if;`,
+  }),
+
+  // GV-274 — recurring hardening.
+  rpcCase({
+    name: "recurring-amount-zero-rejected",
+    desc: "admin A's recurring template with amount 0 is rejected (GV-274, 22023)",
+    actor: A,
+    op: `perform public.upsert_recurring_expense('${WS1}', null, 'other', 'Nul beløb', 0, 'monthly', current_date);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "recurring-amount-negative-rejected",
+    desc: "admin A's recurring template with a negative amount is rejected (GV-274, 22023)",
+    actor: A,
+    op: `perform public.upsert_recurring_expense('${WS1}', null, 'other', 'Negativt beløb', -50.00, 'monthly', current_date);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "recurring-old-due-date-rejected",
+    desc: "admin A's recurring template dated 2019 (outside today-90d..today+5y) is rejected (GV-274, 22023)",
+    actor: A,
+    op: `perform public.upsert_recurring_expense('${WS1}', null, 'other', 'Gammel forfaldsdato', 100.00, 'monthly', date '2019-01-01');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "recurring-catchup-cap-24",
+    desc: "a monthly template due ~40 months back generates EXACTLY 24 rows in one run and advances next_due_date only through what was generated (GV-274 catch-up cap)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('c0c0c0c0-0000-0000-0000-000000000024', '${WS1}', 'other', 'Fast udgift', 100.00, 'monthly', (current_date - interval '40 months')::date, '${A_ID}', true, '${A_ID}');`),
+    ],
+    actor: A,
+    assert: `declare cnt integer; ndd date; expected_ndd date;
+begin
+  perform public.generate_due_recurring_expenses('${WS1}');
+  select count(*) into cnt from public.workspace_expenses where recurring_expense_id = 'c0c0c0c0-0000-0000-0000-000000000024';
+  select next_due_date into ndd from public.recurring_expenses where id = 'c0c0c0c0-0000-0000-0000-000000000024';
+  expected_ndd := ((current_date - interval '40 months') + interval '24 months')::date;
+  if cnt <> 24 then
+    raise exception 'CASEFAIL recurring-catchup-cap-24: generated % rows (expected exactly 24 — the per-run cap)', cnt;
+  end if;
+  if ndd is distinct from expected_ndd then
+    raise exception 'CASEFAIL recurring-catchup-cap-24: next_due_date=% (expected % — advance only through what was generated)', ndd, expected_ndd;
+  end if;
+end`,
+  }),
+
+  // GV-274 — credit-only inactive payer, the settlement regression.
+  queryCase({
+    name: "settlement-inactive-payer-credited-expense",
+    desc: "an expense paid by C who is then deactivated: settlement still nets to zero and credits C exactly what they paid, with zero share (GV-274 credit-only)",
+    setup: [
+      step(SUPER, `insert into public.workspace_expenses (ledger_id, period_id, category, description, amount_dkk, expense_date, paid_by_member_id, created_by_member_id)
+        values ('${WS1}', '${P1}', 'other', 'Betalt af snart-inaktiv C', 300.00, current_date, '${ID.C}', '${ID.C}');`),
+      step(SUPER, `update public.ledger_members set is_active = false where id in ('${ID.C}', '${ID.G}');`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; a_net numeric; b_net numeric; c_net numeric; c_paid numeric; c_share numeric; total_expenses numeric; sum_net numeric; d_present boolean; g_present boolean;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  a_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  b_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  c_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.C}');
+  c_paid := (select (p->>'expensePaid')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.C}');
+  c_share := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.C}');
+  total_expenses := (s->>'totalExpenses')::numeric;
+  sum_net := (select sum((p->>'net')::numeric) from jsonb_array_elements(s->'people') p);
+  d_present := exists (select 1 from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
+  g_present := exists (select 1 from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.G}');
+  -- A gets fuel 300 minus a 150 expense share; B owes trip 300 plus a 150 share;
+  -- the 300 expense splits over the ACTIVE pair (A,B) only, and C is credited +300.
+  if a_net is distinct from 150 or b_net is distinct from -450 or c_net is distinct from 300 then
+    raise exception 'CASEFAIL settlement-inactive-payer-credited-expense: A=% B=% C=% (expected 150/-450/300)', a_net, b_net, c_net;
+  end if;
+  if c_paid is distinct from 300 or c_share is distinct from 0 then
+    raise exception 'CASEFAIL settlement-inactive-payer-credited-expense: C expensePaid=% expenseShare=% (expected 300/0 -- credit-only, zero weight)', c_paid, c_share;
+  end if;
+  if total_expenses is distinct from 300 or sum_net is distinct from 0 then
+    raise exception 'CASEFAIL settlement-inactive-payer-credited-expense: totalExpenses=% sumNet=% (expected 300/0)', total_expenses, sum_net;
+  end if;
+  if d_present or g_present then
+    raise exception 'CASEFAIL settlement-inactive-payer-credited-expense: Dpresent=% Gpresent=% (expected false/false -- inactive members who paid nothing are excluded)', d_present, g_present;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fingerprint-includes-in-scope-repairs",
+    desc: "calculate_period_entry_fingerprint appends a repairs key with the in-scope repair id, and omits it entirely when the period has no repair (GV-274 close-staleness)",
+    setup: [
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id, created_at)
+        values ('f1f1f1f1-0000-0000-0000-000000000001', '${WS1}', current_date, 'Fingerprint reparation', 100.00, '${ID.B}', '${ID.B}', now());`),
+    ],
+    actor: A,
+    assert: `declare fp_with text; fp_without text;
+begin
+  fp_with := public.calculate_period_entry_fingerprint('${WS1}', '${P1}');
+  if position('"repairs":["f1f1f1f1-0000-0000-0000-000000000001"]' in fp_with) = 0 then
+    raise exception 'CASEFAIL fingerprint-includes-in-scope-repairs: fingerprint=% (expected an in-scope repair id in a repairs key)', fp_with;
+  end if;
+  -- Soft-delete the repair: the period now has no in-scope repair, so the repairs
+  -- key must disappear entirely (byte-identical to the pre-112 trips/fuel/expenses
+  -- string, matching the client which omits the key when empty).
+  update public.vehicle_repairs set deleted_at = now() where id = 'f1f1f1f1-0000-0000-0000-000000000001';
+  fp_without := public.calculate_period_entry_fingerprint('${WS1}', '${P1}');
+  if position('repairs' in fp_without) <> 0 then
+    raise exception 'CASEFAIL fingerprint-includes-in-scope-repairs: fingerprint=% (expected NO repairs key when the period has no in-scope repair)', fp_without;
   end if;
 end`,
   }),

@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 111 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 112 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1744,6 +1744,7 @@ export type Database = {
       set_notification_preferences: {
         Args: {
           activity: boolean
+          clear_snooze_value?: boolean
           payments: boolean
           periods: boolean
           quiet_end_hour_value?: number
