@@ -160,8 +160,11 @@ jobs:
       #    `npm run gen:db-types` (kept fresh by check:db-types in fuel_sharing's
       #    own CI). Each client repo vendors a byte-identical copy at a FIXED
       #    path — these two paths are the phase-2 contract:
-      #      govehlo-mobile: src/types/database.ts
+      #      govehlo-mobile: src/types/database.generated.ts
       #      govehlo-web:    types/database.ts
+      #    (Mobile's path is .generated.ts because src/types/database.ts is a
+      #    pre-existing HAND-WRITTEN type file that predates GV-223 — it will
+      #    never byte-match the generated artifact and must not arm this check.)
       #    Tolerate-missing mode: until a repo has vendored its copy (GV-223
       #    phase 2), a MISSING file is a ::warning::, not a failure — the
       #    umbrella stays green. A PRESENT copy that differs is real drift and
@@ -188,6 +191,6 @@ jobs:
               status=1
             fi
           }
-          check_copy "govehlo-mobile" "govehlo-mobile/src/types/database.ts"
+          check_copy "govehlo-mobile" "govehlo-mobile/src/types/database.generated.ts"
           check_copy "govehlo-web" "govehlo-web/types/database.ts"
           exit "$status"
