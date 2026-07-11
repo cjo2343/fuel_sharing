@@ -616,6 +616,126 @@ end`,
          values ('${WS2}', '${P2}', '${E_ID}', current_date, 10, 20, '${E_ID}');`,
     expect: "42501",
   }),
+
+  // ── 6. Repairs split mode (GVM-307 / GV-268) ────────────────────────────────
+  // These cases deactivate C and G for the duration of their own (rolled-back)
+  // transaction so the fixture keeps yielding a single clean debtor->creditor
+  // pair (only A and B remain active), matching the CLOSE_SNAPSHOT helper's
+  // hardcoded B->A pair. calculate_period_settlement is called fresh inside
+  // each case, so it always reflects that case's own setup.
+  queryCase({
+    name: "repairs-ligeligt-active-member-nets",
+    desc: "ligeligt mode: a repair logged by active member B folds into calculate_period_settlement nets (GVM-307 fixture math)",
+    setup: [
+      step(SUPER, `update public.ledger_members set is_active = false where id in ('${ID.C}', '${ID.G}');`),
+      step(B, `perform public.insert_repair('${WS1}', current_date, 'Ny kileem', 100.00, null, 'Bilxtra Aarhus');`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; a_net numeric; b_net numeric; total_repairs numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  a_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  b_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  total_repairs := (s->>'totalRepairs')::numeric;
+  if a_net is distinct from 250 or b_net is distinct from -250 or total_repairs is distinct from 100 then
+    raise exception 'CASEFAIL repairs-ligeligt-active-member-nets: A=% B=% totalRepairs=% (expected 250/-250/100 -- fuelPaid+repairPaid-tripCost-repairShare, repair 100 split 50/50 over A+B)', a_net, b_net, total_repairs;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "repairs-ligeligt-close-with-matching-request",
+    desc: "admin A closes a ligeligt-repairs-inflated period with a matching 250 kr request (GVM-307/GV-268)",
+    setup: [
+      step(SUPER, `update public.ledger_members set is_active = false where id in ('${ID.C}', '${ID.G}');`),
+      step(B, `perform public.insert_repair('${WS1}', current_date, 'Ny kileem', 100.00, null, 'Bilxtra Aarhus');`),
+      step(A, upsert(WS1, P1, ID.B, A_ID, 250, "requested")),
+    ],
+    actor: A,
+    op: `perform public.close_settlement_period('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});`,
+    expect: "ok",
+    post: `if (select status from public.settlement_periods where id = '${P1}') <> 'closed'
+      then raise exception 'CASEFAIL repairs-ligeligt-close-with-matching-request: period not closed'; end if;`,
+  }),
+  queryCase({
+    name: "repairs-inactive-payer-excluded-every-mode",
+    desc: "a repair whose creator D is inactive at computation time is excluded from the nets, in every repairs_split_mode",
+    setup: [
+      step(SUPER, `insert into public.vehicle_repairs (ledger_id, repair_date, description, cost_dkk, created_by_member_id)
+        values ('${WS1}', current_date, 'Logged by an inactive member', 999.00, '${ID.D}');`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; a_net numeric; b_net numeric; total_repairs numeric; mode text;
+begin
+  foreach mode in array array['efter_koersel', 'ligeligt', 'deles_ikke'] loop
+    update public.ledgers set repairs_split_mode = mode where id = '${WS1}';
+    s := public.calculate_period_settlement('${WS1}', '${P1}');
+    a_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+    b_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+    total_repairs := (s->>'totalRepairs')::numeric;
+    if a_net is distinct from 300 or b_net is distinct from -300 or total_repairs is distinct from 0 then
+      raise exception 'CASEFAIL repairs-inactive-payer-excluded-every-mode: mode=% A=% B=% totalRepairs=% (expected 300/-300/0 -- D is inactive, repair must be excluded)', mode, a_net, b_net, total_repairs;
+    end if;
+  end loop;
+end`,
+  }),
+  rpcCase({
+    name: "repairs-split-mode-nonadmin-denied",
+    desc: "non-admin B calls update_ledger_settings to change repairs_split_mode (denied)",
+    actor: B,
+    op: `perform public.update_ledger_settings('${WS1}', null, null, null, 'deles_ikke');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "repairs-split-mode-admin-succeeds",
+    desc: "admin A sets repairs_split_mode via update_ledger_settings",
+    actor: A,
+    op: `perform public.update_ledger_settings('${WS1}', null, null, null, 'efter_koersel');`,
+    expect: "ok",
+    post: `if (select repairs_split_mode from public.ledgers where id = '${WS1}') <> 'efter_koersel'
+      then raise exception 'CASEFAIL repairs-split-mode-admin-succeeds: repairs_split_mode was not updated'; end if;`,
+  }),
+  rpcCase({
+    name: "repairs-split-mode-invalid-value-rejected",
+    desc: "admin A sets an invalid repairs_split_mode value (rejected)",
+    actor: A,
+    op: `perform public.update_ledger_settings('${WS1}', null, null, null, 'not_a_real_mode');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "repairs-deles-ikke-matches-baseline",
+    desc: "mode='deles_ikke': a repair logged by active member C is excluded, nets match the no-repairs baseline",
+    setup: [
+      step(SUPER, `update public.ledgers set repairs_split_mode = 'deles_ikke' where id = '${WS1}';`),
+      step(C, `perform public.insert_repair('${WS1}', current_date, 'Skal ikke deles', 500.00);`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; a_net numeric; b_net numeric; c_net numeric; g_net numeric; total_repairs numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  a_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  b_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  c_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.C}');
+  g_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.G}');
+  total_repairs := (s->>'totalRepairs')::numeric;
+  if a_net is distinct from 300 or b_net is distinct from -300 or c_net is distinct from 0 or g_net is distinct from 0 or total_repairs is distinct from 0 then
+    raise exception 'CASEFAIL repairs-deles-ikke-matches-baseline: A=% B=% C=% G=% totalRepairs=% (expected 300/-300/0/0/0 -- deles_ikke excludes repairs entirely)', a_net, b_net, c_net, g_net, total_repairs;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "repairs-close-blocked-stale-request-gv260",
+    desc: "close blocked when a repairs-inflated (350 kr) settlement only has an old 300 kr request (GV-260 interaction)",
+    setup: [
+      step(SUPER, `update public.ledger_members set is_active = false where id in ('${ID.C}', '${ID.G}');`),
+      step(A, CREATE_REQ_300),
+      step(A, `perform public.insert_repair('${WS1}', current_date, 'Ny bremseskive', 100.00);`),
+    ],
+    actor: A,
+    op: `perform public.close_settlement_period('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});`,
+    expect: "42501",
+    post: `if (select status from public.settlement_periods where id = '${P1}') <> 'open'
+      then raise exception 'CASEFAIL repairs-close-blocked-stale-request-gv260: period should remain open'; end if;`,
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
