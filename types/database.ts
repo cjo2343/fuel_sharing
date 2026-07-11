@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 109 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 110 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1570,6 +1570,10 @@ export type Database = {
       }
       fuel_ledger_healthcheck: {
         Args: { target_ledger_id?: string }
+        Returns: Json
+      }
+      generate_all_due_recurring_expenses: {
+        Args: { batch_limit?: number }
         Returns: Json
       }
       generate_due_recurring_expenses: {

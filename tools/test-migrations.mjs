@@ -119,6 +119,7 @@ const expected = [
   "107_repairs_split_mode.sql",
   "108_repair_payer_and_lr_splits.sql",
   "109_notification_snooze_quiet_hours.sql",
+  "110_generate_recurring_scheduler.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
