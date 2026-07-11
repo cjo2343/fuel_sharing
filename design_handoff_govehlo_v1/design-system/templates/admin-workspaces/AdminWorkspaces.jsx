@@ -6,7 +6,7 @@ var W = { deep:'#1A2E1F', forest:'#2D6A4F', leaf:'#52B788', mist:'#D8F3DC', mute
 // ── Non-amber warning: burnt coral ──────────────────────────────
 // Amber (#F4A261) is money-only. Health warnings use this instead.
 var HEALTH = {
-  ok:      { color:'#52B788', bg:'#D1F5E3', label:'Healthy' },
+  ok:      { color:'#1A7A47', bg:'#D1F5E3', label:'Healthy' },
   warning: { color:'#C4673D', bg:'#FAEDE5', label:'Attention' },
   error:   { color:'#D95050', bg:'#FDEDED', label:'Error' },
 };
@@ -14,13 +14,13 @@ var HEALTH_ORDER = { error:0, warning:1, ok:2 };
 
 // ── Mock workspace data ─────────────────────────────────────────
 var WS_DATA = [
-  { id:'ws-fam-j', name:'Familien Jørgensen', initial:'FJ', color:'#2D6A4F', owner:'christian@chrjohn.dk', members:5, roles:'1 owner, 4 members', lastActive:'2 min ago', health:'ok', period:'Juni 2026', periodOverdue:false, staleRequests:0, errors7d:0 },
-  { id:'ws-kontor', name:'Kontor Bilpool', initial:'KB', color:'#52B788', owner:'lars@bilpool.dk', members:8, roles:'1 owner, 2 admins, 5 members', lastActive:'1 hour ago', health:'warning', period:'Juni 2026', periodOverdue:false, staleRequests:2, errors7d:2 },
-  { id:'ws-nabo', name:'Nabo-deling', initial:'ND', color:'#F4A261', owner:'mette@work.dk', members:3, roles:'1 owner, 2 members', lastActive:'3 hours ago', health:'error', period:null, periodOverdue:false, staleRequests:1, errors7d:3 },
-  { id:'ws-hansen', name:'Hansen & Co Bilklub', initial:'HC', color:'#3D8B6A', owner:'peter@hansen.dk', members:4, roles:'1 owner, 1 admin, 2 members', lastActive:'Yesterday', health:'ok', period:'Juni 2026', periodOverdue:false, staleRequests:0, errors7d:0 },
-  { id:'ws-kore', name:'Køreklub Nordsjælland', initial:'KN', color:'#2D6A4F', owner:'jonas@kore.dk', members:12, roles:'1 owner, 3 admins, 8 members', lastActive:'4 hours ago', health:'warning', period:'Maj 2026', periodOverdue:true, staleRequests:0, errors7d:1 },
-  { id:'ws-pendler', name:'Pendler-gruppen', initial:'PG', color:'#52B788', owner:'anna@pendler.dk', members:6, roles:'1 owner, 1 admin, 4 members', lastActive:'30 min ago', health:'ok', period:'Juni 2026', periodOverdue:false, staleRequests:0, errors7d:0 },
-  { id:'ws-sommer', name:'Sommerhus Tisvilde', initial:'ST', color:'#6B8F7A', owner:'erik@email.dk', members:4, roles:'1 owner, 3 members', lastActive:'2 days ago', health:'ok', period:null, periodOverdue:false, staleRequests:0, errors7d:0 },
+  { id:'ws-fam-j', name:'Familien Jørgensen', initial:'FJ', color:'#2D6A4F', owner:'christian@chrjohn.dk', members:5, roles:'1 owner, 4 members', lastActive:'2 min ago', health:'ok', period:'Juni 2026', staleRequests:0, errors7d:0 },
+  { id:'ws-kontor', name:'Kontor Bilpool', initial:'KB', color:'#52B788', owner:'lars@bilpool.dk', members:8, roles:'1 owner, 2 admins, 5 members', lastActive:'1 hour ago', health:'warning', period:'Juni 2026', staleRequests:2, errors7d:2 },
+  { id:'ws-nabo', name:'Nabo-deling', initial:'ND', color:'#F4A261', owner:'mette@work.dk', members:3, roles:'1 owner, 2 members', lastActive:'3 hours ago', health:'error', period:null, staleRequests:1, errors7d:3 },
+  { id:'ws-hansen', name:'Hansen & Co Bilklub', initial:'HC', color:'#3D8B6A', owner:'peter@hansen.dk', members:4, roles:'1 owner, 1 admin, 2 members', lastActive:'Yesterday', health:'ok', period:'Juni 2026', staleRequests:0, errors7d:0 },
+  { id:'ws-kore', name:'Køreklub Nordsjælland', initial:'KN', color:'#2D6A4F', owner:'jonas@kore.dk', members:12, roles:'1 owner, 3 admins, 8 members', lastActive:'4 hours ago', health:'warning', period:'Maj 2026', staleRequests:0, errors7d:1 },
+  { id:'ws-pendler', name:'Pendler-gruppen', initial:'PG', color:'#52B788', owner:'anna@pendler.dk', members:6, roles:'1 owner, 1 admin, 4 members', lastActive:'30 min ago', health:'ok', period:'Juni 2026', staleRequests:0, errors7d:0 },
+  { id:'ws-sommer', name:'Sommerhus Tisvilde', initial:'ST', color:'#6B8F7A', owner:'erik@email.dk', members:4, roles:'1 owner, 3 members', lastActive:'2 days ago', health:'ok', period:null, staleRequests:0, errors7d:0 },
 ];
 
 var TOTALS = { workspaces:WS_DATA.length, members:0, attention:0, errors7d:0 };
@@ -59,8 +59,7 @@ function HealthBadge({ health }) {
 function SignalChip({ label, type }) {
   var colors = {
     period:  { color:W.forest, bg:W.mist },
-    overdue: { color:'#C4673D', bg:'#FAEDE5' },
-    stale:   { color:'#C4673D', bg:'#FAEDE5' },
+    stale:   { color:'#C4673D', bg:'#FAEDE5' },   // attention — non-money status (amber stays money-only)
     error:   { color:W.err, bg:W.errLt },
   };
   var c = colors[type] || colors.period;
@@ -77,7 +76,7 @@ function WorkspaceRow({ ws }) {
 
   var signals = [];
   if (ws.period) {
-    signals.push({ type: ws.periodOverdue ? 'overdue' : 'period', label: (ws.periodOverdue ? '⚠ ' : '') + 'Open: ' + ws.period });
+    signals.push({ type:'period', label:'Open: ' + ws.period });
   }
   if (ws.staleRequests > 0) {
     signals.push({ type:'stale', label: ws.staleRequests + ' stale request' + (ws.staleRequests > 1 ? 's' : '') });
