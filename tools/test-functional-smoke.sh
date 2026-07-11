@@ -28,8 +28,13 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 C="govehlo-func-smoke-$$"
 
-cleanup() { docker rm -f "$C" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
+cleanup() { docker rm -f "${C}" >/dev/null 2>&1 || true; }
+# Preserve the script's real exit status across cleanup, and assert the explicit
+# completion marker: exiting 0 without having reached the final marker line means
+# the script was cut short (e.g. a stray `exit 0` or a truncated heredoc) — turn
+# that into a loud failure instead of a silent green.
+smoke_completed=0
+trap 'rc=$?; cleanup; if [ "$rc" -eq 0 ] && [ "$smoke_completed" -ne 1 ]; then echo "❌ Smoke script exited 0 WITHOUT reaching its completion marker — treat as failure." >&2; rc=1; fi; exit $rc' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
@@ -38,13 +43,13 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "⏳ Starting postgres:15-alpine as $C…"
-docker run -d --name "$C" -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust \
+echo "⏳ Starting postgres:15-alpine as ${C}…"
+docker run -d --name "${C}" -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust \
   -v "$REPO":/repo:ro postgres:15-alpine >/dev/null
 
 ready=0
 for _ in $(seq 1 60); do
-  if docker exec "$C" pg_isready -U postgres >/dev/null 2>&1; then ready=1; break; fi
+  if docker exec "${C}" pg_isready -U postgres >/dev/null 2>&1; then ready=1; break; fi
   sleep 1
 done
 if [ "$ready" -ne 1 ]; then
@@ -54,7 +59,7 @@ fi
 # pg_isready can flip true across the bootstrap restart; settle briefly.
 sleep 2
 
-PSQL() { docker exec -i "$C" psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres "$@"; }
+PSQL() { docker exec -i "${C}" psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres "$@"; }
 
 echo "── prelude + schema"
 PSQL <<'SQL'
@@ -301,4 +306,7 @@ begin
 end $$;
 SQL
 
+# Explicit completion marker — the EXIT trap fails the run if the script exits 0
+# without having set this flag.
+smoke_completed=1
 echo "✅ delete_my_account functional smoke: ALL PASS"

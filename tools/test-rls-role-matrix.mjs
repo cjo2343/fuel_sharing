@@ -736,6 +736,116 @@ end`,
     post: `if (select status from public.settlement_periods where id = '${P1}') <> 'open'
       then raise exception 'CASEFAIL repairs-close-blocked-stale-request-gv260: period should remain open'; end if;`,
   }),
+
+  // ── 7. Repair payer + validation + largest-remainder rounding (GV-269) ──────
+  rpcCase({
+    name: "repair-cost-zero-rejected",
+    desc: "insert_repair rejects a zero cost (repairs are financial records, 22023)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, 'Nul kroner', 0, null, null, null);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-cost-negative-rejected",
+    desc: "insert_repair rejects a negative cost (22023)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, 'Negativ pris', -50.00, null, null, null);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-blank-description-rejected",
+    desc: "insert_repair rejects a whitespace-only description (btrim gate, 22023)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, '   ', 100.00, null, null, null);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-negative-odometer-rejected",
+    desc: "insert_repair rejects a negative odometer reading (22023)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, 'Negativt odometer', 100.00, -1, null, null);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-payer-inactive-rejected",
+    desc: "insert_repair rejects INACTIVE member D as payer (22023)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, 'Inaktiv betaler', 100.00, null, null, '${ID.D}');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-payer-foreign-rejected",
+    desc: "insert_repair rejects a member of ANOTHER workspace (E) as payer (22023)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, 'Fremmed betaler', 100.00, null, null, '${ID.E}');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "repair-payer-other-active-member-allowed",
+    desc: "B logs a repair naming ACTIVE member C as payer (any-member attribution, 2026-07-10 decision)",
+    actor: B,
+    op: `perform public.insert_repair('${WS1}', current_date, 'Betalt af Cille', 100.00, null, null, '${ID.C}');`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.vehicle_repairs
+        where ledger_id = '${WS1}' and description = 'Betalt af Cille'
+          and created_by_member_id = '${ID.B}' and paid_by_member_id = '${ID.C}')
+      then raise exception 'CASEFAIL repair-payer-other-active-member-allowed: row missing or payer/creator not recorded as B->C'; end if;`,
+  }),
+  queryCase({
+    name: "repairs-lr-six-100kr-sum-exact",
+    desc: "largest remainder: six 100 kr ligeligt repairs over 3 members sum to EXACTLY 600.00 and the nets to exactly zero (GV-269; per-member rounding left a 0,06 kr residual)",
+    setup: [
+      step(SUPER, `update public.ledger_members set is_active = false where id = '${ID.G}';`),
+      step(A, `perform public.insert_repair('${WS1}', current_date, 'LR reparation 1', 100.00, null, null, null);
+  perform public.insert_repair('${WS1}', current_date, 'LR reparation 2', 100.00, null, null, null);
+  perform public.insert_repair('${WS1}', current_date, 'LR reparation 3', 100.00, null, null, null);
+  perform public.insert_repair('${WS1}', current_date, 'LR reparation 4', 100.00, null, null, null);
+  perform public.insert_repair('${WS1}', current_date, 'LR reparation 5', 100.00, null, null, null);
+  perform public.insert_repair('${WS1}', current_date, 'LR reparation 6', 100.00, null, null, null);`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; share_sum numeric; net_sum numeric; total_repairs numeric; sh1 numeric; sh2 numeric; sh3 numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  select sum((p->>'repairShare')::numeric), sum((p->>'net')::numeric)
+    into share_sum, net_sum
+    from jsonb_array_elements(s->'people') p;
+  total_repairs := (s->>'totalRepairs')::numeric;
+  -- people is ordered by member id (text, collate C); each 100 kr item gives its
+  -- single leftover oere to the LOWEST member id, so 6 items => 200.04 for the
+  -- first member and 199.98 for the other two.
+  select max(q.sh) filter (where q.ord = 1),
+         max(q.sh) filter (where q.ord = 2),
+         max(q.sh) filter (where q.ord = 3)
+    into sh1, sh2, sh3
+    from (select (t.p->>'repairShare')::numeric as sh, t.ord
+          from jsonb_array_elements(s->'people') with ordinality t(p, ord)) q;
+  if total_repairs is distinct from 600.00 or share_sum is distinct from 600.00 or net_sum is distinct from 0 then
+    raise exception 'CASEFAIL repairs-lr-six-100kr-sum-exact: totalRepairs=% shareSum=% netSum=% (expected EXACTLY 600.00 / 600.00 / 0 — no tolerance)', total_repairs, share_sum, net_sum;
+  end if;
+  if sh1 is distinct from 200.04 or sh2 is distinct from 199.98 or sh3 is distinct from 199.98 then
+    raise exception 'CASEFAIL repairs-lr-six-100kr-sum-exact: shares by id order = % / % / % (expected 200.04 / 199.98 / 199.98)', sh1, sh2, sh3;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "repairs-created-at-scoping",
+    desc: "a repair logged NOW with an old repair_date lands in the settling period — scoping is by created_at, not repair_date (GV-269; under 107 it was silently dropped)",
+    setup: [
+      step(B, `perform public.insert_repair('${WS1}', date '2021-06-15', 'Gammel dato, logget nu', 120.00, null, null, null);`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; share_sum numeric; total_repairs numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  total_repairs := (s->>'totalRepairs')::numeric;
+  select sum((p->>'repairShare')::numeric) into share_sum
+    from jsonb_array_elements(s->'people') p;
+  if total_repairs is distinct from 120.00 or share_sum is distinct from 120.00 then
+    raise exception 'CASEFAIL repairs-created-at-scoping: totalRepairs=% shareSum=% (expected 120.00/120.00 — the old-dated repair must fold into the period it was logged in)', total_repairs, share_sum;
+  end if;
+end`,
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────

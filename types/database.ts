@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 107 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 108 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1264,6 +1264,7 @@ export type Database = {
           id: string
           ledger_id: string
           odo_km: number | null
+          paid_by_member_id: string | null
           repair_date: string
           updated_at: string
           workshop: string | null
@@ -1277,6 +1278,7 @@ export type Database = {
           id?: string
           ledger_id: string
           odo_km?: number | null
+          paid_by_member_id?: string | null
           repair_date: string
           updated_at?: string
           workshop?: string | null
@@ -1290,6 +1292,7 @@ export type Database = {
           id?: string
           ledger_id?: string
           odo_km?: number | null
+          paid_by_member_id?: string | null
           repair_date?: string
           updated_at?: string
           workshop?: string | null
@@ -1307,6 +1310,13 @@ export type Database = {
             columns: ["ledger_id"]
             isOneToOne: false
             referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_repairs_paid_by_member_id_fkey"
+            columns: ["paid_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
             referencedColumns: ["id"]
           },
         ]
@@ -1576,6 +1586,7 @@ export type Database = {
           cost_dkk_value: number
           description_value: string
           odo_km_value?: number
+          paid_by_member_id_value?: string
           repair_date_value: string
           target_ledger_id: string
           workshop?: string
