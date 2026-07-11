@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 110 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 111 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -419,6 +419,7 @@ export type Database = {
           email: string | null
           id: string
           is_active: boolean
+          last_seen_at: string | null
           ledger_id: string
           mobilepay_phone: string | null
           name: string
@@ -430,6 +431,7 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean
+          last_seen_at?: string | null
           ledger_id: string
           mobilepay_phone?: string | null
           name: string
@@ -441,6 +443,7 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean
+          last_seen_at?: string | null
           ledger_id?: string
           mobilepay_phone?: string | null
           name?: string
@@ -1775,6 +1778,10 @@ export type Database = {
       soft_delete_workspace_expense: {
         Args: { expense_id_value: string; target_ledger_id: string }
         Returns: Json
+      }
+      touch_member_presence: {
+        Args: { target_ledger_id: string }
+        Returns: undefined
       }
       update_ledger_insurance: {
         Args: {
