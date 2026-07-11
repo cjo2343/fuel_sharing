@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 108 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 109 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -705,6 +705,10 @@ export type Database = {
           activity_enabled: boolean
           payments_enabled: boolean
           periods_enabled: boolean
+          quiet_end_hour: number
+          quiet_hours_enabled: boolean
+          quiet_start_hour: number
+          snooze_until: string | null
           updated_at: string
           user_id: string
         }
@@ -712,6 +716,10 @@ export type Database = {
           activity_enabled?: boolean
           payments_enabled?: boolean
           periods_enabled?: boolean
+          quiet_end_hour?: number
+          quiet_hours_enabled?: boolean
+          quiet_start_hour?: number
+          snooze_until?: string | null
           updated_at?: string
           user_id: string
         }
@@ -719,6 +727,10 @@ export type Database = {
           activity_enabled?: boolean
           payments_enabled?: boolean
           periods_enabled?: boolean
+          quiet_end_hour?: number
+          quiet_hours_enabled?: boolean
+          quiet_start_hour?: number
+          snooze_until?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -1571,6 +1583,10 @@ export type Database = {
           activity_enabled: boolean
           payments_enabled: boolean
           periods_enabled: boolean
+          quiet_end_hour: number
+          quiet_hours_enabled: boolean
+          quiet_start_hour: number
+          snooze_until: string
         }[]
       }
       get_workspace_join_code: {
@@ -1719,7 +1735,15 @@ export type Database = {
         }[]
       }
       set_notification_preferences: {
-        Args: { activity: boolean; payments: boolean; periods: boolean }
+        Args: {
+          activity: boolean
+          payments: boolean
+          periods: boolean
+          quiet_end_hour_value?: number
+          quiet_hours_enabled_value?: boolean
+          quiet_start_hour_value?: number
+          snooze_until_value?: string
+        }
         Returns: undefined
       }
       set_tank_baseline: {
