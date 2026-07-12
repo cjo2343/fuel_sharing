@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 114 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 115 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1020,12 +1020,14 @@ export type Database = {
           amount: number
           created_at: string
           currency: string
+          dispute_note: string | null
           from_member_id: string | null
           id: string
           last_reminder_at: string | null
           ledger_id: string
           paid_at: string | null
           paid_claimed_at: string | null
+          paid_note: string | null
           period_id: string | null
           reminder_claim_token: string | null
           reminder_claimed_at: string | null
@@ -1040,12 +1042,14 @@ export type Database = {
           amount: number
           created_at?: string
           currency?: string
+          dispute_note?: string | null
           from_member_id?: string | null
           id?: string
           last_reminder_at?: string | null
           ledger_id: string
           paid_at?: string | null
           paid_claimed_at?: string | null
+          paid_note?: string | null
           period_id?: string | null
           reminder_claim_token?: string | null
           reminder_claimed_at?: string | null
@@ -1060,12 +1064,14 @@ export type Database = {
           amount?: number
           created_at?: string
           currency?: string
+          dispute_note?: string | null
           from_member_id?: string | null
           id?: string
           last_reminder_at?: string | null
           ledger_id?: string
           paid_at?: string | null
           paid_claimed_at?: string | null
+          paid_note?: string | null
           period_id?: string | null
           reminder_claim_token?: string | null
           reminder_claimed_at?: string | null
@@ -1935,6 +1941,7 @@ export type Database = {
           currency_value: string
           current_pair_keys?: string[]
           next_status: string
+          p_note?: string
           payer_member_id: string
           recipient_member_id: string
           target_ledger_id: string
