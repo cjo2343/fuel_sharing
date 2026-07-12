@@ -845,7 +845,7 @@ end`,
   }),
   queryCase({
     name: "repairs-created-at-scoping",
-    desc: "a repair logged NOW with an old repair_date lands in the settling period — scoping is by created_at, not repair_date (GV-269; under 107 it was silently dropped)",
+    desc: "a repair logged NOW with an old repair_date lands in the settling period — insert_repair stamps the open period_id (GV-277), so repair_date never drops it (GV-269; under 107 it was silently dropped)",
     setup: [
       step(B, `perform public.insert_repair('${WS1}', date '2021-06-15', 'Gammel dato, logget nu', 120.00, null, null, null);`),
     ],
@@ -991,17 +991,26 @@ end`,
   }),
   queryCase({
     name: "fingerprint-includes-in-scope-repairs",
-    desc: "calculate_period_entry_fingerprint appends a repairs key with the in-scope repair id, and omits it entirely when the period has no repair (GV-274 close-staleness)",
+    desc: "calculate_period_entry_fingerprint appends a repairs key with the in-scope repair as an [id,oere] PAIR, and omits it entirely when the period has no repair (GV-277 close-staleness, financial revision)",
     setup: [
       step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id, created_at)
         values ('f1f1f1f1-0000-0000-0000-000000000001', '${WS1}', current_date, 'Fingerprint reparation', 100.00, '${ID.B}', '${ID.B}', now());`),
     ],
     actor: A,
-    assert: `declare fp_with text; fp_without text;
+    assert: `declare fp_with text; fp_after_edit text; fp_without text;
 begin
+  -- GV-277: the repair component is an [id,oere] pair (100.00 kr => 10000 oere), so
+  -- a repair-cost edit — which moves neither totalKm nor totalPaid — changes the
+  -- fingerprint and busts a prepared close. A legacy null-period row is scoped by
+  -- created_at here (it was seeded directly, not through insert_repair).
   fp_with := public.calculate_period_entry_fingerprint('${WS1}', '${P1}');
-  if position('"repairs":["f1f1f1f1-0000-0000-0000-000000000001"]' in fp_with) = 0 then
-    raise exception 'CASEFAIL fingerprint-includes-in-scope-repairs: fingerprint=% (expected an in-scope repair id in a repairs key)', fp_with;
+  if position('"repairs":[["f1f1f1f1-0000-0000-0000-000000000001",10000]]' in fp_with) = 0 then
+    raise exception 'CASEFAIL fingerprint-includes-in-scope-repairs: fingerprint=% (expected an [id,oere] repair pair in a repairs key)', fp_with;
+  end if;
+  update public.vehicle_repairs set cost_dkk = 150.00 where id = 'f1f1f1f1-0000-0000-0000-000000000001';
+  fp_after_edit := public.calculate_period_entry_fingerprint('${WS1}', '${P1}');
+  if fp_after_edit = fp_with or position('",15000]]' in fp_after_edit) = 0 then
+    raise exception 'CASEFAIL fingerprint-includes-in-scope-repairs: edited fingerprint=% (expected the oere amount to change to 15000)', fp_after_edit;
   end if;
   -- Soft-delete the repair: the period now has no in-scope repair, so the repairs
   -- key must disappear entirely (byte-identical to the pre-112 trips/fuel/expenses
@@ -1010,6 +1019,68 @@ begin
   fp_without := public.calculate_period_entry_fingerprint('${WS1}', '${P1}');
   if position('repairs' in fp_without) <> 0 then
     raise exception 'CASEFAIL fingerprint-includes-in-scope-repairs: fingerprint=% (expected NO repairs key when the period has no in-scope repair)', fp_without;
+  end if;
+end`,
+  }),
+
+  // ── 9. Repair↔period binding + payer deactivation (migration 114: GV-277) ─────
+  queryCase({
+    name: "insert-repair-stamps-open-period",
+    desc: "insert_repair stamps the row's period_id with the ledger's open period (GV-277 repair↔period binding)",
+    setup: [
+      step(B, `perform public.insert_repair('${WS1}', current_date, 'Stemplet reparation', 100.00, null, null, null);`),
+    ],
+    actor: A,
+    assert: `declare stamped uuid;
+begin
+  select period_id into stamped
+  from public.vehicle_repairs
+  where ledger_id = '${WS1}' and description = 'Stemplet reparation' and deleted_at is null
+  order by created_at desc limit 1;
+  if stamped is distinct from '${P1}'::uuid then
+    raise exception 'CASEFAIL insert-repair-stamps-open-period: period_id=% (expected the open period %)', stamped, '${P1}';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "deactivation-suspends-payer-recurring",
+    desc: "deactivating a member suspends every recurring template they pay for and writes a recurring_suspended event (GV-277)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('c1c1c1c1-0000-0000-0000-000000000001', '${WS1}', 'other', 'Cilles abonnement', 100.00, 'monthly', current_date, '${ID.C}', true, '${A_ID}');`),
+    ],
+    actor: A,
+    assert: `declare still_active boolean; evt_count integer; evt_body text;
+begin
+  perform public.set_ledger_member_active_admin('${WS1}', '${ID.C}', false);
+  select is_active into still_active from public.recurring_expenses where id = 'c1c1c1c1-0000-0000-0000-000000000001';
+  if still_active is distinct from false then
+    raise exception 'CASEFAIL deactivation-suspends-payer-recurring: template is_active=% (expected false — suspended on payer deactivation)', still_active;
+  end if;
+  select count(*), max(body) into evt_count, evt_body
+  from public.ledger_events
+  where ledger_id = '${WS1}' and event_type = 'recurring_suspended';
+  if evt_count < 1 or position('Cilles abonnement' in coalesce(evt_body, '')) = 0 then
+    raise exception 'CASEFAIL deactivation-suspends-payer-recurring: evt_count=% body=% (expected a recurring_suspended event naming the template)', evt_count, evt_body;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "generator-skips-inactive-payer-template",
+    desc: "generate_due_recurring_expenses skips a due template whose payer is an inactive member (GV-277 defense in depth)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('c2c2c2c2-0000-0000-0000-000000000002', '${WS1}', 'other', 'Inaktiv-betaler skabelon', 100.00, 'monthly', current_date, '${ID.D}', true, '${A_ID}');`),
+    ],
+    actor: A,
+    assert: `declare gen_count integer;
+begin
+  perform public.generate_due_recurring_expenses('${WS1}');
+  select count(*) into gen_count from public.workspace_expenses where recurring_expense_id = 'c2c2c2c2-0000-0000-0000-000000000002';
+  if gen_count <> 0 then
+    raise exception 'CASEFAIL generator-skips-inactive-payer-template: generated % rows (expected 0 — D is inactive)', gen_count;
   end if;
 end`,
   }),

@@ -123,6 +123,7 @@ const expected = [
   "111_member_last_seen.sql",
   "112_release_blockers_remediation.sql",
   "113_close_reminder_running_mode.sql",
+  "114_repair_period_binding_and_deactivation.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
