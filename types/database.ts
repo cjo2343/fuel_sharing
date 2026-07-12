@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 113 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 114 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1280,6 +1280,7 @@ export type Database = {
           ledger_id: string
           odo_km: number | null
           paid_by_member_id: string | null
+          period_id: string | null
           repair_date: string
           updated_at: string
           workshop: string | null
@@ -1294,6 +1295,7 @@ export type Database = {
           ledger_id: string
           odo_km?: number | null
           paid_by_member_id?: string | null
+          period_id?: string | null
           repair_date: string
           updated_at?: string
           workshop?: string | null
@@ -1308,6 +1310,7 @@ export type Database = {
           ledger_id?: string
           odo_km?: number | null
           paid_by_member_id?: string | null
+          period_id?: string | null
           repair_date?: string
           updated_at?: string
           workshop?: string | null
@@ -1332,6 +1335,13 @@ export type Database = {
             columns: ["paid_by_member_id"]
             isOneToOne: false
             referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_repairs_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "settlement_periods"
             referencedColumns: ["id"]
           },
         ]
