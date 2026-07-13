@@ -18,6 +18,7 @@ single source of truth for its schema and for the canonical design system.
 | `tools/` | CI guards: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `test-functional-smoke.sh`. |
 | `design_handoff_*/`, `design_briefs_*/`, `Design/` | Design-system + brand source of truth, referenced by both live repos. |
 | `RENAME-VEHLOSHARE-RUNBOOK.md` | Active GoVehlo → VehloShare rename runbook. |
+| `docs/operations/gdpr-rehearsal.md` | Quarterly/pre-release GDPR export, deletion, retention, and restore rehearsal. |
 
 The retired legacy PWA runtime (`app.js`, `server.py`, the PWA files, and the
 ~140-test legacy validation suite) was archived at the git tag

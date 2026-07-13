@@ -396,6 +396,65 @@ const CASES = [
     op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending"),
     expect: "ok",
   }),
+  queryCase({
+    name: "payment-lifecycle-request-claim-confirm",
+    desc: "creditor requests, debtor claims paid, and creditor confirms the same stored amount",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: A,
+    assert: `declare current_status text; current_amount numeric; claimed_at timestamptz; confirmed_at timestamptz; event_count integer;
+begin
+  perform public.upsert_settlement_request_status('${WS1}', '${P1}', '${ID.B}', '${A_ID}', 300, 'DKK', 'paid', array[]::text[]);
+  select status, amount, paid_claimed_at, paid_at
+    into current_status, current_amount, claimed_at, confirmed_at
+  from public.settlement_requests
+  where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+  if current_status is distinct from 'paid' or current_amount is distinct from 300::numeric then
+    raise exception 'CASEFAIL payment-lifecycle-request-claim-confirm: status=% amount=%', current_status, current_amount;
+  end if;
+  if claimed_at is null or confirmed_at is null then
+    raise exception 'CASEFAIL payment-lifecycle-request-claim-confirm: claimed_at=% paid_at=%', claimed_at, confirmed_at;
+  end if;
+  select count(*) into event_count
+  from public.ledger_events
+  where ledger_id = '${WS1}' and event_type in ('payment_requested', 'payment_claimed', 'payment_paid');
+  if event_count <> 3 then
+    raise exception 'CASEFAIL payment-lifecycle-request-claim-confirm: lifecycle events=% (expected 3)', event_count;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "payment-lifecycle-debtor-cannot-confirm",
+    desc: "debtor cannot confirm their own paid_pending claim",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: B,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "paid"),
+    expect: "42501",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid_pending' and amount = 300)
+      then raise exception 'CASEFAIL payment-lifecycle-debtor-cannot-confirm: claim changed after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "payment-lifecycle-confirm-amount-locked",
+    desc: "creditor cannot confirm paid_pending with a changed amount",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: A,
+    op: upsert(WS1, P1, ID.B, A_ID, 275, "paid"),
+    expect: "23514",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid_pending' and amount = 300)
+      then raise exception 'CASEFAIL payment-lifecycle-confirm-amount-locked: claim changed after rejection'; end if;`,
+  }),
   rpcCase({
     name: "upsert-debtor-paidpending-diff-amount",
     desc: "debtor B -> paid_pending with a DIFFERENT amount (GV-259 amount lock)",
