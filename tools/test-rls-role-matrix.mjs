@@ -855,6 +855,57 @@ end`,
     op: `perform public.update_ledger_settings('${WS1}', null, null, null, 'not_a_real_mode');`,
     expect: "22023",
   }),
+  // ── GV-292: a real settlement-rule change logs one settings_changed feed event;
+  //    a no-op (equal or null param) logs nothing; non-admins are still denied. ──
+  rpcCase({
+    name: "settings-change-settlement-mode-emits-event",
+    desc: "admin A switches settlement_mode monthly->running: exactly one settings_changed event with {field,old,new} (GV-292)",
+    actor: A,
+    op: `perform public.update_ledger_settings('${WS1}', 'running', null, null, null);`,
+    expect: "ok",
+    post: `if (select count(*) from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed') <> 1
+      then raise exception 'CASEFAIL settings-change-settlement-mode-emits-event: expected exactly 1 settings_changed event'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and title = 'Afregning ændret' and body = 'Gruppen afregner nu løbende.'
+        and actor_member_id = '${A_ID}'
+        and metadata->>'field' = 'settlement_mode'
+        and metadata->>'old' = 'monthly' and metadata->>'new' = 'running'
+    ) then raise exception 'CASEFAIL settings-change-settlement-mode-emits-event: settlement_mode event missing or wrong content'; end if;`,
+  }),
+  rpcCase({
+    name: "settings-change-repairs-mode-emits-event",
+    desc: "admin A switches repairs_split_mode ligeligt->deles_ikke: exactly one settings_changed event (GV-292)",
+    actor: A,
+    op: `perform public.update_ledger_settings('${WS1}', null, null, null, 'deles_ikke');`,
+    expect: "ok",
+    post: `if (select count(*) from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed') <> 1
+      then raise exception 'CASEFAIL settings-change-repairs-mode-emits-event: expected exactly 1 settings_changed event'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and title = 'Reparationsdeling ændret' and body = 'Reparationer deles ikke længere.'
+        and metadata->>'field' = 'repairs_split_mode'
+        and metadata->>'old' = 'ligeligt' and metadata->>'new' = 'deles_ikke'
+    ) then raise exception 'CASEFAIL settings-change-repairs-mode-emits-event: repairs event missing or wrong content'; end if;`,
+  }),
+  rpcCase({
+    name: "settings-noop-emits-no-event",
+    desc: "admin A re-saves the SAME settlement_mode (monthly) with a null repairs param: no settings_changed event (GV-292 no-op suppression)",
+    actor: A,
+    op: `perform public.update_ledger_settings('${WS1}', 'monthly', null, null, null);`,
+    expect: "ok",
+    post: `if exists (select 1 from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed')
+      then raise exception 'CASEFAIL settings-noop-emits-no-event: a no-op call emitted a settings_changed event'; end if;`,
+  }),
+  rpcCase({
+    name: "settings-change-settlement-mode-nonadmin-denied",
+    desc: "non-admin B calls update_ledger_settings to change settlement_mode (denied 42501) (GV-292)",
+    actor: B,
+    op: `perform public.update_ledger_settings('${WS1}', 'running', null, null, null);`,
+    expect: "42501",
+  }),
   queryCase({
     name: "repairs-deles-ikke-matches-baseline",
     desc: "mode='deles_ikke': a repair logged by active member C is excluded, nets match the no-repairs baseline",
