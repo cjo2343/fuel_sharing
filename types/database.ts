@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 117 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 118 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1018,11 +1018,14 @@ export type Database = {
       settlement_requests: {
         Row: {
           amount: number
+          confirm_reminder_claim_token: string | null
+          confirm_reminder_claimed_at: string | null
           created_at: string
           currency: string
           dispute_note: string | null
           from_member_id: string | null
           id: string
+          last_confirm_reminder_at: string | null
           last_reminder_at: string | null
           ledger_id: string
           paid_at: string | null
@@ -1040,11 +1043,14 @@ export type Database = {
         }
         Insert: {
           amount: number
+          confirm_reminder_claim_token?: string | null
+          confirm_reminder_claimed_at?: string | null
           created_at?: string
           currency?: string
           dispute_note?: string | null
           from_member_id?: string | null
           id?: string
+          last_confirm_reminder_at?: string | null
           last_reminder_at?: string | null
           ledger_id: string
           paid_at?: string | null
@@ -1062,11 +1068,14 @@ export type Database = {
         }
         Update: {
           amount?: number
+          confirm_reminder_claim_token?: string | null
+          confirm_reminder_claimed_at?: string | null
           created_at?: string
           currency?: string
           dispute_note?: string | null
           from_member_id?: string | null
           id?: string
+          last_confirm_reminder_at?: string | null
           last_reminder_at?: string | null
           ledger_id?: string
           paid_at?: string | null
@@ -1510,6 +1519,20 @@ export type Database = {
           period_id: string
         }[]
       }
+      claim_due_confirm_reminders: {
+        Args: { p_limit?: number }
+        Returns: {
+          amount: number
+          claim_token: string
+          creditor_email: string
+          creditor_id: string
+          currency: string
+          debtor_name: string
+          ledger_id: string
+          paid_note: string
+          request_id: string
+        }[]
+      }
       claim_due_payment_reminders: {
         Args: { batch_limit?: number }
         Returns: {
@@ -1542,6 +1565,10 @@ export type Database = {
         Returns: Json
       }
       confirm_close_reminders: {
+        Args: { confirmations: Json }
+        Returns: number
+      }
+      confirm_confirm_reminders: {
         Args: { confirmations: Json }
         Returns: number
       }
