@@ -1579,6 +1579,90 @@ begin
   end if;
 end`,
   }),
+
+  // ── 12. GV-293: settlement amount immutability via DIRECT authenticated writes ─
+  // Finding 1 — enforce_settlement_request_exact_amount (migration 117) early-returned
+  // for any row whose new status was not 'requested', and only guarded the paid_pending
+  // dispute edge, so a settlement party could rewrite the amount through a direct
+  // PostgREST UPDATE (RLS lets from/to members update their own request) while claiming,
+  // confirming, or cancelling a payment. The generalized guard rejects any change to the
+  // ledger/period/pair/amount/currency on ANY transition whose result is not 'requested'
+  // (23514) while status-only moves and the dispute path stay allowed. These cases hit
+  // the TABLE trigger directly, not the RPC (which has its own GV-259 lock).
+  rpcCase({
+    name: "direct-requested-to-paidpending-changed-amount-blocked",
+    desc: "payer B directly UPDATEs requested->paid_pending with a CHANGED amount -> trigger rejects 23514",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: B,
+    op: `update public.settlement_requests set status = 'paid_pending', amount = 250
+         where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`,
+    expect: "23514",
+    post: ASSERT_BA_REQUESTED,
+  }),
+  rpcCase({
+    name: "direct-requested-to-paidpending-same-amount-ok",
+    desc: "payer B directly UPDATEs requested->paid_pending keeping the amount -> allowed (status-only)",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: B,
+    op: `update public.settlement_requests set status = 'paid_pending'
+         where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid_pending' and amount = 300)
+      then raise exception 'CASEFAIL direct-requested-to-paidpending-same-amount-ok: expected paid_pending at 300'; end if;`,
+  }),
+  rpcCase({
+    name: "direct-paidpending-to-paid-changed-amount-blocked",
+    desc: "recipient A directly UPDATEs paid_pending->paid with a CHANGED amount -> trigger rejects 23514",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, `update public.settlement_requests set status = 'paid_pending'
+        where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+    ],
+    actor: A,
+    op: `update public.settlement_requests set status = 'paid', amount = 275
+         where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`,
+    expect: "23514",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid_pending' and amount = 300)
+      then raise exception 'CASEFAIL direct-paidpending-to-paid-changed-amount-blocked: claim changed after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "direct-lifecycle-claim-confirm-same-pair-ok",
+    desc: "direct-write lifecycle request->paid_pending->paid with the pair unchanged still works end to end",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, `update public.settlement_requests set status = 'paid_pending'
+        where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+    ],
+    actor: A,
+    op: `update public.settlement_requests set status = 'paid'
+         where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid' and amount = 300)
+      then raise exception 'CASEFAIL direct-lifecycle-claim-confirm-same-pair-ok: expected paid at 300'; end if;`,
+  }),
+  rpcCase({
+    name: "direct-dispute-preserving-amount-ok",
+    desc: "recipient A directly disputes (paid_pending->requested) preserving the amount -> allowed",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, `update public.settlement_requests set status = 'paid_pending'
+        where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+    ],
+    actor: A,
+    op: `update public.settlement_requests set status = 'requested'
+         where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'requested' and amount = 300)
+      then raise exception 'CASEFAIL direct-dispute-preserving-amount-ok: expected requested at 300'; end if;`,
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
@@ -1640,6 +1724,56 @@ reset role;`);
     log(`        ${(close.stderr || close.stdout).trim()}`);
   } else {
     log("  ok    close-serializes-concurrent-writer — close waits for the writer and rejects its stale fingerprint");
+  }
+}
+
+// GV-293 Finding 2 — the SAME serialization must hold when the writer does NOT take a
+// manual FOR SHARE (unlike the block above). A plain authenticated PostgREST trip
+// INSERT relies entirely on enforce_settlement_entry_lock's closed-period read, which
+// now locks the period row FOR SHARE. The in-flight writer therefore makes the close
+// wait on the trigger's lock, and the stale fingerprint is rejected once the trip
+// commits. Before migration 120 that read was lock-free, so this close would commit and
+// orphan the concurrent trip outside the archived snapshot. The writer inserts FIRST
+// (the trigger takes FOR SHARE during the insert), then sleeps holding the lock.
+{
+  const writerSql = `begin;
+select set_config('request.jwt.claims', '${B.claims}', false);
+set role authenticated;
+insert into public.trips (ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, note, created_by_member_id)
+values ('${WS1}', '${P1}', '${ID.B}', current_date, 1200, 1210, 'GV-293 trigger-lock trip', '${ID.B}');
+reset role;
+select pg_sleep(1.5);
+commit;`;
+  const writer = spawn(
+    "docker",
+    ["exec", "-i", CONTAINER, "psql", "-v", "ON_ERROR_STOP=1", "-q", "-U", "postgres", "-d", DB],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const writerDone = new Promise((resolve) => writer.on("close", resolve));
+  let writerStdout = "";
+  let writerStderr = "";
+  writer.stdout.on("data", (chunk) => { writerStdout += chunk; });
+  writer.stderr.on("data", (chunk) => { writerStderr += chunk; });
+  writer.stdin.end(writerSql);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const close = psql(`
+select set_config('request.jwt.claims', '${A.claims}', false);
+set role authenticated;
+select public.close_settlement_period('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});
+reset role;`);
+  const writerStatus = await writerDone;
+
+  if (writerStatus !== 0) {
+    failures++;
+    log("  FAIL  close-serializes-triggerlocked-writer — writer session failed");
+    log(`        ${(writerStderr || writerStdout).trim()}`);
+  } else if (close.status === 0 || !close.stderr.includes("Entries changed since this close was prepared")) {
+    failures++;
+    log("  FAIL  close-serializes-triggerlocked-writer — stale snapshot was not rejected after the unlocked writer committed");
+    log(`        ${(close.stderr || close.stdout).trim()}`);
+  } else {
+    log("  ok    close-serializes-triggerlocked-writer — the entry-lock trigger's FOR SHARE makes the close wait and reject the stale fingerprint");
   }
 }
 
