@@ -80,7 +80,7 @@ const HEADER = `// GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
 // Source: supabase-schema.sql @ migration ${latestMigration} · supabase CLI v${cliVersion} (exact-pinned)
-// Vendored byte-identically by govehlo-mobile (src/types/database.ts) and
+// Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 `;
 
