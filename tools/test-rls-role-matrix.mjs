@@ -1752,6 +1752,59 @@ end`,
             where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}')) <> 1
       then raise exception 'CASEFAIL transition-by-id-retry-is-idempotent: duplicate payment_claimed event'; end if;`,
   }),
+  queryCase({
+    name: "transition-by-id-lifecycle-journey",
+    desc: "request-id commands carry one canonical request through claim, confirm, and an idempotent retry",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, `perform public.transition_settlement_request_status(
+        (select id from public.settlement_requests
+         where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+        'paid_pending', 'MobilePay journey 122');`),
+    ],
+    actor: A,
+    assert: `declare request_id uuid; confirm_result jsonb; retry_result jsonb;
+      current_status text; current_amount numeric; claimed_at timestamptz;
+      confirmed_at timestamptz; lifecycle_events integer;
+begin
+  select id into request_id
+  from public.settlement_requests
+  where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+
+  confirm_result := public.transition_settlement_request_status(request_id, 'paid');
+  retry_result := public.transition_settlement_request_status(request_id, 'paid');
+
+  if confirm_result->>'settlement_request_id' is distinct from request_id::text
+     or confirm_result->>'status' is distinct from 'paid'
+     or coalesce((confirm_result->>'noop')::boolean, true) then
+    raise exception 'CASEFAIL transition-by-id-lifecycle-journey: invalid confirm result %', confirm_result;
+  end if;
+  if retry_result->>'status' is distinct from 'paid'
+     or not coalesce((retry_result->>'noop')::boolean, false) then
+    raise exception 'CASEFAIL transition-by-id-lifecycle-journey: retry was not an idempotent paid no-op %', retry_result;
+  end if;
+
+  select status, amount, paid_claimed_at, paid_at
+    into current_status, current_amount, claimed_at, confirmed_at
+  from public.settlement_requests
+  where id = request_id;
+  if current_status is distinct from 'paid' or current_amount is distinct from 300::numeric then
+    raise exception 'CASEFAIL transition-by-id-lifecycle-journey: status=% amount=%', current_status, current_amount;
+  end if;
+  if claimed_at is null or confirmed_at is null then
+    raise exception 'CASEFAIL transition-by-id-lifecycle-journey: claimed_at=% paid_at=%', claimed_at, confirmed_at;
+  end if;
+
+  select count(*) into lifecycle_events
+  from public.ledger_events
+  where ledger_id = '${WS1}'
+    and event_type in ('payment_requested', 'payment_claimed', 'payment_paid')
+    and metadata->>'settlement_request_id' = request_id::text;
+  if lifecycle_events <> 3 then
+    raise exception 'CASEFAIL transition-by-id-lifecycle-journey: lifecycle events=% (expected 3)', lifecycle_events;
+  end if;
+end`,
+  }),
   rpcCase({
     name: "transition-by-id-bystander-blocked",
     desc: "an unrelated active member cannot transition another pair's request by id",
