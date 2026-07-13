@@ -1713,6 +1713,78 @@ end`,
         where id = 'c9c9c9c9-0000-0000-0000-000000000121') is distinct from '${P1}'::uuid
       then raise exception 'CASEFAIL direct-repair-binds-open-period: repair did not bind to the open period'; end if;`,
   }),
+
+  // ── 14. Migration 122: request-id transition commands ─────────────────────
+  rpcCase({
+    name: "transition-by-id-uses-canonical-request",
+    desc: "debtor claims a request by id while the server preserves its stored amount and pair",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: B,
+    op: `perform public.transition_settlement_request_status(
+      (select id from public.settlement_requests
+       where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+      'paid_pending', 'MobilePay ref 122');`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid_pending' and amount = 300 and paid_note = 'MobilePay ref 122')
+      then raise exception 'CASEFAIL transition-by-id-uses-canonical-request: canonical row was not claimed'; end if;`,
+  }),
+  rpcCase({
+    name: "transition-by-id-retry-is-idempotent",
+    desc: "retrying an already-paid-pending claim is a no-op and does not emit another event",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, `perform public.transition_settlement_request_status(
+        (select id from public.settlement_requests
+         where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+        'paid_pending');`),
+    ],
+    actor: B,
+    op: `perform public.transition_settlement_request_status(
+      (select id from public.settlement_requests
+       where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+      'paid_pending');`,
+    expect: "ok",
+    post: `if (select count(*) from public.ledger_events
+        where ledger_id = '${WS1}' and event_type = 'payment_claimed'
+          and metadata->>'settlement_request_id' = (select id::text from public.settlement_requests
+            where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}')) <> 1
+      then raise exception 'CASEFAIL transition-by-id-retry-is-idempotent: duplicate payment_claimed event'; end if;`,
+  }),
+  rpcCase({
+    name: "transition-by-id-bystander-blocked",
+    desc: "an unrelated active member cannot transition another pair's request by id",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: C,
+    op: `perform public.transition_settlement_request_status(
+      (select id from public.settlement_requests
+       where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+      'paid_pending');`,
+    expect: "42501",
+    post: ASSERT_BA_REQUESTED,
+  }),
+  rpcCase({
+    name: "transition-batch-rolls-back-on-late-failure",
+    desc: "a valid first claim is rolled back when a later request has an invalid transition",
+    setup: [step(SUPER, `insert into public.settlement_requests
+        (id, ledger_id, period_id, from_member_id, to_member_id, amount, currency, status, requested_by_member_id)
+      values
+        ('00000000-0000-0000-0000-000000000122', '${WS1}', '${P1}', '${ID.B}', '${A_ID}', 300, 'DKK', 'requested', '${A_ID}'),
+        ('ffffffff-ffff-ffff-ffff-fffffffff122', '${WS1}', '${P1}', '${ID.B}', '${ID.C}', 10, 'DKK', 'open', '${ID.C}');`)],
+    actor: B,
+    op: `perform public.transition_settlement_requests_status(
+      array['00000000-0000-0000-0000-000000000122'::uuid,
+            'ffffffff-ffff-ffff-ffff-fffffffff122'::uuid],
+      'paid_pending');`,
+    expect: "22023",
+    post: `if (select status from public.settlement_requests
+        where id = '00000000-0000-0000-0000-000000000122') is distinct from 'requested'
+      then raise exception 'CASEFAIL transition-batch-rolls-back-on-late-failure: first request was partially committed'; end if;
+      if (select status from public.settlement_requests
+        where id = 'ffffffff-ffff-ffff-ffff-fffffffff122') is distinct from 'open'
+      then raise exception 'CASEFAIL transition-batch-rolls-back-on-late-failure: second request changed unexpectedly'; end if;`,
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────

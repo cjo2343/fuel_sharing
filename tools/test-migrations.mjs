@@ -131,6 +131,7 @@ const expected = [
   "119_settings_change_events.sql",
   "120_settlement_immutability_and_close_lock.sql",
   "121_settlement_period_boundary.sql",
+  "122_settlement_transition_commands.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

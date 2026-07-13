@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 121 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 122 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1834,6 +1834,22 @@ export type Database = {
       touch_member_presence: {
         Args: { target_ledger_id: string }
         Returns: undefined
+      }
+      transition_settlement_request_status: {
+        Args: {
+          next_status: string
+          p_note?: string
+          target_request_id: string
+        }
+        Returns: Json
+      }
+      transition_settlement_requests_status: {
+        Args: {
+          next_status: string
+          p_note?: string
+          target_request_ids: string[]
+        }
+        Returns: Json
       }
       update_ledger_insurance: {
         Args: {
