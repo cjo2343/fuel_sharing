@@ -128,6 +128,7 @@ const expected = [
   "116_recurring_generation_lock_skip.sql",
   "117_settlement_integrity_hardening.sql",
   "118_confirm_receipt_reminders.sql",
+  "119_settings_change_events.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
