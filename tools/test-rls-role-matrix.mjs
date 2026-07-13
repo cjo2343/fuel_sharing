@@ -69,7 +69,7 @@
 // Keep the fixture deterministic; if you need new fixture rows add them to the
 // SEED block and re-fetch ids.
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import process from "node:process";
 
 const IMAGE = "postgres:15-alpine";
@@ -258,6 +258,7 @@ function step(actor, sql) { return { actor, sql }; }
 const CLOSE_SNAPSHOT = `(
   select jsonb_build_object(
     'label', 'Role-matrix close',
+    'entryFingerprint', public.calculate_period_entry_fingerprint('${WS1}', '${P1}'),
     'totalKm', s->'totalKm',
     'totalPaid', s->'totalPaid',
     'people', s->'people',
@@ -381,6 +382,13 @@ const CASES = [
       then raise exception 'CASEFAIL upsert-creditor-creates: request row not created'; end if;`,
   }),
   rpcCase({
+    name: "upsert-creditor-wrong-server-amount",
+    desc: "creditor A cannot create B->A at an amount that differs from the server pair",
+    actor: A,
+    op: upsert(WS1, P1, ID.B, A_ID, 275, "requested"),
+    expect: "23514",
+  }),
+  rpcCase({
     name: "upsert-debtor-paidpending-stored",
     desc: "debtor B -> paid_pending carrying the stored amount",
     setup: [step(A, CREATE_REQ_300)],
@@ -397,14 +405,29 @@ const CASES = [
     expect: "23514",
   }),
   rpcCase({
+    name: "upsert-recipient-dispute-diff-amount",
+    desc: "recipient A cannot rewrite the amount while disputing a paid_pending claim",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: A,
+    op: upsert(WS1, P1, ID.B, A_ID, 275, "requested"),
+    expect: "23514",
+    post: `if not exists (select 1 from public.settlement_requests
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'
+          and status = 'paid_pending' and amount = 300)
+      then raise exception 'CASEFAIL upsert-recipient-dispute-diff-amount: claim changed after rejection'; end if;`,
+  }),
+  rpcCase({
     name: "upsert-recipient-rerequest-amount",
-    desc: "recipient A re-requests a live request at a new amount",
+    desc: "recipient A cannot re-request a live request at a non-server amount",
     setup: [step(A, CREATE_REQ_300)],
     actor: A,
     op: upsert(WS1, P1, ID.B, A_ID, 275, "requested"),
-    expect: "ok",
-    post: `if (select amount from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') <> 275
-      then raise exception 'CASEFAIL upsert-recipient-rerequest-amount: amount not updated'; end if;`,
+    expect: "23514",
+    post: `if (select amount from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') <> 300
+      then raise exception 'CASEFAIL upsert-recipient-rerequest-amount: stored amount changed after rejection'; end if;`,
   }),
   rpcCase({
     name: "upsert-bystander-transition",
@@ -470,7 +493,15 @@ const CASES = [
   rpcCase({
     name: "close-blocked-amount-mismatch",
     desc: "close blocked when only a 0,01 kr request exists for a 300 kr settlement (GV-260)",
-    setup: [step(A, upsert(WS1, P1, ID.B, A_ID, 0.01, "requested"))],
+    setup: [
+      step(A, CREATE_REQ_300),
+      // Corrupt the fixture with triggers disabled to prove close still rejects
+      // historical/bypassed bad data even though migration 117 prevents new rows.
+      step(SUPER, `perform set_config('session_replication_role', 'replica', true);
+        update public.settlement_requests set amount = 0.01
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+        perform set_config('session_replication_role', 'origin', true);`),
+    ],
     actor: A,
     op: `perform public.close_settlement_period('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});`,
     expect: "42501",
@@ -489,6 +520,38 @@ const CASES = [
     actor: B,
     op: `perform public.close_settlement_period('${WS1}', '${P1}', jsonb_build_object('label', 'x'));`,
     expect: "42501",
+  }),
+  rpcCase({
+    name: "close-unlocked-implementation-not-callable",
+    desc: "authenticated admins cannot bypass the locking wrapper",
+    actor: A,
+    op: `perform public.close_settlement_period_unlocked('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});`,
+    expect: "42501",
+  }),
+
+  queryCase({
+    name: "paidpending-never-auto-confirms",
+    desc: "an old unreviewed payment claim remains paid_pending until the recipient confirms",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+      step(SUPER, `update public.settlement_requests
+        set paid_claimed_at = now() - interval '7 days'
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+    ],
+    actor: SERVICE,
+    assert: `declare claimed integer; current_status text;
+begin
+  claimed := public.claim_due_settlement_confirmations(72, 200);
+  select status into current_status from public.settlement_requests
+    where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+  if claimed <> 0 then
+    raise exception 'CASEFAIL paidpending-never-auto-confirms: RPC returned % (expected 0)', claimed;
+  end if;
+  if current_status is distinct from 'paid_pending' then
+    raise exception 'CASEFAIL paidpending-never-auto-confirms: status=% (expected paid_pending)', current_status;
+  end if;
+end`,
   }),
 
   // ── 3. enforce_identity_reassignment (trips / fuel / bookings) ──────────────
@@ -1302,6 +1365,51 @@ for (const c of CASES) {
       (r.stderr || "").trim().split("\n").slice(-3).join(" | ");
     log(`  FAIL  ${c.name} — ${c.desc}`);
     log(`        ${errLine.trim()}`);
+  }
+}
+
+// The close/write race needs two real sessions, so it cannot live in a normal
+// per-case transaction. Session 1 holds the writer's FOR SHARE lock, waits, then
+// commits a trip. Session 2 prepares a snapshot while that trip is invisible and
+// calls close. Migration 117 must wait at its wrapper lock, then reject the stale
+// fingerprint after the writer commits. The pre-117 implementation closed it.
+{
+  const writerSql = `begin;
+select id from public.settlement_periods where id = '${P1}' for share;
+select pg_sleep(1.5);
+insert into public.trips (ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, note, created_by_member_id)
+values ('${WS1}', '${P1}', '${ID.B}', current_date, 1100, 1110, 'Concurrent trip', '${ID.B}');
+commit;`;
+  const writer = spawn(
+    "docker",
+    ["exec", "-i", CONTAINER, "psql", "-v", "ON_ERROR_STOP=1", "-q", "-U", "postgres", "-d", DB],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const writerDone = new Promise((resolve) => writer.on("close", resolve));
+  let writerStdout = "";
+  let writerStderr = "";
+  writer.stdout.on("data", (chunk) => { writerStdout += chunk; });
+  writer.stderr.on("data", (chunk) => { writerStderr += chunk; });
+  writer.stdin.end(writerSql);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const close = psql(`
+select set_config('request.jwt.claims', '${A.claims}', false);
+set role authenticated;
+select public.close_settlement_period('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});
+reset role;`);
+  const writerStatus = await writerDone;
+
+  if (writerStatus !== 0) {
+    failures++;
+    log("  FAIL  close-serializes-concurrent-writer — writer session failed");
+    log(`        ${(writerStderr || writerStdout).trim()}`);
+  } else if (close.status === 0 || !close.stderr.includes("Entries changed since this close was prepared")) {
+    failures++;
+    log("  FAIL  close-serializes-concurrent-writer — stale snapshot was not rejected after writer commit");
+    log(`        ${(close.stderr || close.stdout).trim()}`);
+  } else {
+    log("  ok    close-serializes-concurrent-writer — close waits for the writer and rejects its stale fingerprint");
   }
 }
 

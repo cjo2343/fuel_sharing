@@ -111,6 +111,9 @@ insert into public.trips (id, ledger_id, period_id, driver_member_id, trip_date,
   ('cccccccc-0000-0000-0000-000000000001', 'test-car', 'bbbbbbbb-0000-0000-0000-000000000001',
    'aaaaaaaa-0000-0000-0000-000000000001', current_date, 1000, 1100, 'Tur til sommerhuset',
    'aaaaaaaa-0000-0000-0000-000000000001');
+insert into public.trip_participants (trip_id, member_id) values
+  ('cccccccc-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001'),
+  ('cccccccc-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000002');
 insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, station_lat, station_lng, created_by_member_id) values
   ('dddddddd-0000-0000-0000-000000000001', 'test-car', 'bbbbbbbb-0000-0000-0000-000000000001',
    'aaaaaaaa-0000-0000-0000-000000000001', current_date, 300.00, 56.16, 10.21,
@@ -118,10 +121,10 @@ insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, pay
 
 -- Requested settlement => the 046 lock is ACTIVE for the open period.
 -- The request-integrity trigger requires the recipient to create it.
-select set_config('request.jwt.claims', '{"email":"mette@test.dk","role":"authenticated"}', false);
+select set_config('request.jwt.claims', '{"email":"lars@test.dk","role":"authenticated"}', false);
 insert into public.settlement_requests (ledger_id, period_id, from_member_id, to_member_id, amount, status, requested_at) values
   ('test-car', 'bbbbbbbb-0000-0000-0000-000000000001',
-   'aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000002',
+   'aaaaaaaa-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000001',
    150.00, 'requested', now());
 
 -- Bookings (one future, one past), chat, feed event, invite
