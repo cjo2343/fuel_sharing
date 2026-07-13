@@ -1168,6 +1168,124 @@ end`,
     op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], repeat('x', 281)"),
     expect: "23514",
   }),
+
+  // ── 10. Recurring generation vs entry lock (migration 116: GV-281) ───────────
+  // A locked open period (an active settlement request) must NOT crash recurring
+  // generation. The scheduler defers the locked ledger and counts it; a second,
+  // unlocked ledger in the same sweep still generates; the deferred occurrence
+  // catches up once the lock lifts; the client variant returns a zero-summary
+  // instead of raising.
+  queryCase({
+    name: "recurring-sweep-skips-locked-ledger",
+    desc: "generate_all_due_recurring_expenses defers a ledger whose open period is entry-locked: ledgers_skipped=1, no exception, no occurrence (GV-281)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('d1d1d1d1-0000-0000-0000-000000000001', '${WS1}', 'other', 'Laast-periode skabelon', 100.00, 'monthly', current_date, '${A_ID}', true, '${A_ID}');`),
+      step(A, CREATE_REQ_300),
+    ],
+    actor: SERVICE,
+    assert: `declare res jsonb; occ integer;
+begin
+  res := public.generate_all_due_recurring_expenses(200);
+  if (res->>'ledgers_skipped')::int <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-skips-locked-ledger: ledgers_skipped=% (expected 1)', res->>'ledgers_skipped';
+  end if;
+  if res->>'first_error' is not null then
+    raise exception 'CASEFAIL recurring-sweep-skips-locked-ledger: first_error=% (expected null — a lock skip is not an error)', res->>'first_error';
+  end if;
+  select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd1d1d1d1-0000-0000-0000-000000000001';
+  if occ <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-skips-locked-ledger: generated % occurrence(s) into a locked period (expected 0)', occ;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "recurring-sweep-generates-unlocked-alongside-locked",
+    desc: "a second, unlocked ledger in the same sweep still generates while the locked one is deferred (GV-281 — no batch poisoning)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('d2d2d2d2-0000-0000-0000-000000000001', '${WS1}', 'other', 'Laast skabelon', 100.00, 'monthly', current_date, '${A_ID}', true, '${A_ID}'),
+               ('d2d2d2d2-0000-0000-0000-000000000002', '${WS2}', 'other', 'Ulaast skabelon', 100.00, 'monthly', current_date, '${E_ID}', true, '${E_ID}');`),
+      step(A, CREATE_REQ_300),
+    ],
+    actor: SERVICE,
+    assert: `declare res jsonb; occ_locked integer; occ_unlocked integer;
+begin
+  res := public.generate_all_due_recurring_expenses(200);
+  if (res->>'ledgers_skipped')::int <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: ledgers_skipped=% (expected 1 — only the locked ledger)', res->>'ledgers_skipped';
+  end if;
+  if (res->>'ledgers_touched')::int < 1 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: ledgers_touched=% (expected >=1 — the unlocked ledger generated)', res->>'ledgers_touched';
+  end if;
+  select count(*) into occ_locked from public.workspace_expenses where recurring_expense_id = 'd2d2d2d2-0000-0000-0000-000000000001';
+  select count(*) into occ_unlocked from public.workspace_expenses where recurring_expense_id = 'd2d2d2d2-0000-0000-0000-000000000002';
+  if occ_locked <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: locked ledger generated % (expected 0)', occ_locked;
+  end if;
+  if occ_unlocked <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: unlocked ledger generated % (expected 1)', occ_unlocked;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "recurring-sweep-generates-deferred-after-cancel",
+    desc: "cancelling the request unlocks the period, so the next sweep generates the deferred occurrence (GV-281 catch-up)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('d3d3d3d3-0000-0000-0000-000000000001', '${WS1}', 'other', 'Udskudt skabelon', 100.00, 'monthly', current_date, '${A_ID}', true, '${A_ID}');`),
+      step(A, CREATE_REQ_300),
+    ],
+    actor: SERVICE,
+    assert: `declare res jsonb; occ integer;
+begin
+  res := public.generate_all_due_recurring_expenses(200);
+  if (res->>'ledgers_skipped')::int <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-generates-deferred-after-cancel: first sweep ledgers_skipped=% (expected 1 while locked)', res->>'ledgers_skipped';
+  end if;
+  select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd3d3d3d3-0000-0000-0000-000000000001';
+  if occ <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-generates-deferred-after-cancel: generated % while locked (expected 0)', occ;
+  end if;
+  -- Cancel the live request → the period is no longer entry-locked.
+  update public.settlement_requests
+    set status = 'cancelled'
+    where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+  res := public.generate_all_due_recurring_expenses(200);
+  select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd3d3d3d3-0000-0000-0000-000000000001';
+  if occ <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-generates-deferred-after-cancel: after cancel generated % (expected 1 — the deferred occurrence caught up)', occ;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "recurring-client-zero-summary-when-locked",
+    desc: "generate_due_recurring_expenses (client catch-up) returns {generated:0, reason:'locked'} instead of raising when the open period is locked (GV-281)",
+    setup: [
+      step(SUPER, `insert into public.recurring_expenses
+        (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
+        values ('d4d4d4d4-0000-0000-0000-000000000001', '${WS1}', 'other', 'Klient laast skabelon', 100.00, 'monthly', current_date, '${A_ID}', true, '${A_ID}');`),
+      step(A, CREATE_REQ_300),
+    ],
+    actor: A,
+    assert: `declare res jsonb; occ integer;
+begin
+  res := public.generate_due_recurring_expenses('${WS1}');
+  if (res->>'generated')::int <> 0 then
+    raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: generated=% (expected 0 — no raise, no insert)', res->>'generated';
+  end if;
+  if res->>'reason' is distinct from 'locked' then
+    raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: reason=% (expected locked)', res->>'reason';
+  end if;
+  select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd4d4d4d4-0000-0000-0000-000000000001';
+  if occ <> 0 then
+    raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: generated % occurrence(s) (expected 0)', occ;
+  end if;
+end`,
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
