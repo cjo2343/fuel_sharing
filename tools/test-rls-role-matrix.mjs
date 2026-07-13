@@ -1084,6 +1084,90 @@ begin
   end if;
 end`,
   }),
+
+  // ── 9. Payment evidence notes (migration 115: GV-279) ────────────────────────
+  // A trailing p_note is persisted only by the debtor's paid_pending claim
+  // (paid_note) and the creditor's dispute (dispute_note); both are immutable
+  // once set, and any other actor/transition ignores it.
+  rpcCase({
+    name: "note-debtor-sets-paid-note",
+    desc: "debtor B's paid_pending claim writes p_note to paid_note",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: B,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], 'MobilePay 12345678'"),
+    expect: "ok",
+    post: `if (select paid_note from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') is distinct from 'MobilePay 12345678'
+      then raise exception 'CASEFAIL note-debtor-sets-paid-note: paid_note not stored'; end if;`,
+  }),
+  rpcCase({
+    name: "note-creditor-cannot-set-paid-note",
+    desc: "creditor A's own paid_pending transition does NOT write paid_note (debtor-only)",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: A,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], 'ikke min note'"),
+    expect: "ok",
+    post: `if (select paid_note from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') is not null
+      then raise exception 'CASEFAIL note-creditor-cannot-set-paid-note: creditor wrote paid_note'; end if;`,
+  }),
+  rpcCase({
+    name: "note-paid-note-immutable",
+    desc: "a second paid_pending call by debtor B does NOT overwrite the stored paid_note",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], 'MobilePay foerste'")),
+    ],
+    actor: B,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], 'MobilePay anden'"),
+    expect: "ok",
+    post: `if (select paid_note from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') is distinct from 'MobilePay foerste'
+      then raise exception 'CASEFAIL note-paid-note-immutable: paid_note was overwritten'; end if;`,
+  }),
+  rpcCase({
+    name: "note-creditor-dispute-sets-dispute-note",
+    desc: "creditor A's dispute (paid_pending -> requested) writes p_note to dispute_note",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: A,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "requested", ", array[]::text[], 'Har ikke modtaget beloebet'"),
+    expect: "ok",
+    post: `if (select dispute_note from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') is distinct from 'Har ikke modtaget beloebet'
+      then raise exception 'CASEFAIL note-creditor-dispute-sets-dispute-note: dispute_note not stored'; end if;
+      if (select status from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') <> 'requested'
+      then raise exception 'CASEFAIL note-creditor-dispute-sets-dispute-note: status not reopened to requested'; end if;`,
+  }),
+  rpcCase({
+    name: "note-dispute-note-immutable",
+    desc: "a second dispute by creditor A does NOT overwrite the stored dispute_note",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+      step(A, upsert(WS1, P1, ID.B, A_ID, 300, "requested", ", array[]::text[], 'Foerste indsigelse'")),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: A,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "requested", ", array[]::text[], 'Anden indsigelse'"),
+    expect: "ok",
+    post: `if (select dispute_note from public.settlement_requests where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') is distinct from 'Foerste indsigelse'
+      then raise exception 'CASEFAIL note-dispute-note-immutable: dispute_note was overwritten'; end if;`,
+  }),
+  rpcCase({
+    name: "note-unrelated-member-rejected",
+    desc: "member E of the other workspace cannot claim+note ws1's request (party-or-admin gate)",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: E,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], 'fremmed note'"),
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "note-too-long-rejected",
+    desc: "a paid_note longer than 280 chars is rejected by the CHECK (23514)",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: B,
+    op: upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending", ", array[]::text[], repeat('x', 281)"),
+    expect: "23514",
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
