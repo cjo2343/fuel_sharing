@@ -370,6 +370,23 @@ const ASSERT_BA_REQUESTED = `if (select status from public.settlement_requests
       where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}') is distinct from 'requested'
     then raise exception 'CASEFAIL: the B->A request was altered (expected still requested)'; end if;`;
 
+// A due paid_pending B->A claim aged `ageHours` past its paid_claimed_at, for the
+// migration-118 confirm-receipt reminder cases. A requests, B marks paid_pending, then
+// SUPER ages paid_claimed_at (a same-status update never fires the 090 role gates, and
+// the 117 amount trigger returns early for a non-'requested' row — same technique the
+// paidpending-never-auto-confirms fixture already uses).
+const SETUP_DUE_PP = (ageHours) => [
+  step(A, CREATE_REQ_300),
+  step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+  step(SUPER, `update public.settlement_requests
+    set paid_claimed_at = now() - interval '${ageHours} hours'
+    where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+];
+// Count how many rows the confirm-reminder claim RPC returns for the B->A request.
+const CLAIM_CONFIRM_BA_COUNT = `select count(*) into rows from public.claim_due_confirm_reminders(200)
+    where request_id = (select id from public.settlement_requests
+      where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}')`;
+
 const CASES = [
   // ── 1. upsert_settlement_request_status ────────────────────────────────────
   rpcCase({
@@ -1405,6 +1422,109 @@ begin
   select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd4d4d4d4-0000-0000-0000-000000000001';
   if occ <> 0 then
     raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: generated % occurrence(s) (expected 0)', occ;
+  end if;
+end`,
+  }),
+
+  // ── 11. Confirm-receipt reminders (migration 118: GV-286) ────────────────────
+  // After migration 117 removed the 3-day auto-confirm, a paid_pending claim hangs
+  // until the CREDITOR confirms — so nudge the creditor. Two-phase claim/confirm with
+  // a per-lease token (mirrors migrations 102/106); both RPCs are service-role only.
+  rpcCase({
+    name: "confirm-reminder-claim-authenticated-denied",
+    desc: "creditor A (authenticated) cannot call the service-role claim RPC (execute denied, 42501)",
+    actor: A,
+    op: `perform public.claim_due_confirm_reminders(200);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "confirm-reminder-confirm-authenticated-denied",
+    desc: "debtor B (authenticated) cannot call the service-role confirm RPC (execute denied, 42501)",
+    actor: B,
+    op: `perform public.confirm_confirm_reminders('[]'::jsonb);`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "confirm-reminder-grace-boundary",
+    desc: "a paid_pending claim inside the 24h grace window is NOT claimed; once older than 24h it is (GV-286)",
+    setup: SETUP_DUE_PP(12), // 12h old → still inside the grace window
+    actor: SERVICE,
+    assert: `declare rows integer;
+begin
+  ${CLAIM_CONFIRM_BA_COUNT};
+  if rows <> 0 then
+    raise exception 'CASEFAIL confirm-reminder-grace-boundary: a 12h-old claim was claimed (expected 0 — inside the 24h grace)';
+  end if;
+  update public.settlement_requests set paid_claimed_at = now() - interval '25 hours'
+    where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+  ${CLAIM_CONFIRM_BA_COUNT};
+  if rows <> 1 then
+    raise exception 'CASEFAIL confirm-reminder-grace-boundary: a 25h-old claim was not claimed (expected 1)';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "confirm-reminder-cadence-boundary",
+    desc: "a due claim nudged <24h ago is NOT re-claimed; >24h ago it is (GV-286 once-per-24h)",
+    setup: [
+      ...SETUP_DUE_PP(72), // 3-day-old claim, well past the grace window
+      step(SUPER, `update public.settlement_requests set last_confirm_reminder_at = now() - interval '12 hours'
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+    ],
+    actor: SERVICE,
+    assert: `declare rows integer;
+begin
+  ${CLAIM_CONFIRM_BA_COUNT};
+  if rows <> 0 then
+    raise exception 'CASEFAIL confirm-reminder-cadence-boundary: re-claimed 12h after the last reminder (expected 0)';
+  end if;
+  update public.settlement_requests set last_confirm_reminder_at = now() - interval '25 hours'
+    where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+  ${CLAIM_CONFIRM_BA_COUNT};
+  if rows <> 1 then
+    raise exception 'CASEFAIL confirm-reminder-cadence-boundary: not re-claimed 25h after the last reminder (expected 1)';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "confirm-reminder-lease-and-token-gated-confirm",
+    desc: "claim leases the row (no re-claim within 15 min); confirm advances the cadence only with the live lease's token, a wrong token is a no-op (GV-286 / migration 106 discipline)",
+    setup: SETUP_DUE_PP(48),
+    actor: SERVICE,
+    assert: `declare rid uuid; tok uuid; n integer; rows integer; last_at timestamptz; lease timestamptz; leftover uuid;
+begin
+  -- Claim → 15-min lease + fresh token, returned to the caller.
+  select request_id, claim_token into rid, tok from public.claim_due_confirm_reminders(200)
+    where request_id = (select id from public.settlement_requests
+      where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}');
+  if rid is null or tok is null then
+    raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: the due claim was not claimed';
+  end if;
+  -- A second claim within the live lease window must NOT re-claim the row.
+  ${CLAIM_CONFIRM_BA_COUNT};
+  if rows <> 0 then
+    raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: row re-claimed while its lease is live (expected 0)';
+  end if;
+  -- A WRONG token neither advances the cadence nor clears the lease.
+  n := public.confirm_confirm_reminders(jsonb_build_array(jsonb_build_object(
+    'id', rid, 'token', gen_random_uuid(), 'outcome', 'delivered')));
+  select last_confirm_reminder_at, confirm_reminder_claimed_at into last_at, lease
+    from public.settlement_requests where id = rid;
+  if n <> 0 or last_at is not null or lease is null then
+    raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: a wrong token advanced state (confirmed=% last=% lease=%)', n, last_at, lease;
+  end if;
+  -- The RIGHT token advances the cadence, clears the lease + token, logs the outcome.
+  n := public.confirm_confirm_reminders(jsonb_build_array(jsonb_build_object(
+    'id', rid, 'token', tok, 'outcome', 'delivered')));
+  select last_confirm_reminder_at, confirm_reminder_claimed_at, confirm_reminder_claim_token
+    into last_at, lease, leftover from public.settlement_requests where id = rid;
+  if n <> 1 or last_at is null or lease is not null or leftover is not null then
+    raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: the live token did not finalize (confirmed=% last=% lease=% token=%)', n, last_at, lease, leftover;
+  end if;
+  if not exists (select 1 from public.ledger_events
+    where ledger_id = '${WS1}' and event_type = 'confirm_reminder_sent'
+      and metadata->>'settlement_request_id' = rid::text and metadata->>'outcome' = 'delivered') then
+    raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: no confirm_reminder_sent event carrying the outcome';
   end if;
 end`,
   }),
