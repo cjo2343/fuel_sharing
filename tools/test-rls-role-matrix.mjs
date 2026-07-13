@@ -1663,6 +1663,56 @@ end`,
           and status = 'requested' and amount = 300)
       then raise exception 'CASEFAIL direct-dispute-preserving-amount-ok: expected requested at 300'; end if;`,
   }),
+
+  // ── 13. Migration 121: complete period ownership + old/new boundaries ──────
+  rpcCase({
+    name: "direct-request-cross-ledger-period-blocked",
+    desc: "creditor cannot insert a ws1 request carrying ws2's period id",
+    actor: A,
+    op: `insert into public.settlement_requests
+         (ledger_id, period_id, from_member_id, to_member_id, amount, currency, status, requested_by_member_id)
+         values ('${WS1}', '${P2}', '${ID.B}', '${A_ID}', 999, 'DKK', 'requested', '${A_ID}');`,
+    expect: "23514",
+  }),
+  rpcCase({
+    name: "direct-entry-cross-ledger-period-blocked",
+    desc: "member cannot hide a ws1 trip behind ws2's open period id",
+    actor: B,
+    op: `insert into public.trips
+         (ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id)
+         values ('${WS1}', '${P2}', '${ID.B}', current_date, 1300, 1310, '${ID.B}');`,
+    expect: "23514",
+  }),
+  rpcCase({
+    name: "direct-entry-cannot-move-from-closed-period",
+    desc: "creator cannot move a historical trip from its old closed period into the open period",
+    setup: [step(SUPER, `insert into public.settlement_periods
+        (id, ledger_id, status, label, opened_at, closed_at)
+        values ('a9a9a9a9-0000-0000-0000-000000000121', '${WS1}', 'closed', 'Historical boundary', now() - interval '10 days', now() - interval '5 days');
+      perform set_config('govehlo.pii_scrub', '1', true);
+      insert into public.trips
+        (id, ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id)
+      values ('b9b9b9b9-0000-0000-0000-000000000121', '${WS1}',
+        'a9a9a9a9-0000-0000-0000-000000000121', '${ID.B}', current_date - 7, 800, 810, '${ID.B}');
+      perform set_config('govehlo.pii_scrub', '', true);`)],
+    actor: B,
+    op: `update public.trips set period_id = '${P1}'
+         where id = 'b9b9b9b9-0000-0000-0000-000000000121';`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "direct-repair-binds-open-period",
+    desc: "a direct repair insert without period_id is bound to the ledger's open period",
+    actor: B,
+    op: `insert into public.vehicle_repairs
+         (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id)
+         values ('c9c9c9c9-0000-0000-0000-000000000121', '${WS1}', current_date,
+           'Direct repair boundary', 123, '${ID.B}', '${ID.B}');`,
+    expect: "ok",
+    post: `if (select period_id from public.vehicle_repairs
+        where id = 'c9c9c9c9-0000-0000-0000-000000000121') is distinct from '${P1}'::uuid
+      then raise exception 'CASEFAIL direct-repair-binds-open-period: repair did not bind to the open period'; end if;`,
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────

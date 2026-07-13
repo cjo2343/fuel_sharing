@@ -95,3 +95,5 @@ Adds server-side onboarding abuse monitoring/rate-limit storage and enforces thr
 - 039_list_my_ledgers_dedup.sql - de-duplicates workspace selector rows returned by list_my_ledgers, preferring admin role when duplicate active member rows exist for the same signed-in email/workspace.
 
 - `042_member_invite_only_creation_lockdown.sql` locks member onboarding to the invite flow: `upsert_ledger_member_admin` now updates or deactivates existing members only and rejects creating a brand-new member row (null `target_member_id`) for everyone, including the app owner. New members must redeem a workspace invite (`redeem_ledger_invite`). The Render `/api/members/manage` route enforces the same rule for defense-in-depth.
+
+- `121_settlement_period_boundary.sql` completes migration 120's direct-write hardening by enforcing request/period ownership, checking and locking both old and new entry periods, binding null-period direct inserts, and covering settlement-bearing repairs.
