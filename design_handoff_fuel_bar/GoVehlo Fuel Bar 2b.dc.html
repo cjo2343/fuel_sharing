@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/fonts.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/colors.css">
+  <link rel="stylesheet" href="../_ds/govehlo-design-system-c5fd4e92-ba46-4353-a077-9affb6732f67/tokens/typography.css">
+  <style>
+    html, body { margin:0; padding:0; background:#0F1C15; }
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.14); border-radius:6px; }
+    a { color:#7EE0AB; } a:hover { color:#A8ECC6; }
+  </style>
+  <template id="__bundler_thumbnail">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#1A2E1F"/><path d="M18 66 A32 32 0 0 1 82 66" stroke="#D8F3DC" stroke-width="9" stroke-linecap="round" fill="none"/><line x1="50" y1="66" x2="30" y2="42" stroke="#F7F9F8" stroke-width="6" stroke-linecap="round"/><circle cx="50" cy="66" r="6" fill="#52B788"/></svg>
+  </template>
+</helmet>
+
+<div style="min-height:100vh;background:radial-gradient(120% 90% at 50% 0%, #17291D 0%, #0F1C15 60%);font-family:'Inter',sans-serif;padding:44px 40px 120px;box-sizing:border-box;">
+
+  <div style="max-width:1280px;margin:0 auto 34px;">
+    <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#7EC8A4;letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px;">GoVehlo · Log — brændstofstatus · 2b</div>
+    <h1 style="font-family:'Nunito',sans-serif;font-weight:900;font-size:38px;color:#fff;margin:0 0 12px;letter-spacing:-.02em;line-height:1.05;">Slim strip med mini-dial</h1>
+    <p style="font-family:'Inter',sans-serif;font-size:15px;color:rgba(255,255,255,.62);margin:0;max-width:760px;line-height:1.6;text-wrap:pretty;">The chosen direction. A ~66px strip sits resident on the Log page — the buemåler you liked, shrunk to left, <b style="color:#7EE0AB;font-weight:600;">km-first</b> readout, %/L quiet beneath. <b style="color:#fff;font-weight:600;">Tap it</b> to expand the full instrument cluster in place, tap again to collapse. The phone below is live — try it. Amber stays reserved for money; a low tank reads error-red (<span style="font-family:'Courier New',monospace;color:#F09B9B;">#D95050</span>).</p>
+  </div>
+
+  <section id="final" data-screen-label="2b — final" style="max-width:1400px;margin:0 auto;">
+    <div style="display:flex;gap:46px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- interactive phone -->
+      <div style="display:flex;flex-direction:column;gap:14px;flex-shrink:0;">
+        <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#7EC8A4;">Interaktiv — tryk på baren</div>
+        <div style="width:320px;border-radius:40px;overflow:hidden;background:#F7F9F8;box-shadow:0 30px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07);display:flex;flex-direction:column;">
+          <div style="height:34px;background:#2D6A4F;display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;"><span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#fff;">9.41</span><div style="display:flex;gap:5px;align-items:center;"><svg width="15" height="10" viewBox="0 0 17 12" fill="#fff"><rect x="0" y="8" width="3" height="4" rx=".5"></rect><rect x="4.5" y="5" width="3" height="7" rx=".5"></rect><rect x="9" y="2" width="3" height="10" rx=".5"></rect><rect x="13.5" y="0" width="3" height="12" rx=".5"></rect></svg><span style="width:16px;height:9px;border:1px solid rgba(255,255,255,.55);border-radius:2px;display:inline-block;"></span></div></div>
+          <div style="background:#2D6A4F;padding:6px 18px 15px;flex-shrink:0;"><h3 style="font-family:'Nunito',sans-serif;font-weight:800;font-size:24px;color:#fff;margin:0;">Log</h3></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:15px;background:#F7F9F8;">
+
+            <!-- COLLAPSED strip -->
+            <sc-if value="{{ collapsed }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ toggle }}" style="background:#fff;border-radius:14px;padding:9px 13px 9px 8px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:9px;cursor:pointer;-webkit-tap-highlight-color:transparent;" style-hover="box-shadow:0 2px 5px rgba(26,46,31,.10),0 6px 16px rgba(26,46,31,.07);">
+                <svg width="50" height="31" viewBox="0 0 120 74" fill="none" style="flex-shrink:0;"><path d="M14 60 A46 46 0 0 1 106 60" stroke="#EAF0ED" stroke-width="11" stroke-linecap="round"></path><path d="M14 60 A46 46 0 0 1 84.65 21.16" stroke="#52B788" stroke-width="11" stroke-linecap="round"></path><line x1="60" y1="60" x2="81.43" y2="26.23" stroke="#1A2E1F" stroke-width="4" stroke-linecap="round"></line><circle cx="60" cy="60" r="5" fill="#1A2E1F"></circle></svg>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B8F7A;">Tank nu</div>
+                  <div style="display:flex;flex-direction:column;align-items:flex-start;margin-top:1px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;letter-spacing:-.01em;white-space:nowrap;">~770 km</span><span style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;white-space:nowrap;margin-top:1px;">68% · 37 L</span></div>
+                </div>
+                <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#3D5C48;text-align:right;line-height:1.3;max-width:82px;">Godt et par uger</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </sc-if>
+
+            <!-- EXPANDED cluster -->
+            <sc-if value="{{ expanded }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);overflow:hidden;">
+                <div onClick="{{ toggle }}" style="padding:13px 16px 12px;text-align:center;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C0CCC5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;top:13px;right:14px;"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                  <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6B8F7A;">Tank nu</div>
+                  <div style="font-family:'Nunito',sans-serif;font-weight:900;font-size:30px;color:#1A2E1F;letter-spacing:-.02em;line-height:1;margin-top:3px;">~770 <span style="font-size:17px;font-weight:800;color:#6B8F7A;">km</span></div>
+                  <div style="font-family:'Courier New',monospace;font-size:12px;color:#6B8F7A;margin-top:4px;">68% · 37 L</div>
+                  <div style="display:flex;flex-direction:column;align-items:center;margin-top:8px;">
+                    <svg width="152" height="94" viewBox="0 0 120 74" fill="none"><path d="M14 60 A46 46 0 0 1 106 60" stroke="#EAF0ED" stroke-width="9" stroke-linecap="round"></path><path d="M14 60 A46 46 0 0 1 84.65 21.16" stroke="#52B788" stroke-width="9" stroke-linecap="round"></path><line x1="60" y1="60" x2="81.43" y2="26.23" stroke="#1A2E1F" stroke-width="3" stroke-linecap="round"></line><circle cx="60" cy="60" r="5" fill="#1A2E1F"></circle></svg>
+                    <div style="display:flex;justify-content:space-between;width:132px;margin-top:-8px;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:#C0CCC5;"><span>E</span><span>F</span></div>
+                  </div>
+                </div>
+                <div style="background:#EAF4EE;padding:11px 16px;display:flex;align-items:center;justify-content:center;gap:8px;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52B788" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span style="font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;color:#3D5C48;">God for et par uger endnu · rækkevidde ~770 km</span>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- toggle -->
+            <div style="display:flex;background:#D8F3DC;border-radius:9999px;padding:4px;gap:4px;">
+              <div style="flex:1;text-align:center;padding:10px 0;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#2D6A4F;">Tur</div>
+              <div style="flex:1;text-align:center;background:#1A2E1F;border-radius:9999px;padding:10px 0;font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;color:#fff;">Tank</div>
+            </div>
+
+            <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5B8A70;margin-top:2px;">Registrer distance</div>
+
+            <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 16px;">
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6B8F7A;">Fører</div>
+              <div style="font-family:'Inter',sans-serif;font-size:19px;font-weight:500;color:#1A2E1F;margin-top:2px;">Rikke (dig)</div>
+            </div>
+            <div style="background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 16px;">
+              <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6B8F7A;">Dato</div>
+              <div style="font-family:'Inter',sans-serif;font-size:19px;font-weight:500;color:#1A2E1F;margin-top:2px;">12. juli 2026</div>
+            </div>
+
+            <div style="display:flex;gap:12px;">
+              <div style="flex:1;background:#fff;border:1px solid #E2EDE8;border-radius:16px;padding:12px 14px;">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6B8F7A;">Start-km</div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:3px;"><span style="font-family:'Courier New',monospace;font-size:19px;color:#1A2E1F;">109.500</span><span style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">km</span></div>
+              </div>
+              <div style="flex:1;background:#fff;border:2px solid #2D6A4F;border-radius:16px;padding:11px 13px;box-shadow:0 0 0 3px rgba(45,106,79,.10);">
+                <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6B8F7A;">Slut-km</div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:3px;"><span style="font-family:'Courier New',monospace;font-size:19px;color:#1A2E1F;">109.800</span><span style="font-family:'Inter',sans-serif;font-size:12px;color:#6B8F7A;">km</span></div>
+                <div style="font-family:'Courier New',monospace;font-size:12px;color:#9DB3A8;margin-top:4px;">300 km</div>
+              </div>
+            </div>
+
+            <div style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5B8A70;margin-top:2px;">Deles mellem</div>
+            <div style="height:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- state gallery -->
+      <div style="display:flex;flex-direction:column;gap:14px;width:320px;flex-shrink:0;">
+        <div style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#7EC8A4;">Alle tilstande (sammenklappet)</div>
+        <div style="background:#F7F9F8;border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 0 0 1px rgba(255,255,255,.06);">
+
+          <!-- projected (Tur) -->
+          <div style="background:#fff;border-radius:14px;padding:9px 13px 9px 8px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:9px;">
+            <svg width="50" height="31" viewBox="0 0 120 74" fill="none" style="flex-shrink:0;"><path d="M14 60 A46 46 0 0 1 106 60" stroke="#EAF0ED" stroke-width="11" stroke-linecap="round"></path><path d="M14 60 A46 46 0 0 1 14.09 57.11" stroke="#D95050" stroke-width="11" stroke-linecap="round"></path><line x1="60" y1="60" x2="26.2" y2="38.61" stroke="#C6D3CC" stroke-width="4" stroke-linecap="round" stroke-dasharray="4 4"></line><line x1="60" y1="60" x2="20.08" y2="57.49" stroke="#D95050" stroke-width="4" stroke-linecap="round"></line><circle cx="60" cy="60" r="5" fill="#1A2E1F"></circle></svg>
+            <div style="flex:1;min-width:0;">
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B8F7A;">Tank efter turen</div>
+              <div style="display:flex;flex-direction:column;align-items:flex-start;margin-top:1px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#D95050;letter-spacing:-.01em;white-space:nowrap;">~0 km</span><span style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;white-space:nowrap;margin-top:1px;">~0% · 0 L</span></div>
+            </div>
+            <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#C0392B;text-align:right;line-height:1.3;max-width:84px;">Tømmer næsten tanken</span>
+          </div>
+
+          <!-- near empty -->
+          <div style="background:#fff;border-radius:14px;padding:9px 13px 9px 8px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:9px;">
+            <svg width="50" height="31" viewBox="0 0 120 74" fill="none" style="flex-shrink:0;"><path d="M14 60 A46 46 0 0 1 106 60" stroke="#EAF0ED" stroke-width="11" stroke-linecap="round"></path><path d="M14 60 A46 46 0 0 1 14.82 51.38" stroke="#D95050" stroke-width="11" stroke-linecap="round"></path><line x1="60" y1="60" x2="20.71" y2="52.5" stroke="#D95050" stroke-width="4" stroke-linecap="round"></line><circle cx="60" cy="60" r="5" fill="#1A2E1F"></circle></svg>
+            <div style="flex:1;min-width:0;">
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B8F7A;">Tank nu</div>
+              <div style="display:flex;flex-direction:column;align-items:flex-start;margin-top:1px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#D95050;letter-spacing:-.01em;white-space:nowrap;">~65 km</span><span style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;white-space:nowrap;margin-top:1px;">6% · 3 L</span></div>
+            </div>
+            <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#2D6A4F;white-space:nowrap;">Log tankning ›</span>
+          </div>
+
+          <!-- healthy -->
+          <div style="background:#fff;border-radius:14px;padding:9px 13px 9px 8px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:9px;">
+            <svg width="50" height="31" viewBox="0 0 120 74" fill="none" style="flex-shrink:0;"><path d="M14 60 A46 46 0 0 1 106 60" stroke="#EAF0ED" stroke-width="11" stroke-linecap="round"></path><path d="M14 60 A46 46 0 0 1 84.65 21.16" stroke="#52B788" stroke-width="11" stroke-linecap="round"></path><line x1="60" y1="60" x2="81.43" y2="26.23" stroke="#1A2E1F" stroke-width="4" stroke-linecap="round"></line><circle cx="60" cy="60" r="5" fill="#1A2E1F"></circle></svg>
+            <div style="flex:1;min-width:0;">
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B8F7A;">Tank nu</div>
+              <div style="display:flex;flex-direction:column;align-items:flex-start;margin-top:1px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;letter-spacing:-.01em;white-space:nowrap;">~770 km</span><span style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;white-space:nowrap;margin-top:1px;">68% · 37 L</span></div>
+            </div>
+            <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#3D5C48;text-align:right;line-height:1.3;max-width:82px;">Godt et par uger</span>
+          </div>
+
+          <!-- full -->
+          <div style="background:#fff;border-radius:14px;padding:9px 13px 9px 8px;box-shadow:0 1px 3px rgba(26,46,31,.07),0 2px 8px rgba(26,46,31,.04);display:flex;align-items:center;gap:9px;">
+            <svg width="50" height="31" viewBox="0 0 120 74" fill="none" style="flex-shrink:0;"><path d="M14 60 A46 46 0 0 1 106 60" stroke="#EAF0ED" stroke-width="11" stroke-linecap="round"></path><path d="M14 60 A46 46 0 0 1 106 60" stroke="#52B788" stroke-width="11" stroke-linecap="round"></path><line x1="60" y1="60" x2="100" y2="60" stroke="#1A2E1F" stroke-width="4" stroke-linecap="round"></line><circle cx="60" cy="60" r="5" fill="#1A2E1F"></circle></svg>
+            <div style="flex:1;min-width:0;">
+              <div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6B8F7A;">Tank nu</div>
+              <div style="display:flex;flex-direction:column;align-items:flex-start;margin-top:1px;"><span style="font-family:'Nunito',sans-serif;font-weight:800;font-size:17px;color:#1A2E1F;letter-spacing:-.01em;white-space:nowrap;">~1.145 km</span><span style="font-family:'Courier New',monospace;font-size:11px;color:#6B8F7A;white-space:nowrap;margin-top:1px;">100% · 55 L</span></div>
+            </div>
+            <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:#3D5C48;text-align:right;line-height:1.3;max-width:82px;">Fyldt helt op</span>
+          </div>
+
+        </div>
+
+        <div style="font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.45);line-height:1.55;margin-top:4px;max-width:320px;">Farve følger niveau: <span style="color:#F09B9B;">rød</span> under ~15%, ellers <span style="color:#7EE0AB;">grøn</span>. Viseren peger på niveauet; efter-turen viser en stiplet "nu"-viser bag den fremskrevne. Amber er kun til penge — aldrig brændstof.</div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { expanded: false };
+  renderVals() {
+    return {
+      expanded: this.state.expanded,
+      collapsed: !this.state.expanded,
+      toggle: () => this.setState(s => ({ expanded: !s.expanded }))
+    };
+  }
+}
+</script>
+</body>
+</html>
