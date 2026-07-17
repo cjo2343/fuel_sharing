@@ -34,18 +34,20 @@ Data-minimering frem for pseudonymisering, når intet formål består.
 
 ## Kendte begrænsninger (oplyses ved sletteanmodninger)
 
-1. **Backups**: Slettede/anonymiserede data lever videre i Supabase-backups indtil
-   backup-vinduet er rullet [OPERATØR-FAKTA: vindue — se backup-restore.md].
-   Backups overskrives rullende og genindlæses kun ved katastrofe; ved en
-   restore SKAL sletteanmodninger siden backup-tidspunktet genafspilles
-   (incident-response.md, trin 6).
+1. **Backups**: Projektets nuværende Free-plan har ingen managed backups/PITR.
+   Logical dumps taget til restore-drills eller migrationer kan dog indeholde
+   slettede data indtil deres korte rotation udløber. Efter opgradering til Pro
+   er managed-vinduet syv dage. Ved enhver restore SKAL sletteanmodninger siden
+   dump-/backup-tidspunktet genafspilles (incident-response.md, trin 6).
 2. **Fejltelemetri**: Sentry-events udløber efter TTL i stedet for at blive slettet
    aktivt; konventionen "ingen PII i beskeder" begrænser eksponeringen.
 3. **Push-indhold**: Allerede leverede notifikationer på modtagerens enhed (med
    navne/beløb) kan ikke tilbagekaldes.
-4. **Workspace-sletning**: Der er intet selvbetjent "slet hele workspacet" — det er
-   en operatørhandling (admin-konsollens cleanup, GV-303, er soft-delete).
-   Bilens stamdata inkl. nummerplade består til workspacet nedlægges af operatøren.
+4. **Workspace-sletning**: `delete_my_account` hård-sletter hele workspacet med
+   cascade, når det sidste aktive medlem forlader det. Et workspace med andre
+   aktive medlemmer består af hensyn til deres fælles regnskab. Anomale
+   workspaces uden aktive medlemmer slettes kun efter manuel operatør-review;
+   inaktivitet alene udløser aldrig automatisk sletning.
 
 ## End-to-end-verifikation (udestående evidens)
 

@@ -54,7 +54,9 @@ Cloudflare Access + Supabase-login).
   (PUSH_CONTENT_MODE=generic er nødventil).
 - **Retsgrundlag:** Kontrakt/legitim interesse; enheds-opt-in via OS.
 - **Modtagere:** Expo push-service → Apple APNs / Google FCM (**tredjelandsoverførsel
-  til USA** — [OPERATØR-FAKTA: bekræft DPF-/SCC-status i vendor-DPA'er]).
+  til USA**). Expo oplyser DPF-compliance; Firebase-vilkårene indarbejder SCC'er,
+  og Apple/Google står på Expos underdatabehandlerliste. Expos egen DPA-evidens er
+  fortsat et release-gap; se subprocessors.md.
 - **Sletning:** Ved kontosletning; inaktive tokens ryddes automatisk efter 180 dage
   (migration 130).
 
@@ -66,7 +68,7 @@ Cloudflare Access + Supabase-login).
   rate-limit-registre (e-mail-nøgler), oppetidsmålinger (Better Stack — rammer kun
   /api/health, ingen persondata).
 - **Retsgrundlag:** Legitim interesse (art. 6(1)(f)) — drift og sikkerhed.
-- **Sletning:** Se retention.md (audit-log-frist er en åben beslutning).
+- **Sletning:** Se retention.md (`owner_activity_log`: 24 måneder, automatisk).
 
 ## A6 — Opslag ved oprettelse af bil
 
