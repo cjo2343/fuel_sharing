@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#2D6A4F"></rect>
+  <g transform="translate(106,131) scale(2.5)">
+  <circle cx="38" cy="82" r="11" fill="#1A2E1F"></circle><circle cx="38" cy="82" r="3.6" fill="#FFFFFF"></circle>
+  <circle cx="82" cy="82" r="11" fill="#1A2E1F"></circle><circle cx="82" cy="82" r="3.6" fill="#FFFFFF"></circle>
+  <rect x="8" y="46" width="104" height="34" rx="17" fill="#F7F9F8"></rect>
+  <circle cx="107" cy="60" r="4" fill="#F4A261"></circle>
+  <circle cx="48" cy="34" r="18" fill="#52B788"></circle>
+  <circle cx="76" cy="34" r="18" fill="#FFFFFF"></circle>
+  <circle cx="43" cy="32" r="2.3" fill="#1A2E1F"></circle><circle cx="53" cy="32" r="2.3" fill="#1A2E1F"></circle>
+  <path d="M43 38 Q48 43 53 38" fill="none" stroke="#1A2E1F" stroke-width="2.4" stroke-linecap="round"></path>
+  <circle cx="71" cy="32" r="2.3" fill="#1A2E1F"></circle><circle cx="81" cy="32" r="2.3" fill="#1A2E1F"></circle>
+  <path d="M71 38 Q76 43 81 38" fill="none" stroke="#1A2E1F" stroke-width="2.4" stroke-linecap="round"></path></g>
+</svg>
