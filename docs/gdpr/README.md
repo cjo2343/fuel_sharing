@@ -28,8 +28,8 @@ også hjemsted for denne pakke.
    End-to-end-kørsel i produktion udestår — se [deletion-limitations.md](deletion-limitations.md)
    for testplanen og evidensfelterne.
 3. **"Document backup retention, deletion limitations, subprocessors, incident handling"**
-   — denne pakke. Felter markeret **[OPERATØR-FAKTA]** kræver opslag i dashboards
-   (Supabase-plan, DPA'er) og udfyldes af operatøren.
+   — denne pakke. Backup-plan/PITR og aktive vendor-vilkår blev gennemgået
+   2026-07-17; kontraktgab er markeret som handlinger, ikke skjult som antagelser.
 4. **"Perform a restore drill"** — værktøj: `npm run drill:restore -- <dump>`
    ([tools/restore-drill.mjs](../../tools/restore-drill.mjs)). Procedure og log:
    [backup-restore.md](backup-restore.md).

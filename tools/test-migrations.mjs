@@ -140,6 +140,7 @@ const expected = [
   "128_allow_retiring_linked_trips.sql",
   "129_owner_workspace_overview.sql",
   "130_operational_retention.sql",
+  "131_gdpr_retention_policy.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

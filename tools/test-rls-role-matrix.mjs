@@ -463,7 +463,11 @@ const CASES = [
     desc: "service role receives a dry-run retention summary with the expected keys",
     actor: SERVICE,
     assert: `if not (public.run_operational_retention(180, true) ?& array[
-        'staleExpoPushTokens', 'expiredLedgerEvents', 'dryRun', 'staleDays', 'ranAt'
+        'staleExpoPushTokens', 'expiredLedgerEvents', 'deletedMessages',
+        'deletedBookings', 'deletedRecurringTemplates', 'deletedTrips',
+        'deletedFuelPayments', 'deletedWorkspaceExpenses', 'deletedVehicleRepairs',
+        'deletedOwnerActivity', 'dryRun', 'staleDays', 'shortRetentionDays',
+        'financialRetentionYears', 'auditRetentionMonths', 'ranAt'
       ]) then
       raise exception 'CASEFAIL operational-retention-service-role-dry-run: summary is missing expected keys';
     end if;
@@ -484,6 +488,78 @@ const CASES = [
     actor: SERVICE,
     op: "perform public.run_operational_retention(10, false);",
     expect: "22023",
+  }),
+  queryCase({
+    name: "operational-retention-purges-approved-classes",
+    desc: "service role purges expired short-lived, financial-tombstone and owner-audit rows",
+    setup: [
+      step(SUPER, `insert into public.messages
+          (id, ledger_id, sender_member_id, body, created_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000001', '${WS1}', '${ID.B}', 'expired message', now() - interval '100 days', now() - interval '91 days');
+        insert into public.messages
+          (id, ledger_id, sender_member_id, body, created_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000010', '${WS1}', '${ID.B}', 'recently deleted message', now() - interval '89 days', now() - interval '89 days');
+        insert into public.car_bookings
+          (id, ledger_id, member_id, start_at, end_at, purpose, created_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000002', '${WS1}', '${ID.B}', now() - interval '200 days', now() - interval '199 days', 'expired booking', '${ID.B}', now() - interval '200 days', now() - interval '91 days', now() - interval '91 days');
+        insert into public.recurring_expenses
+          (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, created_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000003', '${WS1}', 'other', 'expired template', 100, 'monthly', current_date, '${ID.B}', now() - interval '200 days', now() - interval '91 days', now() - interval '91 days');
+        insert into public.trips
+          (id, ledger_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000004', '${WS1}', '${ID.B}', date '2018-01-01', 1, 2, '${ID.B}', timestamptz '2018-01-01', timestamptz '2018-01-01', timestamptz '2018-01-02');
+        insert into public.trips
+          (id, ledger_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000011', '${WS1}', '${ID.B}', current_date - 1, 3, 4, '${ID.B}', now() - interval '1 day', now() - interval '1 day', now() - interval '1 day');
+        insert into public.fuel_payments
+          (id, ledger_id, payer_member_id, payment_date, amount, created_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000005', '${WS1}', '${ID.B}', date '2018-01-01', 100, '${ID.B}', timestamptz '2018-01-01', timestamptz '2018-01-01', timestamptz '2018-01-02');
+        insert into public.workspace_expenses
+          (id, ledger_id, category, description, amount_dkk, expense_date, paid_by_member_id, created_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000006', '${WS1}', 'other', 'expired expense', 100, date '2018-01-01', '${ID.B}', '${ID.B}', timestamptz '2018-01-01', timestamptz '2018-01-01', timestamptz '2018-01-02');
+        insert into public.settlement_periods
+          (id, ledger_id, status, label, opened_at, closed_at, created_at, updated_at)
+        values ('13100000-0000-0000-0000-000000000009', '${WS1}', 'closed', 'expired repair period', timestamptz '2017-01-01', timestamptz '2019-01-01', timestamptz '2017-01-01', timestamptz '2019-01-01');
+        perform set_config('govehlo.pii_scrub', '1', true);
+        insert into public.vehicle_repairs
+          (id, ledger_id, period_id, repair_date, description, cost_dkk, created_by_member_id, paid_by_member_id, created_at, updated_at, deleted_at)
+        values ('13100000-0000-0000-0000-000000000007', '${WS1}', '13100000-0000-0000-0000-000000000009', date '2018-01-01', 'expired repair', 100, '${ID.B}', '${ID.B}', timestamptz '2018-01-01', timestamptz '2018-01-01', timestamptz '2018-01-02');
+        perform set_config('govehlo.pii_scrub', '', true);
+        insert into public.owner_activity_log
+          (id, created_at, ledger_id, actor_role, route, action, result_code, status_code, ok, summary)
+        values ('13100000-0000-0000-0000-000000000008', now() - interval '25 months', '${WS1}', 'owner', '/test', 'retention_test', 'ok', 200, true, 'expired audit');`),
+    ],
+    actor: SERVICE,
+    assert: `declare result jsonb;
+begin
+  result := public.run_operational_retention(180, false);
+  if exists (
+    select 1 from public.messages where id = '13100000-0000-0000-0000-000000000001'
+    union all select 1 from public.car_bookings where id = '13100000-0000-0000-0000-000000000002'
+    union all select 1 from public.recurring_expenses where id = '13100000-0000-0000-0000-000000000003'
+    union all select 1 from public.trips where id = '13100000-0000-0000-0000-000000000004'
+    union all select 1 from public.fuel_payments where id = '13100000-0000-0000-0000-000000000005'
+    union all select 1 from public.workspace_expenses where id = '13100000-0000-0000-0000-000000000006'
+    union all select 1 from public.vehicle_repairs where id = '13100000-0000-0000-0000-000000000007'
+    union all select 1 from public.owner_activity_log where id = '13100000-0000-0000-0000-000000000008'
+  ) then
+    raise exception 'CASEFAIL operational-retention-purges-approved-classes: one or more expired rows survived';
+  end if;
+  if not exists (select 1 from public.messages where id = '13100000-0000-0000-0000-000000000010')
+     or not exists (select 1 from public.trips where id = '13100000-0000-0000-0000-000000000011') then
+    raise exception 'CASEFAIL operational-retention-purges-approved-classes: an in-window tombstone was deleted';
+  end if;
+  if (result->>'deletedMessages')::integer <> 1
+     or (result->>'deletedBookings')::integer <> 1
+     or (result->>'deletedRecurringTemplates')::integer <> 1
+     or (result->>'deletedTrips')::integer <> 1
+     or (result->>'deletedFuelPayments')::integer <> 1
+     or (result->>'deletedWorkspaceExpenses')::integer <> 1
+     or (result->>'deletedVehicleRepairs')::integer <> 1
+     or (result->>'deletedOwnerActivity')::integer <> 1 then
+    raise exception 'CASEFAIL operational-retention-purges-approved-classes: unexpected summary %', result;
+  end if;
+end`,
   }),
 
   // ── 1. upsert_settlement_request_status ────────────────────────────────────
