@@ -204,3 +204,6 @@ jobs:
       # Structural checks (schema-equivalence) can't see this behaviour.
       - name: Run functional smoke test
         run: bash tools/test-functional-smoke.sh
+
+      - name: Run booking-to-trip lifecycle smoke
+        run: bash tools/test-booking-trip-functional.sh

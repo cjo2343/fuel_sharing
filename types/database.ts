@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 122 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 123 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1209,6 +1209,7 @@ export type Database = {
       }
       trips: {
         Row: {
+          booking_id: string | null
           created_at: string
           created_by_member_id: string | null
           deleted_at: string | null
@@ -1224,6 +1225,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          booking_id?: string | null
           created_at?: string
           created_by_member_id?: string | null
           deleted_at?: string | null
@@ -1239,6 +1241,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          booking_id?: string | null
           created_at?: string
           created_by_member_id?: string | null
           deleted_at?: string | null
@@ -1254,6 +1257,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trips_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "car_bookings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trips_created_by_member_id_fkey"
             columns: ["created_by_member_id"]
@@ -1913,6 +1923,23 @@ export type Database = {
           name: string
           role: string
         }[]
+      }
+      upsert_booking_trip_with_participants: {
+        Args: {
+          booking_driver_member_id: string
+          end_km_value: number
+          event_body?: string
+          event_title?: string
+          legacy_trip_id: string
+          note_value: string
+          participant_member_ids: string[]
+          start_km_value: number
+          target_booking_id: string
+          target_ledger_id: string
+          target_open_period_id: string
+          trip_date_value: string
+        }
+        Returns: Json
       }
       upsert_car_booking: {
         Args: {
