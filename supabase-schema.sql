@@ -27962,7 +27962,19 @@ revoke all on function public.run_retention_cleanup(text, integer, integer, inte
 --    healthcheck expectation lists reference it (drop deferred to GV-311).
 truncate table public.push_subscriptions;
 
--- 3. Safe operational retention job. Service-role-only (this is a cross-workspace
+-- 3. Defuse the vestigial ledger_events.expires_at auto-expiry. Migration 001
+--    gave every event `expires_at not null default (now() + interval '30 days')`
+--    back when events were transient notifications. No reader anywhere filters
+--    on the column, so every activity-feed row silently carries an automatic
+--    30-day expiry — and any sweep of "expired" events would eat the feed. Make
+--    the column nullable with no default and clear the auto-stamped values:
+--    from now on expires_at is only ever set DELIBERATELY by a writer that
+--    wants a transient event, and only such events can ever match the sweep.
+alter table public.ledger_events alter column expires_at drop not null;
+alter table public.ledger_events alter column expires_at drop default;
+update public.ledger_events set expires_at = null;
+
+-- 4. Safe operational retention job. Service-role-only (this is a cross-workspace
 --    operator job, not member-visible activity); it writes NO ledger_events row.
 create or replace function public.run_operational_retention(
   p_stale_push_days integer default 180,

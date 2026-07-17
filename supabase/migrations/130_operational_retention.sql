@@ -17,10 +17,13 @@
 --   1. Defensively revokes all privileges on the legacy 009 functions so no
 --      client role can invoke their dangerous defaults.
 --   2. Truncates the dead legacy push_subscriptions table (GDPR minimisation).
---   3. Adds a safe, service-role-only run_operational_retention() job that only
+--   3. Defuses the vestigial ledger_events.expires_at auto-expiry (001-era
+--      `not null default now() + 30 days`) so "expired" can never mean "older
+--      than 30 days".
+--   4. Adds a safe, service-role-only run_operational_retention() job that only
 --      prunes stale expo_push_tokens (devices re-register on next launch) and
---      already-expired ledger_events — never events by age, so the activity feed
---      is never touched.
+--      deliberately-expired ledger_events — never events by age, so the activity
+--      feed is never touched.
 
 -- 1. Defensive revokes on the legacy, unreferenced migration-009 retention
 --    functions. Their newest definitions live in migration 072 with signature
@@ -41,7 +44,19 @@ revoke all on function public.run_retention_cleanup(text, integer, integer, inte
 --    healthcheck expectation lists reference it (drop deferred to GV-311).
 truncate table public.push_subscriptions;
 
--- 3. Safe operational retention job. Service-role-only (this is a cross-workspace
+-- 3. Defuse the vestigial ledger_events.expires_at auto-expiry. Migration 001
+--    gave every event `expires_at not null default (now() + interval '30 days')`
+--    back when events were transient notifications. No reader anywhere filters
+--    on the column, so every activity-feed row silently carries an automatic
+--    30-day expiry — and any sweep of "expired" events would eat the feed. Make
+--    the column nullable with no default and clear the auto-stamped values:
+--    from now on expires_at is only ever set DELIBERATELY by a writer that
+--    wants a transient event, and only such events can ever match the sweep.
+alter table public.ledger_events alter column expires_at drop not null;
+alter table public.ledger_events alter column expires_at drop default;
+update public.ledger_events set expires_at = null;
+
+-- 4. Safe operational retention job. Service-role-only (this is a cross-workspace
 --    operator job, not member-visible activity); it writes NO ledger_events row.
 create or replace function public.run_operational_retention(
   p_stale_push_days integer default 180,

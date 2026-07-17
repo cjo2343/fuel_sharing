@@ -302,7 +302,7 @@ export type Database = {
           body: string
           created_at: string
           event_type: string
-          expires_at: string
+          expires_at: string | null
           id: string
           ledger_id: string
           metadata: Json
@@ -317,7 +317,7 @@ export type Database = {
           body: string
           created_at?: string
           event_type?: string
-          expires_at?: string
+          expires_at?: string | null
           id?: string
           ledger_id: string
           metadata?: Json
@@ -332,7 +332,7 @@ export type Database = {
           body?: string
           created_at?: string
           event_type?: string
-          expires_at?: string
+          expires_at?: string | null
           id?: string
           ledger_id?: string
           metadata?: Json
