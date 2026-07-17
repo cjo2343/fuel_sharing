@@ -23,10 +23,10 @@ også hjemsted for denne pakke.
    INGEN oprydning (migration 009's funktioner havde nul kaldere). Erstattet af
    `run_operational_retention` (migration 130, GV-309) + planlagt hook. Status og
    frister: [retention.md](retention.md).
-2. **"Test account deletion and data export end to end"** — begge features findes og er
-   enheds-/Docker-testet (delete_my_account-smoke i CI; dataeksport GVM-335 med tests).
-   End-to-end-kørsel i produktion udestår — se [deletion-limitations.md](deletion-limitations.md)
-   for testplanen og evidensfelterne.
+2. **"Test account deletion and data export end to end"** — begge kørt mod produktion
+   og BESTÅET 2026-07-17 (sletning med engangskonto inkl. SQL-verifikation af scrubs;
+   eksport på rigtigt medlem med ejerskabs-afgrænsning bekræftet) — evidens i
+   [deletion-limitations.md](deletion-limitations.md).
 3. **"Document backup retention, deletion limitations, subprocessors, incident handling"**
    — denne pakke. Felter markeret **[OPERATØR-FAKTA]** kræver opslag i dashboards
    (Supabase-plan, DPA'er) og udfyldes af operatøren.
