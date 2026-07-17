@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 123 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 124 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -64,7 +64,11 @@ export type Database = {
           legacy_id: string | null
           member_id: string | null
           purpose: string | null
+          requires_linked_trip: boolean
           start_at: string
+          trip_reminded_at: string | null
+          trip_reminder_claim_token: string | null
+          trip_reminder_claimed_at: string | null
           updated_at: string
         }
         Insert: {
@@ -78,7 +82,11 @@ export type Database = {
           legacy_id?: string | null
           member_id?: string | null
           purpose?: string | null
+          requires_linked_trip?: boolean
           start_at: string
+          trip_reminded_at?: string | null
+          trip_reminder_claim_token?: string | null
+          trip_reminder_claimed_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -92,7 +100,11 @@ export type Database = {
           legacy_id?: string | null
           member_id?: string | null
           purpose?: string | null
+          requires_linked_trip?: boolean
           start_at?: string
+          trip_reminded_at?: string | null
+          trip_reminder_claim_token?: string | null
+          trip_reminder_claimed_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1519,6 +1531,16 @@ export type Database = {
           retry_after_seconds: number
         }[]
       }
+      claim_due_booking_trip_reminders: {
+        Args: { p_limit?: number }
+        Returns: {
+          booking_id: string
+          claim_token: string
+          ledger_id: string
+          member_email: string
+          member_id: string
+        }[]
+      }
       claim_due_close_reminders: {
         Args: { batch_limit?: number }
         Returns: {
@@ -1573,6 +1595,10 @@ export type Database = {
           target_period_id: string
         }
         Returns: Json
+      }
+      confirm_booking_trip_reminders: {
+        Args: { confirmations: Json }
+        Returns: number
       }
       confirm_close_reminders: {
         Args: { confirmations: Json }
