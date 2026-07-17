@@ -155,6 +155,67 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      # --- GV-300: cache the postgres-meta image to dodge public-ECR rate limits ---
+      #
+      # `supabase gen types typescript` (invoked by tools/generate-db-types.mjs)
+      # starts a postgres-meta sidecar container pulled from
+      # public.ecr.aws/supabase/postgres-meta:<tag> — Amazon's public ECR
+      # rate-limits anonymous pulls, and this job hit `toomanyrequests: Rate
+      # exceeded` three times across two days (a false red each time; the
+      # generated types were byte-identical). The rate-limit window takes over
+      # 12 minutes to reset, so reruns often failed too.
+      #
+      # No sibling job in this workflow pulls from public.ecr.aws — the other
+      # Docker-backed jobs (schema-equivalence, role-matrix, functional-smoke)
+      # only use the Docker Hub postgres:15-alpine image (tools/lib/replay-
+      # container.mjs), which isn't rate-limited the same way. So only this job
+      # needs the cache below.
+      #
+      # The `<tag>` isn't a literal in our own source — the CLI builds the ref
+      # at runtime from a Dockerfile-template string baked into the installed
+      # binary. Grepping it out of the just-installed CLI (rather than
+      # hardcoding a tag here) means bumping the exact-pinned `supabase`
+      # devDependency in package.json automatically changes this ref and
+      # invalidates the cache — nothing to keep in sync by hand.
+      - name: Resolve pinned postgres-meta image ref
+        id: pgmeta
+        run: |
+          set -euo pipefail
+          REF="public.ecr.aws/$(grep -rhoaE 'supabase/postgres-meta:v[0-9]+\.[0-9]+\.[0-9]+' node_modules/@supabase/cli-*/bin/supabase* 2>/dev/null | sort -u | head -1)"
+          if [ "$REF" = "public.ecr.aws/" ]; then
+            echo "::error::Could not resolve the postgres-meta image ref from the installed supabase CLI binary."
+            exit 1
+          fi
+          echo "Resolved image ref: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          # actions/cache paths and keys can't contain ':' or '/' — sanitize for
+          # the tarball filename and cache key.
+          echo "sanitized=$(echo "$REF" | tr '/:' '__')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache postgres-meta image
+        id: pgmeta-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pg-meta/${{ steps.pgmeta.outputs.sanitized }}.tar
+          key: pgmeta-${{ steps.pgmeta.outputs.sanitized }}
+
+      # Cache hit: load the tarball so `docker run` below finds the image
+      # locally and never touches public.ecr.aws.
+      - name: Load cached postgres-meta image
+        if: steps.pgmeta-cache.outputs.cache-hit == 'true'
+        run: docker load -i ~/.cache/pg-meta/${{ steps.pgmeta.outputs.sanitized }}.tar
+
+      # Cache miss: pull once and save a tarball for actions/cache to upload at
+      # job end (next run on this ref is a cache hit).
+      - name: Pull and save postgres-meta image
+        if: steps.pgmeta-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          docker pull "${{ steps.pgmeta.outputs.ref }}"
+          mkdir -p ~/.cache/pg-meta
+          docker save -o ~/.cache/pg-meta/${{ steps.pgmeta.outputs.sanitized }}.tar "${{ steps.pgmeta.outputs.ref }}"
+      # --- end GV-300 ---
+
       # Replays supabase-schema.sql into a disposable Postgres 15 and re-runs
       # `supabase gen types typescript`, then byte-compares against the
       # committed types/database.ts. Fails when a schema change merged without
