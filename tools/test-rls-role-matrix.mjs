@@ -411,6 +411,52 @@ const CASES = [
     expect: "22023",
   }),
 
+  // ── Set-based owner workspace overview (migration 129) ───────────────────
+  queryCase({
+    name: "owner-workspace-overview-service-role",
+    desc: "service role receives an exact, bounded workspace overview page",
+    actor: SERVICE,
+    assert: `if (public.owner_workspace_overview_page(1, 0)->>'totalWorkspaces')::integer <>
+        (select count(*)::integer from public.ledgers) then
+      raise exception 'CASEFAIL owner-workspace-overview-service-role: totalWorkspaces mismatch';
+    end if;
+    if jsonb_array_length(public.owner_workspace_overview_page(1, 0)->'workspaces') <> 1 then
+      raise exception 'CASEFAIL owner-workspace-overview-service-role: page was not bounded';
+    end if;
+    if public.owner_workspace_overview_page(1, 0)->'workspaces'->0->>'id' is distinct from
+        (select id from public.ledgers order by created_at asc, id asc limit 1) then
+      raise exception 'CASEFAIL owner-workspace-overview-service-role: first page id mismatch';
+    end if;
+    if (select (item->>'memberCount')::integer
+        from jsonb_array_elements(public.owner_workspace_overview_page(200, 0)->'workspaces') item
+        where item->>'id' = '${WS1}') <> 4 then
+      raise exception 'CASEFAIL owner-workspace-overview-service-role: active member count mismatch';
+    end if;
+    if (select (item->'health'->>'openPeriod')::boolean
+        from jsonb_array_elements(public.owner_workspace_overview_page(200, 0)->'workspaces') item
+        where item->>'id' = '${WS1}') is distinct from true then
+      raise exception 'CASEFAIL owner-workspace-overview-service-role: open-period health mismatch';
+    end if;
+    if public.owner_workspace_overview_page(1, 1)->'workspaces'->0->>'id' is distinct from
+        (select id from public.ledgers order by created_at asc, id asc limit 1 offset 1) then
+      raise exception 'CASEFAIL owner-workspace-overview-service-role: offset page id mismatch';
+    end if`,
+  }),
+  rpcCase({
+    name: "owner-workspace-overview-member-blocked",
+    desc: "an authenticated workspace admin cannot invoke the cross-workspace overview",
+    actor: A,
+    op: "perform public.owner_workspace_overview_page(100, 0);",
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "owner-workspace-overview-bounds-validated",
+    desc: "the owner workspace overview rejects oversized pages and offsets",
+    actor: SERVICE,
+    op: "perform public.owner_workspace_overview_page(201, 0);",
+    expect: "22023",
+  }),
+
   // ── 1. upsert_settlement_request_status ────────────────────────────────────
   rpcCase({
     name: "upsert-creditor-creates",
