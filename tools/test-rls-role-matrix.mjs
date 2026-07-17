@@ -388,6 +388,29 @@ const CLAIM_CONFIRM_BA_COUNT = `select count(*) into rows from public.claim_due_
       where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}')`;
 
 const CASES = [
+  // ── Owner-only settlement integrity batch (migration 127) ─────────────────
+  rpcCase({
+    name: "owner-integrity-batch-service-role",
+    desc: "service role can run the bounded cross-workspace integrity batch",
+    actor: SERVICE,
+    op: "perform public.owner_settlement_integrity_batch(200);",
+    expect: "ok",
+  }),
+  rpcCase({
+    name: "owner-integrity-batch-member-blocked",
+    desc: "an authenticated workspace admin cannot invoke the owner integrity batch",
+    actor: A,
+    op: "perform public.owner_settlement_integrity_batch(200);",
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "owner-integrity-batch-limit-validated",
+    desc: "the owner integrity batch rejects unbounded requests",
+    actor: SERVICE,
+    op: "perform public.owner_settlement_integrity_batch(501);",
+    expect: "22023",
+  }),
+
   // ── 1. upsert_settlement_request_status ────────────────────────────────────
   rpcCase({
     name: "upsert-creditor-creates",
