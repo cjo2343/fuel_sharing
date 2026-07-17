@@ -15,10 +15,17 @@ fi
 docker run -d --name "${C}" -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust \
   -v "$REPO":/repo:ro postgres:15-alpine >/dev/null
 
+ready=0
 for _ in $(seq 1 60); do
-  if docker exec "${C}" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+  if docker exec "${C}" pg_isready -U postgres >/dev/null 2>&1; then ready=1; break; fi
   sleep 1
 done
+if [ "$ready" -ne 1 ]; then
+  echo "❌ Postgres did not become ready within 60s." >&2
+  exit 1
+fi
+# pg_isready can flip true across the bootstrap restart; settle briefly.
+sleep 2
 
 PSQL() { docker exec -i "${C}" psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres "$@"; }
 
