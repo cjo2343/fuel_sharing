@@ -27,6 +27,11 @@ har betalt sin andel af, forsvinder ikke fordi chaufføren sletter sin konto.
 Rækkerne peger på det anonymiserede medlem og kan ikke længere henføres til personen
 med rimelige midler.
 
+**Undtagelse — sidste aktive medlem:** er brugeren det ENESTE aktive medlem i et
+workspace, er der ingen andres regnskab at bevare, og hele workspacet hård-slettes
+i stedet (cascade gennem alle børnetabeller: ture, events, bookinger — alt).
+Data-minimering frem for pseudonymisering, når intet formål består.
+
 ## Kendte begrænsninger (oplyses ved sletteanmodninger)
 
 1. **Backups**: Slettede/anonymiserede data lever videre i Supabase-backups indtil
@@ -46,8 +51,8 @@ med rimelige midler.
 
 | Test | Status | Evidens |
 |---|---|---|
-| Kontosletning i prod med engangskonto (opret → deltag → slet → verificér scrubs i SQL) | ⚠️ Udestår | Dato + operatørens SQL-verifikation her |
-| Dataeksport (GVM-335) på rigtig konto: eksportér, åbn filen, kontrollér fuldstændighed | ⚠️ Udestår | Dato + kontrol her |
+| Kontosletning i prod med engangskonto (opret → deltag → slet → verificér scrubs i SQL) | ✅ BESTÅET | 2026-07-17: engangskonto (claude+e2e-test@…) oprettet i eget workspace + 1 tur; "Slet konto" kørt i appen. SQL-verifikation: 0 rækker tilbage i auth.users / expo_push_tokens / ledger_events.actor_email / owner_activity_log for e-mailen; workspacet hård-slettet inkl. tur (sidste-medlem-grenen). App logget ud; kold start genopliver IKKE sessionen (modsat GVM-362-fejlen for alm. log-ud). |
+| Dataeksport (GVM-335) på rigtig konto: eksportér, åbn filen, kontrollér fuldstændighed | ✅ BESTÅET | 2026-07-17: eksport kørt på rigtigt medlem; fil `vehloshare-data-eksport-2026-07-17.json` (13 kB) skabt on-device, aldrig uploadet. Struktur verificeret: format vehloshare-export/2, profil matcher den indloggede konto, kun medlemmets EGNE rækker (ejerskabs-afgrænsning bekræftet — delt synlighed giver ikke eksport-adgang til andres rækker). |
 
 Dataeksporten (art. 20) er klient-side: filen bygges på enheden med ubegrænset
 paginering, uploades aldrig, og indholdet logges aldrig (`src/lib/data-export.ts`
