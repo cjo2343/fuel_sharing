@@ -10,6 +10,7 @@
     "check:role-matrix": "node tools/test-rls-role-matrix.mjs",
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "test:booking-trip": "bash tools/test-booking-trip-functional.sh",
+    "test:booking-reminder": "bash tools/test-booking-reminder-functional.sh",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
