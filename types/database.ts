@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 129 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 130 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -302,7 +302,7 @@ export type Database = {
           body: string
           created_at: string
           event_type: string
-          expires_at: string
+          expires_at: string | null
           id: string
           ledger_id: string
           metadata: Json
@@ -317,7 +317,7 @@ export type Database = {
           body: string
           created_at?: string
           event_type?: string
-          expires_at?: string
+          expires_at?: string | null
           id?: string
           ledger_id: string
           metadata?: Json
@@ -332,7 +332,7 @@ export type Database = {
           body?: string
           created_at?: string
           event_type?: string
-          expires_at?: string
+          expires_at?: string | null
           id?: string
           ledger_id?: string
           metadata?: Json
@@ -1803,6 +1803,10 @@ export type Database = {
       rotate_workspace_join_code: {
         Args: { target_ledger_id?: string }
         Returns: string
+      }
+      run_operational_retention: {
+        Args: { p_dry_run?: boolean; p_stale_push_days?: number }
+        Returns: Json
       }
       run_retention_cleanup: {
         Args: {

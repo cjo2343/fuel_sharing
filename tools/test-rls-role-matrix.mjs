@@ -457,6 +457,35 @@ const CASES = [
     expect: "22023",
   }),
 
+  // ── Operational retention cleanup (migration 130) ─────────────────────────
+  queryCase({
+    name: "operational-retention-service-role-dry-run",
+    desc: "service role receives a dry-run retention summary with the expected keys",
+    actor: SERVICE,
+    assert: `if not (public.run_operational_retention(180, true) ?& array[
+        'staleExpoPushTokens', 'expiredLedgerEvents', 'dryRun', 'staleDays', 'ranAt'
+      ]) then
+      raise exception 'CASEFAIL operational-retention-service-role-dry-run: summary is missing expected keys';
+    end if;
+    if (public.run_operational_retention(180, true)->>'dryRun')::boolean is distinct from true then
+      raise exception 'CASEFAIL operational-retention-service-role-dry-run: dryRun flag not true';
+    end if`,
+  }),
+  rpcCase({
+    name: "operational-retention-member-blocked",
+    desc: "an authenticated workspace admin cannot invoke the operational retention job",
+    actor: A,
+    op: "perform public.run_operational_retention(180, true);",
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "operational-retention-bounds-validated",
+    desc: "the operational retention job rejects an out-of-range stale-days window",
+    actor: SERVICE,
+    op: "perform public.run_operational_retention(10, false);",
+    expect: "22023",
+  }),
+
   // ── 1. upsert_settlement_request_status ────────────────────────────────────
   rpcCase({
     name: "upsert-creditor-creates",
