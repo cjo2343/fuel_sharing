@@ -137,6 +137,7 @@ const expected = [
   "125_ledger_fuel_settings_boundary.sql",
   "126_atomic_app_announcements.sql",
   "127_owner_settlement_integrity_batch.sql",
+  "128_allow_retiring_linked_trips.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
