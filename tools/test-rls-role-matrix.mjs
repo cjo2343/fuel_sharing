@@ -950,6 +950,70 @@ end`,
     op: `update public.ledgers set join_code = 'ATTACK' where id = '${WS1}';`,
     expect: "42501",
   }),
+  // Migration 126: app-wide announcements are operator infrastructure. Only the
+  // service role can replace/clear, and replacement preserves one active row.
+  rpcCase({
+    name: "announcement-replace-service-role-succeeds",
+    desc: "service role atomically replaces the active app announcement",
+    setup: [
+      step(SUPER, `insert into public.app_announcements (text, active) values ('Old banner', true);`),
+    ],
+    actor: SERVICE,
+    op: `perform public.replace_app_announcement('New banner', 'https://vehloshare.app/news', 'success', null, null, 'owner@example.dk');`,
+    expect: "ok",
+    post: `if (select count(*) from public.app_announcements where active = true) <> 1
+      then raise exception 'CASEFAIL announcement-replace-service-role-succeeds: expected exactly one active row'; end if;
+    if not exists (select 1 from public.app_announcements where active = true and text = 'New banner' and variant = 'success')
+      then raise exception 'CASEFAIL announcement-replace-service-role-succeeds: replacement row missing'; end if;
+    if exists (select 1 from public.app_announcements where text = 'Old banner' and active = true)
+      then raise exception 'CASEFAIL announcement-replace-service-role-succeeds: old row remained active'; end if;`,
+  }),
+  rpcCase({
+    name: "announcement-replace-authenticated-denied",
+    desc: "authenticated workspace admin A cannot call the operator announcement command",
+    actor: A,
+    op: `perform public.replace_app_announcement('Not allowed', null, 'info', null, null, 'a@rolematrix.test');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "announcement-replace-invalid-input-preserves-current",
+    desc: "invalid replacement is rejected before the current active banner changes",
+    setup: [
+      step(SUPER, `insert into public.app_announcements (text, active) values ('Keep me', true);`),
+    ],
+    actor: SERVICE,
+    op: `perform public.replace_app_announcement('Bad replacement', 'javascript://alert(1)', 'info', null, null, 'owner@example.dk');`,
+    expect: "22023",
+    post: `if not exists (select 1 from public.app_announcements where text = 'Keep me' and active = true)
+      then raise exception 'CASEFAIL announcement-replace-invalid-input-preserves-current: current banner changed'; end if;`,
+  }),
+  rpcCase({
+    name: "announcement-insert-failure-rolls-back-deactivation",
+    desc: "a database failure during replacement insert rolls back retirement of the current banner",
+    setup: [
+      step(SUPER, `insert into public.app_announcements (text, active) values ('Still live', true);`),
+      step(SUPER, `alter table public.app_announcements add constraint rolematrix_reject_announcement check (text <> 'Force failure');`),
+    ],
+    actor: SERVICE,
+    op: `perform public.replace_app_announcement('Force failure', null, 'info', null, null, 'owner@example.dk');`,
+    expect: "23514",
+    post: `if not exists (select 1 from public.app_announcements where text = 'Still live' and active = true)
+      then raise exception 'CASEFAIL announcement-insert-failure-rolls-back-deactivation: original banner was retired'; end if;
+    if exists (select 1 from public.app_announcements where text = 'Force failure')
+      then raise exception 'CASEFAIL announcement-insert-failure-rolls-back-deactivation: rejected replacement was stored'; end if;`,
+  }),
+  rpcCase({
+    name: "announcement-clear-service-role-succeeds",
+    desc: "service role clears the active app announcement through the serialized command",
+    setup: [
+      step(SUPER, `insert into public.app_announcements (text, active) values ('Clear me', true);`),
+    ],
+    actor: SERVICE,
+    op: `perform public.clear_app_announcements();`,
+    expect: "ok",
+    post: `if exists (select 1 from public.app_announcements where active = true)
+      then raise exception 'CASEFAIL announcement-clear-service-role-succeeds: active row remained'; end if;`,
+  }),
   queryCase({
     name: "repairs-deles-ikke-matches-baseline",
     desc: "mode='deles_ikke': a repair logged by active member C is excluded, nets match the no-repairs baseline",
