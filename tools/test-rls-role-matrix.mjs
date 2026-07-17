@@ -811,7 +811,7 @@ begin
   -- ZERO share (the 100 kr splits over the ACTIVE members only), and everything
   -- still nets to zero — the mode-independent invariants of the credit-only rule.
   foreach mode in array array['ligeligt', 'efter_koersel'] loop
-    update public.ledgers set repairs_split_mode = mode where id = '${WS1}';
+    perform public.update_ledger_settings('${WS1}', null, null, null, mode);
     s := public.calculate_period_settlement('${WS1}', '${P1}');
     d_net := (select (p->>'net')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
     d_paid := (select (p->>'repairPaid')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
@@ -823,7 +823,7 @@ begin
     end if;
   end loop;
   -- deles_ikke folds no repairs, so D paid nothing that counts and must NOT appear.
-  update public.ledgers set repairs_split_mode = 'deles_ikke' where id = '${WS1}';
+  perform public.update_ledger_settings('${WS1}', null, null, null, 'deles_ikke');
   s := public.calculate_period_settlement('${WS1}', '${P1}');
   d_present := exists (select 1 from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.D}');
   total_repairs := (s->>'totalRepairs')::numeric;
@@ -904,6 +904,50 @@ end`,
     desc: "non-admin B calls update_ledger_settings to change settlement_mode (denied 42501) (GV-292)",
     actor: B,
     op: `perform public.update_ledger_settings('${WS1}', 'running', null, null, null);`,
+    expect: "42501",
+  }),
+  // Migration 125: fuel settings have one validated command boundary. Admins can
+  // use it, ordinary members cannot, and even admins cannot UPDATE ledgers directly.
+  rpcCase({
+    name: "fuel-settings-admin-succeeds",
+    desc: "admin A updates canonical fuel settings through the narrow RPC",
+    actor: A,
+    op: `perform public.update_ledger_fuel_settings('${WS1}', 'benzin', 6.2, 48, 15.25);`,
+    expect: "ok",
+    post: `if not exists (
+      select 1 from public.ledgers
+       where id = '${WS1}'
+         and fuel_type = 'benzin'
+         and estimated_consumption_l_per_100km = 6.2
+         and fuel_tank_capacity_l = 48
+         and fallback_fuel_price = 15.25
+    ) then raise exception 'CASEFAIL fuel-settings-admin-succeeds: settings were not stored'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+       where ledger_id = '${WS1}'
+         and event_type = 'settings_changed'
+         and metadata->'changed' ?& array['fuel_type', 'consumption', 'tank_capacity', 'fallback_price']
+    ) then raise exception 'CASEFAIL fuel-settings-admin-succeeds: redacted change event missing'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-settings-nonadmin-denied",
+    desc: "member B cannot update workspace fuel settings through the RPC",
+    actor: B,
+    op: `perform public.update_ledger_fuel_settings('${WS1}', 'benzin', 6.2, 48, 15.25);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "fuel-settings-invalid-values-rejected",
+    desc: "admin A cannot store an unsupported fuel type or nonsensical values",
+    actor: A,
+    op: `perform public.update_ledger_fuel_settings('${WS1}', 'petrol98', 0, 48, 15.25);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "ledger-direct-admin-update-denied",
+    desc: "admin A cannot bypass settings RPCs with a direct ledgers UPDATE",
+    actor: A,
+    op: `update public.ledgers set join_code = 'ATTACK' where id = '${WS1}';`,
     expect: "42501",
   }),
   queryCase({
