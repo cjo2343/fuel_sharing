@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 131 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 132 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -512,6 +512,7 @@ export type Database = {
           created_at: string
           created_by_member_id: string | null
           currency: string
+          deleted_at: string | null
           estimated_consumption_l_per_100km: number
           expense_split_defaults: Json
           fallback_fuel_price: number
@@ -556,6 +557,7 @@ export type Database = {
           created_at?: string
           created_by_member_id?: string | null
           currency?: string
+          deleted_at?: string | null
           estimated_consumption_l_per_100km?: number
           expense_split_defaults?: Json
           fallback_fuel_price?: number
@@ -600,6 +602,7 @@ export type Database = {
           created_at?: string
           created_by_member_id?: string | null
           currency?: string
+          deleted_at?: string | null
           estimated_consumption_l_per_100km?: number
           expense_split_defaults?: Json
           fallback_fuel_price?: number
@@ -1474,6 +1477,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_restore_workspace: { Args: { p_ledger_id: string }; Returns: Json }
+      admin_soft_delete_workspace: {
+        Args: { p_ledger_id: string }
+        Returns: Json
+      }
       apply_payment_status_action: {
         Args: {
           amount_value: number

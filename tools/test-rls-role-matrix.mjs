@@ -2120,6 +2120,160 @@ end`,
         where id = 'ffffffff-ffff-ffff-ffff-fffffffff122') is distinct from 'open'
       then raise exception 'CASEFAIL transition-batch-rolls-back-on-late-failure: second request changed unexpectedly'; end if;`,
   }),
+
+  // ── Operator workspace decommission lifecycle (migration 132, GV-316) ──────
+  rpcCase({
+    name: "workspace-soft-delete-authenticated-blocked",
+    desc: "an authenticated workspace admin cannot decommission a workspace (service-role-only)",
+    actor: A,
+    op: `perform public.admin_soft_delete_workspace('${WS1}');`,
+    expect: "42501",
+    post: `if (select deleted_at from public.ledgers where id = '${WS1}') is not null
+      then raise exception 'CASEFAIL workspace-soft-delete-authenticated-blocked: workspace was decommissioned'; end if;`,
+  }),
+  rpcCase({
+    name: "workspace-restore-authenticated-blocked",
+    desc: "an authenticated workspace admin cannot restore a workspace (service-role-only)",
+    actor: A,
+    op: `perform public.admin_restore_workspace('${WS1}');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-service-role-emits-event",
+    desc: "service role decommissions a workspace and writes a Danish notification event with a system actor",
+    actor: SERVICE,
+    op: `perform public.admin_soft_delete_workspace('${WS1}');`,
+    expect: "ok",
+    post: `if (select deleted_at from public.ledgers where id = '${WS1}') is null
+      then raise exception 'CASEFAIL workspace-soft-delete-service-role-emits-event: deleted_at not stamped'; end if;
+      if not exists (
+        select 1 from public.ledger_events
+        where ledger_id = '${WS1}' and event_type = 'workspace_decommissioned'
+          and actor_member_id is null and actor_email is null
+          and body like '%slettes permanent efter 90 dage%'
+      ) then raise exception 'CASEFAIL workspace-soft-delete-service-role-emits-event: notification event missing'; end if;`,
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-idempotent",
+    desc: "decommissioning an already-decommissioned workspace raises a clean error",
+    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    actor: SERVICE,
+    op: `perform public.admin_soft_delete_workspace('${WS1}');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "workspace-restore-non-deleted-idempotent",
+    desc: "restoring a workspace that is not decommissioned raises a clean error",
+    actor: SERVICE,
+    op: `perform public.admin_restore_workspace('${WS1}');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "workspace-soft-delete-hides-from-member",
+    desc: "after decommission a member sees nothing of the workspace (ledger, trips, requests, members)",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+    ],
+    actor: B,
+    assert: `declare n_ledger int; n_trips int; n_req int; n_members int;
+begin
+  select count(*) into n_ledger from public.ledgers where id = '${WS1}';
+  select count(*) into n_trips from public.trips where ledger_id = '${WS1}';
+  select count(*) into n_req from public.settlement_requests where ledger_id = '${WS1}';
+  select count(*) into n_members from public.ledger_members where ledger_id = '${WS1}';
+  if n_ledger <> 0 or n_trips <> 0 or n_req <> 0 or n_members <> 0 then
+    raise exception 'CASEFAIL workspace-soft-delete-hides-from-member: B saw ledger=% trips=% requests=% members=% (expected 0/0/0/0)', n_ledger, n_trips, n_req, n_members;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-blocks-member-rls-write",
+    desc: "after decommission a member's direct trip insert is rejected by RLS",
+    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    actor: A,
+    op: `insert into public.trips (ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id)
+         values ('${WS1}', '${P1}', '${A_ID}', current_date, 5000, 5100, '${A_ID}');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-blocks-member-rpc-write",
+    desc: "after decommission a member's presence heartbeat is rejected (membership no longer resolves)",
+    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    actor: B,
+    op: `perform public.touch_member_presence('${WS1}');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "workspace-restore-brings-visibility-back",
+    desc: "restoring a decommissioned workspace makes it visible to its members again",
+    setup: [
+      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+      step(SERVICE, `perform public.admin_restore_workspace('${WS1}');`),
+    ],
+    actor: B,
+    assert: `declare n_ledger int; n_trips int; n_members int;
+begin
+  select count(*) into n_ledger from public.ledgers where id = '${WS1}';
+  select count(*) into n_trips from public.trips where ledger_id = '${WS1}';
+  select count(*) into n_members from public.ledger_members where ledger_id = '${WS1}';
+  if n_ledger < 1 or n_trips < 1 or n_members < 1 then
+    raise exception 'CASEFAIL workspace-restore-brings-visibility-back: B saw ledger=% trips=% members=% (expected all >=1)', n_ledger, n_trips, n_members;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "retention-purges-past-window-workspace-only",
+    desc: "retention permanently purges a workspace past the 90-day grace window but keeps an in-window tombstone",
+    setup: [step(SUPER, `update public.ledgers set deleted_at = now() - interval '100 days' where id = '${WS2}';
+        update public.ledgers set deleted_at = now() - interval '10 days' where id = '${WS1}';`)],
+    actor: SERVICE,
+    assert: `declare result jsonb;
+begin
+  result := public.run_operational_retention(180, false);
+  if exists (select 1 from public.ledgers where id = '${WS2}') then
+    raise exception 'CASEFAIL retention-purges-past-window-workspace-only: past-window workspace survived';
+  end if;
+  if not exists (select 1 from public.ledgers where id = '${WS1}') then
+    raise exception 'CASEFAIL retention-purges-past-window-workspace-only: in-window workspace was purged early';
+  end if;
+  if (result->>'purgedWorkspaces')::integer <> 1 then
+    raise exception 'CASEFAIL retention-purges-past-window-workspace-only: purgedWorkspaces=% (expected 1)', result->>'purgedWorkspaces';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "workspace-soft-delete-excluded-from-list-my-ledgers",
+    desc: "a soft-deleted workspace drops out of the member's list_my_ledgers switcher/resolver",
+    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    actor: B,
+    assert: `if exists (select 1 from public.list_my_ledgers() where ledger_id = '${WS1}') then
+      raise exception 'CASEFAIL workspace-soft-delete-excluded-from-list-my-ledgers: soft-deleted workspace still listed';
+    end if`,
+  }),
+  queryCase({
+    name: "workspace-soft-delete-invite-resolve-reveals-nothing",
+    desc: "resolving a decommissioned workspace's join code reveals nothing",
+    setup: [
+      step(SUPER, `update public.ledgers set join_code = 'NEDLAGT99' where id = '${WS1}';`),
+      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+    ],
+    actor: C,
+    assert: `if (select count(*) from public.resolve_ledger_invite('NEDLAGT99')) <> 0 then
+      raise exception 'CASEFAIL workspace-soft-delete-invite-resolve-reveals-nothing: resolve returned a decommissioned workspace';
+    end if`,
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-invite-redeem-blocked",
+    desc: "no one can redeem an invite into a decommissioned workspace",
+    setup: [
+      step(SUPER, `update public.ledgers set join_code = 'NEDLAGT99' where id = '${WS1}';`),
+      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+    ],
+    actor: E,
+    op: `perform public.redeem_ledger_invite('NEDLAGT99');`,
+    expect: "P0001",
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
