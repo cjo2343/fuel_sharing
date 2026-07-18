@@ -12,7 +12,8 @@ faktisk håndhæves automatisk, kræver manuel handling, eller er et kendt hul.
 | Legacy web-push (`push_subscriptions`) | Udfaset | **Tømt i migration 130** (dødt PWA-levn); tabel droppes i GV-311 |
 | Events med udløb (`ledger_events.expires_at`) | Ved udløb | **Automatisk** fra migration 130 (p.t. skriver ingen kode udløbsdatoer — sweep'et er fremtidssikring) |
 | Soft-slettet chat, bookinger og tilbagevendende skabeloner (`messages`, `car_bookings`, `recurring_expenses`) | **90 dage efter `deleted_at`** | **Automatisk fra migration 131**. Perioden giver plads til fejlretning/fortryd; derefter hård-slettes tombstonen. |
-| Soft-slettede regnskabsrækker (`trips`, `fuel_payments`, `workspace_expenses`, `vehicle_repairs`) | **Fem hele regnskabsår efter året for sletningen** | **Automatisk fra migration 131**. Fx beholdes en række slettet i 2026 til og med 31/12/2031. Dette er den konservative bogføringsfrist; konkret lovpligt afhænger af den dataansvarliges status. |
+| Soft-slettede regnskabsrækker (`trips`, `fuel_payments`, `workspace_expenses`, `vehicle_repairs`) | **Fem hele regnskabsår efter året for sletningen** | **Automatisk fra migration 131**. Fx beholdes en række slettet i 2026 til og med 31/12/2031. Dette er den konservative bogføringsfrist; konkret lovpligt afhænger af den dataansvarliges status. **Undtagelse:** hel-workspace-sletning (kontosletning som sidste medlem, eller operatør-nedlæggelse — se afsnittet nedenfor) fjerner også yngre regnskabsrækker. |
+| Nedlagte workspaces (`ledgers` + alle barnerækker via cascade) | **90 dage efter operatørens nedlæggelse** (`ledgers.deleted_at`) | **Automatisk fra migration 132** (GV-316): dagligt sweep purger workspaces forbi gendannelsesfristen. Medlemmer mister adgangen straks ved nedlæggelsen og notificeres via feed-event. |
 | Operatør-audit (`owner_activity_log`) | **24 måneder** | **Automatisk fra migration 131**; aktørfelter nulles tidligere ved kontosletning. 24 måneder dækker rimelig hændelses-/tvistundersøgelse uden permanent personhistorik. |
 | Rate-limit-registre (`ledger_onboarding_rate_limits`, `owner_api_rate_limits`) | Kort teknisk levetid | Renses ved kontosletning; ingen aldersgrænse i øvrigt (lav risiko — nøgler/e-mails) |
 | Fejltelemetri (Sentry EU) | **30 dage** | Projektets nuværende gratis Developer-plan (5.000 errors/måned) har 30-dages lookback; projektet bruger EU-ingest. Team/Business giver op til 90 dage. Bekræft plan-/org-indstillingen ved hver årlig vendor-review. |
@@ -36,6 +37,24 @@ Cloudflare-evidens 2026-07-17: `govehlo-scheduler` fik
 (version `22c757e0-4fb7-4db6-b4ef-d2eec48a0af2`) med cron
 `30 3 * * *`. Første kørsel af migration 131's udvidede klasser sker først efter,
 at migrationen er anvendt i Supabase.
+
+## Beslutning: workspace-purge tilsidesætter femårsfristen (2026-07-18, GV-316)
+
+En hel-workspace-sletning (operatør-nedlæggelse efter 90 dages gendannelsesfrist,
+eller `delete_my_account` når sidste aktive medlem forlader workspacet) cascade-sletter
+også regnskabsrækker, der er yngre end femårsfristen ovenfor. Det er en **bevidst,
+dokumenteret beslutning** (truffet 2026-07-18), ikke et hul:
+
+- Femårsfristen i migration 131 er vores egen konservative politik for tombstones i
+  et LEVENDE workspace — ikke en klar lovpligt for privates delebilsdata; et evt.
+  bogføringskrav påhviler brugeren selv, ikke tjenesten.
+- GDPR's minimeringsprincip trækker i retning af sletning, og kontosletningsstien
+  (`delete_my_account`) har haft præcis denne semantik siden migration 056 —
+  operatør-nedlæggelse følger samme præcedens.
+- **Tjekliste FØR en nedlæggelse** (operatøren er ansvarlig): (1) tilbyd/bekræft
+  dataeksport til medlemmerne (appens eksportflow, GVM-335); (2) kontrollér at der
+  ikke er kendt tvist eller legal hold på workspacet; (3) gennemfør derefter
+  nedlæggelsen — 90-dages-vinduet er fortrydelsesmarginen.
 
 ## Beslutning om forladte workspaces
 
