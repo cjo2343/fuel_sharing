@@ -24,6 +24,10 @@ const scripts = [
   "node tools/test-booking-trip-contract.mjs",
   "node tools/test-booking-reminder-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
+  // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
+  // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths
+  // mirror of the mobile data gateway. Docker-free and sub-second (GV-329).
+  "node tools/load-rehearsal/test-load-rehearsal.mjs",
   "node tools/check-token-drift.mjs",
 ];
 
