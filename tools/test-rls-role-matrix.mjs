@@ -2153,20 +2153,70 @@ end`,
           and body like '%slettes permanent efter 90 dage%'
       ) then raise exception 'CASEFAIL workspace-soft-delete-service-role-emits-event: notification event missing'; end if;`,
   }),
-  rpcCase({
-    name: "workspace-soft-delete-idempotent",
-    desc: "decommissioning an already-decommissioned workspace raises a clean error",
+  // GV-328 idempotency contract: a repeat soft-delete of a tombstoned workspace
+  // (and a restore of a live one) is now an honest NO-OP — alreadyApplied=true
+  // with NO second lifecycle event — instead of migration 132's mislabelled
+  // 22023 "already decommissioned" error.
+  queryCase({
+    name: "workspace-soft-delete-idempotent-noop",
+    desc: "repeating soft-delete on a tombstoned workspace is a no-op (alreadyApplied) and emits exactly one decommission event",
     setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
     actor: SERVICE,
-    op: `perform public.admin_soft_delete_workspace('${WS1}');`,
-    expect: "22023",
+    assert: `declare result jsonb; n_events int;
+begin
+  result := public.admin_soft_delete_workspace('${WS1}');
+  if coalesce((result->>'alreadyApplied')::boolean, false) is not true then
+    raise exception 'CASEFAIL workspace-soft-delete-idempotent-noop: expected alreadyApplied=true, got %', result;
+  end if;
+  select count(*) into n_events from public.ledger_events
+    where ledger_id = '${WS1}' and event_type = 'workspace_decommissioned';
+  if n_events <> 1 then
+    raise exception 'CASEFAIL workspace-soft-delete-idempotent-noop: expected exactly 1 decommission event, got %', n_events;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "workspace-restore-live-idempotent-noop",
+    desc: "restoring a workspace that is already live is a no-op (alreadyApplied) and emits no restore event",
+    actor: SERVICE,
+    assert: `declare result jsonb; n_events int;
+begin
+  result := public.admin_restore_workspace('${WS1}');
+  if coalesce((result->>'alreadyApplied')::boolean, false) is not true then
+    raise exception 'CASEFAIL workspace-restore-live-idempotent-noop: expected alreadyApplied=true, got %', result;
+  end if;
+  select count(*) into n_events from public.ledger_events
+    where ledger_id = '${WS1}' and event_type = 'workspace_restored';
+  if n_events <> 0 then
+    raise exception 'CASEFAIL workspace-restore-live-idempotent-noop: expected 0 restore events, got %', n_events;
+  end if;
+end`,
   }),
   rpcCase({
-    name: "workspace-restore-non-deleted-idempotent",
-    desc: "restoring a workspace that is not decommissioned raises a clean error",
+    name: "workspace-restore-after-grace-rejected",
+    desc: "restoring a workspace whose tombstone has outlived the 90-day grace window is rejected (purge-pending, errcode GV328)",
+    setup: [step(SUPER, `update public.ledgers set deleted_at = now() - interval '91 days' where id = '${WS1}';`)],
     actor: SERVICE,
     op: `perform public.admin_restore_workspace('${WS1}');`,
-    expect: "22023",
+    expect: "GV328",
+    post: `if (select deleted_at from public.ledgers where id = '${WS1}') is null
+      then raise exception 'CASEFAIL workspace-restore-after-grace-rejected: tombstone was cleared despite expired grace window'; end if;`,
+  }),
+  queryCase({
+    name: "workspace-lifecycle-rpcs-lock-row-for-update",
+    desc: "both lifecycle RPCs take select ... for update on the ledgers row so concurrent calls serialize (GV-328 concurrency guard present in the function body)",
+    actor: SUPER,
+    assert: `declare soft_def text; restore_def text;
+begin
+  soft_def := lower(pg_get_functiondef('public.admin_soft_delete_workspace(text)'::regprocedure));
+  restore_def := lower(pg_get_functiondef('public.admin_restore_workspace(text)'::regprocedure));
+  if position('for update' in soft_def) = 0 then
+    raise exception 'CASEFAIL workspace-lifecycle-rpcs-lock-row-for-update: admin_soft_delete_workspace has no FOR UPDATE row lock';
+  end if;
+  if position('for update' in restore_def) = 0 then
+    raise exception 'CASEFAIL workspace-lifecycle-rpcs-lock-row-for-update: admin_restore_workspace has no FOR UPDATE row lock';
+  end if;
+end`,
   }),
   queryCase({
     name: "workspace-soft-delete-hides-from-member",
