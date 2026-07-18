@@ -142,6 +142,7 @@ const expected = [
   "130_operational_retention.sql",
   "131_gdpr_retention_policy.sql",
   "132_workspace_lifecycle.sql",
+  "133_workspace_lifecycle_hardening.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
