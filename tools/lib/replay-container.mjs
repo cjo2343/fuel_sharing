@@ -47,7 +47,7 @@ export function removeContainer(container) {
 // container's 5432 is published on an ephemeral localhost port (needed when a
 // host-side tool — e.g. the supabase CLI — must reach the database directly;
 // discover it with hostPort()).
-export function startPostgres(container, repoDir, { publishPort = false } = {}) {
+export function startPostgres(container, repoDir, { publishPort = false, image = IMAGE } = {}) {
   try {
     execFileSync("docker", ["info"], { stdio: "ignore" });
   } catch {
@@ -61,7 +61,7 @@ export function startPostgres(container, repoDir, { publishPort = false } = {}) 
     "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
     ...(publishPort ? ["-p", "127.0.0.1:0:5432"] : []),
     "-v", `${repoDir}:/work:ro`,
-    IMAGE,
+    image,
   ]);
 
   let ready = false;

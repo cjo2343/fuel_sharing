@@ -51,6 +51,13 @@ const TOLERATED_SAMPLES = [
   ['psql:/tmp/dump.bin:53: ERROR:  relation "storage.objects" does not exist', "infra-object"],
   ['psql:/tmp/dump.bin:54: ERROR:  function graphql.get_schema_version() does not exist', "infra-object"],
   ['psql:/tmp/dump.bin:55: ERROR:  schema "vault" does not exist', "infra-schema"],
+  // Seen in the first real PG17 drill (2026-07-18): Supabase-bundled vault
+  // extension absent from the stock image, and the dump colliding with the
+  // drill's own auth.jwt()/auth.uid() prelude stubs.
+  ['psql:<stdin>:158: ERROR:  extension "supabase_vault" is not available', "infra-schema"],
+  ['psql:<stdin>:165: ERROR:  extension "supabase_vault" does not exist', "infra-schema"],
+  ['psql:<stdin>:428: ERROR:  function "jwt" already exists with same argument types', "bootstrap-stub"],
+  ['psql:<stdin>:469: ERROR:  function "uid" already exists with same argument types', "bootstrap-stub"],
 ];
 
 for (const [line, expectedCat] of TOLERATED_SAMPLES) {
@@ -95,6 +102,11 @@ const FATAL_SAMPLES = [
   ["pg_restore: error: could not read from input file: end of file", "unknown"],
   // Anything the allowlist does not recognise ⇒ fatal.
   ["psql:/tmp/dump.bin:1100: ERROR:  something completely unexpected happened", "unknown"],
+  // Version-mismatch tripwires (PG17 dump into an older server) must STAY
+  // fatal — the fix is matching the drill image to prod's major, never the
+  // allowlist. Seen live 2026-07-18 before the drill moved to postgres:17.
+  ['psql:<stdin>:24876: ERROR:  unrecognized privilege type "maintain"', "unknown"],
+  ['psql:<stdin>:13: ERROR:  unrecognized configuration parameter "transaction_timeout"', "unknown"],
 ];
 
 for (const [line, expectedCat] of FATAL_SAMPLES) {

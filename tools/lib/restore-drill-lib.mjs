@@ -54,10 +54,14 @@ const ALLOWLIST_PATTERNS = [
   ["publication", /\bpublication\b|for all tables|logical replication|replication slot|wal_level/i],
   // Schemas / extensions Supabase preinstalls that we deliberately do not
   // recreate in the disposable container.
-  ["infra-schema", /\b(schema|extension)\s+"?(graphql|graphql_public|pg_graphql|vault|pgsodium|storage|realtime|auth|extensions|supabase_functions|supabase_migrations|cron|pg_cron|net|wrappers|timescaledb|postgis|tiger|topology|pgjwt|http|hypopg|index_advisor|pg_stat_statements|pgaudit|pgtap|pgmq|pg_tle|supautils|pg_net|uuid-ossp|pgcrypto|pgcrypto)"?/i],
+  ["infra-schema", /\b(schema|extension)\s+"?(graphql|graphql_public|pg_graphql|vault|supabase_vault|pgsodium|storage|realtime|auth|extensions|supabase_functions|supabase_migrations|cron|pg_cron|net|wrappers|timescaledb|postgis|tiger|topology|pgjwt|http|hypopg|index_advisor|pg_stat_statements|pgaudit|pgtap|pgmq|pg_tle|supautils|pg_net|uuid-ossp|pgcrypto)"?/i],
   // Errors that name an infra-schema object directly (e.g. relation
   // "storage.objects" does not exist, function extensions.uuid_generate_v4).
-  ["infra-object", /\b(graphql|pg_graphql|pgsodium|vault|supabase_functions|supabase_migrations)\b|(?:^|[^.\w])(auth|storage|realtime|extensions|net|cron|vault)\.\w+/i],
+  ["infra-object", /\b(graphql|pg_graphql|pgsodium|vault|supabase_vault|supabase_functions|supabase_migrations)\b|(?:^|[^.\w])(auth|storage|realtime|extensions|net|cron|vault)\.\w+/i],
+  // The drill's own prelude pre-creates auth.jwt()/auth.uid() stubs; a dump
+  // that also carries them collides harmlessly ("already exists"). Anchored to
+  // exactly those two names — a public-schema collision still fails as unknown.
+  ["bootstrap-stub", /function "(jwt|uid)" already exists with same argument types/i],
   // Privilege errors scoped to an infra target.
   ["infra-privilege", /permission denied\b[^\n]*\b(auth|storage|realtime|graphql|graphql_public|vault|pgsodium|extensions|net|cron|supabase_functions|event trigger|large object)\b/i],
 ];

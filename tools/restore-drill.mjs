@@ -123,11 +123,18 @@ function softQuery(sql) {
 // tools/test-migrations.mjs (parsed, not duplicated).
 const expectedMigration = readExpectedMigrations(REPO);
 
+// Prod runs Postgres 17.x — restoring its dumps into an older major produces
+// spurious fatal errors (PG17-only GRANT MAINTAIN, transaction_timeout GUC)
+// and cannot verify full fidelity. The drill therefore pins the prod major
+// here, independent of the schema-replay tools' default image (GV-314 tracks
+// bumping that default).
+const DRILL_IMAGE = "postgres:17-alpine";
+
 // ── 1. Container + prelude ───────────────────────────────────────────────────
 removeContainer(CONTAINER);
-log(`⏳ Starting disposable Postgres (${CONTAINER})…`);
+log(`⏳ Starting disposable Postgres (${CONTAINER}, ${DRILL_IMAGE})…`);
 try {
-  startPostgres(CONTAINER, REPO);
+  startPostgres(CONTAINER, REPO, { image: DRILL_IMAGE });
   createDbWithPrelude(CONTAINER, DB);
 } catch (err) {
   fail(err.message);
