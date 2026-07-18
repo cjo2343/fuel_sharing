@@ -2242,6 +2242,38 @@ begin
   end if;
 end`,
   }),
+  queryCase({
+    name: "workspace-soft-delete-excluded-from-list-my-ledgers",
+    desc: "a soft-deleted workspace drops out of the member's list_my_ledgers switcher/resolver",
+    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    actor: B,
+    assert: `if exists (select 1 from public.list_my_ledgers() where ledger_id = '${WS1}') then
+      raise exception 'CASEFAIL workspace-soft-delete-excluded-from-list-my-ledgers: soft-deleted workspace still listed';
+    end if`,
+  }),
+  queryCase({
+    name: "workspace-soft-delete-invite-resolve-reveals-nothing",
+    desc: "resolving a decommissioned workspace's join code reveals nothing",
+    setup: [
+      step(SUPER, `update public.ledgers set join_code = 'NEDLAGT99' where id = '${WS1}';`),
+      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+    ],
+    actor: C,
+    assert: `if (select count(*) from public.resolve_ledger_invite('NEDLAGT99')) <> 0 then
+      raise exception 'CASEFAIL workspace-soft-delete-invite-resolve-reveals-nothing: resolve returned a decommissioned workspace';
+    end if`,
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-invite-redeem-blocked",
+    desc: "no one can redeem an invite into a decommissioned workspace",
+    setup: [
+      step(SUPER, `update public.ledgers set join_code = 'NEDLAGT99' where id = '${WS1}';`),
+      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+    ],
+    actor: E,
+    op: `perform public.redeem_ledger_invite('NEDLAGT99');`,
+    expect: "P0001",
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
