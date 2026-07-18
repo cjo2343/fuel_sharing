@@ -13,7 +13,11 @@
     "test:booking-reminder": "bash tools/test-booking-reminder-functional.sh",
     "test:drill-logic": "node tools/test-restore-drill-logic.mjs",
     "test:drill-smoke": "node tools/test-restore-drill-smoke.mjs",
+    "test:load-rehearsal": "node tools/load-rehearsal/test-load-rehearsal.mjs",
     "drill:restore": "node tools/restore-drill.mjs",
+    "load:schema": "node tools/load-rehearsal/schema-apply.mjs",
+    "load:seed": "node tools/load-rehearsal/seed.mjs",
+    "load:run": "node tools/load-rehearsal/load.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
