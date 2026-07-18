@@ -68,9 +68,10 @@ ikke kan genskabes, er ingen backup.
 
 ## Drill-log
 
-| Dato | Dump | Checksum | Størrelse | Tracker-status | Workspaces | Resultat |
-|---|---|---|---|---|---|---|
-| 2026-07-17 | vehloshare-backup.sql.gz | sha256:30bb7db46da5… | 0.5 MB | 132 migrationer (130_operational_retention) | 9 workspaces | BESTÅET |
+| Dato | Dump | Checksum | Størrelse | Tracker-status | Workspaces | Fejl | Rækker | Tracker | Resultat |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-07-17 | vehloshare-backup.sql.gz | sha256:30bb7db46da5… | 0.5 MB | 132 migrationer (130_operational_retention) | 9 workspaces | 350 tolereret (uklassificeret) | ikke verificeret | — | BESTÅET (før hærdning) |
+| 2026-07-18 | vehloshare-backup-2026-07-18.sql.gz | sha256:2e41c87facd1… | 0.5 MB | 133 migrationer (131_gdpr_retention_policy) | 9 workspaces | fejl: 329 tolereret / 0 fatale | 25/25 tabeller verificeret (0 afvig) | aktuel | BESTÅET |
 
 Noter til 2026-07-17-drillen: manuelt pg_dump (Postgres 17-image) mod
 session-pooleren — Free-planen har ingen dashboard-backups endnu. 350 tolererede
@@ -79,3 +80,14 @@ pg_net-extension — intet i public-skemaet). RLS bekræftet aktiv på alle 14
 kernetabeller efter restore; repræsentativ RPC eksekverede. vehicle_repairs og
 expo_push_tokens var tomme i prod (sidstnævnte forventet — ingen enheder har
 registreret push-tokens endnu).
+
+Noter til 2026-07-18-drillen: første kørsel med den hærdede drill (GV-325) —
+eksplicit fejl-allowlist (ukendt ⇒ fatal), eksakt rækketal-verifikation mod
+dumpets egne COPY-blokke og dump-aktualitetskrav afledt af migrationsguardens
+expected-liste. Drill-containeren kører nu postgres:17 (matcher prods 17.x) —
+den første kørsel på 15 fejlede korrekt på PG17-only-støj (GRANT MAINTAIN,
+transaction_timeout), hvilket bekræftede at versions-mismatch nu fanges i
+stedet for at tolereres. Alle 329 tolererede fejl positivt klassificeret
+(roller/pg_net/supabase_vault/publication/bootstrap-stubs); 0 fatale; 25/25
+public-tabeller matcher dumpet eksakt. Samme dump fungerer som opdateret
+interim-backup (erstatter 2026-07-17-dumpet).
