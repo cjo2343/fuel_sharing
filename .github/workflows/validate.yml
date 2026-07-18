@@ -271,3 +271,27 @@ jobs:
 
       - name: Run booking-ended reminder smoke
         run: bash tools/test-booking-reminder-functional.sh
+
+  drill-smoke:
+    name: Restore-drill end-to-end smoke (GV-329)
+    needs: changes
+    if: needs.changes.outputs.run_heavy == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Drives the real tools/restore-drill.mjs against a disposable Postgres with
+      # two synthetic dumps (a valid COPY, and one corrupted with a non-integer in
+      # an integer column), asserting PASS exits 0 and the corrupt COPY is caught
+      # and exits 1 — proving the GV-325 hardening still holds end to end. The
+      # smoke FAILS (not skips) here if Docker is missing: GITHUB_ACTIONS is set,
+      # so a broken runner surfaces red instead of a false green.
+      - name: Run restore-drill smoke test
+        run: npm run test:drill-smoke

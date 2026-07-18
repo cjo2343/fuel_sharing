@@ -3,8 +3,14 @@
 //   node tools/test-restore-drill-smoke.mjs
 //
 // Needs Docker (it drives the real tools/restore-drill.mjs against a disposable
-// Postgres). Skips cleanly with exit 0 when Docker is unavailable — it is NOT
-// part of `npm run validate`.
+// Postgres). It is NOT part of `npm run validate`; it runs as its own
+// Docker-backed CI job (GV-329).
+//
+// Docker-unavailable behaviour (GV-329): locally it skips cleanly with exit 0
+// (the pure paths are still covered by the drill logic + load-rehearsal unit
+// suites). In CI (process.env.CI / GITHUB_ACTIONS), where Docker is guaranteed,
+// a missing Docker is a real problem — the smoke must FAIL (exit 1) rather than
+// silently skip, so a broken runner can't let this surface regress green.
 //
 // Two synthetic plain-SQL dumps, both derived from the repo's own
 // supabase-schema.sql (a complete, valid database — so the drill's core-table /
@@ -27,8 +33,16 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// Skip gracefully when Docker is not available.
+// Docker gate. In CI (where Docker is guaranteed) a missing Docker is a real
+// failure — exit 1 so the surface can't silently regress green. Locally it stays
+// a graceful skip; the pure paths are covered by the logic + load-rehearsal
+// unit suites.
 if (spawnSync("docker", ["info"], { stdio: "ignore" }).status !== 0) {
+  const inCI = Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+  if (inCI) {
+    console.error("❌ Docker not available in CI — the restore-drill smoke cannot run and must not be skipped. Failing.");
+    process.exit(1);
+  }
   console.log("⏭  Docker not available — skipping restore-drill smoke (logic tests still cover the pure paths).");
   process.exit(0);
 }
