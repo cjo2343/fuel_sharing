@@ -29029,3 +29029,48 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+create or replace function public.get_my_decommissioned_workspaces()
+returns table (
+  ledger_id text,
+  name text,
+  deleted_at timestamptz,
+  purge_after timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  -- Reproduces is_ledger_member's membership conditions (migration 132) via an
+  -- EXISTS against public.ledger_members, but selects only tombstoned workspaces
+  -- (`l.deleted_at is not null`) instead of live ones. The EXISTS keeps exactly
+  -- one row per workspace and every column is fully qualified for the ambiguity
+  -- guard. purge_after = deleted_at + 90 days matches the retention sweep.
+  select
+    l.id as ledger_id,
+    l.name as name,
+    l.deleted_at as deleted_at,
+    (l.deleted_at + interval '90 days') as purge_after
+  from public.ledgers l
+  where l.deleted_at is not null
+    and exists (
+      select 1
+      from public.ledger_members lm
+      where lm.ledger_id = l.id
+        and lm.is_active = true
+        and lm.email is not null
+        and lower(lm.email) = public.current_user_email()
+    );
+$$;
+
+grant execute on function public.get_my_decommissioned_workspaces() to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '134_decommissioned_workspace_notices',
+  'Durable in-app decommission notice (GV-330): read-only SECURITY DEFINER get_my_decommissioned_workspaces() returns (ledger_id, name, deleted_at, purge_after) for every tombstoned workspace the caller still belongs to. It reproduces is_ledger_member''s membership conditions except the deleted_at gate (requiring deleted_at is not null) so members keep a durable notice after migration 132 revokes their read access; purge_after is deleted_at + 90 days, matching run_operational_retention. Read-only, writes nothing; granted to authenticated.'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
