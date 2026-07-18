@@ -23,6 +23,7 @@ const scripts = [
   "node tools/test-sql-ambiguity-guard.mjs",
   "node tools/test-booking-trip-contract.mjs",
   "node tools/test-booking-reminder-contract.mjs",
+  "node tools/test-restore-drill-logic.mjs",
   "node tools/check-token-drift.mjs",
 ];
 

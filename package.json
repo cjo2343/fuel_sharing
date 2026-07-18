@@ -11,6 +11,8 @@
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "test:booking-trip": "bash tools/test-booking-trip-functional.sh",
     "test:booking-reminder": "bash tools/test-booking-reminder-functional.sh",
+    "test:drill-logic": "node tools/test-restore-drill-logic.mjs",
+    "test:drill-smoke": "node tools/test-restore-drill-smoke.mjs",
     "drill:restore": "node tools/restore-drill.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
   },

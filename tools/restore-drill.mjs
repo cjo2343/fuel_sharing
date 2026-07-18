@@ -1,4 +1,4 @@
-// GDPR restore drill (GV-310).
+// GDPR restore drill (GV-310, hardened in GV-325).
 //
 // Restores an operator-downloaded Supabase backup dump into a disposable local
 // Postgres container and asserts the result is a usable database — proving the
@@ -14,23 +14,26 @@
 // repo, never commit it, and delete it after the drill. The container is
 // removed when the drill ends (pass --keep to retain it for inspection).
 //
-// What "restored and usable" means here:
-//   1. The migration tracker exists and matches the repo's newest migration
-//      (older dump → warning, not failure — that is itself drill evidence).
-//   2. Every core domain table exists and still has row-level security enabled.
-//   3. Key RPCs survived the restore, and a representative one
-//      (owner_workspace_overview_page) actually executes against the data.
-//   4. Row counts are reported as evidence (empty tables warn, not fail).
-//
-// Restore errors are expected in small numbers: a Supabase dump references
-// cluster-level objects a vanilla Postgres lacks (supabase_admin ownership,
-// vault/graphql extensions, event triggers). The drill tolerates and counts
-// them, reports the distinct messages, and lets the public-schema assertions
-// decide the verdict.
+// What "restored and usable" means here (GV-325 hardened the first three):
+//   1. Restore errors are CLASSIFIED, not blanket-tolerated. Known Supabase
+//      cluster/infra noise (missing supabase_admin/pgbouncer roles, pg_net,
+//      event triggers, ALTER … OWNER, publication grants) is tolerated and
+//      counted; any error naming a public object, any failed COPY, disk
+//      exhaustion, or any UNRECOGNISED error fails the drill.
+//   2. For plain-SQL dumps, every `COPY public.<table>` block's row count is
+//      read offline from the dump and compared exactly against the restored
+//      table. Any mismatch fails. (Custom-format dumps degrade explicitly —
+//      row verification is reported as unavailable, not silently skipped.)
+//   3. The migration tracker must be current with the repo's newest expected
+//      migration (derived from tools/test-migrations.mjs). A dump that predates
+//      it fails with "take a fresh dump".
+//   4. Every core domain table exists and still has row-level security enabled.
+//   5. Key RPCs survived, and a representative one (owner_workspace_overview_page)
+//      actually executes against the restored data.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -39,6 +42,12 @@ import {
   removeContainer,
   psql,
 } from "./lib/replay-container.mjs";
+import {
+  classifyRestoreErrors,
+  countCopyRowsFromDump,
+  readExpectedMigrations,
+  migrationNumber,
+} from "./lib/restore-drill-lib.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CONTAINER = "vehloshare-restore-drill";
@@ -101,6 +110,19 @@ function q(sql) {
   return res.stdout.trim();
 }
 
+// A SELECT that tolerates failure (e.g. a table the dump claimed but did not
+// restore) — returns null instead of aborting, so row-count verification can
+// report a precise mismatch rather than a generic query error.
+function softQuery(sql) {
+  const res = psql(CONTAINER, DB, ["-tA", "-c", sql]);
+  if (res.status !== 0) return null;
+  return res.stdout.trim();
+}
+
+// The single source of truth for the newest migration: the `expected` array in
+// tools/test-migrations.mjs (parsed, not duplicated).
+const expectedMigration = readExpectedMigrations(REPO);
+
 // ── 1. Container + prelude ───────────────────────────────────────────────────
 removeContainer(CONTAINER);
 log(`⏳ Starting disposable Postgres (${CONTAINER})…`);
@@ -122,7 +144,7 @@ execFileSync("docker", ["cp", dumpPath, `${CONTAINER}:/tmp/dump.bin`]);
 
 log(`⏳ Restoring ${path.basename(dumpPath)} (${(dumpStat.size / 1024 / 1024).toFixed(1)} MB, ${isCustom ? "custom format" : isGzip ? "gzipped SQL" : "plain SQL"})…`);
 
-// Restore WITHOUT ON_ERROR_STOP: tolerated errors are counted and reported.
+// Restore WITHOUT ON_ERROR_STOP: every error is captured and then CLASSIFIED.
 const restoreCmd = isCustom
   ? `pg_restore --no-owner -U postgres -d ${DB} /tmp/dump.bin`
   : isGzip
@@ -133,22 +155,46 @@ const restore = spawnSync("docker", ["exec", CONTAINER, "sh", "-c", restoreCmd],
   maxBuffer: 256 * 1024 * 1024,
 });
 
-const errorLines = (restore.stderr || "")
-  .split("\n")
-  .filter((l) => /error/i.test(l) && !/errors ignored on restore/i.test(l));
-const distinctErrors = [...new Set(errorLines.map((l) => l.replace(/^pg_restore: /, "").trim()))];
-if (distinctErrors.length > 0) {
-  log(`⚠️  Restore reported ${errorLines.length} error line(s), ${distinctErrors.length} distinct — review below:`);
-  for (const e of distinctErrors.slice(0, 12)) log(`   · ${e.slice(0, 200)}`);
-  if (distinctErrors.length > 12) log(`   · … and ${distinctErrors.length - 12} more`);
-  warnings.push(`${errorLines.length} tolerated restore error(s) (${distinctErrors.length} distinct)`);
-} else {
+// Classify restore stderr: tolerated Supabase-infra noise vs would-be-fatal.
+const classified = classifyRestoreErrors(restore.stderr || "");
+if (classified.toleratedCount > 0) {
+  const cats = Object.entries(classified.byCategory)
+    .filter(([, n]) => n > 0)
+    .map(([c, n]) => `${c}=${n}`)
+    .join(", ");
+  log(`⚠️  Restore reported ${classified.toleratedCount} tolerated infra error(s) [${cats}] — sample:`);
+  for (const e of classified.distinctTolerated.slice(0, 10)) log(`   · ${e.slice(0, 180)}`);
+  if (classified.distinctTolerated.length > 10) {
+    log(`   · … and ${classified.distinctTolerated.length - 10} more distinct`);
+  }
+  warnings.push(`${classified.toleratedCount} tolerated infra error(s)`);
+} else if (classified.fatalCount === 0) {
   log("✅ Restore completed with no errors.");
+}
+if (classified.fatalCount > 0) {
+  log(`❌ Restore reported ${classified.fatalCount} FATAL error(s) — printed verbatim below:`);
+  for (const e of classified.fatal) {
+    console.error(`   ✗ [${e.category}] ${e.raw.trim()}`);
+    for (const d of e.detail) console.error(`       ${d}`);
+  }
+  failures.push(`${classified.fatalCount} fatal restore error(s) (see verbatim lines above)`);
+}
+
+// Offline source-of-truth row counts from the dump's COPY blocks (plain SQL
+// only). Streamed line-by-line — never buffers the whole dump.
+const rowCheckAvailable = !isCustom;
+let expectedRowCounts = new Map();
+if (rowCheckAvailable) {
+  try {
+    expectedRowCounts = await countCopyRowsFromDump(dumpPath, { gzip: isGzip });
+  } catch (err) {
+    fail(`Failed to parse COPY blocks from the dump for row verification: ${err.message}`);
+  }
 }
 
 // ── 3. Assertions ────────────────────────────────────────────────────────────
 
-// 3a. Migration tracker present and (ideally) current.
+// 3a. Migration tracker present and current with the repo's newest migration.
 const trackerExists = q(
   "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = 'fuel_ledger_schema_migrations'",
 );
@@ -156,19 +202,22 @@ if (trackerExists !== "1") fail("Migration tracker table is missing — the dump
 const trackedCount = Number(q("select count(*) from public.fuel_ledger_schema_migrations"));
 if (trackedCount === 0) fail("Migration tracker restored but empty — dump is not a usable database backup.");
 
-const newestRepoMigration = readdirSync(path.join(REPO, "supabase", "migrations"))
-  .filter((f) => f.endsWith(".sql"))
-  .sort()
-  .at(-1)
-  .replace(/\.sql$/, "");
 const newestApplied = q(
   "select migration_id from public.fuel_ledger_schema_migrations order by migration_id desc limit 1",
 );
-if (newestApplied === newestRepoMigration) {
-  log(`✅ Migration tracker: ${trackedCount} entries, current with repo (${newestApplied}).`);
+const restoredMaxNumber = migrationNumber(newestApplied);
+let trackerCurrent;
+if (Number.isFinite(restoredMaxNumber) && restoredMaxNumber >= expectedMigration.latestNumber) {
+  trackerCurrent = true;
+  const suffix = restoredMaxNumber > expectedMigration.latestNumber ? " (dump is ahead of repo)" : "";
+  log(`✅ Migration tracker: ${trackedCount} entries, current with repo (${newestApplied})${suffix}.`);
 } else {
-  log(`⚠️  Migration tracker: ${trackedCount} entries; dump's newest is ${newestApplied}, repo's is ${newestRepoMigration} (older dump?).`);
-  warnings.push(`dump at ${newestApplied}, repo at ${newestRepoMigration}`);
+  trackerCurrent = false;
+  failures.push(
+    `dump predates migration ${expectedMigration.latestId} — take a fresh dump ` +
+      `(dump's newest is ${newestApplied || "unknown"}, repo expects ${expectedMigration.latestId})`,
+  );
+  log(`❌ Migration tracker: dump's newest is ${newestApplied}, repo expects ${expectedMigration.latestId} — dump predates the schema.`);
 }
 
 // 3b. Core tables exist with RLS enabled; row counts as evidence.
@@ -188,7 +237,39 @@ for (const table of CORE_TABLES) {
 }
 log(`ℹ️  Row counts: ${counts.join(", ")}`);
 
-// 3c. Key RPCs survived.
+// 3c. Row-count verification: every public COPY block in the dump must match the
+// restored table exactly (plain SQL only; custom format degrades explicitly).
+let rowVerified = 0;
+const rowMismatches = [];
+if (!rowCheckAvailable) {
+  log("ℹ️  Row-count verification unavailable for custom-format (PGDMP) dumps — COPY blocks are binary, not text-parseable.");
+  warnings.push("row-count verification unavailable (custom-format dump)");
+} else if (expectedRowCounts.size === 0) {
+  log("ℹ️  Row-count verification: dump contains no COPY blocks (schema-only dump?) — nothing to verify.");
+} else {
+  for (const [table, expected] of expectedRowCounts) {
+    const actual = softQuery(`select count(*) from public."${table}"`);
+    if (actual === null) {
+      rowMismatches.push(`${table}: table missing after restore (dump has ${expected} row(s))`);
+      continue;
+    }
+    rowVerified += 1;
+    if (Number(actual) !== expected) {
+      rowMismatches.push(`${table}: expected ${expected}, restored ${actual}`);
+    }
+  }
+  if (rowMismatches.length > 0) {
+    log(`❌ Row-count verification: ${rowMismatches.length} mismatch(es) across ${expectedRowCounts.size} public COPY block(s):`);
+    for (const m of rowMismatches) {
+      console.error(`   ✗ ${m}`);
+      failures.push(`row-count mismatch — ${m}`);
+    }
+  } else {
+    log(`✅ Row-count verification: ${expectedRowCounts.size} public table(s) match the dump exactly.`);
+  }
+}
+
+// 3d. Key RPCs survived.
 for (const fn of KEY_RPCS) {
   const present = q(
     `select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = '${fn}'`,
@@ -196,31 +277,45 @@ for (const fn of KEY_RPCS) {
   if (present === "0") failures.push(`key RPC public.${fn} is missing after restore`);
 }
 
-// 3d. A representative read RPC executes against the restored data.
+// 3e. A representative read RPC executes against the restored data.
 // owner_workspace_overview_page is STABLE, reads five domain tables, and does
 // not depend on auth.jwt() — ideal for proving the restored schema+data works.
-const overview = q("select public.owner_workspace_overview_page(1, 0)::text");
 let totalWorkspaces = "?";
-try {
-  totalWorkspaces = String(JSON.parse(overview).totalWorkspaces);
-} catch {
-  failures.push("owner_workspace_overview_page returned unparseable output");
+const overview = softQuery("select public.owner_workspace_overview_page(1, 0)::text");
+if (overview === null) {
+  failures.push("owner_workspace_overview_page failed to execute against the restored data");
+} else {
+  try {
+    totalWorkspaces = String(JSON.parse(overview).totalWorkspaces);
+  } catch {
+    failures.push("owner_workspace_overview_page returned unparseable output");
+  }
 }
 
 // ── 4. Verdict + evidence block ──────────────────────────────────────────────
 if (!keep) removeContainer(CONTAINER);
 else log(`ℹ️  Container kept for inspection: docker exec -it ${CONTAINER} psql -U postgres -d ${DB}`);
 
+const passed = failures.length === 0;
+const rowCell = !rowCheckAvailable
+  ? "rækker: n/a (custom-format)"
+  : `rækker: ${rowVerified}/${expectedRowCounts.size} tabeller verificeret (${rowMismatches.length} afvig)`;
+const errCell = `fejl: ${classified.toleratedCount} tolereret / ${classified.fatalCount} fatale`;
+const trackerCell = trackerCurrent ? "tracker: aktuel" : `tracker: bagud (< ${expectedMigration.latestId})`;
+
 log("");
 log("── Drill evidence (paste into docs/gdpr/backup-restore.md) ─────────────");
-log(`| ${new Date().toISOString().slice(0, 10)} | ${path.basename(dumpPath)} | sha256:${sha256.slice(0, 12)}… | ` +
-  `${(dumpStat.size / 1024 / 1024).toFixed(1)} MB | ${trackedCount} migrationer (${newestApplied}) | ` +
-  `${totalWorkspaces} workspaces | ${failures.length === 0 ? "BESTÅET" : "FEJLET"} |`);
+log(
+  `| ${new Date().toISOString().slice(0, 10)} | ${path.basename(dumpPath)} | sha256:${sha256.slice(0, 12)}… | ` +
+    `${(dumpStat.size / 1024 / 1024).toFixed(1)} MB | ${trackedCount} migrationer (${newestApplied}) | ` +
+    `${totalWorkspaces} workspaces | ${errCell} | ${rowCell} | ${trackerCell} | ` +
+    `${passed ? "BESTÅET" : "FEJLET"} |`,
+);
 if (warnings.length > 0) log(`Advarsler: ${warnings.join("; ")}`);
 log("─────────────────────────────────────────────────────────────────────────");
 log("");
 
-if (failures.length > 0) {
+if (!passed) {
   for (const f of failures) console.error(`❌ ${f}`);
   console.error("❌ RESTORE DRILL FAILED");
   process.exit(1);
