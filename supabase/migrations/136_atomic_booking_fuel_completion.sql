@@ -1,4 +1,4 @@
--- Migration 136: atomic booking-trip fuel completion
+-- Migration 136: atomic booking-trip fuel completion (GV-334)
 --
 -- A booking-linked trip was persisted before its required refuel was reviewed.
 -- Dismissing or interrupting the second screen therefore left the booking looking
@@ -316,7 +316,7 @@ grant execute on function public.complete_booking_trip_with_fuel(
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values (
   '136_atomic_booking_fuel_completion',
-  'Add durable trip fuel-resolution state and an idempotent command that atomically saves a booking-linked trip with an optional real fuel payment.'
+  'Atomic booking-trip fuel completion (GV-334): add durable trip fuel-resolution state and an idempotent command that atomically saves a booking-linked trip with an optional real fuel payment.'
 )
 on conflict (migration_id) do update
 set description = excluded.description,
