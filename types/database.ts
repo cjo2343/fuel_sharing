@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 136 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 137 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1026,6 +1026,70 @@ export type Database = {
             columns: ["ledger_id"]
             isOneToOne: false
             referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      settlement_request_events: {
+        Row: {
+          actor_member_id: string | null
+          event_source: string
+          event_type: string
+          from_status: string | null
+          id: string
+          ledger_id: string
+          occurred_at: string
+          recorded_at: string
+          reminder_number: number | null
+          settlement_request_id: string
+          to_status: string | null
+        }
+        Insert: {
+          actor_member_id?: string | null
+          event_source?: string
+          event_type: string
+          from_status?: string | null
+          id?: string
+          ledger_id: string
+          occurred_at: string
+          recorded_at?: string
+          reminder_number?: number | null
+          settlement_request_id: string
+          to_status?: string | null
+        }
+        Update: {
+          actor_member_id?: string | null
+          event_source?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          ledger_id?: string
+          occurred_at?: string
+          recorded_at?: string
+          reminder_number?: number | null
+          settlement_request_id?: string
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_request_events_actor_member_id_fkey"
+            columns: ["actor_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_request_events_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_request_events_settlement_request_id_fkey"
+            columns: ["settlement_request_id"]
+            isOneToOne: false
+            referencedRelation: "settlement_requests"
             referencedColumns: ["id"]
           },
         ]

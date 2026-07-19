@@ -1870,6 +1870,11 @@ begin
       and metadata->>'settlement_request_id' = rid::text and metadata->>'outcome' = 'delivered') then
     raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: no confirm_reminder_sent event carrying the outcome';
   end if;
+  if not exists (select 1 from public.settlement_request_events
+    where settlement_request_id = rid and event_type = 'confirmation_reminder_sent'
+      and actor_member_id is null and occurred_at = last_at) then
+    raise exception 'CASEFAIL confirm-reminder-lease-and-token-gated-confirm: no durable confirmation reminder event';
+  end if;
 end`,
   }),
 
@@ -2514,6 +2519,180 @@ end`,
     post: `if (select deleted_at from public.ledgers where id = '${WS1}') is not null then
       raise exception 'CASEFAIL workspace-soft-delete-rejects-omitted-acknowledgements: workspace was tombstoned despite omitted acknowledgements';
     end if;`,
+  }),
+
+  // ── GV-336: durable settlement event history (migration 137) ──────────────
+  queryCase({
+    name: "settlement-history-captures-lifecycle-once",
+    desc: "request, claim, confirm, and an idempotent retry produce one exact durable event per lifecycle edge",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, `perform public.transition_settlement_request_status(
+        (select id from public.settlement_requests
+         where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+        'paid_pending');`),
+    ],
+    actor: A,
+    assert: `declare rid uuid; total_events integer; matching_events integer;
+begin
+  select id into rid from public.settlement_requests
+  where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+
+  perform public.transition_settlement_request_status(rid, 'paid');
+  perform public.transition_settlement_request_status(rid, 'paid');
+
+  select count(*) into total_events
+  from public.settlement_request_events
+  where settlement_request_id = rid;
+  if total_events <> 4 then
+    raise exception 'CASEFAIL settlement-history-captures-lifecycle-once: events=%', total_events;
+  end if;
+
+  select count(*) into matching_events
+  from public.settlement_request_events
+  where settlement_request_id = rid
+    and (
+      (event_type = 'calculated' and from_status is null and to_status = 'open')
+      or (event_type = 'requested' and from_status = 'open' and to_status = 'requested'
+          and actor_member_id = '${A_ID}'::uuid)
+      or (event_type = 'marked_paid' and from_status = 'requested' and to_status = 'paid_pending'
+          and actor_member_id = '${ID.B}'::uuid)
+      or (event_type = 'confirmed' and from_status = 'paid_pending' and to_status = 'paid'
+          and actor_member_id = '${A_ID}'::uuid)
+    );
+  if matching_events <> 4 then
+    raise exception 'CASEFAIL settlement-history-captures-lifecycle-once: matching events=%', matching_events;
+  end if;
+  if exists (
+    select 1 from public.settlement_request_events
+    where settlement_request_id = rid and event_source <> 'live'
+  ) then
+    raise exception 'CASEFAIL settlement-history-captures-lifecycle-once: non-live source found';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "settlement-history-captures-dispute",
+    desc: "a creditor dispute is a distinct paid_pending-to-requested event with the creditor actor",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(B, upsert(WS1, P1, ID.B, A_ID, 300, "paid_pending")),
+    ],
+    actor: A,
+    assert: `declare rid uuid; n integer;
+begin
+  select id into rid from public.settlement_requests
+  where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
+  perform public.transition_settlement_request_status(rid, 'requested', 'Ikke modtaget');
+  select count(*) into n from public.settlement_request_events
+  where settlement_request_id = rid
+    and event_type = 'disputed'
+    and from_status = 'paid_pending'
+    and to_status = 'requested'
+    and actor_member_id = '${A_ID}'::uuid;
+  if n <> 1 then
+    raise exception 'CASEFAIL settlement-history-captures-dispute: matching disputes=%', n;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "settlement-history-member-can-read-workspace",
+    desc: "an active bystander member can read the workspace settlement history used by the shared timeline",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: C,
+    assert: `if (select count(*) from public.settlement_request_events where ledger_id = '${WS1}') <> 2 then
+      raise exception 'CASEFAIL settlement-history-member-can-read-workspace: expected calculated + requested';
+    end if`,
+  }),
+  queryCase({
+    name: "settlement-history-outsider-isolated",
+    desc: "a member of another workspace cannot read settlement history across the RLS boundary",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: E,
+    assert: `if exists (select 1 from public.settlement_request_events where ledger_id = '${WS1}') then
+      raise exception 'CASEFAIL settlement-history-outsider-isolated: cross-workspace event leaked';
+    end if`,
+  }),
+  rpcCase({
+    name: "settlement-history-client-insert-denied",
+    desc: "an authenticated workspace admin cannot forge an audit event",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: A,
+    op: `insert into public.settlement_request_events (
+      settlement_request_id, ledger_id, event_type, occurred_at
+    ) values (
+      (select id from public.settlement_requests
+       where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}'),
+      '${WS1}', 'confirmed', now()
+    );`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "settlement-history-client-update-denied",
+    desc: "an authenticated workspace admin cannot rewrite a durable audit event",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: A,
+    op: `update public.settlement_request_events set event_type = 'confirmed' where ledger_id = '${WS1}';`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "settlement-history-client-delete-denied",
+    desc: "an authenticated workspace admin cannot delete a durable audit event",
+    setup: [step(A, CREATE_REQ_300)],
+    actor: A,
+    op: `delete from public.settlement_request_events where ledger_id = '${WS1}';`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "settlement-history-schema-is-privacy-minimised",
+    desc: "the durable table carries no amount, evidence note, email, token, or arbitrary metadata columns",
+    actor: SUPER,
+    assert: `declare leaked text[];
+begin
+  select array_agg(column_name order by column_name) into leaked
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'settlement_request_events'
+    and column_name in (
+      'amount', 'currency', 'paid_note', 'dispute_note', 'actor_email',
+      'target_email', 'claim_token', 'push_token', 'metadata'
+    );
+  if leaked is not null then
+    raise exception 'CASEFAIL settlement-history-schema-is-privacy-minimised: sensitive columns=%', leaked;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "settlement-history-captures-payment-reminder",
+    desc: "a token-confirmed payment reminder appends its exact durable reminder ordinal and timestamp",
+    setup: [
+      step(A, CREATE_REQ_300),
+      step(SUPER, `update public.settlement_requests
+        set requested_at = now() - interval '4 days'
+        where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';`),
+    ],
+    actor: SERVICE,
+    assert: `declare rid uuid; tok uuid; confirmed integer; reminder_at timestamptz;
+begin
+  select request_id, claim_token into rid, tok
+  from public.claim_due_payment_reminders(200)
+  where request_id = (select id from public.settlement_requests
+    where period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}');
+  if rid is null or tok is null then
+    raise exception 'CASEFAIL settlement-history-captures-payment-reminder: due request was not claimed';
+  end if;
+  confirmed := public.confirm_payment_reminders(jsonb_build_array(jsonb_build_object(
+    'id', rid, 'token', tok, 'outcome', 'delivered')));
+  select last_reminder_at into reminder_at from public.settlement_requests where id = rid;
+  if confirmed <> 1 or reminder_at is null then
+    raise exception 'CASEFAIL settlement-history-captures-payment-reminder: confirm=% at=%', confirmed, reminder_at;
+  end if;
+  if not exists (select 1 from public.settlement_request_events
+    where settlement_request_id = rid and event_type = 'payment_reminder_sent'
+      and reminder_number = 1 and actor_member_id is null and occurred_at = reminder_at) then
+    raise exception 'CASEFAIL settlement-history-captures-payment-reminder: durable reminder event missing';
+  end if;
+end`,
   }),
 ];
 
