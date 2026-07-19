@@ -29516,7 +29516,7 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
--- Migration 137: immutable settlement event history (GV-335)
+-- Migration 137: immutable settlement event history (GV-336)
 --
 -- ledger_events is a short-lived activity/realtime stream, not an audit log. Keep a
 -- narrow, append-only settlement history that survives activity retention and records

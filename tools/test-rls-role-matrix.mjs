@@ -2521,7 +2521,7 @@ end`,
     end if;`,
   }),
 
-  // ── GV-335: durable settlement event history (migration 137) ──────────────
+  // ── GV-336: durable settlement event history (migration 137) ──────────────
   queryCase({
     name: "settlement-history-captures-lifecycle-once",
     desc: "request, claim, confirm, and an idempotent retry produce one exact durable event per lifecycle edge",
