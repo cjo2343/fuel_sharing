@@ -239,13 +239,13 @@ Ordered so nothing breaks mid-flip.
 
 ### 1. App identity — mobile (after Apple)  [CLAUDE + YOU]
 - [ ] `app.json`: `scheme` → `vehloshare://`; `ios.bundleIdentifier` + `android.package` → `app.vehloshare`; `ios.associatedDomains` → `applinks:vehloshare.app`; `android.intentFilters` host → `vehloshare.app`. (`expo.name` already done, mobile #264.)
-- [ ] Native projects: rename `ios/` folder + Xcode project + entitlements; `CFBundleDisplayName` → "VehloShare"; AndroidManifest. (Or `expo prebuild` and commit.)
+- [ ] Native projects: rename `ios/` folder + Xcode project + entitlements; AndroidManifest. (Or `expo prebuild` and commit.) `CFBundleDisplayName` → "VehloShare" is already done in app.json's infoPlist (mobile #404, 2026-07-19) — the label appears after the next prebuild/native build.
 - [ ] Repoint the API base: `EXPO_PUBLIC_API_URL` → `https://vehloshare.app` (currently defaults to `https://govehlo.dk` in every `src/lib/*` proxy).
 - [ ] **[YOU]** add `vehloshare://auth/callback` to the Supabase redirect allowlist; then rebuild + reinstall all dev/TestFlight builds (the scheme is compiled in — old installs only answer `govehlo://` until rebuilt).
-- [ ] `govehlo-mobile/src/lib/notifications.ts:57` — Android notification CHANNEL name is still
-  `'GoVehlo'`. User-visible in Android Settings → App notifications, so it needs a deliberate
-  rename at cutover, not a sweep-agent find/replace — the file is local-only-guarded (per the
-  worktree-agent leak lesson), so an automated sweep won't reach it safely.
+- [x] **Done (2026-07-19, mobile #404):** `govehlo-mobile/src/lib/notifications.ts` — Android
+  notification CHANNEL name flipped `'GoVehlo'` → `'VehloShare'`, done deliberately in a
+  reviewed PR (not a sweep-agent find/replace; the file is local-only-guarded per the
+  worktree-agent leak lesson) with a regression test pinning the channel name.
 
 ### 2. Universal links — Phase 4 (after Apple)  [CLAUDE + YOU]
 - [ ] Host `/.well-known/apple-app-site-association` (`appID` `TEAMID.app.vehloshare`, paths `/join/*`,`/auth/*`) + `assetlinks.json` on `vehloshare.app`; `_headers` serves AASA as `application/json`, `_middleware` must not intercept `/.well-known/*`.
