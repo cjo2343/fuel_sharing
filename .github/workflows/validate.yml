@@ -269,6 +269,9 @@ jobs:
       - name: Run booking-to-trip lifecycle smoke
         run: bash tools/test-booking-trip-functional.sh
 
+      - name: Run atomic booking fuel-completion smoke
+        run: bash tools/test-booking-fuel-completion-functional.sh
+
       - name: Run booking-ended reminder smoke
         run: bash tools/test-booking-reminder-functional.sh
 

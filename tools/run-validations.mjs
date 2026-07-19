@@ -22,6 +22,7 @@ const scripts = [
   "node tools/test-migrations.mjs",
   "node tools/test-sql-ambiguity-guard.mjs",
   "node tools/test-booking-trip-contract.mjs",
+  "node tools/test-booking-fuel-completion-contract.mjs",
   "node tools/test-booking-reminder-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
