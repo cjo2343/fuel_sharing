@@ -10,6 +10,7 @@
     "check:role-matrix": "node tools/test-rls-role-matrix.mjs",
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "test:booking-trip": "bash tools/test-booking-trip-functional.sh",
+    "test:booking-fuel-completion": "bash tools/test-booking-fuel-completion-functional.sh",
     "test:booking-reminder": "bash tools/test-booking-reminder-functional.sh",
     "test:drill-logic": "node tools/test-restore-drill-logic.mjs",
     "test:drill-smoke": "node tools/test-restore-drill-smoke.mjs",
