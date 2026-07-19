@@ -246,6 +246,7 @@ const B = { label: "B (debtor)", role: "authenticated", claims: claimsAuth(EMAIL
 const C = { label: "C (bystander)", role: "authenticated", claims: claimsAuth(EMAIL.C) };
 const G = { label: "G (2nd admin)", role: "authenticated", claims: claimsAuth(EMAIL.G) };
 const E = { label: "E (other workspace)", role: "authenticated", claims: claimsAuth(EMAIL.E) };
+const D = { label: "D (inactive member)", role: "authenticated", claims: claimsAuth(EMAIL.D) };
 const ANON = { label: "anon", role: "anon", claims: '{"role":"anon"}' };
 const SERVICE = { label: "service_role", role: "service_role", claims: '{"role":"service_role"}' };
 const SUPER = { label: "postgres", role: null, claims: null }; // setup-only, RLS-bypassing
@@ -272,6 +273,16 @@ const CLOSE_SNAPSHOT = `(
 
 // A helper op fragment: create the live B->A 'requested' row at 300 as A.
 const CREATE_REQ_300 = `perform public.upsert_settlement_request_status('${WS1}', '${P1}', '${ID.B}', '${A_ID}', 300, 'DKK', 'requested');`;
+
+// Migration 135: admin_soft_delete_workspace now requires both pre-decommission
+// acknowledgements strictly true AND writes a durable owner_activity_log attestation
+// on the path that performs a NEW soft-delete. Fixture steps that only need a
+// workspace tombstoned decommission through this helper — both acks true plus an
+// operator email so the attestation row is complete. (The idempotent alreadyApplied
+// path and the permission-denied path deliberately need no acks, so a bare one-arg
+// call is used where those paths are what is under test.)
+const OP_EMAIL = "operator@rolematrix.test";
+const SOFT_DELETE_WS1 = `perform public.admin_soft_delete_workspace('${WS1}', true, true, '${OP_EMAIL}');`;
 
 // ── 5. SQL generation ────────────────────────────────────────────────────────
 function impersonate(actor) {
@@ -2142,7 +2153,7 @@ end`,
     name: "workspace-soft-delete-service-role-emits-event",
     desc: "service role decommissions a workspace and writes a Danish notification event with a system actor",
     actor: SERVICE,
-    op: `perform public.admin_soft_delete_workspace('${WS1}');`,
+    op: SOFT_DELETE_WS1,
     expect: "ok",
     post: `if (select deleted_at from public.ledgers where id = '${WS1}') is null
       then raise exception 'CASEFAIL workspace-soft-delete-service-role-emits-event: deleted_at not stamped'; end if;
@@ -2159,9 +2170,11 @@ end`,
   // 22023 "already decommissioned" error.
   queryCase({
     name: "workspace-soft-delete-idempotent-noop",
-    desc: "repeating soft-delete on a tombstoned workspace is a no-op (alreadyApplied) and emits exactly one decommission event",
-    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    desc: "repeating soft-delete on a tombstoned workspace is a no-op (alreadyApplied, no acks required) and emits exactly one decommission event",
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
     actor: SERVICE,
+    // The repeat call passes NO acknowledgements (bare one-arg): migration 135's
+    // alreadyApplied no-op path must not require them, since nothing new happens.
     assert: `declare result jsonb; n_events int;
 begin
   result := public.admin_soft_delete_workspace('${WS1}');
@@ -2208,7 +2221,7 @@ end`,
     actor: SUPER,
     assert: `declare soft_def text; restore_def text;
 begin
-  soft_def := lower(pg_get_functiondef('public.admin_soft_delete_workspace(text)'::regprocedure));
+  soft_def := lower(pg_get_functiondef('public.admin_soft_delete_workspace(text, boolean, boolean, text)'::regprocedure));
   restore_def := lower(pg_get_functiondef('public.admin_restore_workspace(text)'::regprocedure));
   if position('for update' in soft_def) = 0 then
     raise exception 'CASEFAIL workspace-lifecycle-rpcs-lock-row-for-update: admin_soft_delete_workspace has no FOR UPDATE row lock';
@@ -2223,7 +2236,7 @@ end`,
     desc: "after decommission a member sees nothing of the workspace (ledger, trips, requests, members)",
     setup: [
       step(A, CREATE_REQ_300),
-      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+      step(SERVICE, SOFT_DELETE_WS1),
     ],
     actor: B,
     assert: `declare n_ledger int; n_trips int; n_req int; n_members int;
@@ -2240,7 +2253,7 @@ end`,
   rpcCase({
     name: "workspace-soft-delete-blocks-member-rls-write",
     desc: "after decommission a member's direct trip insert is rejected by RLS",
-    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
     actor: A,
     op: `insert into public.trips (ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id)
          values ('${WS1}', '${P1}', '${A_ID}', current_date, 5000, 5100, '${A_ID}');`,
@@ -2249,7 +2262,7 @@ end`,
   rpcCase({
     name: "workspace-soft-delete-blocks-member-rpc-write",
     desc: "after decommission a member's presence heartbeat is rejected (membership no longer resolves)",
-    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
     actor: B,
     op: `perform public.touch_member_presence('${WS1}');`,
     expect: "22023",
@@ -2258,7 +2271,7 @@ end`,
     name: "workspace-restore-brings-visibility-back",
     desc: "restoring a decommissioned workspace makes it visible to its members again",
     setup: [
-      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+      step(SERVICE, SOFT_DELETE_WS1),
       step(SERVICE, `perform public.admin_restore_workspace('${WS1}');`),
     ],
     actor: B,
@@ -2295,7 +2308,7 @@ end`,
   queryCase({
     name: "workspace-soft-delete-excluded-from-list-my-ledgers",
     desc: "a soft-deleted workspace drops out of the member's list_my_ledgers switcher/resolver",
-    setup: [step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`)],
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
     actor: B,
     assert: `if exists (select 1 from public.list_my_ledgers() where ledger_id = '${WS1}') then
       raise exception 'CASEFAIL workspace-soft-delete-excluded-from-list-my-ledgers: soft-deleted workspace still listed';
@@ -2306,7 +2319,7 @@ end`,
     desc: "resolving a decommissioned workspace's join code reveals nothing",
     setup: [
       step(SUPER, `update public.ledgers set join_code = 'NEDLAGT99' where id = '${WS1}';`),
-      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+      step(SERVICE, SOFT_DELETE_WS1),
     ],
     actor: C,
     assert: `if (select count(*) from public.resolve_ledger_invite('NEDLAGT99')) <> 0 then
@@ -2318,11 +2331,189 @@ end`,
     desc: "no one can redeem an invite into a decommissioned workspace",
     setup: [
       step(SUPER, `update public.ledgers set join_code = 'NEDLAGT99' where id = '${WS1}';`),
-      step(SERVICE, `perform public.admin_soft_delete_workspace('${WS1}');`),
+      step(SERVICE, SOFT_DELETE_WS1),
     ],
     actor: E,
     op: `perform public.redeem_ledger_invite('NEDLAGT99');`,
     expect: "P0001",
+  }),
+
+  // ── GV-333: decommission attestation + get_my_decommissioned_workspaces ─────
+  // The durable in-app decommission notice (migration 134) deliberately crosses the
+  // deleted_at boundary that hides a tombstoned workspace from its members, so its
+  // visibility rules and its post-135 grants matter. get_my_decommissioned_workspaces
+  // reproduces is_ledger_member EXCEPT the deleted_at gate: exactly the tombstoned
+  // workspaces the ACTIVE caller still belongs to, and nothing else.
+  queryCase({
+    name: "decommissioned-notice-active-member-sees-own-row",
+    desc: "an active member of a tombstoned workspace sees exactly its row with purge_after = deleted_at + 90 days",
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
+    actor: B,
+    assert: `declare r record; n int;
+begin
+  select count(*) into n from public.get_my_decommissioned_workspaces();
+  if n <> 1 then
+    raise exception 'CASEFAIL decommissioned-notice-active-member-sees-own-row: expected exactly 1 notice, got %', n;
+  end if;
+  select * into r from public.get_my_decommissioned_workspaces();
+  if r.ledger_id <> '${WS1}' then
+    raise exception 'CASEFAIL decommissioned-notice-active-member-sees-own-row: expected ledger_id ${WS1}, got %', r.ledger_id;
+  end if;
+  if r.deleted_at is null then
+    raise exception 'CASEFAIL decommissioned-notice-active-member-sees-own-row: deleted_at was null on a tombstoned workspace';
+  end if;
+  if r.purge_after is distinct from (r.deleted_at + interval '90 days') then
+    raise exception 'CASEFAIL decommissioned-notice-active-member-sees-own-row: purge_after (%) is not deleted_at + 90 days (%)', r.purge_after, r.deleted_at + interval '90 days';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "decommissioned-notice-non-member-sees-nothing",
+    desc: "a non-member (E, in another workspace) sees no decommission notice for the tombstoned workspace",
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
+    actor: E,
+    assert: `declare n int;
+begin
+  select count(*) into n from public.get_my_decommissioned_workspaces();
+  if n <> 0 then
+    raise exception 'CASEFAIL decommissioned-notice-non-member-sees-nothing: non-member E saw % notice(s)', n;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "decommissioned-notice-inactive-member-sees-nothing",
+    desc: "an inactive (is_active=false) member of a tombstoned workspace sees no decommission notice",
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
+    actor: D,
+    assert: `declare n int;
+begin
+  select count(*) into n from public.get_my_decommissioned_workspaces();
+  if n <> 0 then
+    raise exception 'CASEFAIL decommissioned-notice-inactive-member-sees-nothing: inactive member D saw % notice(s)', n;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "decommissioned-notice-anon-execute-denied",
+    desc: "the anon role cannot execute get_my_decommissioned_workspaces (migration 135 revokes the implicit PUBLIC/anon grant; authenticated only)",
+    actor: ANON,
+    op: `perform public.get_my_decommissioned_workspaces();`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "decommissioned-notice-cleared-after-restore",
+    desc: "after admin_restore_workspace the decommission notice disappears for the member",
+    setup: [
+      step(SERVICE, SOFT_DELETE_WS1),
+      step(SERVICE, `perform public.admin_restore_workspace('${WS1}');`),
+    ],
+    actor: B,
+    assert: `if exists (select 1 from public.get_my_decommissioned_workspaces() where ledger_id = '${WS1}') then
+      raise exception 'CASEFAIL decommissioned-notice-cleared-after-restore: a restored workspace still shows a decommission notice';
+    end if`,
+  }),
+  queryCase({
+    name: "decommissioned-notice-gone-after-purge",
+    desc: "after the retention sweep permanently purges the workspace, its decommission notice is gone",
+    setup: [
+      step(SERVICE, SOFT_DELETE_WS1),
+      step(SUPER, `update public.ledgers set deleted_at = now() - interval '100 days' where id = '${WS1}';`),
+      step(SERVICE, `perform public.run_operational_retention(180, false);`),
+    ],
+    actor: B,
+    assert: `begin
+  if exists (select 1 from public.ledgers where id = '${WS1}') then
+    raise exception 'CASEFAIL decommissioned-notice-gone-after-purge: workspace was not purged (precondition)';
+  end if;
+  if exists (select 1 from public.get_my_decommissioned_workspaces() where ledger_id = '${WS1}') then
+    raise exception 'CASEFAIL decommissioned-notice-gone-after-purge: purged workspace still shows a decommission notice';
+  end if;
+end`,
+  }),
+  // GV-333 atomic attestation: a NEW soft-delete requires both acknowledgements and
+  // writes exactly one durable owner_activity_log row IN THE SAME TRANSACTION.
+  queryCase({
+    name: "workspace-soft-delete-writes-durable-attestation",
+    desc: "a successful decommission writes exactly one owner_activity_log attestation row (acks recorded, source=rpc, NULL ledger_id so it survives the purge cascade)",
+    setup: [step(SERVICE, SOFT_DELETE_WS1)],
+    actor: SERVICE,
+    assert: `declare n int; m jsonb;
+begin
+  select count(*) into n from public.owner_activity_log oal
+    where oal.action = 'owner.workspace.decommission' and (oal.metadata->>'source') = 'rpc';
+  if n <> 1 then
+    raise exception 'CASEFAIL workspace-soft-delete-writes-durable-attestation: expected exactly 1 rpc attestation row, got %', n;
+  end if;
+  select oal.metadata into m from public.owner_activity_log oal
+    where oal.action = 'owner.workspace.decommission' and (oal.metadata->>'source') = 'rpc' limit 1;
+  if (m->'acknowledgements'->>'exportOffered') is distinct from 'true'
+     or (m->'acknowledgements'->>'noLegalHold') is distinct from 'true' then
+    raise exception 'CASEFAIL workspace-soft-delete-writes-durable-attestation: attestation acknowledgements not both true (%)', m;
+  end if;
+  if exists (
+    select 1 from public.owner_activity_log oal
+    where oal.action = 'owner.workspace.decommission' and (oal.metadata->>'source') = 'rpc'
+      and oal.ledger_id is not null
+  ) then
+    raise exception 'CASEFAIL workspace-soft-delete-writes-durable-attestation: attestation row has a non-null ledger_id (would cascade-delete at the 90-day purge)';
+  end if;
+  if not exists (
+    select 1 from public.owner_activity_log oal
+    where oal.action = 'owner.workspace.decommission' and (oal.metadata->>'source') = 'rpc'
+      and oal.actor_role = 'owner' and oal.actor_email = '${OP_EMAIL}'
+      and oal.workspace_label is not null and (oal.metadata->>'ledgerId') = '${WS1}'
+  ) then
+    raise exception 'CASEFAIL workspace-soft-delete-writes-durable-attestation: attestation row shape (owner/actor_email/workspace_label/metadata.ledgerId) is wrong';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "workspace-soft-delete-attestation-survives-purge",
+    desc: "the decommission attestation survives the 90-day workspace-purge cascade (NULL ledger_id keeps it out of ON DELETE CASCADE)",
+    setup: [
+      step(SERVICE, SOFT_DELETE_WS1),
+      step(SUPER, `update public.ledgers set deleted_at = now() - interval '100 days' where id = '${WS1}';`),
+      step(SERVICE, `perform public.run_operational_retention(180, false);`),
+    ],
+    actor: SERVICE,
+    assert: `declare n int;
+begin
+  if exists (select 1 from public.ledgers where id = '${WS1}') then
+    raise exception 'CASEFAIL workspace-soft-delete-attestation-survives-purge: workspace was not purged (precondition)';
+  end if;
+  select count(*) into n from public.owner_activity_log oal
+    where oal.action = 'owner.workspace.decommission' and (oal.metadata->>'source') = 'rpc'
+      and (oal.metadata->>'ledgerId') = '${WS1}';
+  if n <> 1 then
+    raise exception 'CASEFAIL workspace-soft-delete-attestation-survives-purge: attestation row did not survive the purge (found %)', n;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-rejects-false-acknowledgement",
+    desc: "a NEW decommission with a false acknowledgement is rejected (errcode GV333); nothing is tombstoned or journaled",
+    actor: SERVICE,
+    op: `perform public.admin_soft_delete_workspace('${WS1}', true, false, '${OP_EMAIL}');`,
+    expect: "GV333",
+    post: `if (select deleted_at from public.ledgers where id = '${WS1}') is not null then
+      raise exception 'CASEFAIL workspace-soft-delete-rejects-false-acknowledgement: workspace was tombstoned despite a rejected acknowledgement';
+    end if;
+    if exists (
+      select 1 from public.owner_activity_log oal
+      where oal.action = 'owner.workspace.decommission' and (oal.metadata->>'source') = 'rpc'
+    ) then
+      raise exception 'CASEFAIL workspace-soft-delete-rejects-false-acknowledgement: an attestation row was written despite a rejected acknowledgement';
+    end if;`,
+  }),
+  rpcCase({
+    name: "workspace-soft-delete-rejects-omitted-acknowledgements",
+    desc: "a NEW decommission called without acknowledgements (both default null) is rejected (errcode GV333)",
+    actor: SERVICE,
+    op: `perform public.admin_soft_delete_workspace('${WS1}');`,
+    expect: "GV333",
+    post: `if (select deleted_at from public.ledgers where id = '${WS1}') is not null then
+      raise exception 'CASEFAIL workspace-soft-delete-rejects-omitted-acknowledgements: workspace was tombstoned despite omitted acknowledgements';
+    end if;`,
   }),
 ];
 
