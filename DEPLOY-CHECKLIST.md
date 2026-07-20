@@ -18,7 +18,15 @@ a migration "live".**
 - [ ] Filename appended to the `expected` array in `tools/test-migrations.mjs`.
 - [ ] Mirror block appended to `supabase-schema.sql` — **byte-identical, including
       in-body SQL comments** (GV-175: the equivalence diff compares function
-      bodies verbatim).
+      bodies verbatim). Placement: at end of file, directly after the previous
+      migration's tracker insert, and including the `-- Migration NNN:` header
+      comment — copy how the previous migration's block sits (138 lesson).
+- [ ] Anything touching **Supabase Storage** (`storage.buckets` rows,
+      `storage.objects` policies): the CI guards replay in plain Postgres with
+      NO `storage` schema, so wrap every storage statement in a
+      `do $$ … if exists (select 1 from information_schema.schemata where
+      schema_name = 'storage') …` guard, and state in the migration AND the PR
+      that the storage half only takes effect in the real SQL Editor (138 lesson).
 - [ ] Re-declared functions are based on the **newest prior definition**, not an
       intermediate migration's copy (GV-202: the equivalence check cannot catch
       drift from re-declaring off a stale version).
@@ -35,15 +43,24 @@ a migration "live".**
 - [ ] `npm run validate` green (migration guard + ambiguity guard + token drift).
 - [ ] Docker checks green: `npm run check:schema-equivalence`, and
       `npm run gen:db-types` with the refreshed `types/database.ts` committed
-      (`check:db-types` fails CI when stale).
+      (`check:db-types` fails CI when stale). These (and the role matrix) need
+      the Docker daemon — start Docker Desktop first; there is no non-Docker
+      fallback, only CI (138 lesson).
 - [ ] RLS/grant changes: extend `tools/test-rls-role-matrix.mjs`, including a
-      negative case proving the role *cannot* do the thing.
+      negative case proving the role *cannot* do the thing. Run it locally with
+      `node tools/test-rls-role-matrix.mjs` (Docker-backed).
+- [ ] Touching `delete_my_account` or any other smoke-covered RPC: run
+      `npm run test:functional-smoke` (Docker) — `validate` does not cover it,
+      and a broken scrub fails silently otherwise (138 lesson).
 
 ## 2. Ship
 
 - [ ] One migration per PR, branched **off main** — never off another migration
       PR's branch (GitHub does not retarget on merge; the second PR silently
       merges into the stale branch).
+- [ ] PR mechanics (title convention, ready-not-draft, commit trailer, the
+      `env -u GH_TOKEN -u GITHUB_TOKEN gh` invocation) live in CLAUDE.md and the
+      `/ship` skill — follow those; this checklist doesn't repeat them.
 - [ ] PR body states: **"SQL must be applied manually in the Supabase SQL Editor
       after merge."**
 - [ ] After the merge: no further pushes to the merged branch (they strand
