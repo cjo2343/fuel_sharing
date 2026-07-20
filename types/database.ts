@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 137 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 138 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1379,6 +1379,142 @@ export type Database = {
           },
         ]
       }
+      vehicle_incident_photos: {
+        Row: {
+          created_at: string
+          created_by_member_id: string | null
+          id: string
+          incident_id: string
+          ledger_id: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_member_id?: string | null
+          id?: string
+          incident_id: string
+          ledger_id: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by_member_id?: string | null
+          id?: string
+          incident_id?: string
+          ledger_id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_incident_photos_created_by_member_id_fkey"
+            columns: ["created_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incident_photos_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incident_photos_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_incidents: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          description: string
+          driver_member_id: string | null
+          id: string
+          incident_date: string
+          insurance_ref: string | null
+          ledger_id: string
+          odometer: number | null
+          repair_status: string
+          reporter_member_id: string | null
+          title: string
+          trip_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          description: string
+          driver_member_id?: string | null
+          id?: string
+          incident_date: string
+          insurance_ref?: string | null
+          ledger_id: string
+          odometer?: number | null
+          repair_status?: string
+          reporter_member_id?: string | null
+          title: string
+          trip_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          description?: string
+          driver_member_id?: string | null
+          id?: string
+          incident_date?: string
+          insurance_ref?: string | null
+          ledger_id?: string
+          odometer?: number | null
+          repair_status?: string
+          reporter_member_id?: string | null
+          title?: string
+          trip_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_incidents_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "car_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incidents_driver_member_id_fkey"
+            columns: ["driver_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incidents_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incidents_reporter_member_id_fkey"
+            columns: ["reporter_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incidents_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_repairs: {
         Row: {
           cost_dkk: number
@@ -1547,6 +1683,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_incident_photo: {
+        Args: { p_incident_id: string; p_storage_path: string }
+        Returns: Json
+      }
       admin_restore_workspace: { Args: { p_ledger_id: string }; Returns: Json }
       admin_soft_delete_workspace: {
         Args: {
@@ -1760,6 +1900,7 @@ export type Database = {
         Returns: string
       }
       current_user_email: { Args: never; Returns: string }
+      delete_incident_photo: { Args: { p_photo_id: string }; Returns: Json }
       delete_my_account: { Args: never; Returns: Json }
       delete_push_token: { Args: { token_value: string }; Returns: undefined }
       emit_inspection_due_event: {
@@ -1848,6 +1989,23 @@ export type Database = {
           role: string
           slug: string
         }[]
+      }
+      log_vehicle_incident: {
+        Args: {
+          booking_id_value?: string
+          description_value: string
+          driver_member_id_value?: string
+          event_body?: string
+          event_title?: string
+          incident_date_value: string
+          insurance_ref_value?: string
+          odometer_value?: number
+          repair_status_value?: string
+          target_ledger_id: string
+          title_value: string
+          trip_id_value?: string
+        }
+        Returns: Json
       }
       mark_messages_read: {
         Args: { target_ledger_id: string }
@@ -2108,6 +2266,21 @@ export type Database = {
           name: string
           role: string
         }[]
+      }
+      update_vehicle_incident: {
+        Args: {
+          description_value?: string
+          driver_member_id_value?: string
+          event_body?: string
+          event_title?: string
+          incident_date_value?: string
+          insurance_ref_value?: string
+          odometer_value?: number
+          repair_status_value?: string
+          target_incident_id: string
+          title_value?: string
+        }
+        Returns: Json
       }
       upsert_booking_trip_with_participants: {
         Args: {

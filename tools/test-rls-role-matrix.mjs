@@ -284,6 +284,12 @@ const CREATE_REQ_300 = `perform public.upsert_settlement_request_status('${WS1}'
 const OP_EMAIL = "operator@rolematrix.test";
 const SOFT_DELETE_WS1 = `perform public.admin_soft_delete_workspace('${WS1}', true, true, '${OP_EMAIL}');`;
 
+// GVM-396 vehicle-incident helpers. B logs one incident into ws1; later steps
+// resolve it via the workspace's newest incident id (each case is isolated, so
+// there is exactly one). The event_title arg makes the create write a feed event.
+const LOG_INCIDENT_B = `perform public.log_vehicle_incident('${WS1}', current_date, 'Ridse i lak', 'Ridse ved parkering', null, null, null, null, 'open', null, 'Skade logget', 'Bo loggede en skade');`;
+const LATEST_WS1_INCIDENT = `(select id from public.vehicle_incidents where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
+
 // ── 5. SQL generation ────────────────────────────────────────────────────────
 function impersonate(actor) {
   // Sets JWT claims (session-level; discarded on the case's rollback) — role is
@@ -2693,6 +2699,186 @@ begin
     raise exception 'CASEFAIL settlement-history-captures-payment-reminder: durable reminder event missing';
   end if;
 end`,
+  }),
+
+  // ── 8. Vehicle incidents + photos (GVM-396) ───────────────────────────────
+  rpcCase({
+    name: "incident-member-logs",
+    desc: "active member A logs a vehicle incident into their own workspace",
+    actor: A,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Bulet doer', 'Parkeringsskade', null, null, null, 12345, 'open', 'SKADE-99', 'Skade logget', 'A loggede en skade');`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.vehicle_incidents
+        where ledger_id = '${WS1}' and title = 'Bulet doer' and repair_status = 'open'
+          and odometer = 12345 and insurance_ref = 'SKADE-99'
+          and reporter_member_id = '${A_ID}')
+      then raise exception 'CASEFAIL incident-member-logs: incident row not created with reporter = caller'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-foreign-member-log-denied",
+    desc: "member E of another workspace cannot log an incident into ws1",
+    actor: E,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Fusk', 'Uautoriseret', null, null, null, null, 'open', null, 'x', 'y');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "incident-anon-log-denied",
+    desc: "anon cannot log an incident",
+    actor: ANON,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Fusk', 'Uautoriseret', null, null, null, null, 'open', null, 'x', 'y');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "incident-cross-workspace-booking-link-rejected",
+    desc: "a booking from another workspace cannot be linked as the incident's booking",
+    setup: [step(SUPER, `insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id)
+      values ('44444444-0000-0000-0000-000000000001', '${WS2}', '${E_ID}', now() + interval '1 day', now() + interval '2 day', '${E_ID}');`)],
+    actor: A,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Skade', 'Ridser', null, '44444444-0000-0000-0000-000000000001', null, null, 'open', null, 't', 'b');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "incident-member-can-read-workspace",
+    desc: "a bystander member C can read incidents logged in their own workspace",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: C,
+    assert: `if (select count(*) from public.vehicle_incidents where ledger_id = '${WS1}') < 1 then
+      raise exception 'CASEFAIL incident-member-can-read-workspace: bystander member saw no incidents';
+    end if`,
+  }),
+  queryCase({
+    name: "incident-outsider-isolated",
+    desc: "a member of another workspace cannot read ws1 incidents across the RLS boundary",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: E,
+    assert: `if exists (select 1 from public.vehicle_incidents where ledger_id = '${WS1}') then
+      raise exception 'CASEFAIL incident-outsider-isolated: cross-workspace incident leaked';
+    end if`,
+  }),
+  rpcCase({
+    name: "incident-nonadmin-nonreporter-edit-denied",
+    desc: "bystander C (not admin, not reporter B) cannot edit the incident (GV-253)",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: C,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'under_repair', null, null, null, null, 'x', 'y');`,
+    expect: "42501",
+    post: `if (select repair_status from public.vehicle_incidents where ledger_id = '${WS1}') <> 'open'
+      then raise exception 'CASEFAIL incident-nonadmin-nonreporter-edit-denied: status changed after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-reporter-can-edit",
+    desc: "the reporter B can change their own incident's repair status",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'repaired', null, null, null, null, 'Skade repareret', 'Bo opdaterede status');`,
+    expect: "ok",
+    post: `if (select repair_status from public.vehicle_incidents where ledger_id = '${WS1}') <> 'repaired'
+      then raise exception 'CASEFAIL incident-reporter-can-edit: status not updated'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-admin-can-edit",
+    desc: "a workspace admin A (not the reporter) can edit the incident (GV-253)",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: A,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'closed', null, null, null, null, null, null);`,
+    expect: "ok",
+    post: `if (select repair_status from public.vehicle_incidents where ledger_id = '${WS1}') <> 'closed'
+      then raise exception 'CASEFAIL incident-admin-can-edit: status not updated'; end if;`,
+  }),
+  queryCase({
+    name: "incident-status-change-logs-event",
+    desc: "an incident status edit with an event_title writes an incident_updated feed event",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: A,
+    assert: `begin
+  perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'under_repair', null, null, null, null, 'Under reparation', 'A opdaterede status');
+  if not exists (select 1 from public.ledger_events
+    where ledger_id = '${WS1}' and event_type = 'incident_updated'
+      and (metadata->>'repair_status') = 'under_repair') then
+    raise exception 'CASEFAIL incident-status-change-logs-event: no incident_updated event with new status';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "incident-direct-insert-denied",
+    desc: "authenticated admin A cannot bypass the RPC with a direct table INSERT",
+    actor: A,
+    op: `insert into public.vehicle_incidents (ledger_id, incident_date, title, description)
+         values ('${WS1}', current_date, 'Direkte', 'Uautoriseret');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "incident-direct-update-denied",
+    desc: "authenticated admin A cannot bypass the RPC with a direct table UPDATE",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: A,
+    op: `update public.vehicle_incidents set repair_status = 'closed' where ledger_id = '${WS1}';`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "incident-direct-delete-denied",
+    desc: "authenticated admin A cannot bypass the RPC with a direct table DELETE",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: A,
+    op: `delete from public.vehicle_incidents where ledger_id = '${WS1}';`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "incident-photo-direct-insert-denied",
+    desc: "authenticated admin A cannot directly INSERT an incident-photo row",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: A,
+    op: `insert into public.vehicle_incident_photos (incident_id, ledger_id, storage_path)
+         values (${LATEST_WS1_INCIDENT}, '${WS1}', '${WS1}/x/y.jpg');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "incident-photo-wrong-prefix-rejected",
+    desc: "add_incident_photo rejects a storage path outside the incident's workspace/incident prefix",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    op: `perform public.add_incident_photo(${LATEST_WS1_INCIDENT}, '${WS2}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "incident-photo-add-and-read",
+    desc: "a member registers a correctly-prefixed photo and it is readable in the workspace",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    assert: `begin
+  perform public.add_incident_photo(${LATEST_WS1_INCIDENT}, '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg');
+  if not exists (select 1 from public.vehicle_incident_photos
+    where ledger_id = '${WS1}' and created_by_member_id = '${ID.B}'
+      and storage_path = '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg') then
+    raise exception 'CASEFAIL incident-photo-add-and-read: photo row not registered';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "incident-photo-delete-noncreator-denied",
+    desc: "bystander C (not admin, not uploader) cannot delete B's incident photo",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(B, `perform public.add_incident_photo(${LATEST_WS1_INCIDENT}, '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg');`),
+    ],
+    actor: C,
+    op: `perform public.delete_incident_photo((select id from public.vehicle_incident_photos where ledger_id = '${WS1}' limit 1));`,
+    expect: "42501",
+    post: `if not exists (select 1 from public.vehicle_incident_photos where ledger_id = '${WS1}')
+      then raise exception 'CASEFAIL incident-photo-delete-noncreator-denied: photo deleted after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-photo-delete-admin-ok",
+    desc: "a workspace admin A can delete an incident photo uploaded by B",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(B, `perform public.add_incident_photo(${LATEST_WS1_INCIDENT}, '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg');`),
+    ],
+    actor: A,
+    op: `perform public.delete_incident_photo((select id from public.vehicle_incident_photos where ledger_id = '${WS1}' limit 1));`,
+    expect: "ok",
+    post: `if exists (select 1 from public.vehicle_incident_photos where ledger_id = '${WS1}')
+      then raise exception 'CASEFAIL incident-photo-delete-admin-ok: photo survived admin delete'; end if;`,
   }),
 ];
 
