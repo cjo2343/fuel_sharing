@@ -11,6 +11,8 @@ transaktion og:
   brugerens e-mail.
 - **Renser** rate-limit-registre og nuller aktørfelter (`actor_email`,
   `actor_user_id`) i operatør-audit-loggen.
+- **Frakobler** kontoen som forfatter på hændelsesfotos; hændelsens medlemsreference
+  peger derefter på det anonymiserede workspace-medlem.
 - **Skriver** en anonymiseret feed-hændelse ("… er anonymiseret. Gruppens regnskab
   er uændret.") så øvrige medlemmer kan se hvorfor navnet ændrede sig.
 - Auth-brugeren slettes i Supabase Auth.
@@ -26,6 +28,14 @@ art. 17(3)(b)/(e)-hensyn og øvrige medlemmers berettigede interesse; en tur, La
 har betalt sin andel af, forsvinder ikke fordi chaufføren sletter sin konto.
 Rækkerne peger på det anonymiserede medlem og kan ikke længere henføres til personen
 med rimelige midler.
+
+**Skades- og hændelseshistorikken** (beskrivelse, dato, kilometerstand, valgfrit
+skadenummer og fotos) består også som en del af gruppens fælles køretøjshistorik.
+Kontosletning anonymiserer reporter/fører og fjerner fotoets forfatterkobling, men
+fjerner ikke selve teksten eller billedet. Uploaderen eller en workspace-admin kan
+slette enkelte fotos. Der findes endnu ikke selvbetjent sletning af en hel hændelse;
+anmodninger om berigtigelse eller sletning af personoplysninger i indholdet håndteres
+manuelt. Hele klassen slettes, når workspacet slettes.
 
 **Undtagelse — sidste aktive medlem:** er brugeren det ENESTE aktive medlem i et
 workspace, er der ingen andres regnskab at bevare, og hele workspacet hård-slettes
@@ -48,6 +58,10 @@ Data-minimering frem for pseudonymisering, når intet formål består.
    aktive medlemmer består af hensyn til deres fælles regnskab. Anomale
    workspaces uden aktive medlemmer slettes kun efter manuel operatør-review;
    inaktivitet alene udløser aldrig automatisk sletning.
+5. **Hændelsesindhold**: Fritekst, skadenummer og fotos kan i sig selv indeholde
+   personoplysninger. De beholdes som fælles køretøjshistorik efter kontosletning,
+   så en registreret anmodning kræver konkret manuel vurdering og eventuel redigering
+   eller fotosletning; anonymisering af medlemsrækken er ikke altid tilstrækkelig.
 
 ## End-to-end-verifikation (udestående evidens)
 
