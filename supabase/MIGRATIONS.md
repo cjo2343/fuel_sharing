@@ -98,3 +98,4 @@ Adds server-side onboarding abuse monitoring/rate-limit storage and enforces thr
 
 - `121_settlement_period_boundary.sql` completes migration 120's direct-write hardening by enforcing request/period ownership, checking and locking both old and new entry periods, binding null-period direct inserts, and covering settlement-bearing repairs.
 - `137_settlement_event_history.sql` adds a privacy-minimised, append-only settlement lifecycle/reminder history. Active workspace members can read it, clients cannot mutate it, and a database trigger covers every current and future settlement write path.
+- `140_late_entry_carryover.sql` keeps requested amounts immutable while accepting late trips, fuel, expenses, recurring materialisations, and repairs into one durable queued successor period. Closing promotes those rows into the newly opened period atomically; deferred booking receipts use a dedicated fuel-only completion command.
