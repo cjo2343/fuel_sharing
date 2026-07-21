@@ -24,18 +24,22 @@ Cloudflare Access + Supabase-login).
 ## A2 — Delebilsregnskab
 
 - **Formål:** Registrere ture, tankninger, udgifter, reparationer, bookinger og
-  beregne/afregne omkostningsfordeling mellem medlemmer.
+  skader/hændelser samt beregne/afregne omkostningsfordeling mellem medlemmer.
 - **Registrerede:** Workspace-medlemmer.
 - **Datakategorier:** Ture (km, datoer, deltagere), brændstofkøb (beløb, liter),
   udgifter og reparationer (beløb, værksted, kvitteringsdata), bookinger,
+  skader/hændelser (titel, beskrivelse, dato, kilometerstand, status, valgfrit
+  skadenummer, fører og relation til booking/tur) samt valgfri hændelsesfotos,
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
-- **Modtagere:** Supabase (EU). Ved kvitterings-OCR: Mindee (planlagt — se
+- **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos.
+  Ved kvitterings-OCR: Mindee (planlagt — se
   subprocessors.md). Ved ruteplanlægning: GraphHopper (DE) og Photon (koordinater,
   ingen konto-id'er).
-- **Sletning:** Regnskabsdata består som pseudonymiseret historik efter kontosletning
-  (øvrige medlemmers regnskab, art. 17(3)); se deletion-limitations.md.
+- **Sletning:** Regnskabs- og hændelsesdata består som fælles, pseudonymiseret
+  køretøjshistorik efter kontosletning (øvrige medlemmers regnskab og dokumentation,
+  art. 17(3)); fotoets forfatterkobling fjernes. Se deletion-limitations.md.
 
 ## A3 — Aktivitetsfeed og beskeder
 

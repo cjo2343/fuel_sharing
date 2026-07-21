@@ -1,12 +1,13 @@
 # Opbevaringsfrister pr. dataklasse
 
-Status pr. 2026-07-17 — **ærlig** opgørelse: kolonnen "Håndhævelse" siger, om fristen
+Status pr. 2026-07-21 — **ærlig** opgørelse: kolonnen "Håndhævelse" siger, om fristen
 faktisk håndhæves automatisk, kræver manuel handling, eller er et kendt hul.
 
 | Dataklasse (tabeller) | Frist | Håndhævelse |
 |---|---|---|
 | Konto/identitet (Supabase Auth, `ledger_members`) | Til kontosletning | **Automatisk ved sletning**: `delete_my_account` anonymiserer (se deletion-limitations.md) |
 | Regnskabsdata (`trips`, `fuel_payments`, `workspace_expenses`, `vehicle_repairs`, `settlement_*`) | Workspacets levetid; består pseudonymiseret efter medlems kontosletning | Ingen aldersgrænse for aktive rækker — bevidst (fælles regnskab; bogføringshensyn) |
+| Skader/hændelser (`vehicle_incidents`, `vehicle_incident_photos`, private objekter i `incident-photos`) | Workspacets levetid | Ingen automatisk aldersgrænse. Fotos kan slettes af uploaderen eller en workspace-admin; hændelsesrækken kan redigeres, men har endnu ikke selvbetjent sletning. Ved kontosletning anonymiseres medlemsreferencen og fotoets forfatterkobling fjernes, mens den fælles køretøjshistorik og billeder består. Hele klassen slettes ved workspace-purge. |
 | Aktivitetsfeed + chat (`ledger_events`, `messages`) | Workspacets levetid | Ingen aldersgrænse — **bevidst produktbeslutning** (feedet ER historikken); aktørfelter anonymiseres ved kontosletning |
 | Push-tokens (`expo_push_tokens`) | Kontosletning ELLER 180 dages inaktivitet | **Automatisk** fra migration 130: dagligt sweep via `run_operational_retention` (GV-309) — token gendannes ved næste app-åbning |
 | Legacy web-push (`push_subscriptions`) | Udfaset | **Tømt i migration 130** (dødt PWA-levn); tabel droppes i GV-311 |
