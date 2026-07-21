@@ -1227,8 +1227,8 @@ begin
 end`,
   }),
   rpcCase({
-    name: "repairs-close-blocked-stale-request-gv260",
-    desc: "close blocked when a repairs-inflated (350 kr) settlement only has an old 300 kr request (GV-260 interaction)",
+    name: "repair-after-request-carries-into-next-period",
+    desc: "a repair logged after the request leaves its 300 kr frozen and is promoted into the next period on close",
     setup: [
       step(SUPER, `update public.ledger_members set is_active = false where id in ('${ID.C}', '${ID.G}');`),
       step(A, CREATE_REQ_300),
@@ -1236,9 +1236,22 @@ end`,
     ],
     actor: A,
     op: `perform public.close_settlement_period('${WS1}', '${P1}', ${CLOSE_SNAPSHOT});`,
-    expect: "42501",
-    post: `if (select status from public.settlement_periods where id = '${P1}') <> 'open'
-      then raise exception 'CASEFAIL repairs-close-blocked-stale-request-gv260: period should remain open'; end if;`,
+    expect: "ok",
+    post: `if (select status from public.settlement_periods where id = '${P1}') <> 'closed'
+      then raise exception 'CASEFAIL repair-after-request-carries-into-next-period: source period should close'; end if;
+    if not exists (
+      select 1
+      from public.vehicle_repairs vr
+      join public.settlement_periods sp on sp.id = vr.period_id
+      where vr.ledger_id = '${WS1}'
+        and vr.description = 'Ny bremseskive'
+        and sp.status = 'open'
+    ) then
+      raise exception 'CASEFAIL repair-after-request-carries-into-next-period: repair was not promoted to the new open period';
+    end if;
+    if exists (select 1 from public.settlement_periods where ledger_id = '${WS1}' and status = 'queued') then
+      raise exception 'CASEFAIL repair-after-request-carries-into-next-period: queued period survived promotion';
+    end if;`,
   }),
 
   // ── 7. Repair payer + validation + largest-remainder rounding (GV-269) ──────

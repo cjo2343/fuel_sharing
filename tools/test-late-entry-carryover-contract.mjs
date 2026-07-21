@@ -30,6 +30,7 @@ const repairGuard = sql.slice(
   sql.indexOf('create or replace function public.enforce_repair_period_lock'),
   sql.indexOf('-- close_settlement_period always INSERTS'),
 );
+assert.match(repairGuard, /current_setting\('govehlo\.pii_scrub', true\)[\s\S]*return old/i);
 assert.match(repairGuard, /old\.period_id is not null[\s\S]*sp\.id = old\.period_id/i);
 assert.match(repairGuard, /public\.settlement_entry_is_locked\(old\.ledger_id, old\.period_id\)/i);
 

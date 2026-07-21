@@ -30859,6 +30859,11 @@ declare
   v_guard boolean := tg_op = 'DELETE';
   v_rule_lock boolean;
 begin
+  if coalesce(current_setting('govehlo.pii_scrub', true), '') = '1' then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
+
   if old.period_id is not null then
     select (sp.status = 'closed' or sp.closed_at is not null)
       into v_period_closed

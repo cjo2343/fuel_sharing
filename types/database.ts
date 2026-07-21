@@ -1939,6 +1939,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      ensure_settlement_carryover_period: {
+        Args: { p_ledger_id: string; p_source_period_id: string }
+        Returns: string
+      }
       fuel_ledger_healthcheck: {
         Args: { target_ledger_id?: string }
         Returns: Json
