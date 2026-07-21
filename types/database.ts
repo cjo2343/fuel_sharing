@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 139 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 140 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1850,6 +1850,29 @@ export type Database = {
           trip_date_value: string
           trip_event_body?: string
           trip_event_title?: string
+        }
+        Returns: Json
+      }
+      complete_deferred_booking_fuel: {
+        Args: {
+          fuel_amount_value: number
+          fuel_currency_value?: string
+          fuel_event_body?: string
+          fuel_event_title?: string
+          fuel_full_tank_value?: boolean
+          fuel_legacy_id: string
+          fuel_liters_value?: number
+          fuel_odometer_value?: number
+          fuel_payer_member_id: string
+          fuel_payment_date_value: string
+          fuel_price_per_liter_value?: number
+          fuel_station_brand_value?: string
+          fuel_station_lat_value?: number
+          fuel_station_lng_value?: number
+          fuel_station_name_value?: string
+          target_ledger_id: string
+          target_open_period_id: string
+          target_trip_id: string
         }
         Returns: Json
       }
