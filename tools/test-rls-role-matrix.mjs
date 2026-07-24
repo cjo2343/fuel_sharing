@@ -1671,15 +1671,19 @@ end`,
     expect: "23514",
   }),
 
-  // ── 10. Recurring generation vs entry lock (migration 116: GV-281) ───────────
-  // A locked open period (an active settlement request) must NOT crash recurring
-  // generation. The scheduler defers the locked ledger and counts it; a second,
-  // unlocked ledger in the same sweep still generates; the deferred occurrence
-  // catches up once the lock lifts; the client variant returns a zero-summary
-  // instead of raising.
+  // ── 10. Recurring generation vs entry lock (migration 142: GV-360) ───────────
+  // A locked open period (an active settlement request) must neither crash recurring
+  // generation nor defer it. Migration 116 (GV-281) short-circuited both generators on
+  // the lock; migration 142 deleted those short-circuits, because migration 121's
+  // assert_settlement_period_boundary_expenses trigger fires before the entry-lock
+  // trigger and (since migration 140) rebinds the insert into the queued carry-over
+  // period. So an occurrence due during a payment freeze is materialised NOW into the
+  // queued successor — exactly like a manually logged expense — and the frozen period's
+  // requested amount is untouched. ledgers_skipped survives as the per-ledger FAILURE
+  // counter (/api/hooks/recurring-generate reads it) and must now read 0 for a lock.
   queryCase({
-    name: "recurring-sweep-skips-locked-ledger",
-    desc: "generate_all_due_recurring_expenses defers a ledger whose open period is entry-locked: ledgers_skipped=1, no exception, no occurrence (GV-281)",
+    name: "recurring-sweep-carries-locked-ledger-into-queued-period",
+    desc: "generate_all_due_recurring_expenses materialises into the queued carry-over period when the open period is entry-locked: no skip, no error, nothing added to the frozen period (GV-360)",
     setup: [
       step(SUPER, `insert into public.recurring_expenses
         (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
@@ -1687,24 +1691,42 @@ end`,
       step(A, CREATE_REQ_300),
     ],
     actor: SERVICE,
-    assert: `declare res jsonb; occ integer;
+    assert: `declare res jsonb; occ integer; occ_frozen integer; occ_queued integer;
 begin
   res := public.generate_all_due_recurring_expenses(200);
-  if (res->>'ledgers_skipped')::int <> 1 then
-    raise exception 'CASEFAIL recurring-sweep-skips-locked-ledger: ledgers_skipped=% (expected 1)', res->>'ledgers_skipped';
+  if not (res ? 'ledgers_skipped') then
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: the ledgers_skipped key was dropped from the return contract';
+  end if;
+  if (res->>'ledgers_skipped')::int <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: ledgers_skipped=% (expected 0 — GV-360 removed the entry-lock deferral)', res->>'ledgers_skipped';
   end if;
   if res->>'first_error' is not null then
-    raise exception 'CASEFAIL recurring-sweep-skips-locked-ledger: first_error=% (expected null — a lock skip is not an error)', res->>'first_error';
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: first_error=% (expected null — the carry-over must not raise)', res->>'first_error';
+  end if;
+  if (res->>'ledgers_touched')::int < 1 then
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: ledgers_touched=% (expected >=1 — the locked ledger generated)', res->>'ledgers_touched';
   end if;
   select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd1d1d1d1-0000-0000-0000-000000000001';
-  if occ <> 0 then
-    raise exception 'CASEFAIL recurring-sweep-skips-locked-ledger: generated % occurrence(s) into a locked period (expected 0)', occ;
+  if occ <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: generated % occurrence(s) (expected 1)', occ;
+  end if;
+  select count(*) into occ_frozen from public.workspace_expenses
+    where recurring_expense_id = 'd1d1d1d1-0000-0000-0000-000000000001' and period_id = '${P1}';
+  if occ_frozen <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: % occurrence(s) landed in the frozen period (expected 0)', occ_frozen;
+  end if;
+  select count(*) into occ_queued from public.workspace_expenses we
+    join public.settlement_periods sp on sp.id = we.period_id
+    where we.recurring_expense_id = 'd1d1d1d1-0000-0000-0000-000000000001'
+      and sp.ledger_id = '${WS1}' and sp.status = 'queued';
+  if occ_queued <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-carries-locked-ledger-into-queued-period: % occurrence(s) in the queued successor (expected 1)', occ_queued;
   end if;
 end`,
   }),
   queryCase({
     name: "recurring-sweep-generates-unlocked-alongside-locked",
-    desc: "a second, unlocked ledger in the same sweep still generates while the locked one is deferred (GV-281 — no batch poisoning)",
+    desc: "a locked and an unlocked ledger in the same sweep both generate; neither poisons the batch (GV-360)",
     setup: [
       step(SUPER, `insert into public.recurring_expenses
         (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
@@ -1716,25 +1738,39 @@ end`,
     assert: `declare res jsonb; occ_locked integer; occ_unlocked integer;
 begin
   res := public.generate_all_due_recurring_expenses(200);
-  if (res->>'ledgers_skipped')::int <> 1 then
-    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: ledgers_skipped=% (expected 1 — only the locked ledger)', res->>'ledgers_skipped';
+  if (res->>'ledgers_skipped')::int <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: ledgers_skipped=% (expected 0 — neither ledger is deferred)', res->>'ledgers_skipped';
   end if;
-  if (res->>'ledgers_touched')::int < 1 then
-    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: ledgers_touched=% (expected >=1 — the unlocked ledger generated)', res->>'ledgers_touched';
+  if (res->>'ledgers_touched')::int < 2 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: ledgers_touched=% (expected >=2 — both ledgers generated)', res->>'ledgers_touched';
   end if;
   select count(*) into occ_locked from public.workspace_expenses where recurring_expense_id = 'd2d2d2d2-0000-0000-0000-000000000001';
   select count(*) into occ_unlocked from public.workspace_expenses where recurring_expense_id = 'd2d2d2d2-0000-0000-0000-000000000002';
-  if occ_locked <> 0 then
-    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: locked ledger generated % (expected 0)', occ_locked;
+  if occ_locked <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: locked ledger generated % (expected 1 — carried into the queue)', occ_locked;
   end if;
   if occ_unlocked <> 1 then
     raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: unlocked ledger generated % (expected 1)', occ_unlocked;
   end if;
+  if not exists (
+    select 1 from public.workspace_expenses we
+    join public.settlement_periods sp on sp.id = we.period_id
+    where we.recurring_expense_id = 'd2d2d2d2-0000-0000-0000-000000000001' and sp.status = 'queued'
+  ) then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: the locked ledger''s occurrence did not land in the queued successor';
+  end if;
+  if not exists (
+    select 1 from public.workspace_expenses we
+    join public.settlement_periods sp on sp.id = we.period_id
+    where we.recurring_expense_id = 'd2d2d2d2-0000-0000-0000-000000000002' and sp.status = 'open'
+  ) then
+    raise exception 'CASEFAIL recurring-sweep-generates-unlocked-alongside-locked: the unlocked ledger''s occurrence did not land in its open period';
+  end if;
 end`,
   }),
   queryCase({
-    name: "recurring-sweep-generates-deferred-after-cancel",
-    desc: "cancelling the request unlocks the period, so the next sweep generates the deferred occurrence (GV-281 catch-up)",
+    name: "recurring-sweep-carryover-not-double-generated",
+    desc: "an occurrence carried into the queue during a lock is not generated a second time once the request is cancelled (GV-360 — the idempotence key is period-independent)",
     setup: [
       step(SUPER, `insert into public.recurring_expenses
         (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
@@ -1745,27 +1781,28 @@ end`,
     assert: `declare res jsonb; occ integer;
 begin
   res := public.generate_all_due_recurring_expenses(200);
-  if (res->>'ledgers_skipped')::int <> 1 then
-    raise exception 'CASEFAIL recurring-sweep-generates-deferred-after-cancel: first sweep ledgers_skipped=% (expected 1 while locked)', res->>'ledgers_skipped';
-  end if;
   select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd3d3d3d3-0000-0000-0000-000000000001';
-  if occ <> 0 then
-    raise exception 'CASEFAIL recurring-sweep-generates-deferred-after-cancel: generated % while locked (expected 0)', occ;
+  if occ <> 1 then
+    raise exception 'CASEFAIL recurring-sweep-carryover-not-double-generated: first sweep generated % (expected 1 — carried into the queue)', occ;
   end if;
-  -- Cancel the live request → the period is no longer entry-locked.
+  -- Cancel the live request → the period is no longer entry-locked. The occurrence
+  -- already exists, so a further sweep must add nothing.
   update public.settlement_requests
     set status = 'cancelled'
     where ledger_id = '${WS1}' and period_id = '${P1}' and from_member_id = '${ID.B}' and to_member_id = '${A_ID}';
   res := public.generate_all_due_recurring_expenses(200);
+  if (res->>'ledgers_skipped')::int <> 0 then
+    raise exception 'CASEFAIL recurring-sweep-carryover-not-double-generated: second sweep ledgers_skipped=% (expected 0)', res->>'ledgers_skipped';
+  end if;
   select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd3d3d3d3-0000-0000-0000-000000000001';
   if occ <> 1 then
-    raise exception 'CASEFAIL recurring-sweep-generates-deferred-after-cancel: after cancel generated % (expected 1 — the deferred occurrence caught up)', occ;
+    raise exception 'CASEFAIL recurring-sweep-carryover-not-double-generated: after cancel there are % occurrence(s) (expected still 1)', occ;
   end if;
 end`,
   }),
   queryCase({
-    name: "recurring-client-zero-summary-when-locked",
-    desc: "generate_due_recurring_expenses (client catch-up) returns {generated:0, reason:'locked'} instead of raising when the open period is locked (GV-281)",
+    name: "recurring-client-carries-into-queued-period-when-locked",
+    desc: "generate_due_recurring_expenses (client catch-up) materialises into the queued carry-over period instead of returning reason:'locked' (GV-360)",
     setup: [
       step(SUPER, `insert into public.recurring_expenses
         (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
@@ -1773,18 +1810,26 @@ end`,
       step(A, CREATE_REQ_300),
     ],
     actor: A,
-    assert: `declare res jsonb; occ integer;
+    assert: `declare res jsonb; occ integer; occ_queued integer;
 begin
   res := public.generate_due_recurring_expenses('${WS1}');
-  if (res->>'generated')::int <> 0 then
-    raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: generated=% (expected 0 — no raise, no insert)', res->>'generated';
+  if (res->>'generated')::int <> 1 then
+    raise exception 'CASEFAIL recurring-client-carries-into-queued-period-when-locked: generated=% (expected 1 — the lock no longer defers)', res->>'generated';
   end if;
-  if res->>'reason' is distinct from 'locked' then
-    raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: reason=% (expected locked)', res->>'reason';
+  if res->>'reason' is not null then
+    raise exception 'CASEFAIL recurring-client-carries-into-queued-period-when-locked: reason=% (expected null — reason:''locked'' was removed)', res->>'reason';
   end if;
-  select count(*) into occ from public.workspace_expenses where recurring_expense_id = 'd4d4d4d4-0000-0000-0000-000000000001';
+  select count(*) into occ from public.workspace_expenses
+    where recurring_expense_id = 'd4d4d4d4-0000-0000-0000-000000000001' and period_id = '${P1}';
   if occ <> 0 then
-    raise exception 'CASEFAIL recurring-client-zero-summary-when-locked: generated % occurrence(s) (expected 0)', occ;
+    raise exception 'CASEFAIL recurring-client-carries-into-queued-period-when-locked: % occurrence(s) landed in the frozen period (expected 0)', occ;
+  end if;
+  select count(*) into occ_queued from public.workspace_expenses we
+    join public.settlement_periods sp on sp.id = we.period_id
+    where we.recurring_expense_id = 'd4d4d4d4-0000-0000-0000-000000000001'
+      and sp.ledger_id = '${WS1}' and sp.status = 'queued';
+  if occ_queued <> 1 then
+    raise exception 'CASEFAIL recurring-client-carries-into-queued-period-when-locked: % occurrence(s) in the queued successor (expected 1)', occ_queued;
   end if;
 end`,
   }),
