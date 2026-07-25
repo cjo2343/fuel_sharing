@@ -54,20 +54,17 @@ const EMAIL_SURFACE =
   'becomes is a design decision about the email set. Delete this entry when the email ' +
   'templates are next reworked onto palette values.';
 
+// GV-374 settled the one non-email entry this list used to carry, #74C69D — a green
+// from the ramp the palette was built from that never became a token. Its own entry
+// assumed the landing.css / content-pages.css copies of that hex were the hero dot's
+// surroundings; they were not, they were the :focus-visible ring, an unrelated element.
+// Two elements, two decisions: the dot took --gv-light-leaf #7EE0AB (the token for leaf
+// on a dark surface, and that hero sits on --gv-deep-forest), the ring took --gv-leaf,
+// which also has to work on the light sections. With the debt paid the entry is deleted
+// rather than renewed, which is the only ending an entry here is supposed to have.
+// What is left is the email set, and only until those templates are next reworked.
+
 export const markupExceptions = [
-  {
-    hex: '#74C69D',
-    files: ['index.html'],
-    reason:
-      'Decorative hero-dot green in the landing <svg>, a step between --gv-mist #D8F3DC ' +
-      'and --gv-leaf #52B788 that never got a token. The same value is also hard-coded in ' +
-      'landing.css and content-pages.css, which this guard does not scan, so recolouring ' +
-      'the markup copy on its own would leave the hero dot a different green from the CSS ' +
-      'around it. Not a one-file fix: either the value earns a canonical token or all ' +
-      'three copies move to --gv-leaf together, as one design decision. Out of scope for ' +
-      'GV-371, which swaps a stale brand mark.',
-    reviewBy: '2026-10-25',
-  },
   {
     hex: '#EDEFED',
     files: EMAIL_TEMPLATES,
