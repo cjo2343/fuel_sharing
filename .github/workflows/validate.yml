@@ -128,7 +128,7 @@ jobs:
           node-version: "22"
 
       # Replays supabase/migrations/*.sql and supabase-schema.sql into two
-      # disposable Postgres 15 databases and diffs the schema dumps — proves the
+      # disposable Postgres 17 databases and diffs the schema dumps — proves the
       # consolidated schema reproduces the migrations' end state (the grep-based
       # guard in test-migrations.mjs cannot see semantic drift).
       - name: Verify schema equivalence
@@ -167,7 +167,7 @@ jobs:
       #
       # No sibling job in this workflow pulls from public.ecr.aws — the other
       # Docker-backed jobs (schema-equivalence, role-matrix, functional-smoke)
-      # only use the Docker Hub postgres:15-alpine image (tools/lib/replay-
+      # only use the Docker Hub postgres:17-alpine image (tools/lib/replay-
       # container.mjs), which isn't rate-limited the same way. So only this job
       # needs the cache below.
       #
@@ -216,7 +216,7 @@ jobs:
           docker save -o ~/.cache/pg-meta/${{ steps.pgmeta.outputs.sanitized }}.tar "${{ steps.pgmeta.outputs.ref }}"
       # --- end GV-300 ---
 
-      # Replays supabase-schema.sql into a disposable Postgres 15 and re-runs
+      # Replays supabase-schema.sql into a disposable Postgres 17 and re-runs
       # `supabase gen types typescript`, then byte-compares against the
       # committed types/database.ts. Fails when a schema change merged without
       # regenerating the canonical shared types (npm run gen:db-types).
@@ -238,7 +238,7 @@ jobs:
         with:
           node-version: "22"
 
-      # Replays supabase-schema.sql into a disposable Postgres 15 with a
+      # Replays supabase-schema.sql into a disposable Postgres 17 with a
       # Supabase-faithful prelude (anon/authenticated/service_role, default
       # privileges, auth.jwt()), builds a debtor->creditor fixture through the
       # real RPCs, then runs every financial transition as REAL role/actor
@@ -258,7 +258,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Replays supabase-schema.sql into a disposable Postgres 15, seeds a
+      # Replays supabase-schema.sql into a disposable Postgres 17, seeds a
       # realistic two-ledger dataset, runs delete_my_account()/upsert_push_token()
       # as impersonated JWT users, and asserts every scrub, succession, snapshot
       # rewrite, sole-member cascade, and push-token purge (migrations 056/057).

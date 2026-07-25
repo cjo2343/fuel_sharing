@@ -10,10 +10,11 @@
 # 'Slettet medlem N' naming, bystander integrity, and push-token
 # registration/re-point/purge.
 #
-# This is that replay. It spins a disposable Postgres 15 (matching Supabase) via
-# Docker, applies the consolidated schema with the same Supabase stubs the
-# equivalence checker uses (+ an auth.users table and auth.uid(), which
-# delete_my_account deletes from), seeds a realistic two-ledger dataset, runs the
+# This is that replay. It spins a disposable Postgres 17 (matching prod Supabase,
+# which runs 17.x) via Docker, applies the consolidated schema with the same
+# Supabase stubs the equivalence checker uses (+ an auth.users table and
+# auth.uid(), which delete_my_account deletes from), seeds a realistic
+# two-ledger dataset, runs the
 # deletion as an impersonated JWT user, and asserts every scrub. Any failed
 # assertion raises inside psql (ON_ERROR_STOP) and aborts the script with the
 # reason. It doubles as the regression harness for ANY future RPC change touching
@@ -43,9 +44,13 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "⏳ Starting postgres:15-alpine as ${C}…"
+# Keep in step with the canonical IMAGE constant in tools/lib/replay-container.mjs
+# (shell can't import it). Prod Supabase runs Postgres 17.x — GV-314.
+PG_IMAGE="postgres:17-alpine"
+
+echo "⏳ Starting ${PG_IMAGE} as ${C}…"
 docker run -d --name "${C}" -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust \
-  -v "$REPO":/repo:ro postgres:15-alpine >/dev/null
+  -v "$REPO":/repo:ro "${PG_IMAGE}" >/dev/null
 
 ready=0
 for _ in $(seq 1 60); do

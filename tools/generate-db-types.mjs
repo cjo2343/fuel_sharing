@@ -10,7 +10,7 @@
 // compares the copies.
 //
 // What it does:
-//   1. Starts a disposable Postgres 15 container and applies the Supabase-stub
+//   1. Starts a disposable Postgres 17 container and applies the Supabase-stub
 //      prelude (shared bootstrap: tools/lib/replay-container.mjs — the same
 //      mechanics check-schema-equivalence.mjs uses). The container's 5432 is
 //      published on an ephemeral localhost port so the host-side supabase CLI

@@ -1,9 +1,10 @@
 // Shared Docker replay helpers (GV-175 / GV-223).
 //
 // Both check-schema-equivalence.mjs and generate-db-types.mjs need the same
-// bootstrap: a disposable Postgres 15 container (matches Supabase) with the
-// repo mounted read-only at /work, plus a Supabase-stub prelude — roles
-// anon/authenticated/service_role, auth.jwt()/auth.uid(), the extensions
+// bootstrap: a disposable Postgres 17 container (matches the major version prod
+// Supabase runs — 17.x) with the repo mounted read-only at /work, plus a
+// Supabase-stub prelude — roles anon/authenticated/service_role,
+// auth.jwt()/auth.uid(), the extensions
 // schema with pgcrypto (Supabase preinstalls it there, which is why migration
 // 001's bare `create extension if not exists pgcrypto` is a no-op in prod),
 // and the supabase_realtime publication. This module owns that bootstrap so
@@ -16,7 +17,12 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 
-export const IMAGE = "postgres:15-alpine";
+// Canonical replay image for every Docker-backed guard in this repo. Prod
+// Supabase runs Postgres 17.x, so the guards must replay on 17 — a 15 replay
+// verified behaviour on a major version that never serves users (GV-314). The
+// shell-based functional tests can't import this, so they pin the same tag with
+// a comment pointing back here; keep them in step.
+export const IMAGE = "postgres:17-alpine";
 
 export const PRELUDE = `
 do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
