@@ -29,17 +29,32 @@ The user merges every PR themselves. Never merge, never push to main.
 
 ## 3. Move the Jira ticket to In Progress (if not already)
 
-Jira: govehlo.atlassian.net, user `jira@chrjohn.dk`. The API token lives on its own
+Jira: govehlo.atlassian.net, user `jira@chrjohn.dk`. The credential lives on its own
 line in `fuel_sharing/.claude/.jira-token` (gitignored — never commit or print it).
 Run Jira curls from the fuel_sharing directory so the relative path resolves. To
 rotate: regenerate the token at id.atlassian.net and overwrite that one file.
 
+**That file holds `base64("email:token")` — the whole HTTP Basic credential, not a
+raw token.** Send it as an `Authorization` header. `curl -u "jira@chrjohn.dk:$TOKEN"`
+base64-encodes it a *second* time and fails.
+
 ```sh
 TOKEN=$(tr -d '[:space:]' < .claude/.jira-token)
-curl -s -u "jira@chrjohn.dk:$TOKEN" -X POST \
+curl -s -X POST -H "Authorization: Basic $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"transition":{"id":"31"}}' \
   https://govehlo.atlassian.net/rest/api/3/issue/GV-NN/transitions
+```
+
+**A bad credential looks like an empty board, not an auth error.** Jira answers an
+unauthenticated caller by showing it nothing rather than refusing it, so
+`/search/jql` returns a cheerful `{"issues":[],"isLast":true}` for every query while
+`/myself` returns 401. If a search comes back empty, check `/myself` before believing
+the board is clear:
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Basic $TOKEN" \
+  https://govehlo.atlassian.net/rest/api/3/myself   # 200 = good, 401 = bad credential
 ```
 
 Transition ids — **GV: 31 = I gang, 51 = Færdig. GVM: 21 = In Progress, 31 = Done.**
