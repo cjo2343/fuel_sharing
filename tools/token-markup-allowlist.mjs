@@ -64,26 +64,33 @@ const EMAIL_SURFACE =
 // rather than renewed, which is the only ending an entry here is supposed to have.
 // What is left is the email set, and only until those templates are next reworked.
 
+// GV-364/GV-374 paid two of the three email entries on 2026-07-25, which is the ending
+// EMAIL_SURFACE above prescribed ("delete this entry when the email templates are next
+// reworked onto palette values"). GV-378 is what made it possible: it added the tokens
+// these literals had no equivalent for.
+//
+//   #EDEFED → --color-surface-band #EDF3EF   (the page background behind the card)
+//   #8AA396 → --color-text-secondary #3D5C48 (the muted footer / expiry / reassurance lines)
+//
+// The second was an accessibility fix, not a tidy-up: #8AA396 measured 2.71:1 against the
+// white card it actually sits on, and that text is 12-13px, so AA wants 4.5:1. It was
+// failing live. --color-text-muted was measured too and rejected at 3.60:1 — the token you
+// would reach for by instinct looks like a fix without being one.
+
 export const markupExceptions = [
-  {
-    hex: '#EDEFED',
-    files: EMAIL_TEMPLATES,
-    reason: `${EMAIL_SURFACE} Used as the page background behind the white email card.`,
-    reviewBy: '2026-10-25',
-  },
-  {
-    hex: '#8AA396',
-    files: EMAIL_TEMPLATES,
-    reason: `${EMAIL_SURFACE} Used for the muted footer and link-expiry lines.`,
-    reviewBy: '2026-10-25',
-  },
   {
     hex: '#F1F8F3',
     files: ['email-templates/newsletter.html'],
     reason:
-      `${EMAIL_SURFACE} Used as the tint fill behind the newsletter story cards, paired ` +
-      'with the canonical --gv-border #E2EDE8; of the three it is the one with an obvious ' +
-      'palette replacement (--gv-warm-white #F7F9F8), so start here.',
+      `${EMAIL_SURFACE} The tint fill behind the newsletter story cards, paired with the ` +
+      'canonical --gv-border #E2EDE8. This entry SURVIVES the GV-374 rework on purpose, and ' +
+      'the earlier note here — that --gv-warm-white was an obvious replacement to "start ' +
+      'with" — was wrong twice over. It assumed the card sat on the page background; it does ' +
+      'not, it is nested inside the opaque white card, so the comparison that matters is ' +
+      'against #FFFFFF. And the nearest tinted token, --color-surface-band, is documented as ' +
+      'a full-bleed banded SECTION, not a card fill — wrong by definition, not merely by ' +
+      'value. Nothing in the palette currently expresses "faint tint on white card". Delete ' +
+      'this entry if such a token is ever added; do not spend it on a near-miss.',
     reviewBy: '2026-10-25',
   },
 ];
