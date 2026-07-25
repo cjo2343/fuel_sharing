@@ -86,9 +86,19 @@ function normalise(name) {
 const HEX = /^#[0-9a-fA-F]{3,8}$/;
 
 // name -> hex, keeping only literal hex values (var()-aliases are skipped).
+//
+// Comments are stripped FIRST, and that is load-bearing rather than tidy (GV-378).
+// The declaration pattern runs `[^;]+` to the next semicolon, so a comment that names
+// another token WITH ITS COLON — "NOT --color-border: a border used as a background" —
+// matches as if it were a declaration and swallows everything up to the next `;`,
+// which is the real declaration underneath it. The token then vanishes from the
+// canonical map silently: no error, the count is just quietly lower, and the derived
+// copies are never asked for it. GV-378 hit exactly that while documenting two new
+// tokens, and the only symptom was a colour that no longer had to exist anywhere.
 function parseCssHex(source) {
   const map = new Map();
-  for (const m of source.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+  const declarations = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of declarations.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
     const value = m[2].trim();
     if (HEX.test(value)) map.set(normalise(m[1]), value.toUpperCase());
   }
@@ -116,9 +126,32 @@ if (!fs.existsSync(canonicalPath)) {
   console.error(`check-token-drift: canonical token file not found at ${CANONICAL}`);
   process.exit(1);
 }
-const canonical = parseCssHex(fs.readFileSync(canonicalPath, 'utf8'));
+const canonicalSource = fs.readFileSync(canonicalPath, 'utf8');
+const canonical = parseCssHex(canonicalSource);
 if (canonical.size === 0) {
   console.error('check-token-drift: parsed zero canonical colours — parser or path is wrong.');
+  process.exit(1);
+}
+
+// Second, independent read of the same file: line-anchored, so nothing earlier in the
+// text can throw it off. Its only job is to catch a canonical colour that the
+// declaration parser above dropped — the one failure this guard cannot survive, because
+// a dropped colour is one the whole script then never asks the derived copies for. A
+// silent under-read is indistinguishable from "that token does not exist", which is
+// precisely how GV-378's two new tokens went missing for one run.
+const swallowed = [];
+for (const m of canonicalSource.matchAll(/^[ \t]*(--[a-z0-9-]+)[ \t]*:[ \t]*(#[0-9a-fA-F]{3,8})[ \t]*;/gim)) {
+  if (!canonical.has(normalise(m[1]))) swallowed.push(`${m[1]}: ${m[2]}`);
+}
+if (swallowed.length > 0) {
+  console.error(
+    'check-token-drift: the canonical parser DROPPED colours that are declared in ' +
+    `${CANONICAL}:\n` +
+    swallowed.map((line) => `  - ${line}`).join('\n') +
+    '\nThis is a bug in this script, not in the palette — nothing downstream would have ' +
+    'noticed. Most likely a comment in that file writes another token name followed by a ' +
+    'colon, which reads as a declaration and swallows to the next semicolon.'
+  );
   process.exit(1);
 }
 

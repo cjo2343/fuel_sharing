@@ -10,12 +10,28 @@
   /* ─── Accent ─── */
   --color-amber:         #F4A261;   /* money owed outward ONLY — costs you owe, payment requests, fuel totals */
   --color-amber-light:   #FDE8D8;   /* amber tint background */
+  /* Text tone of the amber family — the only amber value that is legible AS TEXT.
+     --color-amber itself is 1.8:1 on --color-amber-light and 2.1:1 on white, so a
+     money badge painted with it is unreadable; this is 5.6:1 on --color-amber-light
+     and 6.6:1 on white. Still money-only, like the rest of the family. Distinct from
+     --text-on-amber, which is what goes ON the solid amber fill. (GV-378) */
+  --color-amber-text:    #865013;
 
   /* ─── Surfaces & Neutral ─── */
   --color-warm-white:    #F7F9F8;   /* app background */
   --color-surface:       #FFFFFF;   /* card surface */
   --color-border:        #E2EDE8;   /* dividers, input borders */
   --color-border-strong: #C4D9CD;   /* stronger borders */
+  /* Banded content section — one step cooler than the page background, for a full-bleed
+     band that has to read as a separate section without becoming a card. NOT
+     --color-disabled-bg: that one is 8 ΔE away by value but means "you cannot use this",
+     and its warm grey erases the band against --color-warm-white. (GV-378) */
+  --color-surface-band:  #EDF3EF;
+  /* Neutral chip/badge fill — the no-status member of the *-light status row below
+     (success/error/attention/amber). NOT --color-border: a border token used as a
+     background blurs what the token means, and this is the value the v1 badge and
+     avatar-chip specs have always used. (GV-378) */
+  --color-chip-neutral:  #EAEFEC;
 
   /* ─── Disabled / read-only — neutral grey, deliberately NOT brand-green ─── */
   --color-disabled-bg:     #F1F3F2;
@@ -28,6 +44,12 @@
      for the one sanctioned money-warning (InlineMessage warning variant, GVM-26). */
   --color-attention:       #C4673D;
   --color-attention-light: #FAEDE5;
+  /* Text tone of the attention family. --color-attention is only 3.42:1 on
+     --color-attention-light — fine for an icon or a 3:1 non-text mark, below the 4.5:1
+     body text needs — so an attention notice had no legible text colour and every
+     surface invented its own. This is 7.47:1 on --color-attention-light and 8.57:1 on
+     white, at the same hue (18.3° vs 18.7°). (GV-378) */
+  --color-attention-text:  #7A3A1E;
 
   /* ─── Text ─── */
   --text-primary:   var(--color-deep-forest);
