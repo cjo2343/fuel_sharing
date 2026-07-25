@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 147 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 149 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -829,7 +829,7 @@ export type Database = {
       owner_api_rate_limits: {
         Row: {
           action: string
-          actor_email: string
+          actor_hash: string
           attempts: number
           id: string
           last_attempt_at: string
@@ -837,7 +837,7 @@ export type Database = {
         }
         Insert: {
           action?: string
-          actor_email: string
+          actor_hash: string
           attempts?: number
           id?: string
           last_attempt_at?: string
@@ -845,11 +845,29 @@ export type Database = {
         }
         Update: {
           action?: string
-          actor_email?: string
+          actor_hash?: string
           attempts?: number
           id?: string
           last_attempt_at?: string
           window_started_at?: string
+        }
+        Relationships: []
+      }
+      rate_limit_actor_pepper: {
+        Row: {
+          created_at: string
+          id: boolean
+          pepper: string
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          pepper?: string
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          pepper?: string
         }
         Relationships: []
       }
@@ -1925,6 +1943,7 @@ export type Database = {
         Args: { invite_code: string }
         Returns: string
       }
+      hash_rate_limit_actor: { Args: { actor_email: string }; Returns: string }
       insert_repair: {
         Args: {
           cost_dkk_value: number

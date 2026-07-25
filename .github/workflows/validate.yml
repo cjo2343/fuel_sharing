@@ -338,6 +338,16 @@ jobs:
       - name: Run retired-RPC + tracker-row smoke
         run: bash tools/test-retired-rpcs-functional.sh
 
+      # Migration 149 (GV-385): owner_api_rate_limits must never hold a readable actor
+      # again, while still throttling per actor. Schema equivalence proves the two paths
+      # agree about the column's SHAPE; only running the limiter shows what goes IN it,
+      # and only running as service_role shows that the pepper — the thing that stops
+      # the digests being reversed with a list of known addresses — is out of reach.
+      # Also covers the two paths the GDPR gap needed: the 30-day sweep and
+      # delete_my_account's erasure.
+      - name: Run rate-limit pseudonymisation smoke
+        run: bash tools/test-rate-limit-pseudonymisation-functional.sh
+
   drill-smoke:
     name: Restore-drill end-to-end smoke (GV-329)
     needs: validate
