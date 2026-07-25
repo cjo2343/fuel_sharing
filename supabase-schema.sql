@@ -34443,3 +34443,82 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Migration 150 mirror: push-target RPCs keep e-mails and tokens out of URLs (GV-398)
+-- ═══════════════════════════════════════════════════════════════════════════════
+--
+-- The last two sites GV-389 could not close from the web repo. A PostgREST GET or
+-- DELETE takes its filter in the query string and nowhere else, so the only shape
+-- that carries the arguments in a request BODY is an RPC -- and a URL reaches the
+-- Cloudflare edge log and Supabase's gateway log while a body does not. Both values
+-- are personal data: an address, and an Expo push token because it identifies a
+-- device. Deliberately a plain lookup with no category parameter; see
+-- supabase/migrations/150_push_target_rpcs.sql for that reasoning and for the
+-- lower-casing fix that comes with it. Service-role only, anon and authenticated
+-- revoked explicitly per migration 148.
+
+-- ── resolve_push_targets: the targeted-recipient lookup, arguments in the body ─────
+-- Returns one row per registered device for the given addresses. Same two columns the
+-- URL select asked for and in the same order, so the caller's row shape is unchanged:
+-- `token` for the send, `user_id` for the mute/snooze/quiet filter that stays in the
+-- web repo. A NULL or empty array returns no rows — never every device.
+create or replace function public.resolve_push_targets(p_emails text[])
+returns table (token text, user_id uuid)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select ept.token, ept.user_id
+  from public.expo_push_tokens ept
+  where lower(ept.email) = any (
+    select distinct lower(btrim(candidate))
+    from unnest(coalesce(p_emails, array[]::text[])) as candidate
+    where nullif(btrim(candidate), '') is not null
+  );
+$$;
+
+revoke all on function public.resolve_push_targets(text[]) from public;
+revoke all on function public.resolve_push_targets(text[]) from anon;
+revoke all on function public.resolve_push_targets(text[]) from authenticated;
+grant execute on function public.resolve_push_targets(text[]) to service_role;
+
+-- ── prune_push_tokens: delete the devices Expo reported DeviceNotRegistered ────────
+-- Returns the number of rows actually deleted. The URL DELETE returned nothing usable
+-- (Prefer: return=minimal), so the caller could not tell a successful prune from a
+-- silently mismatched token list; a count is free here and makes that observable
+-- without logging a single token.
+create or replace function public.prune_push_tokens(p_tokens text[])
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted integer := 0;
+begin
+  delete from public.expo_push_tokens ept
+  where ept.token = any (
+    select distinct btrim(candidate)
+    from unnest(coalesce(p_tokens, array[]::text[])) as candidate
+    where nullif(btrim(candidate), '') is not null
+  );
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end;
+$$;
+
+revoke all on function public.prune_push_tokens(text[]) from public;
+revoke all on function public.prune_push_tokens(text[]) from anon;
+revoke all on function public.prune_push_tokens(text[]) from authenticated;
+grant execute on function public.prune_push_tokens(text[]) to service_role;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '150_push_target_rpcs',
+  'GV-398: two service-role-only RPCs so the push engine stops writing personal data into request lines. resolve_push_targets(text[]) returns (token, user_id) for a set of member addresses and prune_push_tokens(text[]) deletes the devices Expo reported DeviceNotRegistered, returning a count. Both replace a PostgREST query-string filter in govehlo-web functions/api/_push.js (resolveTokensWithMuteState''s GET expo_push_tokens?email=in.(...) and pruneTokens'' DELETE ?token=in.(...)) -- the last two sites GV-389 could not close, because a GET/DELETE filter only travels in the URL and the only body-carrying shape PostgREST offers is an RPC. A URL reaches the Cloudflare edge log and Supabase''s gateway log; a POST body does not. Deliberately a plain lookup with NO category parameter: the mute/snooze/quiet filter also serves the operator broadcast, which has no email list at all, so moving it into SQL for one caller would fork it into two implementations whose disagreement would be a silently undelivered push -- and an accepted-and-ignored parameter is exactly what migration 151 removes next door. resolve_push_targets also lower-cases BOTH sides of the address comparison, fixing a silent drop: upsert_push_token stores current_user_email() verbatim, so a capitalised address never matched the lower-cased in.() list and its owner missed every targeted push. Service-role only, with anon and authenticated revoked explicitly per migration 148.'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
