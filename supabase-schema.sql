@@ -34001,8 +34001,10 @@ grant execute on function public.check_owner_rate_limit(text, text, integer, int
 -- 5. Retention: counters expire                                          (GV-385)
 -- ═══════════════════════════════════════════════════════════════════════════════
 --
--- Re-declared off migration 131 (its newest prior definition), verbatim plus an
--- eleventh table. The sweep already runs daily; it simply never looked here.
+-- Re-declared off migration 132 (its newest prior definition -- 131 is NOT it; 132
+-- added the GV-316 workspace purge, and basing on 131 quietly reverted it, which the
+-- role matrix caught in three cases), verbatim plus a twelfth table. The sweep already
+-- runs daily; it simply never looked here.
 
 create or replace function public.run_operational_retention(
   p_stale_push_days integer default 180,
@@ -34024,10 +34026,12 @@ declare
   v_deleted_workspace_expenses integer := 0;
   v_deleted_vehicle_repairs integer := 0;
   v_deleted_owner_activity integer := 0;
+  v_purged_workspaces integer := 0;
   v_deleted_rate_limit_counters integer := 0;
   v_short_cutoff timestamptz := now() - interval '90 days';
   v_financial_cutoff timestamptz := date_trunc('year', now()) - interval '5 years';
   v_audit_cutoff timestamptz := now() - interval '24 months';
+  v_workspace_cutoff timestamptz := now() - interval '90 days';
   -- GV-385: throttle counters are working state, not history. The longest window any
   -- caller configures is a day, and the two admin readers (owner/ocr-telemetry and
   -- owner/external-usage) both look back 7 days, so 30 days is already generous.
@@ -34054,6 +34058,7 @@ begin
     select count(*) into v_deleted_vehicle_repairs from public.vehicle_repairs where deleted_at < v_financial_cutoff;
     select count(*) into v_deleted_owner_activity from public.owner_activity_log where created_at < v_audit_cutoff;
     select count(*) into v_deleted_rate_limit_counters from public.owner_api_rate_limits where window_started_at < v_rate_limit_cutoff;
+    select count(*) into v_purged_workspaces from public.ledgers where deleted_at < v_workspace_cutoff;
   else
     with purged as (delete from public.expo_push_tokens where updated_at < now() - make_interval(days => p_stale_push_days) returning 1)
       select count(*) into v_stale_tokens from purged;
@@ -34079,6 +34084,14 @@ begin
       select count(*) into v_deleted_workspace_expenses from purged;
     with purged as (delete from public.vehicle_repairs where deleted_at < v_financial_cutoff returning 1)
       select count(*) into v_deleted_vehicle_repairs from purged;
+
+    -- GV-316: purge workspaces whose operator decommission tombstone has
+    -- outlived the 90-day grace window. On delete cascade removes every child
+    -- row; the closed-period locks stand aside for a whole-workspace teardown
+    -- (settlement_periods delete first). Kept inside the pii_scrub gate for
+    -- parity with the financial-row purges above.
+    with purged as (delete from public.ledgers where deleted_at < v_workspace_cutoff returning 1)
+      select count(*) into v_purged_workspaces from purged;
     perform set_config('govehlo.pii_scrub', '', true);
     with purged as (delete from public.owner_activity_log where created_at < v_audit_cutoff returning 1)
       select count(*) into v_deleted_owner_activity from purged;
@@ -34097,12 +34110,14 @@ begin
     'deletedWorkspaceExpenses', v_deleted_workspace_expenses,
     'deletedVehicleRepairs', v_deleted_vehicle_repairs,
     'deletedOwnerActivity', v_deleted_owner_activity,
+    'purgedWorkspaces', v_purged_workspaces,
     'deletedRateLimitCounters', v_deleted_rate_limit_counters,
     'dryRun', p_dry_run,
     'staleDays', p_stale_push_days,
     'shortRetentionDays', 90,
     'financialRetentionYears', 5,
     'auditRetentionMonths', 24,
+    'workspaceGraceDays', 90,
     'rateLimitRetentionDays', 30,
     'ranAt', now()
   );
@@ -34423,7 +34438,7 @@ grant execute on function public.delete_my_account() to authenticated;
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values (
   '149_rate_limit_actor_pseudonymisation',
-  'GV-385: owner_api_rate_limits.actor_email stored every user''s verified e-mail in clear text, forever, with no reader, no retention sweep and no reference from delete_my_account. Six of its seven writers are ordinary users, not operators -- the /api/mobile/* proxies all route through checkUserRate() in govehlo-web functions/api/_auth.js, which reuses this owner-named limiter. Correction to the ticket: the table has TWO readers, not one (owner/ocr-telemetry.js GV-231 and owner/external-usage.js GV-239), but neither reads the actor -- both select only (action, attempts, window_started_at) and aggregate by action over 7 days, so the ticket''s conclusion stands and the fix costs no reader anything. The limiter needs to tell actors apart, not to know who they are, so the column is REPLACED rather than dropped: dropping it would collapse every caller into one bucket and turn a per-user limit into a global one. actor_email is renamed to actor_hash in place -- keeping the (actor, action, window) unique key, its index and all live throttle state -- and the values are digested with a per-database pepper held in a new single-row table that has RLS on, no policy and every grant revoked including service_role, so only the owner (i.e. the security-definer functions) can read it. The pepper is the point: an unsalted sha256 of an e-mail is reversed by hashing the known user list, which would leave the admin console able to re-identify every row. check_owner_rate_limit is re-declared off migration 100 (its newest prior definition), verbatim except that it hashes internally, so its named-JSON parameter contract is untouched and NO govehlo-web change ships with this migration; #variable_conflict use_column stays because the RETURNS TABLE column attempts still shadows the table''s even though the actor_email collision migration 100 fixed is gone. Because a pepper is a pseudonym and not an erasure, both paths the ticket asked for are added too: run_operational_retention (re-declared off 131) purges counters older than 30 days -- the longest configured window is a day and both admin readers look back 7 -- reporting deletedRateLimitCounters, and delete_my_account (re-declared off 147) deletes the caller''s rows by recomputing the digest, next to the sibling ledger_onboarding_rate_limits cleanup it sits beside.'
+  'GV-385: owner_api_rate_limits.actor_email stored every user''s verified e-mail in clear text, forever, with no reader, no retention sweep and no reference from delete_my_account. Six of its seven writers are ordinary users, not operators -- the /api/mobile/* proxies all route through checkUserRate() in govehlo-web functions/api/_auth.js, which reuses this owner-named limiter. Correction to the ticket: the table has TWO readers, not one (owner/ocr-telemetry.js GV-231 and owner/external-usage.js GV-239), but neither reads the actor -- both select only (action, attempts, window_started_at) and aggregate by action over 7 days, so the ticket''s conclusion stands and the fix costs no reader anything. The limiter needs to tell actors apart, not to know who they are, so the column is REPLACED rather than dropped: dropping it would collapse every caller into one bucket and turn a per-user limit into a global one. actor_email is renamed to actor_hash in place -- keeping the (actor, action, window) unique key, its index and all live throttle state -- and the values are digested with a per-database pepper held in a new single-row table that has RLS on, no policy and every grant revoked including service_role, so only the owner (i.e. the security-definer functions) can read it. The pepper is the point: an unsalted sha256 of an e-mail is reversed by hashing the known user list, which would leave the admin console able to re-identify every row. check_owner_rate_limit is re-declared off migration 100 (its newest prior definition), verbatim except that it hashes internally, so its named-JSON parameter contract is untouched and NO govehlo-web change ships with this migration; #variable_conflict use_column stays because the RETURNS TABLE column attempts still shadows the table''s even though the actor_email collision migration 100 fixed is gone. Because a pepper is a pseudonym and not an erasure, both paths the ticket asked for are added too: run_operational_retention (re-declared off 132 -- its NEWEST prior definition, not 131, which predates the GV-316 workspace purge; the first attempt based on 131 reverted it and the role matrix failed three cases) purges counters older than 30 days -- the longest configured window is a day and both admin readers look back 7 -- reporting deletedRateLimitCounters, and delete_my_account (re-declared off 147) deletes the caller''s rows by recomputing the digest, next to the sibling ledger_onboarding_rate_limits cleanup it sits beside.'
 )
 on conflict (migration_id) do update
 set description = excluded.description,
