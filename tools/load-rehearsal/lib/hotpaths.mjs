@@ -28,8 +28,13 @@ export const EVENT_TYPE_EXCLUDE = [
 ];
 
 // Explicit projections (data minimisation) — copied verbatim from the gateway.
+// GV-393: these had drifted to 12 columns while the gateway had grown to 17
+// (created_at, paid_claimed_at, last_reminder_at, reminder_count and
+// last_confirm_reminder_at were missing), so the rehearsal under-measured the
+// settlements payload on every VU iteration. tools/check-hotpath-mirror.mjs now
+// compares this string against the gateway's, byte for byte.
 export const SETTLEMENT_REQUEST_COLUMNS =
-  "id,ledger_id,period_id,from_member_id,to_member_id,amount,currency,status,requested_at,paid_at,paid_note,dispute_note";
+  "id,ledger_id,period_id,from_member_id,to_member_id,amount,currency,status,created_at,requested_at,paid_claimed_at,paid_at,paid_note,dispute_note,last_reminder_at,reminder_count,last_confirm_reminder_at";
 export const SETTLEMENT_PERIOD_COLUMNS =
   "id,ledger_id,status,label,opened_at,closed_at,snapshot_json";
 
@@ -70,9 +75,13 @@ export function ledgerReadRequests(ledgerId) {
       query: `select=${SETTLEMENT_REQUEST_COLUMNS}&ledger_id=eq.${lid}&order=created_at.desc`,
     },
     {
+      // Deliberately NO deleted_at filter, matching the gateway (GVM-388):
+      // cancelled bookings are soft-deletes and the Historik Bookinger tab lists
+      // them, so the real read returns them too. GV-393: this carried
+      // `&deleted_at=is.null` and so under-measured the bookings row count.
       label: "read:bookings",
       table: "car_bookings",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=start_at.desc`,
+      query: `select=*&ledger_id=eq.${lid}&order=start_at.desc`,
     },
     {
       label: "read:events",

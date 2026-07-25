@@ -167,7 +167,20 @@ files.forEach((file, index) => {
   assert.ok(file.startsWith(`${expectedPrefix}_`), `${file} should start with ${expectedPrefix}_`);
   const content = readFileSync(join(migrationDir, file), "utf8");
   assert.ok(content.trim().length > 0, `${file} must not be empty`);
-  assert.ok(/^-- Migration \d{3}:/m.test(content), `${file} should start with a migration comment`);
+  // CLAUDE.md and the /new-migration skill both say the header must be the FIRST
+  // line. This used to test with the `m` flag, so a header on line 40 passed just
+  // as happily — the doc was stricter than the guard (GV-393). All 147 migrations
+  // already complied, so the guard now enforces the documented rule instead.
+  const firstLine = content.split("\n")[0];
+  assert.ok(
+    /^-- Migration \d{3}:/.test(firstLine),
+    `${file}: the first line must be "-- Migration ${file.slice(0, 3)}: <description>" ` +
+      `(found: ${JSON.stringify(firstLine.slice(0, 60))})`,
+  );
+  assert.ok(
+    firstLine.startsWith(`-- Migration ${file.slice(0, 3)}:`),
+    `${file}: the header names a different migration number than the filename (${JSON.stringify(firstLine.slice(0, 60))})`,
+  );
 });
 
 // Each migration must actually INSERT its own id into the tracker — not merely
@@ -396,4 +409,15 @@ files.forEach((file) => {
   );
 });
 
-console.log("ok - migration files are present, ordered, mirrored in the consolidated schema, and cover critical schema markers");
+// The marker list above is a FROZEN spot-check of migrations 023–047, not coverage.
+// It was written when 047 was the newest migration and was never extended; 100 later
+// migrations (048–147) have no marker at all. That is fine — markers are a crude
+// substring test and check-schema-equivalence.mjs does the real job, replaying both
+// paths into Postgres and diffing all 513 objects including function bodies — but the
+// success line used to claim the markers "cover critical schema markers", which reads
+// like whole-schema coverage this file has never provided (GV-393). Say what it is.
+console.log(
+  "ok - migration files are present, ordered, headed, tracker-inserted, and mirrored " +
+    "into supabase-schema.sql (+ a frozen 023–047 marker spot-check; whole-schema " +
+    "equivalence is check-schema-equivalence.mjs's job, not this file's)",
+);

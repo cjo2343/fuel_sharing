@@ -283,3 +283,21 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/test-rls-role-matrix.mjs --strict
+
+      # 6. Load-rehearsal hot-path mirror, STRICT (GV-393). tools/load-rehearsal
+      #    replays "what a member's device does" against a throwaway project, so its
+      #    query set has to equal govehlo-mobile's ledger-data-gateway.ts. The guard
+      #    that claimed to check this compared hotpaths.mjs to its OWN hardcoded copy
+      #    of the same constants — a tautology that goes green precisely when the
+      #    mirror is wrong, and it had missed two live drifts: a 12-column settlements
+      #    projection against the gateway's 17, and a `deleted_at=is.null` filter on
+      #    bookings that the gateway deliberately omits (GVM-388). Both made the
+      #    rehearsal UNDER-measure, i.e. certify headroom production does not have.
+      #
+      #    Like the token-drift and role-matrix checks above, it can only compare
+      #    against a repo it can see, so this workflow is the only place it is real.
+      #    --strict makes an absent sibling a hard failure (= the checkout broke).
+      - name: Load-rehearsal hot-path mirror (strict, needs govehlo-mobile)
+        if: steps.probe.outputs.has_token == 'true'
+        working-directory: fuel_sharing
+        run: node tools/check-hotpath-mirror.mjs --strict

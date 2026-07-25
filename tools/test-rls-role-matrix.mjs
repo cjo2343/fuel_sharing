@@ -123,6 +123,52 @@ do $$ begin create role service_role nologin bypassrls; exception when duplicate
 create schema if not exists auth;
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
+-- Supabase's storage schema (GV-393). Until this existed here, migration 139's
+-- incident-photo object policies were wrapped in
+-- \`if exists (select 1 from information_schema.schemata where schema_name = 'storage')\`
+-- and therefore never created in ANY replay — the block was a no-op on both sides of
+-- the equivalence check (symmetric, no diff, zero coverage), and the only thing
+-- guarding who may upload or delete incident photos in production was a regex over
+-- the SQL text in tools/test-incident-photo-storage-contract.mjs. That is a
+-- GDPR-relevant surface: incident photos are pictures of vehicles, plausibly showing
+-- number plates. Creating the schema makes the block fire, so the policies below can
+-- be exercised for real by the storage-* cases.
+--
+-- Only the columns the policies actually reference are modelled (bucket_id, name,
+-- owner_id) plus an id/created_at, and foldername() is Supabase's own definition:
+-- string_to_array on '/' minus the final element, so 'ws/incident/photo.jpg' yields
+-- {ws, incident} and satisfies cardinality(...) = 2.
+create schema if not exists storage;
+-- Migration 138 seeds the private incident-photos bucket row and adds the SELECT
+-- policy; 139 replaces the insert/delete ones. Both blocks are armed by the schema
+-- existing, so buckets must be modelled too.
+create table if not exists storage.buckets (
+  id text primary key,
+  name text,
+  public boolean default false,
+  file_size_limit bigint,
+  allowed_mime_types text[],
+  created_at timestamptz default now()
+);
+create table if not exists storage.objects (
+  id uuid primary key default extensions.gen_random_uuid(),
+  bucket_id text,
+  name text,
+  owner_id text,
+  created_at timestamptz default now()
+);
+alter table storage.objects enable row level security;
+create or replace function storage.foldername(name text) returns text[]
+language plpgsql immutable
+as $fn$
+declare _parts text[];
+begin
+  select string_to_array(name, '/') into _parts;
+  return _parts[1:array_length(_parts, 1) - 1];
+end
+$fn$;
+grant usage on schema storage to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
 create or replace function auth.jwt() returns jsonb
 language sql stable
 as 'select nullif(current_setting(''request.jwt.claims'', true), '''')::jsonb';
@@ -131,6 +177,12 @@ language sql stable
 as 'select nullif(auth.jwt() ->> ''sub'', '''')::uuid';
 create publication supabase_realtime;
 grant usage on schema public to anon, authenticated, service_role;
+-- Real Supabase grants usage on the auth schema to these roles, and its helpers are
+-- callable directly from RLS policy expressions. Without this, any policy that
+-- evaluates auth.uid() OUTSIDE a security-definer function raises "permission denied
+-- for schema auth" — which is SQLSTATE 42501, the very code the deny-cases assert, so
+-- a case could pass for entirely the wrong reason (GV-393).
+grant usage on schema auth to anon, authenticated, service_role;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
@@ -2931,6 +2983,118 @@ end`,
          values (${LATEST_WS1_INCIDENT}, '${WS1}', '${WS1}/x/y.jpg');`,
     expect: "42501",
   }),
+  // ── storage.objects: migration 139's incident-photo object policies ────────
+  // Until GV-393 these had NO behavioural coverage at all — the migration wraps
+  // them in an `if exists (schema_name = 'storage')` guard and no replay ever
+  // created that schema, so the block was a symmetric no-op that the equivalence
+  // check could not see. The PRELUDE now creates a faithful storage.objects, so
+  // these cases exercise the real policies. Upload is bound to an EXISTING incident
+  // in the SAME workspace; direct delete is uploader-or-admin only.
+  //
+  // `sub` in claimsAuth() is what auth.uid() returns, so owner_id is written as that
+  // same uuid to model Storage stamping the uploader.
+  queryCase({
+    name: "storage-incident-photo-upload-allowed",
+    desc: "member B uploads an object under <ws>/<incident>/ for a real incident in her workspace",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    assert: `begin
+  insert into storage.objects (bucket_id, name, owner_id)
+  values ('incident-photos', '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg', auth.uid()::text);
+  if not exists (select 1 from storage.objects where bucket_id = 'incident-photos') then
+    raise exception 'CASEFAIL storage-incident-photo-upload-allowed: object not stored';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "storage-incident-photo-upload-unknown-incident-denied",
+    desc: "an object naming a non-existent incident id is rejected (upload must bind to a real incident)",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('incident-photos', '${WS1}/99999999/photo.jpg', auth.uid()::text);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "storage-incident-photo-upload-foreign-workspace-denied",
+    desc: "E (other workspace) cannot upload under ws1's prefix",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: E,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('incident-photos', '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg', auth.uid()::text);`,
+    expect: "42501",
+  }),
+  // Isolates the `cardinality(storage.foldername(name)) = 2` clause specifically.
+  // A bucket-root path ('loose-photo.jpg') would NOT do that: foldername() returns
+  // an empty array, so [1] is null and is_ledger_member(null) already denies it —
+  // the case would pass with the cardinality clause deleted, guarding nothing.
+  // Mutation-tested: removing that clause from the policy turns THIS case red.
+  // A nested path keeps [1] = a real workspace and [2] = a real incident, so
+  // membership and the incident-binding both hold and only cardinality can reject.
+  rpcCase({
+    name: "storage-incident-photo-upload-nested-path-denied",
+    desc: "an object nested deeper than <ws>/<incident>/ is rejected by the cardinality clause alone",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('incident-photos', '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/nested/photo.jpg', auth.uid()::text);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "storage-incident-photo-delete-noncreator-denied",
+    desc: "bystander C (member, not uploader, not admin) cannot delete B's uploaded object",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(
+        B,
+        `insert into storage.objects (bucket_id, name, owner_id)
+         values ('incident-photos', '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg', auth.uid()::text);`,
+      ),
+    ],
+    actor: C,
+    op: `delete from storage.objects where bucket_id = 'incident-photos';
+         if not found then raise exception 'CASEFAIL: delete silently matched nothing' using errcode = '42501'; end if;`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "storage-incident-photo-delete-admin-allowed",
+    desc: "workspace admin G can delete another member's incident photo object",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(
+        B,
+        `insert into storage.objects (bucket_id, name, owner_id)
+         values ('incident-photos', '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg', auth.uid()::text);`,
+      ),
+    ],
+    actor: G,
+    assert: `begin
+  delete from storage.objects where bucket_id = 'incident-photos';
+  if exists (select 1 from storage.objects where bucket_id = 'incident-photos') then
+    raise exception 'CASEFAIL storage-incident-photo-delete-admin-allowed: object survived an admin delete';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "storage-incident-photo-delete-uploader-allowed",
+    desc: "the uploader B can delete her own incident photo object",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(
+        B,
+        `insert into storage.objects (bucket_id, name, owner_id)
+         values ('incident-photos', '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/photo.jpg', auth.uid()::text);`,
+      ),
+    ],
+    actor: B,
+    assert: `begin
+  delete from storage.objects where bucket_id = 'incident-photos';
+  if exists (select 1 from storage.objects where bucket_id = 'incident-photos') then
+    raise exception 'CASEFAIL storage-incident-photo-delete-uploader-allowed: object survived the uploader''s delete';
+  end if;
+end`,
+  }),
+
   rpcCase({
     name: "incident-photo-wrong-prefix-rejected",
     desc: "add_incident_photo rejects a storage path outside the incident's workspace/incident prefix",
