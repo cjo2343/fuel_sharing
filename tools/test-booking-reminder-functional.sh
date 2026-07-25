@@ -12,8 +12,10 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Keep in step with the canonical IMAGE constant in tools/lib/replay-container.mjs
+# (shell can't import it). Prod Supabase runs Postgres 17.x — GV-314.
 docker run -d --name "${C}" -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust \
-  -v "$REPO":/repo:ro postgres:15-alpine >/dev/null
+  -v "$REPO":/repo:ro postgres:17-alpine >/dev/null
 
 ready=0
 for _ in $(seq 1 60); do

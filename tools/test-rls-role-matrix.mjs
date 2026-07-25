@@ -12,9 +12,10 @@
 //
 // HOW IT WORKS
 // ------------
-//   1. One disposable Postgres 15 container (matches Supabase), repo mounted
-//      read-only. All psql runs INSIDE the container; the host needs only
-//      Docker. Reuses the exact mechanics of check-schema-equivalence.mjs.
+//   1. One disposable Postgres 17 container (matches prod Supabase, which runs
+//      17.x), repo mounted read-only. All psql runs INSIDE the container; the
+//      host needs only Docker. Reuses the exact mechanics of
+//      check-schema-equivalence.mjs.
 //   2. A Supabase-faithful prelude: roles anon / authenticated / service_role
 //      (service_role carries BYPASSRLS like production), auth.jwt()/auth.uid()
 //      reading request.jwt.claims, extensions.pgcrypto, supabase_realtime, and
@@ -72,7 +73,10 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import process from "node:process";
 
-const IMAGE = "postgres:15-alpine";
+// Replay image comes from the canonical constant so this guard can't drift onto
+// a different major version than the other Docker-backed checks (GV-314).
+import { IMAGE } from "./lib/replay-container.mjs";
+
 const CONTAINER = `govehlo-role-matrix-${process.pid}`;
 const REPO = process.cwd();
 const DB = "role_matrix";

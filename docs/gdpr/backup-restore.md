@@ -50,7 +50,16 @@ Formål: bevise at backuppen faktisk kan genskabes til en brugbar database, i st
 for at antage det. Kadence: **mindst kvartalsvis** og efter større skemaændringer.
 
 1. Opret et frisk logical dump med `supabase db dump`/`pg_dump` (managed fysiske
-   backups kan ikke downloades). Gem det krypteret uden for repoet.
+   backups kan ikke downloades). **Brug 17-imaget** — prod kører Postgres 17.x, og
+   et ældre `pg_dump` nægter at læse serveren med
+   `server version mismatch: server 17.6, pg_dump 15.18` (set i den første drill
+   2026-07-17, GV-314):
+   ```sh
+   read -s DBURL   # session-pooler URI fra dashboardet; indtastes usynligt
+   docker run --rm postgres:17-alpine pg_dump "$DBURL" | gzip > ~/drill-dump.sql.gz
+   unset DBURL
+   ```
+   Gem det krypteret uden for repoet.
 2. Kør drillen (Docker påkrævet):
    ```sh
    npm run drill:restore -- ~/Downloads/backup.sql.gz

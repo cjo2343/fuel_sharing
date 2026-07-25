@@ -9,9 +9,9 @@
 // fails in CI instead of in the Supabase SQL Editor.
 //
 // What it does:
-//   1. Starts a disposable Postgres 15 container (matches Supabase), repo
-//      mounted read-only. All psql/pg_dump run INSIDE the container, so the
-//      host needs only Docker.
+//   1. Starts a disposable Postgres 17 container (matches prod Supabase, which
+//      runs 17.x), repo mounted read-only. All psql/pg_dump run INSIDE the
+//      container, so the host needs only Docker.
 //      (Container + prelude bootstrap is shared with generate-db-types.mjs —
 //      see tools/lib/replay-container.mjs.)
 //   2. Applies a Supabase-stub prelude to two fresh databases: roles
