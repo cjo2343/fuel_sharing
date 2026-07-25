@@ -281,6 +281,9 @@ jobs:
       - name: Run payer-deactivation recurring-suspension smoke
         run: bash tools/test-member-recurring-suspension-functional.sh
 
+      - name: Run syn-acknowledgement smoke
+        run: bash tools/test-acknowledge-inspection-booking-functional.sh
+
   drill-smoke:
     name: Restore-drill end-to-end smoke (GV-329)
     needs: changes
