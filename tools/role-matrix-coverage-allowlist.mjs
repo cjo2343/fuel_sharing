@@ -54,10 +54,11 @@ export const coverageExceptions = [
       'src/lib/period-snapshot.ts rather than calling the RPC. The guard exercises it ' +
       'directly to assert the membership gate migration 055 added and migration 068 ' +
       'accidentally dropped — a gate its in-SQL callers bypass by construction, so testing ' +
-      'it through them would prove nothing. What would change this answer: GV-380 deciding ' +
-      'the authenticated grant should be revoked (it is an internal calculator, and ' +
-      'migration 143 revoked eleven peers on exactly that reasoning). If the grant goes, ' +
-      'this entry goes with it and the direct case becomes a service-role case.',
+      'it through them would prove nothing. What would change this answer: the GV-380 ' +
+      'privilege review deciding the authenticated grant should be revoked (it is an ' +
+      'internal calculator, and migration 143 revoked eleven peers on exactly that ' +
+      'reasoning). If the grant goes, this entry goes with it and the direct case becomes ' +
+      'a service-role case.',
     reviewBy: '2026-10-25',
   },
   {
@@ -73,8 +74,10 @@ export const coverageExceptions = [
       'a migration, and it is coupled: fuel_ledger_healthcheck enumerates it in ' +
       'critical_rpc_names, so removing the function without editing that list turns the ' +
       'operator diagnostic into a permanent false alarm (the coupling migration 143 hit ' +
-      'with production_activity_reset, and migration 130 deferred its drops over). GV-381 ' +
-      'proposes the retirement. What would change this answer: the function being dropped ' +
+      'with production_activity_reset, and migration 130 deferred its drops over). The ' +
+      'retirement is written up in the GV-379 PR as a follow-up: one migration that drops ' +
+      'the function and re-declares fuel_ledger_healthcheck without its critical_rpc_names ' +
+      'entry, in that order. What would change this answer: the function being dropped ' +
       '(delete this entry and the guard case together), or a client genuinely adopting it.',
     reviewBy: '2026-09-30',
   },
