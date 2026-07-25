@@ -1,8 +1,21 @@
 name: Validate Fuel Ledger
 
+# GV-399: no `push: branches: [main]` here, deliberately. A merge re-ran this whole
+# suite against a commit the PR had already checked — 152 times in July 2026.
+#
+# umbrella.yml, next door, KEEPS its push trigger and that is not an oversight. It
+# checks invariants that span all three repos, so it can go red for a reason no single
+# PR could have shown: two PRs in different repos that conflict without touching a
+# shared file. That is the one class the pre-merge check genuinely cannot cover, and
+# it is exactly why the cheap post-merge run there is worth paying for and the
+# expensive one here is not.
+#
+# The failure modes this repo has actually hit — a migration-number collision, an
+# APP_VERSION/version.json lockstep collision — are same-file, same-line conflicts.
+# Two PRs both adding migration 148 also both append to the `expected` array in
+# tools/test-migrations.mjs and both append to the end of supabase-schema.sql, so git
+# blocks the second merge before CI has anything to say.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
