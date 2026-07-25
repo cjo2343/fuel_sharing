@@ -39,6 +39,11 @@ const scripts = [
   // scanner reports as a broken scanner, not as a repo full of bad colours — and so it
   // is covered even in CI, where the sibling repo it scans is not checked out.
   "node tools/test-markup-hex-scan.mjs",
+  // Unit test for the scanners behind the role-matrix coverage check (GV-379), plus the
+  // Docker-free half of its reviewed-exception list. Lives here for the same reason as
+  // the line above: the check itself only runs in the heavy role-matrix job, so without
+  // this its logic would go unexercised on most commits.
+  "node tools/test-role-matrix-coverage.mjs",
   "node tools/check-token-drift.mjs",
 ];
 

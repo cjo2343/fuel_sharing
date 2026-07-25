@@ -69,17 +69,48 @@
 // codes: 42501 permission, 23514 check-violation, 22023 invalid-parameter).
 // Keep the fixture deterministic; if you need new fixture rows add them to the
 // SEED block and re-fetch ids.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// SECOND HALF: THIS GUARD AUDITS ITS OWN COVERAGE (GV-379)
+// ─────────────────────────────────────────────────────────────────────────────
+// Proving a case passes says nothing about whether production ever runs that path.
+// GV-277 (migration 114) built the entire recurring-suspension feature on
+// set_ledger_member_active_admin, which no client calls — both clients deactivate
+// through upsert_ledger_member_admin. The feature was dark until migration 145, and
+// GVM-330's whole reading half sat built and unreachable. CI never blinked, because
+// THIS FILE is that function's only caller anywhere: the guard exercised the fixed
+// function and certified a code path production never takes.
+//
+// So after the matrix runs, a coverage block (just before cleanup() at the end)
+// intersects what this guard exercises, what `authenticated` may actually execute in
+// the replayed database, and what the two sibling client repos call. Anything in all
+// three needs a reviewed, dated entry in tools/role-matrix-coverage-allowlist.mjs.
+// A missing sibling repo warns rather than fails (fuel_sharing CI checks out this repo
+// alone); --strict makes it a failure. Adding a case for an uncalled function is
+// therefore a decision you have to write down, not a silent one.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import process from "node:process";
 
 // Replay image comes from the canonical constant so this guard can't drift onto
 // a different major version than the other Docker-backed checks (GV-314).
 import { IMAGE } from "./lib/replay-container.mjs";
+// Coverage check (GV-379) — see the block just before cleanup() at the end of this file.
+import { coverageExceptions } from "./role-matrix-coverage-allowlist.mjs";
+import { exercisedFunctions, findClientCallers } from "./lib/rpc-call-scan.mjs";
 
 const CONTAINER = `govehlo-role-matrix-${process.pid}`;
 const REPO = process.cwd();
 const DB = "role_matrix";
+
+// A missing sibling repo cannot be a hard failure by default: fuel_sharing's own CI
+// checks out this repo alone, so the client half of the coverage check is simply not
+// determinable there. --strict makes an absent sibling a failure, for a future umbrella
+// workflow that checks out all three repos side by side. Same convention, same reason,
+// as tools/check-token-drift.mjs (GV-256) — read that file's header for the precedent.
+const STRICT = process.argv.includes("--strict");
 
 // Supabase-faithful prelude. Default privileges are set BEFORE the schema so
 // every object the schema creates is granted to anon/authenticated/service_role
@@ -3056,11 +3087,213 @@ reset role;`);
   }
 }
 
+// ── Coverage check: is this guard certifying code production never runs? (GV-379) ──
+//
+// GV-277 put the entire recurring-suspension feature on set_ledger_member_active_admin,
+// which no client calls — both clients deactivate through upsert_ledger_member_admin.
+// It was dark from migration 114 until migration 145. CI stayed green the whole time
+// because THIS guard is that function's only caller anywhere: it exercised the fixed
+// function, so the feature looked tested while every real deactivation went through the
+// unfixed one. A guard pointed at unreachable code is worse than no guard — it actively
+// suppresses suspicion.
+//
+// So the guard now audits its own coverage. Three inputs:
+//
+//   1. What it exercises — read out of this file's own source (comments stripped), so
+//      it covers the CASES array, the SEED fixture and the hand-rolled concurrency
+//      blocks alike, and cannot drift from a refactor that moves cases between them.
+//   2. What `authenticated` may execute — asked of the LIVE replayed database rather
+//      than grepped out of the migrations. That distinction is load-bearing: the
+//      migration text contains 85 `grant execute` statements naming 65 distinct
+//      functions for `authenticated`, but the end state only lets `authenticated`
+//      execute 66 of them, because migrations 083/130/131/143 and friends revoke as
+//      well as grant. Grepping the grants would audit a schema that does not exist.
+//   3. Who calls it — a scan of the two sibling client repos, discounting the vendored
+//      generated type files, which declare every RPC and are never call sites.
+//
+// The overlap of all three is reported. It is NOT hard-failed on sight: the guard
+// cannot know which overlaps are intended, and failing on day one would just produce a
+// large rubber-stamp allow-list — the failure mode this project has rejected twice
+// (GV-375, GV-374). Each overlap must instead carry a reviewed entry in
+// tools/role-matrix-coverage-allowlist.mjs with a written reason and a review-by date,
+// which warns loudly every run and fails once it goes stale or expires.
+{
+  log("");
+  log("── Coverage: functions this guard exercises that no client calls (GV-379) ──");
+
+  const guardSource = fs.readFileSync(path.join(REPO, "tools/test-rls-role-matrix.mjs"), "utf8");
+  const exercised = exercisedFunctions(guardSource);
+
+  // Production-faithful reachability, straight from the replayed catalog. The PRELUDE
+  // above installs Supabase's default privileges, so this answers the real question —
+  // "could a signed-in user call this?" — for both explicitly granted RPCs and any
+  // function that merely inherited EXECUTE and was never revoked.
+  const grantRes = psql(
+    `select p.proname
+       from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      order by 1;`,
+    ["-A", "-t"],
+  );
+  if (grantRes.status !== 0) fail(`Coverage check could not read function privileges:\n${grantRes.stderr}`);
+  const callableByAuthenticated = new Set(grantRes.stdout.trim().split("\n").map((s) => s.trim()).filter(Boolean));
+
+  // Only functions this guard invokes directly AND a signed-in user could reach are in
+  // scope. Trigger functions and service-role-only RPCs are exercised on purpose and
+  // are not what GV-277 was about.
+  const inScope = [...exercised].filter((fn) => callableByAuthenticated.has(fn)).sort();
+
+  const SIBLINGS = [
+    { label: "govehlo-mobile", dir: "../govehlo-mobile" },
+    { label: "govehlo-web", dir: "../govehlo-web" },
+  ];
+
+  const callers = new Map(inScope.map((fn) => [fn, []]));
+  const scanned = [];
+  const missing = [];
+  for (const { label, dir } of SIBLINGS) {
+    const abs = path.join(REPO, dir);
+    if (!fs.existsSync(abs)) {
+      missing.push(label);
+      log(`⚠ Coverage: ${label} not found at ${dir} — client call sites NOT checked against it.`);
+      continue;
+    }
+    scanned.push(label);
+    for (const [fn, hits] of findClientCallers(abs, inScope)) {
+      for (const hit of hits) callers.get(fn).push({ repo: label, ...hit });
+    }
+  }
+
+  // With a sibling absent, "no client calls it" is unknowable, not true — claiming a
+  // finding here would be a false accusation, and every entry would look stale. So the
+  // client half is skipped entirely unless both repos were scanned.
+  const clientHalfRan = missing.length === 0;
+  let coverageFailed = false;
+  const problems = [];
+
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const today = new Date().toISOString().slice(0, 10);
+  const seen = new Set();
+  const entries = [];
+  for (const [i, entry] of coverageExceptions.entries()) {
+    const where = `role-matrix-coverage-allowlist.mjs entry ${i + 1}`;
+    if (typeof entry.fn !== "string" || !/^[a-z0-9_]+$/.test(entry.fn)) {
+      problems.push(`${where}: "fn" must be an unqualified function name, got ${JSON.stringify(entry.fn)}`);
+      continue;
+    }
+    if (typeof entry.reason !== "string" || entry.reason.trim().length < 40) {
+      problems.push(`${where} (${entry.fn}): "reason" must explain the exception to a reviewer with no context`);
+      continue;
+    }
+    if (typeof entry.reviewBy !== "string" || !ISO_DATE.test(entry.reviewBy)) {
+      problems.push(`${where} (${entry.fn}): "reviewBy" must be a YYYY-MM-DD date`);
+      continue;
+    }
+    if (seen.has(entry.fn)) {
+      problems.push(`${where} (${entry.fn}): duplicate entry`);
+      continue;
+    }
+    seen.add(entry.fn);
+    if (entry.reviewBy < today) {
+      problems.push(
+        `${where} (${entry.fn}): EXPIRED on ${entry.reviewBy} — re-make the judgement, then either ` +
+        "retire the function / revoke its grant / give it a real caller, or write the reason afresh " +
+        "with a new reviewBy.",
+      );
+      continue;
+    }
+    entries.push(entry);
+  }
+
+  const uncalled = inScope.filter((fn) => callers.get(fn).length === 0);
+  const excused = new Set(entries.map((e) => e.fn));
+
+  if (clientHalfRan) {
+    const unlisted = uncalled.filter((fn) => !excused.has(fn));
+    for (const fn of unlisted) {
+      coverageFailed = true;
+      log(`  FAIL  coverage — this guard exercises public.${fn}, which authenticated may execute, but NO client calls it.`);
+    }
+
+    // An entry whose condition no longer holds must go, or the list slowly becomes a
+    // wishlist nobody can audit. Two ways that happens, and they mean opposite things:
+    // the function stopped being exercised (this guard changed), or a client started
+    // calling it (the good ending — the function is alive now).
+    for (const entry of entries) {
+      if (!exercised.has(entry.fn)) {
+        problems.push(
+          `role-matrix-coverage-allowlist.mjs (${entry.fn}): STALE — this guard no longer exercises it, ` +
+          "so nothing is being excused. Delete the entry.",
+        );
+      } else if (!callableByAuthenticated.has(entry.fn)) {
+        problems.push(
+          `role-matrix-coverage-allowlist.mjs (${entry.fn}): STALE — authenticated can no longer execute it ` +
+          "(its grant was revoked), so it is out of scope. Delete the entry.",
+        );
+      } else if (callers.get(entry.fn).length > 0) {
+        const where = callers.get(entry.fn).map((h) => `${h.repo}/${h.file}:${h.line}`).join(", ");
+        problems.push(
+          `role-matrix-coverage-allowlist.mjs (${entry.fn}): STALE — a client calls it now (${where}). ` +
+          "The function is reachable; delete the entry.",
+        );
+      }
+    }
+
+    for (const entry of entries) {
+      if (!uncalled.includes(entry.fn)) continue;
+      log(
+        `⚠ Coverage: exercising public.${entry.fn}, which no client calls ` +
+        `(reviewed, expires ${entry.reviewBy}) — ${entry.reason}`,
+      );
+    }
+
+    if (!coverageFailed && problems.length === 0) {
+      log(
+        `  ok    coverage — ${inScope.length} authenticated-callable function(s) exercised; ` +
+        `${inScope.length - uncalled.length} have client call sites, ${uncalled.length} reviewed exception(s).`,
+      );
+    }
+  } else {
+    log(
+      `⚠ Coverage: client call sites NOT checked (missing: ${missing.join(", ")}) — ` +
+      `${inScope.length} authenticated-callable function(s) exercised, reachability unverified.`,
+    );
+    if (STRICT) {
+      coverageFailed = true;
+      log("  FAIL  coverage — --strict requires every sibling repo to be checked out.");
+    }
+  }
+
+  if (problems.length > 0) {
+    coverageFailed = true;
+    log("  FAIL  coverage — the reviewed-exception list needs attention:");
+    for (const problem of problems) log(`        - ${problem}`);
+  }
+
+  if (coverageFailed) {
+    failures++;
+    log("");
+    log("A guard pointed at unreachable code is worse than no guard: it certifies a path");
+    log("production never takes (GV-277 / migration 114 vs 145). Either give the function a");
+    log("real caller, retire it, revoke its authenticated grant, or add a reviewed entry to");
+    log("tools/role-matrix-coverage-allowlist.mjs with a written reason and a review-by date.");
+  }
+
+  if (missing.length > 0 && !STRICT) {
+    log(
+      "⚠ Coverage: this run did NOT verify reachability — re-run with the sibling repo(s) " +
+      "checked out alongside fuel_sharing for a complete check (or pass --strict to fail loudly).",
+    );
+  }
+}
+
 cleanup();
 
 log("");
 if (failures > 0) {
-  process.stderr.write(`❌ Role matrix: ${failures}/${CASES.length} case(s) failed.\n`);
+  process.stderr.write(`❌ Role matrix: ${failures} failure(s) across ${CASES.length} case(s) + the coverage check.\n`);
   process.exit(1);
 }
 log(`✅ Role matrix: all ${CASES.length} cases passed.`);
