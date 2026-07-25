@@ -5,7 +5,18 @@
 //
 // No Docker, no network — covers env parsing, the production-ref guard, arg
 // parsing, deterministic fixture generation, the settlement-close snapshot math,
-// and that lib/hotpaths.mjs still mirrors the mobile data gateway. This is
+// and the INTERNAL SHAPE of lib/hotpaths.mjs (labels, limits, encoding).
+//
+// It does NOT verify that hotpaths.mjs matches govehlo-mobile — it cannot; the
+// sibling repo is not checked out here. It used to claim it did, while asserting
+// hotpaths.mjs against its own hardcoded copies of the same constants, which is a
+// tautology that stays green exactly when the mirror is wrong. Two live drifts hid
+// behind that wording for months (GV-393). The real cross-repo comparison is
+// tools/check-hotpath-mirror.mjs, which reads ledger-data-gateway.ts itself and runs
+// strict in .github/workflows/umbrella.yml. Do not re-add "mirrors the gateway"
+// claims to the assertions below.
+//
+// This is
 // intentionally a STANDALONE script (not wired into `npm run validate`) so it
 // doesn't change the behaviour of the existing validation tools; the load
 // tooling itself needs a live throwaway project and is never run in CI.
@@ -228,7 +239,9 @@ test("buildCloseSnapshot copies server figures and satisfies the close gate tole
   assert.equal("entryFingerprint" in snap, false);
 });
 
-// ── Hot-path mirror (must track ledger-data-gateway.ts) ──────────────────────
+// ── Hot-path SHAPE (internal consistency only) ───────────────────────────────
+// These assert hotpaths.mjs's own structure. Whether it agrees with the real
+// gateway is check-hotpath-mirror.mjs's job — see this file's header.
 test("ledgerReadRequests mirrors the 12-query fan-out", () => {
   const reqs = ledgerReadRequests("delebil-aarhus-01");
   assert.equal(reqs.length, 12);

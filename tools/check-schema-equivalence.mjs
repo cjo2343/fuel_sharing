@@ -122,12 +122,39 @@ function blocks(dumpText) {
   for (const part of parts) {
     const headerEnd = part.indexOf("\n");
     const key = part.slice(0, headerEnd).replace(/; Owner: .*$/, "").trim();
-    let bodyLines = part
-      .slice(headerEnd + 1)
-      .split("\n")
-      // Comment lines are dump metadata; \restrict/\unrestrict are psql guard
-      // tokens (randomized per dump since the Aug 2025 security releases).
-      .filter((line) => !line.startsWith("--") && !line.startsWith("\\restrict") && !line.startsWith("\\unrestrict"));
+    // Comment lines are dump metadata; \restrict/\unrestrict are psql guard
+    // tokens (randomized per dump since the Aug 2025 security releases).
+    //
+    // GV-393: this used to drop EVERY line starting with `--`, which would also
+    // have eaten an in-body SQL comment sitting in column 0 inside a function body.
+    // In-body comments are exactly what this check is supposed to compare — a
+    // migration and its supabase-schema.sql mirror must be byte-identical down to
+    // the comments (GV-175), and npm run validate does not look at function bodies
+    // at all, so this is the only guard that would notice. Latent, not live (no
+    // column-0 in-body comment exists today), which is precisely how it would have
+    // gone unnoticed the day someone wrote one.
+    //
+    // So the filter now only applies OUTSIDE a dollar-quoted body. Tracking the
+    // dollar tag is more robust than enumerating pg_dump's comment vocabulary: any
+    // metadata comment pg_dump invents in a future version is still outside the
+    // body, and any comment inside a function body is still compared.
+    let dollarTag = null;
+    let bodyLines = [];
+    for (const line of part.slice(headerEnd + 1).split("\n")) {
+      const insideBodyAtLineStart = dollarTag !== null;
+      // Toggle on each $tag$ delimiter this line opens or closes.
+      for (const m of line.matchAll(/\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$/g)) {
+        if (dollarTag === null) dollarTag = m[0];
+        else if (dollarTag === m[0]) dollarTag = null;
+      }
+      if (
+        !insideBodyAtLineStart &&
+        (line.startsWith("--") || line.startsWith("\\restrict") || line.startsWith("\\unrestrict"))
+      ) {
+        continue;
+      }
+      bodyLines.push(line);
+    }
     // Column ORDER inside a table legitimately differs between the two paths:
     // migrations add columns via ALTER (appended attnums) while the consolidated
     // schema declares them inline. Compare tables as sorted line sets — the

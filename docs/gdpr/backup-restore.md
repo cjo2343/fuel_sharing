@@ -75,6 +75,15 @@ for at antage det. Kadence: **mindst kvartalsvis** og efter større skemaændrin
 Fejler drillen: behandl det som en hændelse (incident-response.md) — en backup der
 ikke kan genskabes, er ingen backup.
 
+> **Næste drill kræver et FRISKT dump (GV-393).** Drillen udleder sit
+> aktualitetskrav fra `tools/test-migrations.mjs`' `expected`-liste og fejler hårdt
+> på et dump, der er ældre end den nyeste forventede migration. Seneste drill
+> (2026-07-18) kørte på et dump ved migration 133; repoet står nu ved **147**, så
+> det gemte dump vil fejle med det samme. Tag et nyt `pg_dump` fra prod før
+> `npm run drill:restore` køres igen — det er en manuel handling, ikke noget CI kan
+> gøre. Kør den gerne umiddelbart efter at have anvendt en migration, mens dumpet
+> stadig er aktuelt.
+
 ## Drill-log
 
 | Dato | Dump | Checksum | Størrelse | Tracker-status | Workspaces | Fejl | Rækker | Tracker | Resultat |

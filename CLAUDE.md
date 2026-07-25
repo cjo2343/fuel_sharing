@@ -18,8 +18,10 @@ What this repo is **load-bearing** for:
 | `supabase/migrations/` | **Single source of truth for the shared Supabase schema** — both live products run on this database |
 | `supabase-schema.sql` | Consolidated fresh-install schema (must mirror every migration) |
 | `types/database.ts` | Canonical generated DB/RPC types (GV-223) — vendored byte-identically by both client repos; regenerate with `npm run gen:db-types` |
-| `tools/` | CI guards: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `generate-db-types.mjs`, `test-functional-smoke.sh` |
-| `design_handoff_*/`, `design_briefs_*/` | Design-system source of truth (referenced by both live repos) |
+| `tools/` | ~28 CI guards. The load-bearing ones: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `generate-db-types.mjs`, `test-rls-role-matrix.mjs` (own CI job), `check-hotpath-mirror.mjs`, plus six functional `*.sh` suites. `tools/run-validations.mjs`'s `scripts` array is the authoritative list — read it rather than this row |
+| `design_handoff_govehlo_v1/` | **The** design-system source of truth — the one referenced by both live repos |
+| `design_handoff_fuel_bar/` | Referenced by govehlo-mobile |
+| other `design_handoff_*/`, `design_briefs_*/` | Historical handoffs, nine of them with zero inbound references from any repo. Kept as design history; do NOT treat them as current spec |
 | `Design/` | Brand source assets (icon SVG, brand guidelines) |
 | `RENAME-VEHLOSHARE-RUNBOOK.md` | Active GoVehlo → VehloShare rename runbook |
 
@@ -48,7 +50,11 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
    separate PR. Skipping this is what put govehlo-web three migrations behind and the
    umbrella workflow red for 18 runs (GV-391); the umbrella is the only CI that can
    see these copies at all.
-7. Run `npm run validate` — it enforces 1–4.
+7. Run `npm run validate` — it enforces 1, 2, 3 and the *tracker* half of 4 (that the
+   migration id is INSERTed into `supabase-schema.sql`). It does **not** check that the
+   DDL itself was mirrored — only `npm run check:schema-equivalence` (Docker) does, by
+   replaying both paths and diffing every object, function bodies and in-body comments
+   included. Run it before opening a migration PR.
 8. RPCs that write domain events follow the migration 051/052 pattern: trailing
    `event_title` / `event_body` params, insert into `ledger_events`, actor via
    `public.current_ledger_member_id()`, email via `auth.jwt() ->> 'email'`.
@@ -56,19 +62,41 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
 
 Use the `/new-migration` skill — it scaffolds all of this.
 
+**Before applying a migration to production, read
+[`DEPLOY-CHECKLIST.md`](DEPLOY-CHECKLIST.md).** It is the most precise migration
+document in the repo and the checklist above deliberately does not duplicate it: the
+storage-schema guard, re-declaring off the *newest* prior definition, the dynamic
+`pg_policies` sweep for prod policy-name drift, and the role-matrix step all live
+there. It had no inbound link from anywhere until GV-393, so agents read this shorter
+list and missed all four.
+
+The ones you will actually reach for (`npm run` with no args lists all 23):
+
 ```sh
-npm run validate                 # fast: migration guard + SQL ambiguity guard + token drift (run before every commit)
+npm run validate                 # fast gate, run before every commit (see below)
 npm run check:schema-equivalence # Docker: replays migrations vs consolidated schema and diffs
 npm run gen:db-types             # Docker: regenerates types/database.ts from the consolidated schema (GV-223)
 npm run check:db-types           # Docker: fails if the committed types/database.ts is stale
 npm run vendor:db-types          # copies types/database.ts into both client repos (GV-391)
 npm run check:vendored-db-types  # reports a stale client copy without writing anything
+npm run check:role-matrix        # Docker: RLS role matrix, 173 cases (own CI job)
 npm run test:functional-smoke    # Docker: runs delete_my_account / push-token RPCs and asserts scrubs
+npm run drill:restore            # GDPR restore drill — needs a FRESH prod dump (docs/gdpr/backup-restore.md)
 ```
 
-`npm run validate` is dependency-free (three Node checks, no Python or Docker). It
-runs in CI and, if you enable the hook with `npm run hooks:install`, on every push.
-The Docker-backed checks run as their own CI jobs.
+The remainder are per-feature SQL contract tests (`test:booking-*`, `test:deferred-fuel-close`,
+`test:member-recurring-suspension`, `test:syn-acknowledgement`, `test:retired-rpcs`,
+`test:drill-*`, `test:load-rehearsal`), the load-rehearsal drivers (`load:schema`,
+`load:seed`, `load:run`) and `hooks:install`. Most already run inside `npm run validate`.
+
+`npm run validate` is dependency-free (no Python, no Docker) and runs in CI, plus on
+every push if you enable the hook with `npm run hooks:install`. It is **not** three
+checks — `tools/run-validations.mjs`'s `scripts` array is the authoritative list (16
+and growing), so read that rather than any prose count. The Docker-backed checks run
+as their own CI jobs; the cross-repo ones only ever do real work in
+`.github/workflows/umbrella.yml`, which is the only workflow that checks out all three
+repos (`check-token-drift`, `check-hotpath-mirror`, `vendor-db-types`, the role-matrix
+coverage half — each warns and passes locally when a sibling is absent).
 
 ## Design system (v1)
 

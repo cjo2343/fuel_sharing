@@ -4,18 +4,23 @@ import { execSync } from 'child_process';
 //
 // The legacy PWA runtime was archived at the `legacy-runtime-final` tag; the
 // only thing this repo still guards is the shared Supabase schema and the
-// canonical design tokens. These three checks are the fast, dependency-free
-// gate that runs on every commit and in CI:
+// canonical design tokens. This is the fast, dependency-free gate that runs on
+// every commit and in CI. The `scripts` array below is the authoritative list —
+// it has grown well past the "three checks" this header claimed until GV-393, so
+// read the array, not a prose summary, and keep new entries commented in place.
 //
-//   1. test-migrations.mjs        — migration files present, ordered, mirrored
-//                                    into supabase-schema.sql, tracker ids inserted.
-//   2. test-sql-ambiguity-guard   — blocks high-risk PL/pgSQL variable/column
-//                                    name collisions in the SQL.
-//   3. check-token-drift.mjs      — canonical design tokens vs the derived copies
-//                                    in the sibling repos, AND the hex colours the
-//                                    web repo's markup actually paints (GV-371;
-//                                    warns, never fails, when the siblings are
-//                                    absent — e.g. fuel_sharing CI).
+// The three load-bearing ones, for orientation:
+//   • test-migrations.mjs        — migration files present, ordered, mirrored
+//                                   into supabase-schema.sql, tracker ids inserted.
+//   • test-sql-ambiguity-guard   — blocks high-risk PL/pgSQL variable/column
+//                                   name collisions in the SQL.
+//   • check-token-drift.mjs      — canonical design tokens vs the derived copies
+//                                   in the sibling repos, AND the hex colours the
+//                                   web repo's markup actually paints (GV-371;
+//                                   warns, never fails, when the siblings are
+//                                   absent — e.g. fuel_sharing CI).
+// The rest are per-feature SQL contract tests and unit tests for the scanners the
+// heavier guards depend on.
 //
 // The heavier Docker-backed checks (schema equivalence, delete-account functional
 // smoke) run as their own npm scripts / CI jobs, not here.
@@ -49,7 +54,16 @@ const scripts = [
   // it earns its place for the reason the two lines above do: if the scanner breaks, the
   // failure must read as "the scanner is broken", not as "every migration is unmirrored".
   "node tools/test-tracker-insert-scan.mjs",
+  // Unit test for the cross-repo hot-path mirror scanner (GV-393). Same reason as the
+  // three lines above: check-hotpath-mirror.mjs only does real work where
+  // govehlo-mobile is checked out (the umbrella workflow, or a dev machine), so
+  // without this its logic would go unexercised on nearly every commit.
+  "node tools/test-hotpath-mirror-scan.mjs",
   "node tools/check-token-drift.mjs",
+  // Cross-repo: does the load rehearsal still replay what the mobile client actually
+  // sends? Warns and exits 0 when govehlo-mobile is absent (fuel_sharing CI); the
+  // umbrella runs it --strict (GV-393).
+  "node tools/check-hotpath-mirror.mjs",
 ];
 
 console.log('🚀 Starting validation suite...');
