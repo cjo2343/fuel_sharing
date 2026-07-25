@@ -32851,3 +32851,179 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ── Migration 146: acknowledge a booked syn so the reminder stops for the whole workspace (GVM-442) ──
+--
+-- Mirrors supabase/migrations/146_acknowledge_inspection_booking.sql byte-identically
+-- (the equivalence check diffs function bodies, comments included).
+create or replace function public.acknowledge_inspection_booking(
+  target_ledger_id text,
+  acknowledged_inspection_date date,
+  event_title text default null,
+  event_body text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor_member_id uuid;
+  v_actor_email text;
+  v_actor_first text;
+  v_syn_date date;
+  v_previous_ack date;
+  v_title text;
+  v_body text;
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Missing ledger id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(target_ledger_id) then
+    raise exception 'Only ledger members can acknowledge a booked inspection'
+      using errcode = '42501';
+  end if;
+
+  v_actor_member_id := public.current_ledger_member_id(target_ledger_id);
+  if v_actor_member_id is null then
+    raise exception 'Could not match the current user to an active ledger member'
+      using errcode = '42501';
+  end if;
+
+  -- Lock the workspace row: two devices acknowledging at once must not interleave
+  -- into a half-written marker (a date with nobody's name against it).
+  select nullif(l.vehicle_info ->> 'next_inspection_date', '')::date,
+         nullif(l.vehicle_info ->> 'syn_booked_for', '')::date
+    into v_syn_date, v_previous_ack
+    from public.ledgers l
+    where l.id = target_ledger_id
+    for update;
+
+  if not found then
+    raise exception 'Workspace was not found' using errcode = '22023';
+  end if;
+
+  v_actor_email := nullif(lower(coalesce(auth.jwt() ->> 'email', '')), '');
+
+  select split_part(coalesce(nullif(btrim(m.name), ''), 'Nogen'), ' ', 1)
+    into v_actor_first
+    from public.ledger_members m
+    where m.id = v_actor_member_id;
+  v_actor_first := coalesce(v_actor_first, 'Nogen');
+
+  -- ── Clear the acknowledgement (null date) ──────────────────────────────────────
+  if acknowledged_inspection_date is null then
+    -- Idempotent: nothing acknowledged means nothing to clear, so no write and no
+    -- second event.
+    if v_previous_ack is null then
+      return jsonb_build_object(
+        'acknowledged_for', null,
+        'acknowledged_by_member_id', null,
+        'changed', false
+      );
+    end if;
+
+    update public.ledgers l
+    set vehicle_info = l.vehicle_info
+          - 'syn_booked_for'
+          - 'syn_booked_at'
+          - 'syn_booked_by_member_id',
+        updated_at = now()
+    where l.id = target_ledger_id;
+
+    v_title := coalesce(nullif(btrim(event_title), ''), v_actor_first || ' fjernede syn-bookingen');
+    v_body := coalesce(nullif(btrim(event_body), ''), 'Påmindelsen om syn er tilbage.');
+
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id,
+      'vehicle_inspection_booking_cleared',
+      v_title,
+      v_body,
+      v_actor_member_id,
+      v_actor_email,
+      jsonb_build_object('inspection_date', v_previous_ack::text)
+    );
+
+    return jsonb_build_object(
+      'acknowledged_for', null,
+      'acknowledged_by_member_id', null,
+      'changed', true
+    );
+  end if;
+
+  -- ── Acknowledge the current inspection date ───────────────────────────────────
+  if v_syn_date is null then
+    raise exception 'This workspace has no next inspection date to acknowledge'
+      using errcode = '22023';
+  end if;
+
+  -- The ack names its date, so it may only ever name the CURRENT one. A stale client,
+  -- or a register refresh that landed in between, would otherwise silence a date
+  -- nobody is being reminded about — or park an ack the live date later grows into.
+  if acknowledged_inspection_date <> v_syn_date then
+    raise exception 'The acknowledged inspection date is not this workspace''s next inspection date'
+      using errcode = '22023';
+  end if;
+
+  -- Idempotent: a replay (double tap, offline retry, a second device) finds the same
+  -- date already acknowledged and writes neither a marker nor a second event.
+  if v_previous_ack = acknowledged_inspection_date then
+    return jsonb_build_object(
+      'acknowledged_for', acknowledged_inspection_date::text,
+      'acknowledged_by_member_id',
+        nullif((select l.vehicle_info ->> 'syn_booked_by_member_id'
+                from public.ledgers l where l.id = target_ledger_id), ''),
+      'changed', false
+    );
+  end if;
+
+  update public.ledgers l
+  set vehicle_info = l.vehicle_info || jsonb_build_object(
+        'syn_booked_for', acknowledged_inspection_date::text,
+        'syn_booked_at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+        'syn_booked_by_member_id', v_actor_member_id::text
+      ),
+      updated_at = now()
+  where l.id = target_ledger_id;
+
+  v_title := coalesce(nullif(btrim(event_title), ''), v_actor_first || ' har booket synet');
+  v_body := coalesce(
+    nullif(btrim(event_body), ''),
+    'Syn senest ' || to_char(v_syn_date, 'DD-MM-YYYY') || '. Påmindelsen er slået fra indtil da.'
+  );
+
+  insert into public.ledger_events (
+    ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+  ) values (
+    target_ledger_id,
+    'vehicle_inspection_booked',
+    v_title,
+    v_body,
+    v_actor_member_id,
+    v_actor_email,
+    jsonb_build_object('inspection_date', acknowledged_inspection_date::text)
+  );
+
+  return jsonb_build_object(
+    'acknowledged_for', acknowledged_inspection_date::text,
+    'acknowledged_by_member_id', v_actor_member_id::text,
+    'changed', true
+  );
+end;
+$$;
+
+revoke all on function public.acknowledge_inspection_booking(text, date, text, text) from public;
+revoke all on function public.acknowledge_inspection_booking(text, date, text, text) from anon;
+grant execute on function public.acknowledge_inspection_booking(text, date, text, text) to authenticated;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '146_acknowledge_inspection_booking',
+  'Acknowledge a booked syn so Home''s syn_due reminder stops for the WHOLE workspace (GVM-442): new member-callable acknowledge_inspection_booking(text, date, text, text) stamps syn_booked_for / syn_booked_at / syn_booked_by_member_id into the existing ledgers.vehicle_info jsonb, beside next_inspection_date and the GVM-443/446 member-confirmed ejerafgift keys. Gated on is_ledger_member, not is_ledger_admin — booking an inspection is not an administrative act, and admin-gating would recreate the ticket''s bug (the person who booked could not tell the others), which is also why update_ledger_settings could not be reused. The ack names WHICH date it acknowledges, so it is self-invalidating: a new next_inspection_date stops matching and the reminder returns with no reset logic; an ack for any other date is rejected. A null date clears the acknowledgement, so a mistaken tap or a cancelled garage slot cannot leave the group with no syn reminder. Both paths are idempotent (a replay writes no second event) and both write a ledger_events row unconditionally — cross-client live sync IS that insert (migration 087 lesson), so an omitted event_title falls back to server-composed Danish copy rather than skipping it.'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
