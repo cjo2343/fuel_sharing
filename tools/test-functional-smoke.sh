@@ -146,8 +146,10 @@ insert into public.ledger_events (ledger_id, event_type, title, body, actor_memb
 insert into public.ledger_invites (ledger_id, invite_code_hash, invited_email, created_by_member_id) values
   ('test-car', 'deadbeef', 'lars@test.dk', 'aaaaaaaa-0000-0000-0000-000000000001');
 
--- Identity-keyed rows
-insert into public.push_subscriptions (user_email, subscription) values ('lars@test.dk', '{}'::jsonb);
+-- Identity-keyed rows.
+-- (public.push_subscriptions was seeded here until migration 147 dropped it. The
+-- legacy Web Push store went with the retired PWA runtime; the account's real push
+-- identity is expo_push_tokens, seeded below and asserted in step j.)
 insert into public.ledger_onboarding_rate_limits (action, actor_email) values ('create_invite', 'lars@test.dk');
 insert into public.owner_activity_log (actor_user_id, actor_email, action) values
   ('11111111-1111-1111-1111-111111111111', 'lars@test.dk', 'test');
@@ -260,9 +262,11 @@ begin
   if exists (select 1 from public.ledgers where id = 'solo-car') then raise exception 'FAIL solo ledger survived'; end if;
   if exists (select 1 from public.ledger_members where ledger_id = 'solo-car') then raise exception 'FAIL solo members survived'; end if;
 
-  -- j. identity-keyed rows
-  if exists (select 1 from public.push_subscriptions where lower(user_email) = 'lars@test.dk')
-     then raise exception 'FAIL push subscription survived'; end if;
+  -- j. identity-keyed rows.
+  -- The public.push_subscriptions scrub was asserted here until migration 147 dropped
+  -- both the statement and the table. Nothing is lost from the GDPR contract: the table
+  -- is gone, which erases every stored Web Push endpoint for every user at once. The
+  -- live push identity is expo_push_tokens, asserted in k2 below.
   if exists (select 1 from public.ledger_onboarding_rate_limits where lower(actor_email) = 'lars@test.dk')
      then raise exception 'FAIL rate-limit row survived'; end if;
   if exists (select 1 from public.owner_activity_log

@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 146 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 147 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -853,41 +853,6 @@ export type Database = {
         }
         Relationships: []
       }
-      push_subscriptions: {
-        Row: {
-          created_at: string
-          id: string
-          member_id: string | null
-          subscription: Json
-          updated_at: string
-          user_email: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          member_id?: string | null
-          subscription: Json
-          updated_at?: string
-          user_email: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          member_id?: string | null
-          subscription?: Json
-          updated_at?: string
-          user_email?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "push_subscriptions_member_id_fkey"
-            columns: ["member_id"]
-            isOneToOne: false
-            referencedRelation: "ledger_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       recurring_expenses: {
         Row: {
           amount_dkk: number
@@ -1706,23 +1671,6 @@ export type Database = {
         }
         Returns: Json
       }
-      apply_payment_status_action: {
-        Args: {
-          amount_value: number
-          audit_detail: string
-          audit_metadata?: Json
-          audit_summary: string
-          currency_value: string
-          current_pair_keys?: string[]
-          next_status: string
-          payer_member_id: string
-          previous_status: string
-          recipient_member_id: string
-          target_ledger_id: string
-          target_open_period_id: string
-        }
-        Returns: Json
-      }
       calculate_period_entry_fingerprint: {
         Args: { target_ledger_id: string; target_period_id: string }
         Returns: string
@@ -1740,15 +1688,6 @@ export type Database = {
         Returns: boolean
       }
       can_manage_trip: { Args: { p_trip_id: string }; Returns: boolean }
-      check_ledger_invite_email: {
-        Args: { invite_code: string; login_email: string }
-        Returns: {
-          allowed: boolean
-          message: string
-          restricted: boolean
-          result_code: string
-        }[]
-      }
       check_owner_rate_limit: {
         Args: {
           actor_email: string
@@ -1910,23 +1849,6 @@ export type Database = {
         Args: { confirmations: Json }
         Returns: number
       }
-      create_ledger_invite: {
-        Args: {
-          expires_in_hours?: number
-          invite_email?: string
-          invite_role?: string
-          max_uses?: number
-          target_ledger_id?: string
-        }
-        Returns: {
-          expires_at: string
-          invite_code: string
-          invite_id: string
-          invited_email: string
-          ledger_id: string
-          role: string
-        }[]
-      }
       create_private_ledger_workspace: {
         Args: { workspace_name: string; workspace_slug?: string }
         Returns: {
@@ -2077,20 +1999,6 @@ export type Database = {
         Args: { body_value: string; target_ledger_id: string }
         Returns: Json
       }
-      preview_retention_cleanup: {
-        Args: {
-          event_retention_days?: number
-          keep_latest_test_lab_reports?: number
-          stale_push_days?: number
-          target_ledger_id?: string
-          test_lab_report_days?: number
-        }
-        Returns: Json
-      }
-      purge_generated_test_rows: {
-        Args: { dry_run?: boolean; target_ledger_id?: string }
-        Returns: Json
-      }
       redeem_ledger_invite: {
         Args: { display_name?: string; invite_code: string }
         Returns: {
@@ -2120,26 +2028,12 @@ export type Database = {
           role: string
         }[]
       }
-      revoke_ledger_invite: {
-        Args: { target_invite_id: string; target_ledger_id: string }
-        Returns: undefined
-      }
       rotate_workspace_join_code: {
         Args: { target_ledger_id?: string }
         Returns: string
       }
       run_operational_retention: {
         Args: { p_dry_run?: boolean; p_stale_push_days?: number }
-        Returns: Json
-      }
-      run_retention_cleanup: {
-        Args: {
-          event_retention_days?: number
-          keep_latest_test_lab_reports?: number
-          stale_push_days?: number
-          target_ledger_id?: string
-          test_lab_report_days?: number
-        }
         Returns: Json
       }
       save_scheduled_reminder_state: {
@@ -2153,14 +2047,6 @@ export type Database = {
       set_close_reminder_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
         Returns: undefined
-      }
-      set_ledger_member_active_admin: {
-        Args: {
-          member_is_active?: boolean
-          target_ledger_id?: string
-          target_member_id?: string
-        }
-        Returns: string
       }
       set_member_name: {
         Args: {
@@ -2293,21 +2179,6 @@ export type Database = {
           mobilepay_phone: string
         }[]
       }
-      update_own_ledger_member_profile: {
-        Args: {
-          member_mobilepay_phone?: string
-          member_name?: string
-          target_ledger_id?: string
-        }
-        Returns: {
-          email: string
-          ledger_id: string
-          member_id: string
-          mobilepay_phone: string
-          name: string
-          role: string
-        }[]
-      }
       update_vehicle_incident: {
         Args: {
           description_value?: string
@@ -2423,14 +2294,6 @@ export type Database = {
           recipient_member_id: string
           target_ledger_id: string
           target_open_period_id: string
-        }
-        Returns: Json
-      }
-      upsert_test_lab_report: {
-        Args: {
-          report_id_value: string
-          report_payload_value: Json
-          target_ledger_id: string
         }
         Returns: Json
       }

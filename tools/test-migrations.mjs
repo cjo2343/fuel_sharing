@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { trackerInsertedIds } from "./lib/tracker-insert-scan.mjs";
 
 const migrationDir = "supabase/migrations";
 assert.ok(existsSync(migrationDir), "supabase/migrations directory must exist");
@@ -156,6 +157,7 @@ const expected = [
   "144_close_deferred_booking_fuel.sql",
   "145_member_upsert_recurring_suspension.sql",
   "146_acknowledge_inspection_booking.sql",
+  "147_retire_dead_rpcs_and_legacy_push_subscriptions.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
@@ -168,6 +170,13 @@ files.forEach((file, index) => {
   assert.ok(/^-- Migration \d{3}:/m.test(content), `${file} should start with a migration comment`);
 });
 
+// Each migration must actually INSERT its own id into the tracker — not merely
+// mention it. `content.includes(migrationId)` used to be the test, and a migration id
+// is a plausible substring of a dozen innocent things: a `-- see migration 033`
+// comment, a tracker description narrating an earlier migration, or (the case that
+// bit us) fuel_ledger_healthcheck's own `expected_schema_migrations` VALUES list,
+// which several migrations in the 023–037 range carry inside a dollar-quoted body.
+// trackerInsertedIds() reads real INSERT statements, so none of those count (GV-392).
 files.forEach((file) => {
   const migrationNumber = Number(file.slice(0, 3));
   if (migrationNumber >= 23) {
@@ -178,8 +187,9 @@ files.forEach((file) => {
       `${file} should update the Fuel Ledger schema migration tracker`,
     );
     assert.ok(
-      content.includes(migrationId),
-      `${file} should insert its own migration id (${migrationId}) into the tracker`,
+      trackerInsertedIds(content).has(migrationId),
+      `${file} should insert its own migration id (${migrationId}) into the tracker — ` +
+        `mentioning it in a comment, a description or a healthcheck expectation list does not count`,
     );
   }
 });
@@ -355,11 +365,34 @@ assert.ok(
 // minimum by its tracker id (GV-157). This catches migrations that were applied
 // + added to supabase/migrations/ but never mirrored into the consolidated
 // fresh-DB schema (e.g. 048's ledger_id nullability change slipped through).
+//
+// This was `consolidatedSchema.includes(migrationId)` — a bare substring test — and
+// GV-392 is what that cost. 024_schema_drift_healthcheck,
+// 033_onboarding_rate_limit_scope_key_alignment and 036_invite_profile_setup each
+// insert their own id in their own migration file, but supabase-schema.sql had no
+// INSERT for any of them: replaying the migrations gave 146 tracker rows, replaying
+// the consolidated schema gave 143, and a fresh install booted reporting three
+// missing migrations against itself.
+//
+// The guard stayed green because those ids DO appear in supabase-schema.sql — inside
+// fuel_ledger_healthcheck's `expected_schema_migrations` VALUES list. The substring
+// satisfying this check was the expectation list of the drift detector that would
+// have reported the failure. check-schema-equivalence.mjs could not catch it either:
+// tracker rows are data and it dumps schema-only, deliberately.
+//
+// So the check now demands a real INSERT into public.fuel_ledger_schema_migrations
+// carrying the id as a value. A mention inside a dollar-quoted function body, a
+// comment or a description string no longer satisfies it.
+const mirroredIds = trackerInsertedIds(consolidatedSchema);
 files.forEach((file) => {
   const migrationId = file.replace(/\.sql$/, "");
   assert.ok(
-    consolidatedSchema.includes(migrationId),
-    `${file} must be mirrored into supabase-schema.sql (id ${migrationId} not found)`,
+    mirroredIds.has(migrationId),
+    `${file} must be mirrored into supabase-schema.sql with a real tracker INSERT ` +
+      `(no "insert into public.fuel_ledger_schema_migrations … '${migrationId}' …" found). ` +
+      `Naming the id in a comment, a description, or fuel_ledger_healthcheck's ` +
+      `expected_schema_migrations list does not mirror the migration — that is exactly ` +
+      `how GV-392 hid three missing tracker rows.`,
   );
 });
 

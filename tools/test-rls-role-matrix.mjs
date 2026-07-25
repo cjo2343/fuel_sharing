@@ -1579,9 +1579,15 @@ begin
   end if;
 end`,
   }),
+  // Migration 147 dropped set_ledger_member_active_admin, which this case used to
+  // call. That is the resolution of the GV-379 finding, not a loss of coverage: the
+  // case now exercises upsert_ledger_member_admin — the RPC both clients actually
+  // deactivate through, and where migration 145 moved this behaviour. The assertion
+  // is unchanged, so it went from certifying a path production never takes to
+  // certifying the one it does.
   queryCase({
     name: "deactivation-suspends-payer-recurring",
-    desc: "deactivating a member suspends every recurring template they pay for and writes a recurring_suspended event (GV-277)",
+    desc: "deactivating a member suspends every recurring template they pay for and writes a recurring_suspended event (GV-277 via migration 145's upsert_ledger_member_admin)",
     setup: [
       step(SUPER, `insert into public.recurring_expenses
         (id, ledger_id, category, description, amount_dkk, cadence, next_due_date, paid_by_member_id, is_active, created_by_member_id)
@@ -1590,7 +1596,7 @@ end`,
     actor: A,
     assert: `declare still_active boolean; evt_count integer; evt_body text;
 begin
-  perform public.set_ledger_member_active_admin('${WS1}', '${ID.C}', false);
+  perform public.upsert_ledger_member_admin('${WS1}', '${ID.C}', 'Cille', '${EMAIL.C}', null, 'member', false);
   select is_active into still_active from public.recurring_expenses where id = 'c1c1c1c1-0000-0000-0000-000000000001';
   if still_active is distinct from false then
     raise exception 'CASEFAIL deactivation-suspends-payer-recurring: template is_active=% (expected false — suspended on payer deactivation)', still_active;

@@ -44,6 +44,11 @@ const scripts = [
   // the line above: the check itself only runs in the heavy role-matrix job, so without
   // this its logic would go unexercised on most commits.
   "node tools/test-role-matrix-coverage.mjs",
+  // Unit test for the scanner behind test-migrations.mjs's mirror check (GV-392). Runs
+  // BEFORE nothing in particular — test-migrations.mjs above already depends on it — but
+  // it earns its place for the reason the two lines above do: if the scanner breaks, the
+  // failure must read as "the scanner is broken", not as "every migration is unmirrored".
+  "node tools/test-tracker-insert-scan.mjs",
   "node tools/check-token-drift.mjs",
 ];
 
