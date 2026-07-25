@@ -39,6 +39,13 @@ Cloudflare-evidens 2026-07-17: `govehlo-scheduler` fik
 `30 3 * * *`. Første kørsel af migration 131's udvidede klasser sker først efter,
 at migrationen er anvendt i Supabase.
 
+Cron-strengen ovenfor er et **øjebliksbillede fra den dag**, ikke en konfigurationskopi
+at vedligeholde her. Siden GV-388 er kadencen erklæret ét sted — `SCHEDULE_CRONS` i
+govehlo-web `functions/api/_scheduler-cadence.js` — og både Workerens dispatcher,
+operatørkonsollens kadence-tekster og alle overdue-tærskler udledes derfra;
+`test/scheduler-cadence.test.mjs` fejler, hvis `workers/scheduler/wrangler.toml` er
+kommet ud af trit. Slå den gældende kadence op dér, ikke her.
+
 ## Beslutning: workspace-purge tilsidesætter femårsfristen (2026-07-18, GV-316)
 
 En hel-workspace-sletning (operatør-nedlæggelse efter 90 dages gendannelsesfrist,
