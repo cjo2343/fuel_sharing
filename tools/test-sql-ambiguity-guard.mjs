@@ -99,10 +99,17 @@ assert.match(
   /safe_actor_email\s+text\s*:=\s*public\.current_user_email\(\)/,
   "onboarding rate-limit RPC should keep actor email in a safely named local variable",
 );
+// NOTE: check_ledger_invite_email and update_own_ledger_member_profile were DROPPED by
+// migration 147 — they were superseded by migration 045's join codes and by
+// set_member_name + update_own_ledger_member_mobilepay, and no client called either.
+// These two anchors still match because `allSql` is every migration file concatenated
+// and migrations 036/037 still contain the definitions; they are historical text
+// anchors for the safe_*/saved_* variable-naming assertions that follow, not claims
+// about the live schema. Do not read them as "this RPC must exist".
 assert.match(
   allSql,
   /create or replace function public\.check_ledger_invite_email\(/,
-  "restricted invite email preflight should use a dedicated RPC before login code delivery",
+  "migration 037's invite email preflight should keep its dedicated RPC definition (dropped in 147; anchors the safe_login_email check below)",
 );
 assert.match(
   allSql,
@@ -112,7 +119,7 @@ assert.match(
 assert.match(
   allSql,
   /create or replace function public\.update_own_ledger_member_profile\(/,
-  "invite profile setup should use a dedicated self-service member profile RPC",
+  "migration 036's invite profile setup should keep its dedicated RPC definition (dropped in 147; anchors the safe_member_id/saved_member checks below)",
 );
 assert.match(
   allSql,

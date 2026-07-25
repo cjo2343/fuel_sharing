@@ -17,6 +17,7 @@
     "test:deferred-fuel-close": "bash tools/test-deferred-fuel-close-functional.sh",
     "test:member-recurring-suspension": "bash tools/test-member-recurring-suspension-functional.sh",
     "test:syn-acknowledgement": "bash tools/test-acknowledge-inspection-booking-functional.sh",
+    "test:retired-rpcs": "bash tools/test-retired-rpcs-functional.sh",
     "test:drill-logic": "node tools/test-restore-drill-logic.mjs",
     "test:drill-smoke": "node tools/test-restore-drill-smoke.mjs",
     "test:load-rehearsal": "node tools/load-rehearsal/test-load-rehearsal.mjs",

@@ -294,6 +294,16 @@ jobs:
       - name: Run syn-acknowledgement smoke
         run: bash tools/test-acknowledge-inspection-booking-functional.sh
 
+      # Migration 147's three coupled properties (GV-311/GV-383/GV-392): the dropped
+      # RPCs and table are gone AND fuel_ledger_healthcheck stopped enumerating them,
+      # delete_my_account still RUNS with push_subscriptions removed underneath it
+      # (PL/pgSQL resolves tables at run time, so no structural check sees this), and
+      # both replay paths carry one tracker row per migration file — the GV-392
+      # regression, where supabase-schema.sql was short three rows and a fresh install
+      # booted reporting its own drift.
+      - name: Run retired-RPC + tracker-row smoke
+        run: bash tools/test-retired-rpcs-functional.sh
+
   drill-smoke:
     name: Restore-drill end-to-end smoke (GV-329)
     needs: changes

@@ -61,24 +61,4 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
-  {
-    fn: 'set_ledger_member_active_admin',
-    reason:
-      'GENUINELY DEAD, kept deliberately and only until it is retired. This is the exact ' +
-      'function GV-277 built the recurring-suspension feature on while both clients ' +
-      'deactivate through upsert_ledger_member_admin (govehlo-mobile ' +
-      'src/lib/supabase-helpers.ts, govehlo-web admin/admin.js); migration 145 moved that ' +
-      'behaviour onto the RPC the clients actually call. This guard is still its only ' +
-      'caller anywhere, which is precisely the condition GV-379 exists to announce, so it ' +
-      'is listed rather than quietly tolerated. It is not dropped here because a drop needs ' +
-      'a migration, and it is coupled: fuel_ledger_healthcheck enumerates it in ' +
-      'critical_rpc_names, so removing the function without editing that list turns the ' +
-      'operator diagnostic into a permanent false alarm (the coupling migration 143 hit ' +
-      'with production_activity_reset, and migration 130 deferred its drops over). The ' +
-      'retirement is written up in the GV-379 PR as a follow-up: one migration that drops ' +
-      'the function and re-declares fuel_ledger_healthcheck without its critical_rpc_names ' +
-      'entry, in that order. What would change this answer: the function being dropped ' +
-      '(delete this entry and the guard case together), or a client genuinely adopting it.',
-    reviewBy: '2026-09-30',
-  },
 ];
