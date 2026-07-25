@@ -11,3 +11,10 @@ test-results/
 
 .claude/settings.local.json
 .claude/worktrees/
+
+# Live API credentials. These were previously ignored ONLY via .git/info/exclude,
+# which is per-clone and does not travel — a fresh clone, or any tooling that
+# recreates the repo, would have seen them as untracked-and-addable. Neither has
+# ever been committed (verified), and this keeps it that way everywhere.
+.claude/.jira-token
+.claude/.sentry-token
