@@ -1,4 +1,7 @@
-node_modules/
+# No trailing slash: a trailing slash matches only a DIRECTORY, so a symlink
+# named node_modules (how agent worktrees share the installed tree) was not
+# ignored and `git add -A` staged it. Bare `node_modules` matches both.
+node_modules
 
 __pycache__/
 *.pyc
