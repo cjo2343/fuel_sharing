@@ -153,6 +153,7 @@ const expected = [
   "141_close_guard_retention_and_period_lockdown.sql",
   "142_recurring_generation_carryover.sql",
   "143_drop_production_reset_and_sweep_visibility.sql",
+  "144_close_deferred_booking_fuel.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
