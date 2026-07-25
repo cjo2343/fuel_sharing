@@ -3212,13 +3212,20 @@ end`,
         where e.user_id = '99999999-0000-0000-0000-000000000001') <> 2 then
       raise exception 'CASEFAIL prune-push-tokens-service-role: pruning one owner touched another owner''s devices';
     end if;
-    if public.prune_push_tokens(array['ExponentPushToken[phone]']) <> 1
-       or (select count(*) from public.expo_push_tokens e
-           where e.user_id = '99999999-0000-0000-0000-000000000001') <> 1 then
+    -- One assertion per statement on purpose: an OR would let the planner evaluate the
+    -- count before the volatile delete in the same expression.
+    if public.prune_push_tokens(array['ExponentPushToken[phone]']) <> 1 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: expected the phone row deleted';
+    end if;
+    if (select count(*) from public.expo_push_tokens e
+        where e.user_id = '99999999-0000-0000-0000-000000000001') <> 1 then
       raise exception 'CASEFAIL prune-push-tokens-service-role: a two-device owner must keep the live device — deleting by user_id was the wrong shape';
     end if;
-    if public.prune_push_tokens(array[]::text[]) <> 0 or public.prune_push_tokens(null) <> 0 then
-      raise exception 'CASEFAIL prune-push-tokens-service-role: an empty or null list must delete nothing';
+    if public.prune_push_tokens(array[]::text[]) <> 0 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: an empty list must delete nothing';
+    end if;
+    if public.prune_push_tokens(null) <> 0 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: a null list must delete nothing';
     end if`,
   }),
   rpcCase({

@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 149 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 151 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -215,8 +215,6 @@ export type Database = {
           period_id: string | null
           price_per_liter: number | null
           station_brand: string | null
-          station_lat: number | null
-          station_lng: number | null
           station_name: string | null
           updated_at: string
         }
@@ -237,8 +235,6 @@ export type Database = {
           period_id?: string | null
           price_per_liter?: number | null
           station_brand?: string | null
-          station_lat?: number | null
-          station_lng?: number | null
           station_name?: string | null
           updated_at?: string
         }
@@ -259,8 +255,6 @@ export type Database = {
           period_id?: string | null
           price_per_liter?: number | null
           station_brand?: string | null
-          station_lat?: number | null
-          station_lng?: number | null
           station_name?: string | null
           updated_at?: string
         }
@@ -1812,8 +1806,6 @@ export type Database = {
           fuel_price_per_liter_value?: number
           fuel_resolution_value: string
           fuel_station_brand_value?: string
-          fuel_station_lat_value?: number
-          fuel_station_lng_value?: number
           fuel_station_name_value?: string
           legacy_trip_id: string
           note_value: string
@@ -1842,8 +1834,6 @@ export type Database = {
           fuel_payment_date_value: string
           fuel_price_per_liter_value?: number
           fuel_station_brand_value?: string
-          fuel_station_lat_value?: number
-          fuel_station_lng_value?: number
           fuel_station_name_value?: string
           target_ledger_id: string
           target_open_period_id: string
@@ -2018,6 +2008,7 @@ export type Database = {
         Args: { body_value: string; target_ledger_id: string }
         Returns: Json
       }
+      prune_push_tokens: { Args: { p_tokens: string[] }; Returns: number }
       redeem_ledger_invite: {
         Args: { display_name?: string; invite_code: string }
         Returns: {
@@ -2045,6 +2036,13 @@ export type Database = {
           member_count: number
           owner_name: string
           role: string
+        }[]
+      }
+      resolve_push_targets: {
+        Args: { p_emails: string[] }
+        Returns: {
+          token: string
+          user_id: string
         }[]
       }
       rotate_workspace_join_code: {
@@ -2258,13 +2256,9 @@ export type Database = {
           payment_date_value: string
           price_per_liter_value: number
           station_brand_value: string
-          station_lat_value: number
-          station_lng_value: number
           station_name_value: string
           target_ledger_id: string
           target_open_period_id: string
-          user_lat_value: number
-          user_lng_value: number
         }
         Returns: Json
       }
