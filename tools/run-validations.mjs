@@ -29,6 +29,7 @@ const scripts = [
   "node tools/test-settlement-event-history-contract.mjs",
   "node tools/test-incident-photo-storage-contract.mjs",
   "node tools/test-late-entry-carryover-contract.mjs",
+  "node tools/test-deferred-fuel-close-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths

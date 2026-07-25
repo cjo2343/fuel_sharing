@@ -275,6 +275,9 @@ jobs:
       - name: Run booking-ended reminder smoke
         run: bash tools/test-booking-reminder-functional.sh
 
+      - name: Run deferred fuel-close smoke
+        run: bash tools/test-deferred-fuel-close-functional.sh
+
   drill-smoke:
     name: Restore-drill end-to-end smoke (GV-329)
     needs: changes
