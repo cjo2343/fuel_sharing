@@ -66,9 +66,13 @@ PSQL -f /repo/supabase-schema.sql >/dev/null
 
 PSQL <<'SQL'
 -- Two workspaces: one with a syn date coming up, one with no syn date at all.
+-- syn-flow also carries a STALE syn_booked_at, as a workspace acknowledged before
+-- migration 151 would: the first acknowledgement below must strip it (GV-400), which
+-- is what makes the marker self-heal without depending on the one-time cleanup.
 insert into public.ledgers (id, name, slug, vehicle_info) values
   ('syn-flow', 'Syn flow', 'syn-flow',
-   jsonb_build_object('next_inspection_date', to_char(current_date + 12, 'YYYY-MM-DD'))),
+   jsonb_build_object('next_inspection_date', to_char(current_date + 12, 'YYYY-MM-DD'),
+                      'syn_booked_at', '2026-01-01T09:00:00Z')),
   ('no-syn', 'No syn', 'no-syn', '{}'::jsonb);
 
 -- Lars is a PLAIN member. Every acknowledgement below that is supposed to succeed is
@@ -119,8 +123,13 @@ begin
   if (v_info ->> 'syn_booked_by_member_id') <> '10000000-0000-0000-0000-000000000001' then
     raise exception 'FAIL: syn_booked_by_member_id was not stamped: %', v_info;
   end if;
-  if nullif(v_info ->> 'syn_booked_at', '') is null then
-    raise exception 'FAIL: syn_booked_at was not stamped: %', v_info;
+  -- GVM-457 / GV-400 (migration 151): the acknowledgement timestamp is NOT stamped.
+  -- It was written on every ack and read by nothing — syn_booked_for answers the only
+  -- question anyone asks, and names its own date so it self-invalidates.
+  -- The seed planted a stale one, so this also proves the acknowledge path SUBTRACTS
+  -- the key rather than merely no longer writing it.
+  if v_info ? 'syn_booked_at' then
+    raise exception 'FAIL: syn_booked_at survived the acknowledgement — migration 151 removes it: %', v_info;
   end if;
   -- The acknowledgement must not disturb the date it acknowledges, or anything else.
   if (v_info ->> 'next_inspection_date') is null then

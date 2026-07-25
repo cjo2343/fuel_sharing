@@ -314,12 +314,9 @@ export function fuelArgs({ ledgerId, openPeriodId, legacyId, payerMemberId, fuel
     odometer_value: fuel.odometer,
     station_name_value: fuel.stationBrand,
     station_brand_value: fuel.stationBrand,
-    station_lat_value: null,
-    station_lng_value: null,
-    // Vestigial GPS slots (fuel_payments dropped the columns, migration 071); the
-    // RPC keeps the 19-arg signature and ignores these — mirrors supabase-helpers.ts.
-    user_lat_value: null,
-    user_lng_value: null,
+    // No coordinate slots: migration 151 (GV-400) dropped station_lat/station_lng
+    // from fuel_payments and the four accepted-and-ignored coordinate params from
+    // this RPC, so an extra key here would be PGRST202 — mirrors supabase-helpers.ts.
     full_tank_value: fuel.fullTank,
     event_title: "Optankning registreret",
     event_body: `${fuel.amount} kr`,

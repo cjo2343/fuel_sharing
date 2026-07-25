@@ -298,12 +298,12 @@ values (
   '11111111-2222-3333-4444-555555555555', '${WS1}',
   (select id from public.settlement_periods where ledger_id = '${WS1}' and status = 'open' limit 1),
   '${ID.B}', current_date, 1000, 1100, 'Base tur', '${ID.B}');
-insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, station_lat, station_lng, created_by_member_id)
+insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, station_name, created_by_member_id)
 values (
   '22222222-3333-4444-5555-666666666666', '${WS1}',
   (select id from public.settlement_periods where ledger_id = '${WS1}' and status = 'open' limit 1),
   (select id from public.ledger_members where ledger_id = '${WS1}' and email = '${EMAIL.A}'),
-  current_date, 300.00, 56.1600000, 10.2100000,
+  current_date, 300.00, 'Circle K Aarhus N',
   (select id from public.ledger_members where ledger_id = '${WS1}' and email = '${EMAIL.A}'));
 `;
 {
@@ -376,6 +376,17 @@ const SOFT_DELETE_WS1 = `perform public.admin_soft_delete_workspace('${WS1}', tr
 // there is exactly one). The event_title arg makes the create write a feed event.
 const LOG_INCIDENT_B = `perform public.log_vehicle_incident('${WS1}', current_date, 'Ridse i lak', 'Ridse ved parkering', null, null, null, null, 'open', null, 'Skade logget', 'Bo loggede en skade');`;
 const LATEST_WS1_INCIDENT = `(select id from public.vehicle_incidents where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
+
+// Push devices for the migration-150 target RPCs (GV-398). Deliberately shaped to
+// carry the two arguments those functions exist for: one owner with TWO devices (so
+// pruning by owner instead of by token would take the live one down with the dead
+// one), and an address stored with capitals (upsert_push_token writes
+// current_user_email() verbatim, and the old lower-cased in.() URL filter never
+// matched it). expo_push_tokens is not workspace-scoped, so these rows stand alone.
+const SEED_PUSH_TOKENS = `insert into public.expo_push_tokens (user_id, email, token, platform) values
+  ('99999999-0000-0000-0000-000000000001', 'Lars@Test.dk', 'ExponentPushToken[phone]', 'ios'),
+  ('99999999-0000-0000-0000-000000000001', 'Lars@Test.dk', 'ExponentPushToken[tablet]', 'ios'),
+  ('99999999-0000-0000-0000-000000000002', 'mette@test.dk', 'ExponentPushToken[dead]', 'android');`;
 
 // ── 5. SQL generation ────────────────────────────────────────────────────────
 function impersonate(actor) {
@@ -3142,6 +3153,96 @@ end`,
     expect: "ok",
     post: `if exists (select 1 from public.vehicle_incident_photos where ledger_id = '${WS1}')
       then raise exception 'CASEFAIL incident-photo-delete-admin-ok: photo survived admin delete'; end if;`,
+  }),
+
+  // ── Push-target RPCs (migration 150, GV-398) ──────────────────────────────
+  // These exist so govehlo-web's push engine can pass addresses and device tokens in
+  // a POST body instead of a query string. They are service-role only and carry NO
+  // in-body gate — the privilege system IS the gate, so the denial cases below are
+  // the whole authorisation contract.
+  queryCase({
+    name: "push-targets-service-role-resolves",
+    desc: "service role resolves addresses to devices, case-insensitively, and never to everybody",
+    setup: [step(SUPER, SEED_PUSH_TOKENS)],
+    actor: SERVICE,
+    assert: `if (select count(*) from public.resolve_push_targets(array['lars@test.dk'])) <> 2 then
+      raise exception 'CASEFAIL push-targets-service-role-resolves: expected both of Lars devices';
+    end if;
+    if (select count(*) from public.resolve_push_targets(array['LARS@Test.DK'])) <> 2 then
+      raise exception 'CASEFAIL push-targets-service-role-resolves: matching must lower-case BOTH sides — a row stored with a capitalised address was the silent drop this RPC fixes';
+    end if;
+    if exists (select 1 from public.resolve_push_targets(array['lars@test.dk']) t where t.user_id is null) then
+      raise exception 'CASEFAIL push-targets-service-role-resolves: user_id must come back, the mute filter keys on it';
+    end if;
+    if (select count(*) from public.resolve_push_targets(array[]::text[])) <> 0 then
+      raise exception 'CASEFAIL push-targets-service-role-resolves: an empty list must resolve to nobody';
+    end if;
+    if (select count(*) from public.resolve_push_targets(null)) <> 0 then
+      raise exception 'CASEFAIL push-targets-service-role-resolves: a null list must resolve to nobody, never to every device';
+    end if`,
+  }),
+  rpcCase({
+    name: "push-targets-member-blocked",
+    desc: "an authenticated workspace admin cannot resolve anyone's push devices",
+    setup: [step(SUPER, SEED_PUSH_TOKENS)],
+    actor: A,
+    op: `perform public.resolve_push_targets(array['lars@test.dk']);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "push-targets-anon-blocked",
+    desc: "anon cannot resolve push devices",
+    setup: [step(SUPER, SEED_PUSH_TOKENS)],
+    actor: ANON,
+    op: `perform public.resolve_push_targets(array['lars@test.dk']);`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "prune-push-tokens-service-role",
+    desc: "service role prunes exactly the named devices and leaves an owner's other device live",
+    setup: [step(SUPER, SEED_PUSH_TOKENS)],
+    actor: SERVICE,
+    assert: `if public.prune_push_tokens(array['ExponentPushToken[dead]']) <> 1 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: expected exactly one row deleted';
+    end if;
+    if exists (select 1 from public.expo_push_tokens e where e.token = 'ExponentPushToken[dead]') then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: the dead token survived';
+    end if;
+    if (select count(*) from public.expo_push_tokens e
+        where e.user_id = '99999999-0000-0000-0000-000000000001') <> 2 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: pruning one owner touched another owner''s devices';
+    end if;
+    -- One assertion per statement on purpose: an OR would let the planner evaluate the
+    -- count before the volatile delete in the same expression.
+    if public.prune_push_tokens(array['ExponentPushToken[phone]']) <> 1 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: expected the phone row deleted';
+    end if;
+    if (select count(*) from public.expo_push_tokens e
+        where e.user_id = '99999999-0000-0000-0000-000000000001') <> 1 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: a two-device owner must keep the live device — deleting by user_id was the wrong shape';
+    end if;
+    if public.prune_push_tokens(array[]::text[]) <> 0 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: an empty list must delete nothing';
+    end if;
+    if public.prune_push_tokens(null) <> 0 then
+      raise exception 'CASEFAIL prune-push-tokens-service-role: a null list must delete nothing';
+    end if`,
+  }),
+  rpcCase({
+    name: "prune-push-tokens-member-blocked",
+    desc: "an authenticated workspace admin cannot prune push tokens",
+    setup: [step(SUPER, SEED_PUSH_TOKENS)],
+    actor: A,
+    op: `perform public.prune_push_tokens(array['ExponentPushToken[dead]']);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "prune-push-tokens-anon-blocked",
+    desc: "anon cannot prune push tokens",
+    setup: [step(SUPER, SEED_PUSH_TOKENS)],
+    actor: ANON,
+    op: `perform public.prune_push_tokens(array['ExponentPushToken[dead]']);`,
+    expect: "42501",
   }),
 ];
 

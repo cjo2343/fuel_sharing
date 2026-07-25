@@ -160,6 +160,8 @@ const expected = [
   "147_retire_dead_rpcs_and_legacy_push_subscriptions.sql",
   "148_anon_execute_revoke_convention.sql",
   "149_rate_limit_actor_pseudonymisation.sql",
+  "150_push_target_rpcs.sql",
+  "151_drop_fuel_station_coordinates.sql",
   "152_booking_future_cap.sql",
 ];
 

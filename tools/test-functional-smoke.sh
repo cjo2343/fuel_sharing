@@ -119,9 +119,9 @@ insert into public.trips (id, ledger_id, period_id, driver_member_id, trip_date,
 insert into public.trip_participants (trip_id, member_id) values
   ('cccccccc-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001'),
   ('cccccccc-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000002');
-insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, station_lat, station_lng, created_by_member_id) values
+insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, station_name, created_by_member_id) values
   ('dddddddd-0000-0000-0000-000000000001', 'test-car', 'bbbbbbbb-0000-0000-0000-000000000001',
-   'aaaaaaaa-0000-0000-0000-000000000001', current_date, 300.00, 56.16, 10.21,
+   'aaaaaaaa-0000-0000-0000-000000000001', current_date, 300.00, 'Circle K Aarhus N',
    'aaaaaaaa-0000-0000-0000-000000000001');
 
 -- Requested settlement => the 046 lock is ACTIVE for the open period.
@@ -220,15 +220,17 @@ begin
   if t.note is not null then raise exception 'FAIL trip note not scrubbed'; end if;
   if t.start_km <> 1000 or t.end_km <> 1100 then raise exception 'FAIL trip km changed!'; end if;
 
-  -- d. fuel: user-GPS columns dropped outright (migration 071, GV-196 — the
-  -- strongest form of "user coords scrubbed"); amount + station coords intact
+  -- d. fuel: every coordinate column dropped outright — the driver's own in
+  -- migration 071 (GV-196) and the station's in 151 (GV-400), which is the
+  -- strongest form of "coords scrubbed"; amount + station NAME intact, because
+  -- the place is still recorded, just not to seven decimals
   select * into f from public.fuel_payments where id = 'dddddddd-0000-0000-0000-000000000001';
   if exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'fuel_payments'
-      and column_name in ('user_lat', 'user_lng')
-  ) then raise exception 'FAIL fuel user-GPS columns still exist'; end if;
-  if f.amount <> 300.00 or f.station_lat is null then raise exception 'FAIL fuel financial/station data changed!'; end if;
+      and column_name in ('user_lat', 'user_lng', 'station_lat', 'station_lng')
+  ) then raise exception 'FAIL fuel coordinate columns still exist'; end if;
+  if f.amount <> 300.00 or f.station_name is null then raise exception 'FAIL fuel financial/station data changed!'; end if;
 
   -- e. bookings: future cancelled, both purposes scrubbed, past not deleted
   if (select deleted_at from public.car_bookings where id = 'eeeeeeee-0000-0000-0000-000000000001') is null
