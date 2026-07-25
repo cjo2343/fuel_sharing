@@ -26,9 +26,33 @@
 //
 // Values that resolve to another token (`var(--color-...)` aliases) are canonical-only
 // indirection and are not required in the derived copies, so they are skipped here.
+//
+// ── Second half: markup (GV-371) ──────────────────────────────────────────────
+//
+// Comparing declaration files to each other only proves the token *lists* agree. It
+// says nothing about the markup that actually renders, and that is where the palette
+// leaked: the /privatliv nav and the server-rendered /join/<code> page both inlined a
+// pre-rebrand brand mark painted `fill="#FBBF24"` over `fill="#27AE60"` — two values
+// that exist in no token file, on any side, so nothing here had anything to compare
+// them with. They survived the GV-319 asset swap and sat live for months.
+//
+// So this guard now also walks govehlo-web's markup and fails on any hex in a colour
+// attribute that is not a canonical token value. Off-palette values that are known and
+// accepted live in tools/token-markup-allowlist.mjs with a written reason and a
+// review-by date (the reviewed-exceptions pattern from GVM-437); they warn loudly on
+// every run and the guard fails if one goes stale, expires, or was never needed.
+// tools/lib/markup-hex-scan.mjs documents what the scanner treats as markup and why.
 
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { markupExceptions } from './token-markup-allowlist.mjs';
+import {
+  MARKUP_EXTENSIONS,
+  SKIP_DIRS,
+  normaliseHex,
+  scanMarkupHexes,
+} from './lib/markup-hex-scan.mjs';
 
 const strict = process.argv.includes('--strict');
 
@@ -42,6 +66,11 @@ const DERIVED = [
   // Checked here so the snapshot itself can't silently drift from canonical.
   { label: 'govehlo-mobile snapshot', file: '../govehlo-mobile/src/theme/__tests__/canonical-tokens.json', kind: 'json' },
 ];
+
+// The markup scan is web-only: govehlo-mobile ships React Native, which has no markup
+// attributes to paint — its colour literals are TS values, already covered by GV-221's
+// vitest guard against the vendored snapshot above.
+const MARKUP_REPO = { label: 'govehlo-web', dir: '../govehlo-web' };
 
 // Collapse the three naming conventions onto one key:
 //   --color-deep-forest / --gv-deep-forest / deepForest  ->  deepforest
@@ -94,6 +123,8 @@ if (canonical.size === 0) {
 }
 
 let failed = false;
+let markupFailed = false;
+let markupChecked = false;
 const checked = [];
 const skipped = [];
 
@@ -129,9 +160,163 @@ for (const { label, file, kind } of DERIVED) {
   for (const key of missing) console.error(`  - missing colour: ${key} (defined in canonical, absent in ${label})`);
 }
 
+// ── Markup scan (GV-371) ─────────────────────────────────────────────────────
+//
+// Canonical VALUES, not names: markup writes `fill="#52B788"`, never `--color-leaf`.
+// Reusing the map the drift check already parsed is the point — one canonical set, so
+// the two halves of this guard can never disagree about what the palette is.
+const canonicalValues = new Set();
+for (const hex of canonical.values()) {
+  const normalised = normaliseHex(hex);
+  if (normalised) canonicalValues.add(normalised);
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const today = new Date().toISOString().slice(0, 10);
+
+/** Every markup-bearing file under `dir`, as repo-relative paths. */
+function walkMarkupFiles(dir, base = dir, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    // isDirectory() is false for symlinks, so a symlinked dir is never followed.
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      walkMarkupFiles(path.join(dir, entry.name), base, out);
+    } else if (entry.isFile() && MARKUP_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      // Forward slashes always, so allow-list paths read the same on every platform.
+      out.push(path.relative(base, path.join(dir, entry.name)).split(path.sep).join('/'));
+    }
+  }
+  return out;
+}
+
+/**
+ * Validate the reviewed-exception list itself. An exception that is malformed,
+ * expired, or excusing a colour that is canonical anyway is a failure — the list has
+ * to stay something a reviewer can trust at a glance.
+ */
+function validateExceptions() {
+  const problems = [];
+  const seen = new Set();
+  const entries = [];
+  for (const [i, entry] of markupExceptions.entries()) {
+    const where = `token-markup-allowlist.mjs entry ${i + 1}`;
+    const hex = typeof entry.hex === 'string' ? normaliseHex(entry.hex) : null;
+    if (!hex) {
+      problems.push(`${where}: "hex" must be a hex colour, got ${JSON.stringify(entry.hex)}`);
+      continue;
+    }
+    if (!Array.isArray(entry.files) || entry.files.length === 0 || entry.files.some((f) => typeof f !== 'string')) {
+      problems.push(`${where} (${hex}): "files" must be a non-empty array of repo-relative paths`);
+      continue;
+    }
+    if (typeof entry.reason !== 'string' || entry.reason.trim().length < 40) {
+      problems.push(`${where} (${hex}): "reason" must explain the exception to a reviewer with no context`);
+      continue;
+    }
+    if (typeof entry.reviewBy !== 'string' || !ISO_DATE.test(entry.reviewBy)) {
+      problems.push(`${where} (${hex}): "reviewBy" must be a YYYY-MM-DD date`);
+      continue;
+    }
+    if (entry.reviewBy < today) {
+      problems.push(
+        `${where} (${hex}): EXPIRED on ${entry.reviewBy} — re-make the judgement, then either ` +
+        'move the value onto a token or write the reason afresh with a new reviewBy.'
+      );
+      continue;
+    }
+    if (canonicalValues.has(hex)) {
+      problems.push(`${where} (${hex}): REDUNDANT — that value is canonical, so nothing is being excused. Delete it.`);
+      continue;
+    }
+    for (const file of entry.files) {
+      const key = `${hex} ${file}`;
+      if (seen.has(key)) {
+        problems.push(`${where} (${hex}): duplicate entry for ${file}`);
+        continue;
+      }
+      seen.add(key);
+    }
+    entries.push({ ...entry, hex, used: new Set() });
+  }
+  return { entries, problems };
+}
+
+const webDir = path.join(root, MARKUP_REPO.dir);
+if (!fs.existsSync(webDir)) {
+  console.warn(
+    `⚠ check-token-drift: ${MARKUP_REPO.label} not found at ${MARKUP_REPO.dir} — ` +
+    'markup hex colours NOT checked.'
+  );
+  if (strict) failed = true;
+} else {
+  const { entries, problems } = validateExceptions();
+  const files = walkMarkupFiles(webDir).sort();
+  const violations = [];
+
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(webDir, file), 'utf8');
+    for (const finding of scanMarkupHexes(source)) {
+      if (canonicalValues.has(finding.hex)) continue;
+      const excuse = entries.find((e) => e.hex === finding.hex && e.files.includes(file));
+      if (excuse) {
+        excuse.used.add(file);
+        continue;
+      }
+      violations.push({ file, ...finding });
+    }
+  }
+
+  // A listed file that no longer contains the value has paid its debt — the entry must
+  // go, or the list slowly becomes a wishlist nobody can audit.
+  for (const entry of entries) {
+    for (const file of entry.files) {
+      if (entry.used.has(file)) continue;
+      problems.push(
+        `token-markup-allowlist.mjs (${entry.hex}): STALE — ${file} no longer uses that colour in markup. ` +
+        'Remove the file from the entry (or the whole entry).'
+      );
+    }
+  }
+
+  for (const entry of entries) {
+    if (entry.used.size === 0) continue;
+    console.warn(
+      `⚠ check-token-drift: allowing off-palette ${entry.hex} in ${[...entry.used].sort().join(', ')} ` +
+      `(reviewed, expires ${entry.reviewBy}) — ${entry.reason}`
+    );
+  }
+
+  if (violations.length > 0) {
+    failed = true;
+    markupFailed = true;
+    console.error(
+      `check-token-drift: ${MARKUP_REPO.label} markup paints colours that are not in the canonical palette:`
+    );
+    for (const v of violations) {
+      console.error(`  - ${v.file}:${v.line}: ${v.raw} — ${v.context}`);
+    }
+  }
+
+  if (problems.length > 0) {
+    failed = true;
+    markupFailed = true;
+    console.error('check-token-drift: the reviewed-exception list needs attention:');
+    for (const problem of problems) console.error(`  - ${problem}`);
+  }
+
+  if (violations.length === 0 && problems.length === 0) {
+    console.log(
+      `check-token-drift: ${MARKUP_REPO.label} markup uses only canonical colours ` +
+      `(${files.length} files scanned, ${entries.length} reviewed exceptions).`
+    );
+  }
+  markupChecked = true;
+}
+
 console.log(
   `check-token-drift: summary — checked: ${checked.length ? checked.join(', ') : 'none'}` +
-  ` | skipped: ${skipped.length ? skipped.join(', ') : 'none'}.`
+  ` | skipped: ${skipped.length ? skipped.join(', ') : 'none'}` +
+  ` | markup: ${markupChecked ? `${MARKUP_REPO.label} scanned` : 'not scanned'}.`
 );
 
 if (skipped.length > 0 && !strict) {
@@ -143,9 +328,15 @@ if (skipped.length > 0 && !strict) {
 
 if (failed) {
   console.error(
-    '\nDerived token copies must stay in sync with the canonical source:\n' +
-    `  ${CANONICAL}\n` +
-    'Update the derived copy (or the canonical file) so every canonical colour is present with the same value.' +
+    `\nOne canonical source of colour:\n  ${CANONICAL}\n` +
+    'Derived token copies must list every canonical colour with the same value; update the ' +
+    'derived copy (or the canonical file) so they agree.' +
+    (markupFailed
+      ? '\nMarkup must paint only canonical values. Replace the hex with the token that means ' +
+        'what you want (amber is money only; non-money status is --gv-attention), or — if it ' +
+        'genuinely cannot be a token colour — add a reviewed entry to tools/token-markup-allowlist.mjs ' +
+        'with a written reason and a review-by date.'
+      : '') +
     (strict && skipped.length > 0
       ? '\n--strict also requires every sibling repo to be checked out; the skipped repo(s) above must be present too.'
       : '')

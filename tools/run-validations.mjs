@@ -12,8 +12,10 @@ import { execSync } from 'child_process';
 //   2. test-sql-ambiguity-guard   — blocks high-risk PL/pgSQL variable/column
 //                                    name collisions in the SQL.
 //   3. check-token-drift.mjs      — canonical design tokens vs the derived copies
-//                                    in the sibling repos (warns, never fails, when
-//                                    the siblings are absent — e.g. fuel_sharing CI).
+//                                    in the sibling repos, AND the hex colours the
+//                                    web repo's markup actually paints (GV-371;
+//                                    warns, never fails, when the siblings are
+//                                    absent — e.g. fuel_sharing CI).
 //
 // The heavier Docker-backed checks (schema equivalence, delete-account functional
 // smoke) run as their own npm scripts / CI jobs, not here.
@@ -32,6 +34,10 @@ const scripts = [
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths
   // mirror of the mobile data gateway. Docker-free and sub-second (GV-329).
   "node tools/load-rehearsal/test-load-rehearsal.mjs",
+  // Unit test for check-token-drift's markup scanner (GV-371). Runs first so a broken
+  // scanner reports as a broken scanner, not as a repo full of bad colours — and so it
+  // is covered even in CI, where the sibling repo it scans is not checked out.
+  "node tools/test-markup-hex-scan.mjs",
   "node tools/check-token-drift.mjs",
 ];
 
