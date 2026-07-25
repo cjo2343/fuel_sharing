@@ -15,14 +15,21 @@
 # which meant a client-only merge (govehlo-web or govehlo-mobile, no fuel_sharing
 # change at all) could introduce cross-repo drift with nothing to catch it until
 # the next Monday. Both client repos' CI now fire a `repository_dispatch` event
-# of type `client-push` at the end of their own `push: main` workflow (see the
-# `notify-umbrella` job in each repo's .github/workflows/ci.yml), so a client
-# merge triggers this workflow immediately instead of waiting for the cron.
+# of type `client-push` when their own main moves (see .github/workflows/
+# umbrella-notify.yml in each client repo), so a client merge triggers this
+# workflow immediately instead of waiting for the cron.
+#
+# GV-399: that dispatch has moved twice. It was a `notify-umbrella` job, then GV-394
+# folded it into each client's CI job as trailing steps, then GV-399 dropped the
+# `push: main` trigger from those CI workflows and gave the dispatch its own tiny
+# workflow. If cross-repo checks ever stop firing on a client merge, that file is
+# where to look first.
 #
 # The client-side call needs a token with `repository_dispatch` rights on THIS
-# repo — see the UMBRELLA_DISPATCH_TOKEN note in each client repo's ci.yml for
+# repo — see the UMBRELLA_DISPATCH_TOKEN note in each client repo's
+# umbrella-notify.yml for
 # what to create and where to save it. If that secret is unset on a client repo,
-# its notify-umbrella job emits a ::warning:: and skips; it never fails that
+# its notify job emits a ::warning:: and skips; it never fails that
 # repo's CI, and this workflow simply keeps relying on the weekly cron for that
 # repo's drift until the token is configured.
 #
@@ -91,7 +98,7 @@ on:
   # GV-391: the only trigger that can gate a merge rather than report after it.
   pull_request:
   repository_dispatch:
-    # Fired by govehlo-web / govehlo-mobile's notify-umbrella CI job after a
+    # Fired by govehlo-web / govehlo-mobile's umbrella-notify workflow after a
     # push to their own main lands (see the TRIGGERS note above).
     types: [client-push]
 
