@@ -7,6 +7,8 @@
     "check:schema-equivalence": "node tools/check-schema-equivalence.mjs",
     "gen:db-types": "node tools/generate-db-types.mjs",
     "check:db-types": "node tools/generate-db-types.mjs --check",
+    "vendor:db-types": "node tools/vendor-db-types.mjs",
+    "check:vendored-db-types": "node tools/vendor-db-types.mjs --check",
     "check:role-matrix": "node tools/test-rls-role-matrix.mjs",
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "test:booking-trip": "bash tools/test-booking-trip-functional.sh",

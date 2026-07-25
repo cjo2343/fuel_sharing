@@ -25,6 +25,26 @@
 # its notify-umbrella job emits a ::warning:: and skips; it never fails that
 # repo's CI, and this workflow simply keeps relying on the weekly cron for that
 # repo's drift until the token is configured.
+#
+# GV-391 added `pull_request`. Every trigger above fires AFTER a merge, so this
+# workflow could only ever report drift, never prevent it — and it duly did: it was
+# red for 18 consecutive runs (govehlo-web's vendored DB types three migrations
+# stale) with nothing blocking a single merge in the meantime. A post-hoc guard
+# that nobody has to clear is a guard that trains people to ignore red.
+#
+# No `paths:` filter, deliberately. Two reasons, and the second is the decisive one:
+#   1. There is no honest filter to write. These checks span design tokens, the
+#      migration directory, the invite host and the generated DB types — close to
+#      every path this repo has.
+#   2. A path-filtered workflow does not merely skip on unrelated PRs, it never
+#      REPORTS. Once the owner requires this check (see the gh api command in the
+#      GV-391 PR body), a check that never reports leaves the PR pending forever,
+#      which gets the requirement removed within a week. A job skipped by an `if:`
+#      condition reports as skipped and satisfies the requirement; a workflow
+#      filtered out by `paths:` does not. Same reasoning as the GV-283 gate in
+#      validate.yml, which gates jobs with `if:` and never with `paths:`.
+# The whole run is ~4 minutes (three shallow checkouts plus one Postgres replay),
+# so cheap-and-always beats clever-and-sometimes here.
 # ---------------------------------------------------------------------------
 #
 # ---------------------------------------------------------------------------
@@ -42,6 +62,13 @@
 # job emits a loud ::warning:: annotation and the checks are skipped. A red X on
 # a scheduled cross-repo audit would train everyone to ignore it; a visible
 # warning that the audit could not run is the correct signal.
+#
+# Known limit of the GV-391 `pull_request` trigger: fuel_sharing is public, and a PR
+# from a FORK gets no secrets, so preflight sees no token, warns, and the checks
+# skip. Branch-internal PRs (every PR this project has had) are unaffected. If fork
+# PRs ever become normal here, the fix is `pull_request_target` with an explicit
+# checkout of the PR head — which is a security decision, not a plumbing one, so it
+# is deliberately not made pre-emptively.
 # ---------------------------------------------------------------------------
 
 name: Umbrella cross-repo checks
@@ -60,6 +87,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  # GV-391: the only trigger that can gate a merge rather than report after it.
+  pull_request:
   repository_dispatch:
     # Fired by govehlo-web / govehlo-mobile's notify-umbrella CI job after a
     # push to their own main lands (see the TRIGGERS note above).
@@ -67,6 +96,13 @@ on:
 
 permissions:
   contents: read
+
+# Superseded PR runs are wasted minutes; a force-push should leave one run, not a
+# queue. main/schedule/dispatch runs are never cancelled — each of those is auditing
+# a distinct state that nothing else will re-check.
+concurrency:
+  group: umbrella-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Secrets are not available to job-level `if:` conditions, so a tiny preflight
@@ -198,28 +234,28 @@ jobs:
       #    phase 2), a MISSING file is a ::warning::, not a failure — the
       #    umbrella stays green. A PRESENT copy that differs is real drift and
       #    fails hard.
+      #
+      #    GV-391 moved the comparison out of inline shell and into
+      #    tools/vendor-db-types.mjs, so the SAME tool that reports the drift is the
+      #    tool that fixes it (`npm run vendor:db-types`), and the failure message
+      #    names that command with both md5s. The 18-run red streak this ticket
+      #    closes was not a detection failure — the drift was detected every single
+      #    time — it was a remediation-cost failure.
       - name: Shared DB/RPC type drift (GV-223)
-        run: |
-          set -euo pipefail
-          CANON="fuel_sharing/types/database.ts"
-          if [ ! -f "$CANON" ]; then
-            echo "::error title=Canonical DB types missing::$CANON does not exist in fuel_sharing — run npm run gen:db-types there and commit it."
-            exit 1
-          fi
-          status=0
-          check_copy() {
-            repo="$1"; copy="$2"
-            if [ ! -f "$copy" ]; then
-              echo "::warning title=DB types not vendored ($repo)::$repo has no vendored copy at $copy yet (GV-223 phase 2 pending). Vendor fuel_sharing/types/database.ts byte-identically at that exact path to arm this check."
-              return 0
-            fi
-            if cmp -s "$CANON" "$copy"; then
-              echo "$repo: vendored DB types match the canonical artifact (OK)"
-            else
-              echo "::error title=DB type drift ($repo)::$copy differs from the canonical $CANON. Re-vendor: in fuel_sharing run npm run gen:db-types, then copy types/database.ts into $repo at $copy (byte-identical)."
-              status=1
-            fi
-          }
-          check_copy "govehlo-mobile" "govehlo-mobile/src/types/database.generated.ts"
-          check_copy "govehlo-web" "govehlo-web/types/database.ts"
-          exit "$status"
+        working-directory: fuel_sharing
+        run: node tools/vendor-db-types.mjs --check --strict
+
+      # 5. RLS role-matrix + coverage, STRICT (GV-379 / GV-391). The matrix half runs
+      #    in fuel_sharing's own validate.yml, but its coverage half — "does any client
+      #    actually call the functions this guard certifies?" — needs the two sibling
+      #    repos, which exist in no workflow but this one. Without them the guard
+      #    printed "client call sites NOT checked" and exited 0, so the check GV-379
+      #    was written to perform had never once performed it. --strict makes an absent
+      #    sibling a hard failure, which here means the checkout above broke.
+      #
+      #    This is the only Docker-backed step in this workflow (a disposable Postgres
+      #    replay of supabase-schema.sql); ubuntu-latest runners have Docker
+      #    preinstalled, so no setup step is needed. ~35s locally, 166 cases.
+      - name: RLS role-matrix + coverage (strict, all three repos)
+        working-directory: fuel_sharing
+        run: node tools/test-rls-role-matrix.mjs --strict
