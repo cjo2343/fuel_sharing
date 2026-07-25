@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 152 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 153 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -545,6 +545,10 @@ export type Database = {
           vehicle_lookup_at: string | null
           vehicle_lookup_source: string
           vehicle_plate: string
+          weekly_digest_claim_token: string | null
+          weekly_digest_claimed_at: string | null
+          weekly_digest_enabled: boolean
+          weekly_digest_sent_at: string | null
         }
         Insert: {
           booking_future_cap_per_member?: number | null
@@ -591,6 +595,10 @@ export type Database = {
           vehicle_lookup_at?: string | null
           vehicle_lookup_source?: string
           vehicle_plate?: string
+          weekly_digest_claim_token?: string | null
+          weekly_digest_claimed_at?: string | null
+          weekly_digest_enabled?: boolean
+          weekly_digest_sent_at?: string | null
         }
         Update: {
           booking_future_cap_per_member?: number | null
@@ -637,6 +645,10 @@ export type Database = {
           vehicle_lookup_at?: string | null
           vehicle_lookup_source?: string
           vehicle_plate?: string
+          weekly_digest_claim_token?: string | null
+          weekly_digest_claimed_at?: string | null
+          weekly_digest_enabled?: boolean
+          weekly_digest_sent_at?: string | null
         }
         Relationships: []
       }
@@ -1766,6 +1778,16 @@ export type Database = {
         Args: { p_limit?: number; p_max_age_hours?: number }
         Returns: number
       }
+      claim_due_weekly_digests: {
+        Args: { p_limit?: number }
+        Returns: {
+          claim_token: string
+          deferred_fuel: number
+          ledger_id: string
+          missing_trips: number
+          recipients: Json
+        }[]
+      }
       clear_app_announcements: { Args: never; Returns: number }
       close_deferred_booking_fuel: {
         Args: {
@@ -1860,6 +1882,7 @@ export type Database = {
         Args: { confirmations: Json }
         Returns: number
       }
+      confirm_weekly_digests: { Args: { confirmations: Json }; Returns: number }
       create_private_ledger_workspace: {
         Args: { workspace_name: string; workspace_slug?: string }
         Returns: {
@@ -2113,6 +2136,10 @@ export type Database = {
           target_ledger_id: string
         }
         Returns: Json
+      }
+      set_weekly_digest_enabled: {
+        Args: { enabled: boolean; target_ledger_id: string }
+        Returns: undefined
       }
       settlement_entry_is_locked: {
         Args: { p_ledger_id: string; p_period_id: string }

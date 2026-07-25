@@ -265,11 +265,12 @@ test("trips and fuel reads carry the +1 truncation sentinel and soft-delete filt
   assert.ok(fuel.query.includes(`limit=${SETTLE_ROW_CAP + 1}`));
   assert.ok(fuel.query.includes("order=payment_date.desc"));
 });
-test("events read excludes the three reminder-audit event types", () => {
+test("events read excludes the four reminder-audit event types", () => {
   assert.deepEqual(EVENT_TYPE_EXCLUDE, [
     "payment_reminder_sent",
     "close_reminder_sent",
     "booking_completion_reminder_sent",
+    "weekly_digest_sent",
   ]);
   const events = ledgerReadRequests("x").find((r) => r.label === "read:events");
   assert.ok(events.query.includes(`event_type=not.in.(${EVENT_TYPE_EXCLUDE.join(",")})`));
