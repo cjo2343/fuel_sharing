@@ -245,7 +245,17 @@ jobs:
       # combinations and asserts allow/deny + resulting state. Catches
       # behavioural holes (GV-259 cancel sweep, GV-260 amount mismatch) that the
       # structural schema-equivalence check cannot see.
-      - name: Run role-matrix suite
+      #
+      # NOT --strict, and that is not an oversight: this job checks out fuel_sharing
+      # alone, so the GV-379 coverage half ("does any client actually call the
+      # functions this guard certifies?") is unanswerable here — --strict would make
+      # it permanently red for a question it cannot ask. What it CAN do is say so
+      # loudly, which GV-391 made it do: the guard now emits a ::warning:: annotation
+      # naming the count it did not verify, and its final line reads "coverage half
+      # SKIPPED" instead of an unqualified pass. The strict run, with all three repos
+      # checked out, lives in umbrella.yml — that is the only workflow where the
+      # sibling repos exist.
+      - name: Run role-matrix suite (matrix half only — see umbrella.yml for coverage)
         run: npm run check:role-matrix
 
   functional-smoke:

@@ -68,12 +68,24 @@ file contract below; skipping a step fails CI.
    results, catching what the grep guard can't (wrong columns, drifted function
    bodies, missing mirrors). CI runs it on every PR either way.
 
-7. **Bump the admin drift constant (GV-172):** in **govehlo-web**, set
-   `EXPECTED_LATEST_MIGRATION` in `functions/api/owner/migrations.js` to this
-   migration's number. The admin Health page compares it against what's actually
-   applied in prod, so the console shows "not applied" the moment a migration merges
-   but hasn't been run in the SQL Editor. Skipping this bump makes the drift check
-   silently under-report.
+7. **Sync govehlo-web — BOTH artifacts, one commit (GV-172 + GV-223):**
+   a. Set `EXPECTED_LATEST_MIGRATION` in `functions/api/owner/migrations.js` to this
+      migration's number. The admin Health page compares it against what's actually
+      applied in prod, so the console shows "not applied" the moment a migration
+      merges but hasn't been run in the SQL Editor. Skipping this bump makes the
+      drift check silently under-report.
+   b. Re-vendor the generated types: run `npm run vendor:db-types` in fuel_sharing
+      (with the sibling repos checked out) and commit the refreshed
+      `types/database.ts` in **govehlo-web** and `src/types/database.generated.ts`
+      in **govehlo-mobile**.
+
+   **(b) is the step that goes missing.** Migrations 144/145/146 each shipped the
+   govehlo-web commit for (a) and dropped (b) — because this checklist named only the
+   constant — leaving web's types three migrations stale and the umbrella workflow red
+   for 18 consecutive runs (GV-391). Mobile drifts less only by luck: mobile tickets
+   call the new RPCs, so its copy gets refreshed by work that wouldn't compile
+   otherwise. Web calls almost none of them, so nothing but this line pushes back.
+   The umbrella workflow is the only CI that can see either copy.
 
 8. **Ship:** branch + PR via `/ship`. In the PR body and to the user, state explicitly:
    **"SQL must be applied manually in the Supabase SQL Editor after merge."**

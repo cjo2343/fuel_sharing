@@ -42,11 +42,17 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
    must produce the same end state as a fresh install running every migration).
 5. Regenerate the shared DB types: `npm run gen:db-types` (Docker) and commit the
    refreshed `types/database.ts` — CI's `check:db-types` fails when it is stale.
-6. Run `npm run validate` — it enforces 1–4.
-7. RPCs that write domain events follow the migration 051/052 pattern: trailing
+6. **Fan those types out to both clients: `npm run vendor:db-types`** (needs the
+   sibling repos checked out). It writes `govehlo-web/types/database.ts` and
+   `govehlo-mobile/src/types/database.generated.ts` — each is a separate repo and a
+   separate PR. Skipping this is what put govehlo-web three migrations behind and the
+   umbrella workflow red for 18 runs (GV-391); the umbrella is the only CI that can
+   see these copies at all.
+7. Run `npm run validate` — it enforces 1–4.
+8. RPCs that write domain events follow the migration 051/052 pattern: trailing
    `event_title` / `event_body` params, insert into `ledger_events`, actor via
    `public.current_ledger_member_id()`, email via `auth.jwt() ->> 'email'`.
-8. New RPCs called by clients need `grant execute ... to authenticated`.
+9. New RPCs called by clients need `grant execute ... to authenticated`.
 
 Use the `/new-migration` skill — it scaffolds all of this.
 
@@ -55,6 +61,8 @@ npm run validate                 # fast: migration guard + SQL ambiguity guard +
 npm run check:schema-equivalence # Docker: replays migrations vs consolidated schema and diffs
 npm run gen:db-types             # Docker: regenerates types/database.ts from the consolidated schema (GV-223)
 npm run check:db-types           # Docker: fails if the committed types/database.ts is stale
+npm run vendor:db-types          # copies types/database.ts into both client repos (GV-391)
+npm run check:vendored-db-types  # reports a stale client copy without writing anything
 npm run test:functional-smoke    # Docker: runs delete_my_account / push-token RPCs and asserts scrubs
 ```
 

@@ -3087,6 +3087,10 @@ reset role;`);
   }
 }
 
+// Did the coverage check's client half actually run? Read by the final summary line so
+// a half-run guard cannot report as a whole one (GV-391).
+let coverageRan = false;
+
 // ── Coverage check: is this guard certifying code production never runs? (GV-379) ──
 //
 // GV-277 put the entire recurring-suspension feature on set_ledger_member_active_admin,
@@ -3263,6 +3267,19 @@ reset role;`);
     if (STRICT) {
       coverageFailed = true;
       log("  FAIL  coverage — --strict requires every sibling repo to be checked out.");
+    } else if (process.env.GITHUB_ACTIONS) {
+      // GV-391: this ran in CI for weeks printing the warning above into a log body
+      // nobody opens, under a green tick and a job named for the suite that DID pass.
+      // An annotation surfaces on the run summary itself, so "this job did not do the
+      // thing GV-379 built it to do" is visible without expanding a single step.
+      log(
+        "::warning title=Role-matrix coverage half did NOT run::" +
+        `The GV-379 reachability check was SKIPPED: ${missing.join(" and ")} not checked out, so ` +
+        `whether any client calls the ${inScope.length} authenticated-callable function(s) this guard ` +
+        "exercises is UNVERIFIED by this job. Only the matrix half ran. The complete check runs in " +
+        "the 'Umbrella cross-repo checks' workflow, which checks out all three repos and runs " +
+        "tools/test-rls-role-matrix.mjs --strict.",
+      );
     }
   }
 
@@ -3287,6 +3304,8 @@ reset role;`);
       "checked out alongside fuel_sharing for a complete check (or pass --strict to fail loudly).",
     );
   }
+
+  coverageRan = clientHalfRan;
 }
 
 cleanup();
@@ -3296,4 +3315,11 @@ if (failures > 0) {
   process.stderr.write(`❌ Role matrix: ${failures} failure(s) across ${CASES.length} case(s) + the coverage check.\n`);
   process.exit(1);
 }
-log(`✅ Role matrix: all ${CASES.length} cases passed.`);
+// GV-391: an unqualified "all cases passed" is what let a half-run guard read as a
+// full one for weeks. The success line now states which halves actually ran.
+log(
+  coverageRan
+    ? `✅ Role matrix: all ${CASES.length} cases passed, coverage check clean.`
+    : `✅ Role matrix: all ${CASES.length} cases passed — coverage half SKIPPED (sibling repos absent; ` +
+      "client reachability UNVERIFIED, run with the siblings checked out or see umbrella.yml).",
+);
