@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 151 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 152 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -501,6 +501,7 @@ export type Database = {
       }
       ledgers: {
         Row: {
+          booking_future_cap_per_member: number | null
           bootstrap_locked_at: string | null
           close_reminder_enabled: boolean
           created_at: string
@@ -546,6 +547,7 @@ export type Database = {
           vehicle_plate: string
         }
         Insert: {
+          booking_future_cap_per_member?: number | null
           bootstrap_locked_at?: string | null
           close_reminder_enabled?: boolean
           created_at?: string
@@ -591,6 +593,7 @@ export type Database = {
           vehicle_plate?: string
         }
         Update: {
+          booking_future_cap_per_member?: number | null
           bootstrap_locked_at?: string | null
           close_reminder_enabled?: boolean
           created_at?: string
@@ -2060,6 +2063,15 @@ export type Database = {
       scheduled_reminder_state: {
         Args: { p_ledger_id?: string }
         Returns: Json
+      }
+      set_booking_future_cap: {
+        Args: {
+          cap_value: number
+          event_body?: string
+          event_title?: string
+          target_ledger_id: string
+        }
+        Returns: undefined
       }
       set_close_reminder_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
