@@ -58,13 +58,14 @@
 # Save it on THIS repo (fuel_sharing) as an Actions secret named
 # CROSS_REPO_TOKEN (Settings → Secrets and variables → Actions).
 #
-# If the secret is absent or revoked, this workflow does NOT fail: the preflight
-# job emits a loud ::warning:: annotation and the checks are skipped. A red X on
-# a scheduled cross-repo audit would train everyone to ignore it; a visible
-# warning that the audit could not run is the correct signal.
+# If the secret is absent or revoked, this workflow does NOT fail: the token
+# probe (the first step of the single job below) emits a loud ::warning::
+# annotation and every check step is skipped. A red X on a scheduled cross-repo
+# audit would train everyone to ignore it; a visible warning that the audit could
+# not run is the correct signal.
 #
 # Known limit of the GV-391 `pull_request` trigger: fuel_sharing is public, and a PR
-# from a FORK gets no secrets, so preflight sees no token, warns, and the checks
+# from a FORK gets no secrets, so the probe sees no token, warns, and the checks
 # skip. Branch-internal PRs (every PR this project has had) are unaffected. If fork
 # PRs ever become normal here, the fix is `pull_request_target` with an explicit
 # checkout of the PR head — which is a security decision, not a plumbing one, so it
@@ -105,15 +106,31 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Secrets are not available to job-level `if:` conditions, so a tiny preflight
-  # job probes the secret's presence and exposes it as an output the real job can
-  # gate on. This is what lets the workflow SKIP (not fail) when the token is gone.
-  preflight:
-    name: Check cross-repo token
+  umbrella:
+    name: Cross-repo consistency
     runs-on: ubuntu-latest
-    outputs:
-      has_token: ${{ steps.probe.outputs.has_token }}
     steps:
+      # -----------------------------------------------------------------------
+      # Token probe (was its own `preflight` job until GV-394)
+      # -----------------------------------------------------------------------
+      # Secrets are not available to JOB-level `if:` conditions, which is why
+      # this used to be a separate `preflight` job that exposed the answer as an
+      # output for a job-level gate. That constraint is real, but the fix was
+      # more expensive than the problem: GitHub bills per JOB rounded UP to a
+      # whole minute, and this workflow fires a lot — 306 runs in July 2026 (225
+      # of them repository_dispatch from the two client repos' merges), and GV-391
+      # has just added `pull_request` on top of that. A 2-second
+      # `[ -n "$SECRET" ]` test therefore cost 306+ billed minutes a month.
+      #
+      # STEP-level `if:` has no such restriction on step outputs, so the probe
+      # runs as the first step here and every following step gates on it. Same
+      # behaviour, one runner instead of two: when the token is missing the
+      # checkout and check steps are skipped and the job ends green with the
+      # ::warning:: below — a red X on a scheduled cross-repo audit would train
+      # everyone to ignore it, so "could not run" must stay a warning.
+      #
+      # Wall clock is unchanged: preflight ran BEFORE umbrella (a `needs:` edge),
+      # so its ~2s was already serial. It is now a ~1s step in the same job.
       - name: Probe CROSS_REPO_TOKEN
         id: probe
         env:
@@ -127,12 +144,10 @@ jobs:
             echo "::warning title=Umbrella checks skipped::CROSS_REPO_TOKEN is not set on fuel_sharing — cross-repo drift checks were SKIPPED, not run. Add a fine-grained PAT (Contents: Read on govehlo-web + govehlo-mobile) as the Actions secret CROSS_REPO_TOKEN to enable them."
           fi
 
-  umbrella:
-    name: Cross-repo consistency
-    needs: preflight
-    if: needs.preflight.outputs.has_token == 'true'
-    runs-on: ubuntu-latest
-    steps:
+      # Every step below carries the same gate. Keep it on ALL of them: a step
+      # that loses the guard would run without the sibling checkouts present and
+      # fail confusingly instead of skipping.
+      #
       # Check out all three repos as siblings. check-token-drift.mjs --strict runs
       # from the fuel_sharing checkout and resolves the derived token copies at
       # ../govehlo-web and ../govehlo-mobile, so the directory names and layout
@@ -142,11 +157,13 @@ jobs:
       #     govehlo-web/      <- ../govehlo-web
       #     govehlo-mobile/   <- ../govehlo-mobile
       - name: Check out fuel_sharing
+        if: steps.probe.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
           path: fuel_sharing
 
       - name: Check out govehlo-web
+        if: steps.probe.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
           repository: cjo2343/govehlo-web
@@ -154,6 +171,7 @@ jobs:
           token: ${{ secrets.CROSS_REPO_TOKEN }}
 
       - name: Check out govehlo-mobile
+        if: steps.probe.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
           repository: cjo2343/govehlo-mobile
@@ -161,6 +179,7 @@ jobs:
           token: ${{ secrets.CROSS_REPO_TOKEN }}
 
       - name: Set up Node
+        if: steps.probe.outputs.has_token == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -169,6 +188,7 @@ jobs:
       #    drifted derived copy is a hard failure (outside the umbrella, a missing
       #    sibling is only a warning — see the header of the script).
       - name: Design-token drift (strict, all three repos)
+        if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/check-token-drift.mjs --strict
 
@@ -177,6 +197,7 @@ jobs:
       #    fuel_sharing/supabase/migrations/ is the source of truth. A migration PR
       #    that forgot to bump the console constant is exactly this mismatch.
       - name: Migration constant vs. highest migration
+        if: steps.probe.outputs.has_token == 'true'
         run: |
           set -euo pipefail
           MIG_FILE="govehlo-web/functions/api/owner/migrations.js"
@@ -202,6 +223,7 @@ jobs:
       #    host and the web join route must agree: mobile must build
       #    https://vehloshare.app/join/<code>, and govehlo-web must serve that path.
       - name: Invite-host consistency (mobile link <-> web route)
+        if: steps.probe.outputs.has_token == 'true'
         run: |
           set -euo pipefail
           ONBOARDING="govehlo-mobile/src/lib/onboarding.ts"
@@ -242,6 +264,7 @@ jobs:
       #    closes was not a detection failure — the drift was detected every single
       #    time — it was a remediation-cost failure.
       - name: Shared DB/RPC type drift (GV-223)
+        if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/vendor-db-types.mjs --check --strict
 
@@ -257,5 +280,6 @@ jobs:
       #    replay of supabase-schema.sql); ubuntu-latest runners have Docker
       #    preinstalled, so no setup step is needed. ~35s locally, 166 cases.
       - name: RLS role-matrix + coverage (strict, all three repos)
+        if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/test-rls-role-matrix.mjs --strict

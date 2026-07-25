@@ -8,33 +8,63 @@ on:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # CI-minutes diet (GV-283)
+  # CI-minutes diet (GV-283, tightened by GV-394)
   # ---------------------------------------------------------------------------
-  # The four heavy jobs below (schema-equivalence, db-types, role-matrix,
-  # functional-smoke) each spin up a disposable Postgres and are the dominant
-  # consumers of the account's free Actions minutes — they ran on EVERY push and
-  # PR, even for changes that cannot possibly affect the schema (design tokens,
-  # docs, this workflow's siblings, etc.).
+  # The five heavy jobs below (schema-equivalence, db-types, role-matrix,
+  # functional-smoke, drill-smoke) each spin up a disposable Postgres and are the
+  # dominant consumers of the account's Actions minutes — they ran on EVERY push
+  # and PR, even for changes that cannot possibly affect the schema (design
+  # tokens, docs, this workflow's siblings, etc.).
   #
-  # This `changes` job is a cheap gate (plain git, no third-party actions): it
-  # computes the diff for the current event and decides whether the heavy jobs
-  # need to run. The heavy jobs `needs: changes` and gate on its output, so when
-  # nothing schema-relevant changed they are SKIPPED (a neutral, green result —
-  # not a failure — so branch protection / merges are never blocked). The cheap
-  # `validate` job always runs on everything.
-  changes:
-    name: Detect schema-relevant changes (GV-283 gate)
+  # GV-283 introduced a cheap `changes` gate job that computed the diff and
+  # exposed a `run_heavy` output for the heavy jobs to gate on. GV-394 MERGED
+  # that job into `validate` — the gate is now the first step here, and the
+  # `run_heavy` output is published by this job instead.
+  #
+  # Why: GitHub bills per JOB, rounded UP to a whole minute. The gate did ~6
+  # seconds of `git diff` and cost a full billed minute on every single run, and
+  # it ran on 100% of them (326 runs in July 2026 = 326 minutes to decide
+  # whether to run something). Folding it into a job that has to run anyway
+  # makes it free: `validate` measured 10-14s and this adds ~6s, so the merged
+  # job still finishes comfortably inside the same one billed minute.
+  #
+  # Wall-clock cost of the merge is ~7 seconds: the heavy jobs used to start
+  # after the gate job (~8s) and now start after this whole job (~15-20s). The
+  # heavy jobs themselves are unchanged and still run in parallel with each
+  # other.
+  #
+  # The heavy jobs `needs: validate` and gate on the output below, so when
+  # nothing schema-relevant changed they are SKIPPED (a neutral result — not a
+  # failure — so branch protection / merges are never blocked, and a skipped job
+  # still REPORTS, unlike a workflow filtered out by a top-level `paths:` — the
+  # same distinction GV-391 relies on in umbrella.yml).
+  #
+  # NOTE ON INDEPENDENCE (this is load-bearing — do not "simplify" it):
+  # `changes` used to run in PARALLEL with `validate`, so a failing `npm run
+  # validate` never suppressed the heavy suites. That property is preserved
+  # deliberately in two places:
+  #   1. The gate step below runs FIRST, before npm ci — so `run_heavy` is
+  #      published even when a later step in this job fails.
+  #   2. The heavy jobs gate on `!cancelled() && ...` rather than the implicit
+  #      `success()`, so they still run when this job goes red.
+  # Drop either and a trivial token-drift failure would silently skip the schema
+  # equivalence / RLS / smoke suites.
+  validate:
+    name: Fast validation (migrations, SQL ambiguity, token drift)
     runs-on: ubuntu-latest
     outputs:
       run_heavy: ${{ steps.filter.outputs.run_heavy }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           # Full history so the diff base (PR base branch / push before-sha) is
-          # reachable — a shallow clone would not contain it.
+          # reachable — a shallow clone would not contain it. The repo is ~38 MB
+          # with ~1k commits, so the unshallow costs a couple of seconds.
           fetch-depth: 0
 
+      # FIRST step on purpose — see "NOTE ON INDEPENDENCE" above.
       - name: Decide whether the Docker-backed jobs must run
         id: filter
         env:
@@ -92,14 +122,6 @@ jobs:
             echo "run_heavy=false" >> "$GITHUB_OUTPUT"
           fi
 
-  validate:
-    name: Fast validation (migrations, SQL ambiguity, token drift)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -114,8 +136,11 @@ jobs:
 
   schema-equivalence:
     name: Migration/schema equivalence (GV-175)
-    needs: changes
-    if: needs.changes.outputs.run_heavy == 'true'
+    needs: validate
+    # `!cancelled()` (not the implicit `success()`) so a red `validate` cannot
+    # suppress this suite — GV-394 preserved the independence the old parallel
+    # `changes` gate job gave us. See "NOTE ON INDEPENDENCE" on the validate job.
+    if: ${{ !cancelled() && needs.validate.outputs.run_heavy == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -136,8 +161,11 @@ jobs:
 
   db-types:
     name: Shared DB/RPC types drift (GV-223)
-    needs: changes
-    if: needs.changes.outputs.run_heavy == 'true'
+    needs: validate
+    # `!cancelled()` (not the implicit `success()`) so a red `validate` cannot
+    # suppress this suite — GV-394 preserved the independence the old parallel
+    # `changes` gate job gave us. See "NOTE ON INDEPENDENCE" on the validate job.
+    if: ${{ !cancelled() && needs.validate.outputs.run_heavy == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -225,8 +253,11 @@ jobs:
 
   role-matrix:
     name: RLS role-matrix behavioral suite (GV-248)
-    needs: changes
-    if: needs.changes.outputs.run_heavy == 'true'
+    needs: validate
+    # `!cancelled()` (not the implicit `success()`) so a red `validate` cannot
+    # suppress this suite — GV-394 preserved the independence the old parallel
+    # `changes` gate job gave us. See "NOTE ON INDEPENDENCE" on the validate job.
+    if: ${{ !cancelled() && needs.validate.outputs.run_heavy == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -260,8 +291,11 @@ jobs:
 
   functional-smoke:
     name: Delete-account/push functional smoke (GV-180)
-    needs: changes
-    if: needs.changes.outputs.run_heavy == 'true'
+    needs: validate
+    # `!cancelled()` (not the implicit `success()`) so a red `validate` cannot
+    # suppress this suite — GV-394 preserved the independence the old parallel
+    # `changes` gate job gave us. See "NOTE ON INDEPENDENCE" on the validate job.
+    if: ${{ !cancelled() && needs.validate.outputs.run_heavy == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -306,8 +340,11 @@ jobs:
 
   drill-smoke:
     name: Restore-drill end-to-end smoke (GV-329)
-    needs: changes
-    if: needs.changes.outputs.run_heavy == 'true'
+    needs: validate
+    # `!cancelled()` (not the implicit `success()`) so a red `validate` cannot
+    # suppress this suite — GV-394 preserved the independence the old parallel
+    # `changes` gate job gave us. See "NOTE ON INDEPENDENCE" on the validate job.
+    if: ${{ !cancelled() && needs.validate.outputs.run_heavy == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
