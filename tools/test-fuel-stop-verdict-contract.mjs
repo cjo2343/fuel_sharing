@@ -20,6 +20,19 @@
 // end-to-end due-ness contract of claim_due_booking_fuel_reminders, including the
 // fail-closed stale-stamp gate.
 //
+// Migration 155 (GV-411) added three more things worth pinning, all at the end of the
+// file: that a SOFT-DELETED trip or fuel row does not silence the claim (the active
+// fixtures right beside them still must), that set_tank_state refuses absurd litres /
+// capacity / consumption, and that it stays monotonic when two stamps genuinely
+// OVERLAP — the last one via two dblink sessions, because two sequential calls pass
+// under the buggy implementation as happily as the fixed one and prove nothing.
+//
+// GVM-486 added one more: the planner now persists a whole stop SEQUENCE (`stations`)
+// beside the singular `station` this SQL reads, and the push only keeps working while
+// `station` keeps carrying stop one. The mobile suite asserts that identity; this asserts
+// what the SERVER does with the pairing, which is the half that decides whether anyone
+// gets a notification.
+//
 // ── Docker ──────────────────────────────────────────────────────────────────────
 // Real arithmetic needs a real Postgres — a regex over the SQL would pass a mutation
 // that changes the answer. Docker-free machines get a loud warning and a pass, the same
@@ -70,6 +83,56 @@ const storedStop = (over = {}) => ({
   station: { brand: "Circle K", lat: 55.5, lng: 11.0, kmIn: 200, pricePerLiter: 13.5 },
   ...over,
 });
+
+// ── A multi-stop plan, transcribed from the mobile suite (GVM-486) ──────────────
+// The three-stop plan in govehlo-mobile/src/lib/__tests__/booking-fuel-stop.test.ts —
+// same trip, same numbers, so both suites pin the same persisted object rather than two
+// plausible-looking ones.
+//
+// The planner now emits a SEQUENCE for trips one fill cannot bridge, published as
+// `stations` BESIDE the singular `station`, never in place of it: `stations[0]` is the
+// same object as `station` (the mobile builder constructs it once and the mobile suite
+// asserts the identity). That invariant exists because of this SQL — migration 154 reads
+// `fuel_stop -> 'station'` and `station -> 'kmIn'` to decide whether a booking still
+// needs a push. If a future change moved the sequence into `stations` and stopped
+// writing `station`, the server would find no locatable stop, fall back to `holds`, and
+// the pre-departure push would disappear with no error anywhere.
+//
+// Two things are only checkable here, not in the mobile suite: that the SQL — which
+// reads `station` positionally and has never seen a sibling array in this jsonb —
+// ignores the unknown key cleanly, and that `stored_needs_fuel`'s "ANY non-null station
+// counts" rule still behaves when a populated `station` sits next to that array.
+//
+// `station.kmIn` (34) is deliberately NOT `kmUntilRefuel` (37): the corridor pick can
+// sit earlier than the reserve crossing (GVM-384), and if the two were equal, nulling
+// `station` would fall back to `kmUntilRefuel` and land on the same answer — the
+// regression this case exists to catch would pass unnoticed.
+const MULTI_STOP_PLAN = {
+  from: { label: "Aarhus", lat: 56.16, lng: 10.2 },
+  to: { label: "Skagen", lat: 57.72, lng: 10.58 },
+  distanceKm: 1044,
+  driveMinutes: 720,
+  returnTrip: true,
+  needsFuel: true,
+  kmUntilRefuel: 37,
+  station: { brand: "Shell", lat: 56.4, lng: 10.1, kmIn: 34, pricePerLiter: 13.79 },
+  stations: [
+    { brand: "Shell", lat: 56.4, lng: 10.1, kmIn: 34, pricePerLiter: 13.79 },
+    { brand: "Circle K", lat: 57.0, lng: 10.4, kmIn: 420, pricePerLiter: 13.29 },
+    { brand: "OK", lat: 56.3, lng: 10.0, kmIn: 810, pricePerLiter: 13.49 },
+  ],
+};
+
+// The same plan as a single-stop booking would have persisted it: `stations` omitted
+// entirely, which is what the builder does when there is only one stop (and what every
+// pre-GVM-486 booking looks like). Every other byte is identical, so any difference in
+// the SQL's answer can only have come from the array.
+const SINGLE_STOP_CONTROL = { ...MULTI_STOP_PLAN };
+delete SINGLE_STOP_CONTROL.stations;
+
+// litersNow 16 → range 320, reserve 300, crossing 20 km in. The stored first stop at 34
+// is then 14 km past the new crossing, over the 10 km deadband → move-earlier.
+const MULTI_STOP_LITERS = 16;
 
 const scenarios = [
   // ── verdicts ──────────────────────────────────────────────────────────────────
@@ -223,6 +286,22 @@ const scenarios = [
     spread: -3,
     expect: { verdict: "move-earlier", reserveKm: 100, storedStopKm: 200 },
   },
+
+  // ── the multi-stop plan (GVM-486; see MULTI_STOP_PLAN above) ──────────────────
+  // storedStopKm must be the FIRST stop's own position (station.kmIn = 34), not the
+  // reserve km (kmUntilRefuel = 37) and not any later stop in the array.
+  {
+    name: "a three-stop plan reads exactly like a one-stop plan (the stations array is ignored)",
+    fuelStop: MULTI_STOP_PLAN,
+    litersNow: MULTI_STOP_LITERS,
+    expect: { verdict: "move-earlier", reserveKm: 20, storedStopKm: 34 },
+  },
+  {
+    name: "the same plan without the stations key answers identically",
+    fuelStop: SINGLE_STOP_CONTROL,
+    litersNow: MULTI_STOP_LITERS,
+    expect: { verdict: "move-earlier", reserveKm: 20, storedStopKm: 34 },
+  },
 ];
 
 // ── Runner ──────────────────────────────────────────────────────────────────────
@@ -297,6 +376,27 @@ for (const scenario of scenarios) {
   checked += 1;
 }
 
+// The two scenarios above assert the same expectations, but expectations transcribed
+// twice can be wrong twice. This compares the SQL's two answers to each other, so the
+// claim being made — "the sibling `stations` array changes NOTHING" — is checked as an
+// equality rather than as two independent guesses.
+const withStations = run(
+  `select public.fuel_stop_revalidation_verdict(${jsonArg(MULTI_STOP_PLAN)}, ${MULTI_STOP_LITERS}::numeric,
+     ${CAR.consumption}::numeric, ${CAR.spread}::numeric, ${CAR.capacity}::numeric, 10::numeric)::text;`,
+);
+const withoutStations = run(
+  `select public.fuel_stop_revalidation_verdict(${jsonArg(SINGLE_STOP_CONTROL)}, ${MULTI_STOP_LITERS}::numeric,
+     ${CAR.consumption}::numeric, ${CAR.spread}::numeric, ${CAR.capacity}::numeric, 10::numeric)::text;`,
+);
+assert.deepEqual(
+  JSON.parse(withStations),
+  JSON.parse(withoutStations),
+  "a plan carrying the GVM-486 `stations` sequence must read exactly like the same plan without it. " +
+    "The SQL reads `station` positionally and has never seen a sibling array in this jsonb; an " +
+    "unknown key must be ignored cleanly, not change the verdict and not trip anything.",
+);
+checked += 1;
+
 // ── Part 2: due-ness end to end ─────────────────────────────────────────────────
 // The verdict is only half the contract; the claim decides WHICH bookings it is even
 // asked about. Each case below seeds one booking that differs from the due one in
@@ -308,7 +408,13 @@ const seed = `
   values ('fuelstop-test', 'Fuel stop test', 'fuelstop-test', 20, now() - interval '1 hour', 5, 0, 150),
          ('fuelstop-nostate', 'No tank state', 'fuelstop-nostate', null, null, null, null, null),
          ('fuelstop-stale-trip', 'Stale by trip', 'fuelstop-stale-trip', 20, now() - interval '1 hour', 5, 0, 150),
-         ('fuelstop-stale-fuel', 'Stale by fuel', 'fuelstop-stale-fuel', 20, now() - interval '1 hour', 5, 0, 150);
+         ('fuelstop-stale-fuel', 'Stale by fuel', 'fuelstop-stale-fuel', 20, now() - interval '1 hour', 5, 0, 150),
+         ('fuelstop-gone-trip', 'Deleted trip', 'fuelstop-gone-trip', 20, now() - interval '1 hour', 5, 0, 150),
+         ('fuelstop-gone-fuel', 'Deleted fuel', 'fuelstop-gone-fuel', 20, now() - interval '1 hour', 5, 0, 150),
+         -- Its own workspace purely for the tank level: MULTI_STOP_PLAN's first stop
+         -- sits 34 km in, so the reserve crossing has to land before that for the plan
+         -- to be re-validated as move-earlier. 16 litres puts it at 20 km.
+         ('fuelstop-multistop', 'Multi stop', 'fuelstop-multistop', 16, now() - interval '1 hour', 5, 0, 150);
 
   insert into public.ledger_members (id, ledger_id, name, email, role, is_active) values
     ('10000000-0000-0000-0000-000000000001', 'fuelstop-test', 'Driver', 'driver@test.dk', 'member', true),
@@ -318,7 +424,10 @@ const seed = `
     ('10000000-0000-0000-0000-000000000003', 'fuelstop-test', 'Inactive', 'inactive@test.dk', 'member', true),
     ('10000000-0000-0000-0000-000000000004', 'fuelstop-nostate', 'Driver', 'driver2@test.dk', 'member', true),
     ('10000000-0000-0000-0000-000000000005', 'fuelstop-stale-trip', 'Driver', 'driver3@test.dk', 'member', true),
-    ('10000000-0000-0000-0000-000000000006', 'fuelstop-stale-fuel', 'Driver', 'driver4@test.dk', 'member', true);
+    ('10000000-0000-0000-0000-000000000006', 'fuelstop-stale-fuel', 'Driver', 'driver4@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000007', 'fuelstop-gone-trip', 'Driver', 'driver5@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000008', 'fuelstop-gone-fuel', 'Driver', 'driver6@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000009', 'fuelstop-multistop', 'Driver', 'driver7@test.dk', 'member', true);
 
   -- Trips and fuel payments need an open period to land in (migration 121's boundary
   -- trigger), which every real workspace has.
@@ -340,6 +449,23 @@ const seed = `
   insert into public.fuel_payments (ledger_id, payment_date, amount, payer_member_id, created_at, updated_at)
   values ('fuelstop-stale-fuel', current_date, 400, '10000000-0000-0000-0000-000000000006',
           now() - interval '10 minutes', now() - interval '10 minutes');
+
+  -- GV-411: the same two rows again, but SOFT-DELETED. Byte for byte the stale fixtures
+  -- above apart from deleted_at, which is the whole point — the pair differs in exactly
+  -- the respect the fix is about, so re-including tombstones in the gate turns the two
+  -- 'tombstone-*' bookings below from due into silent, and the diff names the cause.
+  --
+  -- A tombstone is not a row the client can ever account for: ledger-data-gateway.ts
+  -- loads trips and fuel payments with .is('deleted_at', null) and derives the stamp's
+  -- watermark from the rows it LOADED, so a deletion's bumped updated_at is permanently
+  -- newer than any watermark it can send. Counting it made the gate permanently true and
+  -- killed pre-departure reminders for the workspace, with no error anywhere.
+  insert into public.trips (ledger_id, trip_date, start_km, end_km, driver_member_id, created_at, updated_at, deleted_at)
+  values ('fuelstop-gone-trip', current_date, 100, 200, '10000000-0000-0000-0000-000000000007',
+          now() - interval '2 hours', now() - interval '10 minutes', now() - interval '10 minutes');
+  insert into public.fuel_payments (ledger_id, payment_date, amount, payer_member_id, created_at, updated_at, deleted_at)
+  values ('fuelstop-gone-fuel', current_date, 400, '10000000-0000-0000-0000-000000000008',
+          now() - interval '10 minutes', now() - interval '10 minutes', now() - interval '10 minutes');
 `;
 const seeded = psql(CONTAINER, DB, ["-c", seed]);
 if (seeded.status !== 0) fail(`Seeding the due-ness fixtures failed:\n${seeded.stderr}`);
@@ -367,6 +493,17 @@ const bookings = [
   ["no-tank-state", "fuelstop-nostate", "10000000-0000-0000-0000-000000000004", 60, NEEDS_STOP, false, false],
   ["stale-by-trip", "fuelstop-stale-trip", "10000000-0000-0000-0000-000000000005", 60, NEEDS_STOP, false, false],
   ["stale-by-fuel", "fuelstop-stale-fuel", "10000000-0000-0000-0000-000000000006", 60, NEEDS_STOP, false, false],
+  // GV-411: identical to the two rows above except that the newer trip / fuel row is
+  // soft-deleted. A tombstone must NOT make the stamp look stale — the client cannot
+  // see it, so it can never produce a watermark that clears it, and counting it silences
+  // this workspace's reminders for good.
+  ["tombstone-trip", "fuelstop-gone-trip", "10000000-0000-0000-0000-000000000007", 60, NEEDS_STOP, false, true],
+  ["tombstone-fuel", "fuelstop-gone-fuel", "10000000-0000-0000-0000-000000000008", 60, NEEDS_STOP, false, true],
+  // GVM-486: a booking whose persisted plan carries the whole stop SEQUENCE. Due, and
+  // for the same reason a one-stop plan would be. If `station` ever stops being written
+  // because the sequence moved into `stations`, this row leaves the claimed set entirely
+  // — which is exactly how the pre-departure push would go dark in production.
+  ["multi-stop", "fuelstop-multistop", "10000000-0000-0000-0000-000000000009", 60, JSON.stringify(MULTI_STOP_PLAN), false, true],
 ];
 
 const bookingRows = bookings
@@ -392,7 +529,7 @@ const bookingsSeeded = psql(CONTAINER, DB, [
 if (bookingsSeeded.status !== 0) fail(`Seeding the bookings failed:\n${bookingsSeeded.stderr}`);
 
 const claimed = run(
-  `select cb.legacy_id, c.verdict, c.reserve_km, c.claim_token is not null
+  `select cb.legacy_id, c.verdict, c.reserve_km, c.stored_stop_km, c.claim_token is not null
    from public.claim_due_booking_fuel_reminders(200) c
    join public.car_bookings cb on cb.id = c.booking_id
    order by cb.legacy_id;`,
@@ -409,9 +546,30 @@ assert.deepEqual(
   "due-ness drift in claim_due_booking_fuel_reminders. Each fixture differs from the due " +
     "booking in exactly one respect, so the diff names the broken predicate.",
 );
-assert.equal(claimed[0][1], "now-needs-stop", "the claim must return the verdict for the endpoint to compose copy");
-assert.equal(Number(claimed[0][2]), 100, "the claim must return the reserve crossing");
-assert.equal(claimed[0][3], "t", "the claim must hand out a lease token");
+const dueRow = claimed.find((row) => row[0] === "due");
+assert.ok(dueRow, "the plainly due booking must be claimed");
+assert.equal(dueRow[1], "now-needs-stop", "the claim must return the verdict for the endpoint to compose copy");
+assert.equal(Number(dueRow[2]), 100, "the claim must return the reserve crossing");
+assert.equal(dueRow[4], "t", "the claim must hand out a lease token");
+checked += 1;
+
+// GVM-486 end to end: the claim must locate the FIRST stop of a persisted sequence and
+// hand the endpoint the same numbers a one-stop plan would produce.
+const multiStopRow = claimed.find((row) => row[0] === "multi-stop");
+assert.ok(
+  multiStopRow,
+  "a booking whose plan carries the GVM-486 `stations` sequence must still be claimed. Missing " +
+    "here is the production symptom: `station` no longer written, no locatable stop, verdict " +
+    "falls back to `holds`, and the pre-departure push vanishes silently.",
+);
+assert.equal(multiStopRow[1], "move-earlier", "the multi-stop plan's verdict must survive the round trip through the claim");
+assert.equal(
+  Number(multiStopRow[3]),
+  34,
+  "the claim must report the FIRST stop's own position (station.kmIn = 34) — not the reserve km " +
+    "(kmUntilRefuel = 37, which is what a nulled `station` would fall back to) and not a later " +
+    "entry in the stations array",
+);
 checked += 1;
 
 // A second claim inside the lease window returns nothing — no double-send.
@@ -521,13 +679,223 @@ assert.equal(
   "true",
   "a stamp with a newer watermark must apply",
 );
+// An EQUAL watermark stays accepted and idempotent — the conditional update in
+// migration 155 uses `<=`, and a `<` there would silently break re-sending the same
+// stamp (which the client does after any retry).
+const equalAsOf = run("select l.tank_state_as_of from public.ledgers l where l.id = 'fuelstop-test';");
+assert.equal(
+  run(`select public.set_tank_state('fuelstop-test', 11, '${equalAsOf}'::timestamptz, 5, 0, 150) ->> 'applied';`),
+  "true",
+  "an equal watermark must still be accepted: same data in, same numbers out, so the write is idempotent",
+);
+checked += 1;
+
+// ── Part 3b: the bounds on the client's numbers (GV-411) ────────────────────────
+// The five numbers come straight from the client's model and that is by design
+// (GV-405), but the absurd is still refused — and refused by RAISING, like every other
+// validation in the RPC. A silent clamp would store numbers the client never computed
+// and then nudge the whole workspace on them. The envelope is migration 125's
+// update_ledger_fuel_settings range on the settings columns these values derive from,
+// upper half only, so nothing an honest client produces is rejected.
+const rejects = [
+  {
+    name: "litres above the tank capacity",
+    call: "public.set_tank_state('fuelstop-test', 200, now(), 5, 0, 150)",
+    message: /litres cannot exceed the tank capacity/,
+  },
+  {
+    name: "a tank bigger than 500 litres",
+    call: "public.set_tank_state('fuelstop-test', 20, now(), 5, 0, 900)",
+    message: /capacity must be 500 litres or less/,
+  },
+  {
+    name: "a burn above 100 L/100 km",
+    call: "public.set_tank_state('fuelstop-test', 20, now(), 400, 0, 150)",
+    message: /consumption must be 100 per 100 km or less/,
+  },
+  {
+    name: "a spread that pushes safeConsumption above the same ceiling",
+    call: "public.set_tank_state('fuelstop-test', 20, now(), 90, 40, 150)",
+    message: /consumption plus spread must be 100 per 100 km or less/,
+  },
+];
+for (const rejected of rejects) {
+  const attempt = psql(CONTAINER, DB, ["-c", `select ${rejected.call};`]);
+  assert.notEqual(attempt.status, 0, `set_tank_state must refuse ${rejected.name}`);
+  assert.match(
+    attempt.stderr,
+    rejected.message,
+    `set_tank_state must refuse ${rejected.name} with its own message, not something incidental`,
+  );
+  checked += 1;
+}
+// The honest edge stays accepted: litres exactly at capacity, and consumption + spread
+// exactly at the ceiling. A bound that rejects its own boundary would refuse a full
+// tank, which is the single most common stamp there is.
+assert.equal(
+  run("select public.set_tank_state('fuelstop-test', 150, now(), 60, 40, 150) ->> 'applied';"),
+  "true",
+  "a full tank (litres == capacity) and a safe burn exactly at the ceiling must still be accepted",
+);
+checked += 1;
+
+// ── Part 3c: set_tank_state under a REAL interleaving (GV-411) ──────────────────
+// This is the only check that can tell migration 155's set_tank_state from 154's.
+// Calling the RPC twice in a row passes under both implementations — 154's separate
+// select/compare/update reads a committed row and refuses the older watermark exactly
+// as 155 does. The defect only exists while two calls OVERLAP, so the test has to
+// produce that overlap rather than approximate it.
+//
+// dblink gives two extra sessions from inside one psql call, and dblink_send_query is
+// asynchronous, which is what makes the interleaving deterministic rather than a race
+// the test itself has to win:
+//
+//   A: begin; set_tank_state(NEWER watermark)   → holds the row lock, uncommitted
+//   B: begin; set_tank_state(OLDER watermark)   → sent async, blocks on A's lock
+//   (assert B really is blocked — otherwise the two never overlapped)
+//   A: commit                                   → B unblocks
+//   B: read the answer, commit
+//
+// Under 154: B's select ran BEFORE A committed, so it saw the pre-A watermark, passed
+// the comparison, and its update — queued behind A's lock — lands LAST. B answers
+// applied=true and the stored tank state is B's older calculation. The watermark's
+// entire guarantee is gone.
+// Under 155: there is no separate select. B's conditional update re-evaluates its WHERE
+// against the row version A committed (READ COMMITTED), matches nothing, and answers
+// applied=false / stale_as_of. A's numbers stay.
+if (
+  psql(CONTAINER, DB, [
+    "-c",
+    `create extension if not exists dblink;
+     update public.ledgers l
+        set tank_state_as_of = now() - interval '30 minutes',
+            tank_state_liters = 20,
+            tank_state_consumption = 5,
+            tank_state_consumption_spread = 0,
+            tank_state_capacity = 150
+      where l.id = 'fuelstop-test';`,
+  ]).status !== 0
+) {
+  fail("Could not set up the interleaving probe (dblink unavailable?).");
+}
+
+// The probe runs entirely on the two dblink sessions; nothing it reports comes from the
+// calling transaction's snapshot, which was taken before either of them committed.
+const probe = `
+create or replace function public.gv411_race_probe(
+  winner_as_of timestamptz,
+  loser_as_of timestamptz
+)
+returns jsonb
+language plpgsql
+as $probe$
+declare
+  winner_result text;
+  loser_result text;
+  blocked integer := 0;
+  attempts integer := 0;
+begin
+  perform dblink_connect('gv411_winner', 'dbname=' || current_database());
+  perform dblink_connect('gv411_loser', 'dbname=' || current_database());
+  perform dblink_exec('gv411_winner', 'begin');
+  perform dblink_exec('gv411_loser', 'begin');
+
+  -- A stamps the NEWER watermark and keeps the row lock by staying open.
+  select r into winner_result
+  from dblink('gv411_winner', format(
+    'select public.set_tank_state(%L, 11, %L::timestamptz, 5, 0, 150)::text',
+    'fuelstop-test', winner_as_of)) as w(r text);
+
+  -- B stamps the OLDER one. Asynchronous, so it can sit on A's lock while we watch.
+  perform dblink_send_query('gv411_loser', format(
+    'select public.set_tank_state(%L, 42, %L::timestamptz, 5, 0, 150)::text',
+    'fuelstop-test', loser_as_of));
+
+  -- Wait until B is demonstrably blocked. pg_stat_activity is snapshotted per
+  -- transaction, so the snapshot has to be cleared on every pass or this loop reads the
+  -- same stale row 100 times.
+  while attempts < 100 and blocked = 0 loop
+    perform pg_sleep(0.1);
+    perform pg_stat_clear_snapshot();
+    select count(*) into blocked
+    from pg_stat_activity a
+    where a.datname = current_database()
+      and a.pid <> pg_backend_pid()
+      and a.wait_event_type = 'Lock'
+      and a.query like '%set_tank_state%';
+    attempts := attempts + 1;
+  end loop;
+
+  perform dblink_exec('gv411_winner', 'commit');
+
+  select r into loser_result from dblink_get_result('gv411_loser') as l(r text);
+  -- libpq hands back one result per send; the empty trailing one has to be drained or
+  -- the next command on that connection errors with "another command is already in
+  -- progress".
+  perform * from dblink_get_result('gv411_loser') as l(r text);
+  perform dblink_exec('gv411_loser', 'commit');
+  perform dblink_disconnect('gv411_winner');
+  perform dblink_disconnect('gv411_loser');
+
+  return jsonb_build_object(
+    'winner', winner_result::jsonb,
+    'loser', loser_result::jsonb,
+    'loser_blocked_on_winner', blocked > 0
+  );
+end;
+$probe$;`;
+if (psql(CONTAINER, DB, ["-c", probe]).status !== 0) {
+  fail("Could not create the interleaving probe.");
+}
+
+const race = JSON.parse(
+  run(`select public.gv411_race_probe(
+         now() - interval '2 minutes',
+         now() - interval '10 minutes'
+       )::text;`),
+);
+
+assert.equal(
+  race.loser_blocked_on_winner,
+  true,
+  "the two stamps never overlapped — the loser was not waiting on the winner's row lock, so this " +
+    "run proves nothing about concurrency. Sequential calls pass under the buggy implementation too.",
+);
+assert.equal(
+  race.winner.applied,
+  true,
+  "the stamp with the newer watermark must be the one that applies",
+);
+assert.equal(
+  race.loser.applied,
+  false,
+  "the concurrent stamp carrying the OLDER watermark must be refused. It passed a pre-lock read " +
+    "of the watermark, so only a condition ON the update can catch it (migration 155); with the " +
+    "read-compare-update of migration 154 it lands last and moves the tank level backwards.",
+);
+assert.equal(race.loser.reason, "stale_as_of", "a lost race must keep its documented reason code");
+checked += 1;
+
+// Read the survivors from a fresh session — the probe's own transaction predates both
+// commits and cannot see them.
+const survived = run(
+  "select l.tank_state_liters from public.ledgers l where l.id = 'fuelstop-test';",
+);
+assert.equal(
+  survived,
+  "11",
+  "the winner's numbers must be what is stored. 42 here means the older calculation committed " +
+    "last and overwrote the newer one — the exact backwards write the watermark exists to prevent.",
+);
 checked += 1;
 
 removeContainer(CONTAINER);
 finished = true;
 console.log(
-  `ok - fuel-stop verdict contract: ${checked} checks. The SQL in migration 154 returns the ` +
+  `ok - fuel-stop verdict contract: ${checked} checks. The SQL in migrations 154/155 returns the ` +
     "same verdicts as govehlo-mobile/src/lib/fuel-stop-revalidation.ts for every scenario in " +
-    "its vitest suite, the claim's due-ness and lease/token contract holds, and set_tank_state " +
-    "is monotonic on its as_of watermark.",
+    "its vitest suite, a GVM-486 multi-stop plan reads exactly like a one-stop plan, the claim's " +
+    "due-ness and lease/token contract holds (tombstoned trips and fuel rows do not silence it), " +
+    "and set_tank_state is monotonic on its as_of watermark, bounded on its inputs, and monotonic " +
+    "under a real interleaving of two overlapping stamps.",
 );
