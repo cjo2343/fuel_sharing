@@ -308,3 +308,19 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/check-hotpath-mirror.mjs --strict
+
+      # 7. Every event_type written into public.ledger_events is classified as feed or
+      #    audit (GV-413). The bulk of this guard reads only fuel_sharing's own
+      #    migrations, so it runs in `npm run validate` and fails on the PR that adds
+      #    the migration — a guard that can only report after merge is the failure mode
+      #    GV-391 documented at the top of this file.
+      #
+      #    One live event type is written by govehlo-web rather than by a migration
+      #    (operator_data_removed, in the operator console's soft-delete endpoint), so
+      #    that half of the scan needs the sibling repo. Locally and in fuel_sharing's
+      #    own CI it warns and passes; here --strict makes an absent sibling a hard
+      #    failure, and a NEW unclassified event type on the web side turns this red.
+      - name: ledger_events feed/audit classification (strict, needs govehlo-web)
+        if: steps.probe.outputs.has_token == 'true'
+        working-directory: fuel_sharing
+        run: node tools/check-ledger-event-classification.mjs --strict

@@ -67,6 +67,18 @@ const scripts = [
   // govehlo-mobile is checked out (the umbrella workflow, or a dev machine), so
   // without this its logic would go unexercised on nearly every commit.
   "node tools/test-hotpath-mirror-scan.mjs",
+  // Unit test for the ledger_events classification scanner (GV-413). Runs before the
+  // guard itself for the reason the four lines above give: a broken scanner must read
+  // as a broken scanner, not as a schema full of unclassified event types.
+  "node tools/test-ledger-event-classification-scan.mjs",
+  // Every event_type an INSERT can write into public.ledger_events must be classified
+  // as feed-visible or audit-only (GV-413). The mobile Activity feed has no allow-list
+  // — a new type is visible to every member the moment a migration writes it, with no
+  // client change and nothing failing, which is how three reminder-audit types leaked
+  // in one evening. This reads fuel_sharing's own migrations, so it belongs in the
+  // fast gate and fails on the PR that adds the migration; only the govehlo-web half
+  // of the scan tolerates a missing sibling (the umbrella runs it --strict).
+  "node tools/check-ledger-event-classification.mjs",
   "node tools/check-token-drift.mjs",
   // Cross-repo: does the load rehearsal still replay what the mobile client actually
   // sends? Warns and exits 0 when govehlo-mobile is absent (fuel_sharing CI); the

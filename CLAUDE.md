@@ -59,6 +59,14 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
    `event_title` / `event_body` params, insert into `ledger_events`, actor via
    `public.current_ledger_member_id()`, email via `auth.jwt() ->> 'email'`.
 9. New RPCs called by clients need `grant execute ... to authenticated`.
+10. A **new `event_type` written into `ledger_events` must be classified** — feed or
+    audit. The mobile Activity feed has no allow-list: it renders whatever the database
+    writes, with the row's own title, so a new type is visible to every member with no
+    client change. Put it in `FEED_VISIBLE_EVENT_TYPES`
+    (`tools/ledger-event-visibility.mjs`) if it belongs in the feed, or in
+    `EVENT_TYPE_EXCLUDE` (`tools/load-rehearsal/lib/hotpaths.mjs` **and** the mobile
+    gateway's `.not('event_type','in',(…))` filter, same order, both repos) if it is an
+    internal audit row. `npm run validate` fails until you choose (GV-413).
 
 Use the `/new-migration` skill — it scaffolds all of this.
 
