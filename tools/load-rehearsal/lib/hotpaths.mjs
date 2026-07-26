@@ -27,6 +27,10 @@ export const EVENT_TYPE_EXCLUDE = [
   "booking_completion_reminder_sent",
   "weekly_digest_sent",
   "booking_fuel_reminder_sent",
+  // GVM-490: live in members' feeds since migration 118 as "Påmindelse om
+  // bekræftelse sendt". Appended last — check-hotpath-mirror.mjs compares this
+  // list against the gateway's with join(","), so the order is the contract.
+  "confirm_reminder_sent",
 ];
 
 // Explicit projections (data minimisation) — copied verbatim from the gateway.

@@ -90,21 +90,6 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   // data the operator touched should say so. The migrations-only scan is blind to it,
   // which is why the guard also reads govehlo-web when that repo is checked out.
   "operator_data_removed",
-
-  // ── Classified as VISIBLE because that is what production does today, not because
-  // it should be ──────────────────────────────────────────────────────────────
-  // confirm_reminder_sent is a reminder-audit row (migration 118, live since GV-286).
-  // It belongs in EVENT_TYPE_EXCLUDE with the other four *_reminder_sent types, and
-  // GVM-490 will move it there. It is recorded here rather than in the exclusion list
-  // for one reason: EVENT_TYPE_EXCLUDE is mirrored from govehlo-mobile's
-  // ledger-data-gateway.ts and compared order-sensitively by check-hotpath-mirror.mjs,
-  // so changing only this side turns the umbrella workflow red on main. Moving it is a
-  // two-repo change and is GVM-490's job.
-  //
-  // Until then this entry states the truth: members can see it. When GVM-490 lands, it
-  // moves to EVENT_TYPE_EXCLUDE and this line is deleted — the guard fails if it is in
-  // both lists, so the move cannot be half-done.
-  "confirm_reminder_sent",
 ];
 
 // ── Event types written outside the migrations ──────────────────────────────

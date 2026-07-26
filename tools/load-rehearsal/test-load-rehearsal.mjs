@@ -272,6 +272,7 @@ test("events read excludes every reminder-audit event type", () => {
     "booking_completion_reminder_sent",
     "weekly_digest_sent",
     "booking_fuel_reminder_sent",
+    "confirm_reminder_sent",
   ]);
   const events = ledgerReadRequests("x").find((r) => r.label === "read:events");
   assert.ok(events.query.includes(`event_type=not.in.(${EVENT_TYPE_EXCLUDE.join(",")})`));
