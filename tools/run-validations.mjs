@@ -35,6 +35,14 @@ const scripts = [
   "node tools/test-incident-photo-storage-contract.mjs",
   "node tools/test-late-entry-carryover-contract.mjs",
   "node tools/test-deferred-fuel-close-contract.mjs",
+  // Anti-drift contract for the pre-departure fuel-stop verdict (GV-405). The one guard
+  // here that needs a real Postgres: migration 154 duplicates ~20 lines of arithmetic
+  // that also live in govehlo-mobile/src/lib/fuel-stop-revalidation.ts, and a regex over
+  // the SQL would happily pass a mutation that changes the answer. Replays that module's
+  // vitest scenarios against the SQL. Warns and exits 0 without Docker — the same
+  // contract check-hotpath-mirror.mjs uses for an absent sibling — so `npm run validate`
+  // stays dependency-free; CI runs it --strict in the functional-smoke job.
+  "node tools/test-fuel-stop-verdict-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths

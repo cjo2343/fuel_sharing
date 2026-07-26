@@ -14,6 +14,7 @@
     "test:booking-trip": "bash tools/test-booking-trip-functional.sh",
     "test:booking-fuel-completion": "bash tools/test-booking-fuel-completion-functional.sh",
     "test:booking-reminder": "bash tools/test-booking-reminder-functional.sh",
+    "test:fuel-stop-verdict": "node tools/test-fuel-stop-verdict-contract.mjs --strict",
     "test:deferred-fuel-close": "bash tools/test-deferred-fuel-close-functional.sh",
     "test:member-recurring-suspension": "bash tools/test-member-recurring-suspension-functional.sh",
     "test:syn-acknowledgement": "bash tools/test-acknowledge-inspection-booking-functional.sh",
