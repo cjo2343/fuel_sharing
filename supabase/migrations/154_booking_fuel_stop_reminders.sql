@@ -210,15 +210,20 @@ begin
     return holds;
   end if;
 
+  -- storedNeedsFuel = fs.needsFuel === true || fs.station != null
+  -- `fs.station != null` in the TypeScript is true for ANY present, non-null value, not
+  -- only a well-formed object — and it has to stay that way here. A corrupt `station`
+  -- means "the plan claimed a stop"; reading it as "no stop planned" would route a
+  -- malformed booking down the now-needs-stop branch instead of failing closed. So the
+  -- flag is taken from the RAW value, and only the kmIn lookup below narrows to objects
+  -- (mirroring `fs.station?.kmIn`, which yields undefined on a non-object).
   station_json := p_stored_fuel_stop -> 'station';
+  stored_needs_fuel := (jsonb_typeof(p_stored_fuel_stop -> 'needsFuel') = 'boolean'
+                        and (p_stored_fuel_stop ->> 'needsFuel')::boolean)
+                       or (station_json is not null and jsonb_typeof(station_json) <> 'null');
   if station_json is not null and jsonb_typeof(station_json) <> 'object' then
     station_json := null;
   end if;
-
-  -- storedNeedsFuel = fs.needsFuel === true || fs.station != null
-  stored_needs_fuel := (jsonb_typeof(p_stored_fuel_stop -> 'needsFuel') = 'boolean'
-                        and (p_stored_fuel_stop ->> 'needsFuel')::boolean)
-                       or station_json is not null;
 
   -- Where the stored plan said to fill: the station's own position, else the reserve km.
   if station_json is not null and jsonb_typeof(station_json -> 'kmIn') = 'number' then

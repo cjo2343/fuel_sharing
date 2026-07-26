@@ -164,6 +164,17 @@ const scenarios = [
     litersNow: 20,
     expect: { verdict: "holds", reserveKm: null, storedStopKm: null },
   },
+  {
+    // `fs.station != null` in the TypeScript is true for ANY present, non-null value —
+    // it is not narrowed to a well-formed object. A corrupt station therefore still
+    // means "the plan claimed a stop", and with no locatable kmIn the whole thing fails
+    // closed. Reading it as "no stop planned" instead would route this down the
+    // now-needs-stop branch and nag on data we cannot trust.
+    name: "a corrupt (non-object) station still counts as a planned stop, and fails closed",
+    fuelStop: { needsFuel: false, distanceKm: 400, station: 5, kmUntilRefuel: null },
+    litersNow: 20,
+    expect: { verdict: "holds", reserveKm: null, storedStopKm: null },
+  },
 
   // ── the tur/retur invariant (GV-405 review; not in the vitest suite) ───────────
   // fuel_stop.distanceKm is the EFFECTIVE distance, already doubled for a round trip
