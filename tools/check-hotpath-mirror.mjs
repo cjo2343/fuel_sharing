@@ -7,9 +7,14 @@
 // test-load-rehearsal.mjs said it covered "that lib/hotpaths.mjs still mirrors the
 // mobile data gateway". It contained zero references to govehlo-mobile. What it
 // actually did was compare hotpaths.mjs against its OWN hardcoded copies of the same
-// values — `assert.deepEqual(EVENT_TYPE_EXCLUDE, [ ...the same three strings... ])`.
+// values — `assert.deepEqual(EVENT_TYPE_EXCLUDE, [ ...the very same strings... ])`.
 // That is a tautology: the mirror and the expectation drift together, so the check
 // stays green precisely when the mirror is wrong.
+//
+// (No count is named there on purpose. It used to read "the same three strings" and
+// was silently wrong from the moment the list grew — first to four with the weekly
+// digest, then to five with the booking fuel-stop reminder. A comment that counts a
+// list it does not own goes stale without anything failing.)
 //
 // It was wrong. GV-393 found two live drifts it had not noticed:
 //   • SETTLEMENT_REQUEST_COLUMNS had 12 columns; the gateway had grown to 17
