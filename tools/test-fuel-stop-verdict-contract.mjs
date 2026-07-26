@@ -27,6 +27,15 @@
 // OVERLAP — the last one via two dblink sessions, because two sequential calls pass
 // under the buggy implementation as happily as the fixed one and prove nothing.
 //
+// Migration 156 (GV-415) replaced the client-chosen `as_of` watermark with a
+// SERVER-derived counter, ledgers.tank_model_revision, and the parts below grew with it:
+// the due-ness fixtures now separate the two freshness gates so each one has a fixture
+// only IT can exclude (an active-but-newer trip for the as_of half, a deletion and a
+// settings change for the revision half), Part 3d pins the seven-argument signature's
+// stale_revision / value_conflict / identical-resend contract, Part 3e runs the
+// interleaving probe against the revision as well as the watermark, and Part 4 tests the
+// counter itself statement by statement — including the two changes that must NOT bump it.
+//
 // GVM-486 added one more: the planner now persists a whole stop SEQUENCE (`stations`)
 // beside the singular `station` this SQL reads, and the push only keeps working while
 // `station` keeps carrying stop one. The mobile suite asserts that identity; this asserts
@@ -411,6 +420,14 @@ const seed = `
          ('fuelstop-stale-fuel', 'Stale by fuel', 'fuelstop-stale-fuel', 20, now() - interval '1 hour', 5, 0, 150),
          ('fuelstop-gone-trip', 'Deleted trip', 'fuelstop-gone-trip', 20, now() - interval '1 hour', 5, 0, 150),
          ('fuelstop-gone-fuel', 'Deleted fuel', 'fuelstop-gone-fuel', 20, now() - interval '1 hour', 5, 0, 150),
+         -- GV-415: the two fixtures the as_of watermark provably CANNOT catch. Both are
+         -- stamped, both have only OLD active rows, so migration 155's not-exists gate
+         -- passes for each of them and only the model revision can exclude them.
+         ('fuelstop-deleted-after', 'Deleted after the stamp', 'fuelstop-deleted-after', 20, now() - interval '1 hour', 5, 0, 150),
+         ('fuelstop-settings-changed', 'Settings changed', 'fuelstop-settings-changed', 20, now() - interval '1 hour', 5, 0, 150),
+         -- No stamp and no bookings: this one exists only for Part 4, which measures the
+         -- counter itself rather than what the claim does with it.
+         ('fuelstop-counter', 'Revision counter', 'fuelstop-counter', null, null, null, null, null),
          -- Its own workspace purely for the tank level: MULTI_STOP_PLAN's first stop
          -- sits 34 km in, so the reserve crossing has to land before that for the plan
          -- to be re-validated as move-earlier. 16 litres puts it at 20 km.
@@ -427,7 +444,10 @@ const seed = `
     ('10000000-0000-0000-0000-000000000006', 'fuelstop-stale-fuel', 'Driver', 'driver4@test.dk', 'member', true),
     ('10000000-0000-0000-0000-000000000007', 'fuelstop-gone-trip', 'Driver', 'driver5@test.dk', 'member', true),
     ('10000000-0000-0000-0000-000000000008', 'fuelstop-gone-fuel', 'Driver', 'driver6@test.dk', 'member', true),
-    ('10000000-0000-0000-0000-000000000009', 'fuelstop-multistop', 'Driver', 'driver7@test.dk', 'member', true);
+    ('10000000-0000-0000-0000-000000000009', 'fuelstop-multistop', 'Driver', 'driver7@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000010', 'fuelstop-deleted-after', 'Driver', 'driver8@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000011', 'fuelstop-settings-changed', 'Driver', 'driver9@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000012', 'fuelstop-counter', 'Driver', 'driver10@test.dk', 'member', true);
 
   -- Trips and fuel payments need an open period to land in (migration 121's boundary
   -- trigger), which every real workspace has.
@@ -466,9 +486,68 @@ const seed = `
   insert into public.fuel_payments (ledger_id, payment_date, amount, payer_member_id, created_at, updated_at, deleted_at)
   values ('fuelstop-gone-fuel', current_date, 400, '10000000-0000-0000-0000-000000000008',
           now() - interval '10 minutes', now() - interval '10 minutes', now() - interval '10 minutes');
+
+  -- GV-415: one OLD, ACTIVE trip on the workspace whose row gets soft-deleted after the
+  -- stamp is synced below. Old, so migration 155's as_of gate passes while it is alive;
+  -- soft-deleted, so that gate excludes it afterwards and cannot be what makes the
+  -- booking undue. Only the revision bump can.
+  insert into public.trips (ledger_id, trip_date, start_km, end_km, driver_member_id, created_at, updated_at)
+  values ('fuelstop-deleted-after', current_date, 100, 200, '10000000-0000-0000-0000-000000000010',
+          now() - interval '5 hours', now() - interval '5 hours');
 `;
 const seeded = psql(CONTAINER, DB, ["-c", seed]);
 if (seeded.status !== 0) fail(`Seeding the due-ness fixtures failed:\n${seeded.stderr}`);
+
+// ── GV-415: put every fixture's stamp on the CURRENT model revision ─────────────
+// The rows above were inserted directly, so the bump triggers have already moved
+// tank_model_revision past the tank_state_revision the ledger INSERTs left behind. Syncing
+// them here is what a client re-stamping after each of those writes would have done, and
+// it is what makes the rest of this file test one thing at a time: with every fixture's
+// revision current, the ONLY reason `stale-by-trip` and `stale-by-fuel` are excluded is
+// migration 155's as_of comparison, and the only reason the two fixtures below are
+// excluded is the revision. Neither gate can stand in for the other, so removing either
+// one names itself in the diff.
+//
+// It also preserves what migration 155's tombstone fixtures were for: `tombstone-trip` and
+// `tombstone-fuel` are stamped at the post-deletion revision, i.e. the client has accounted
+// for the deletion, and they must still be DUE. A tombstone marking a stamp stale is
+// correct (GV-415 finding 4); a tombstone silencing a workspace whose stamp already covers
+// it is the permanent-blindness bug 155 fixed, and it must stay fixed.
+const syncRevisions = psql(CONTAINER, DB, [
+  "-c",
+  `update public.ledgers l set tank_state_revision = l.tank_model_revision
+   where l.id like 'fuelstop-%';`,
+]);
+if (syncRevisions.status !== 0) fail(`Could not sync the fixture revisions:\n${syncRevisions.stderr}`);
+
+// Now the two model changes that happen AFTER the stamp. Both are invisible to the as_of
+// watermark by construction: a soft-deleted trip is filtered out of that gate entirely,
+// and the car's consumption setting is not in it at all.
+const invalidated = psql(CONTAINER, DB, [
+  "-c",
+  `update public.trips t set deleted_at = now()
+   where t.ledger_id = 'fuelstop-deleted-after';
+   update public.ledgers l set estimated_consumption_l_per_100km = 7.5
+   where l.id = 'fuelstop-settings-changed';`,
+]);
+if (invalidated.status !== 0) fail(`Could not invalidate the two GV-415 fixtures:\n${invalidated.stderr}`);
+
+for (const [ledgerId, why] of [
+  ["fuelstop-deleted-after", "a soft-deleted trip"],
+  ["fuelstop-settings-changed", "a consumption change"],
+]) {
+  const [modelRevision, stateRevision] = run(
+    `select l.tank_model_revision, l.tank_state_revision from public.ledgers l where l.id = '${ledgerId}';`,
+  ).split("|");
+  assert.notEqual(
+    modelRevision,
+    stateRevision,
+    `${why} must move ledgers.tank_model_revision past the stamp's tank_state_revision. ` +
+      `Equal here means the bump never happened, and every assertion about ${ledgerId} below ` +
+      "would then be passing for the wrong reason.",
+  );
+  checked += 1;
+}
 
 const NEEDS_STOP = JSON.stringify({ needsFuel: false, station: null, kmUntilRefuel: null, distanceKm: 400 });
 const HOLDS = JSON.stringify(storedStop({ station: { brand: "X", lat: 55.5, lng: 11, kmIn: 105, pricePerLiter: 13 }, kmUntilRefuel: 105 }));
@@ -499,6 +578,12 @@ const bookings = [
   // this workspace's reminders for good.
   ["tombstone-trip", "fuelstop-gone-trip", "10000000-0000-0000-0000-000000000007", 60, NEEDS_STOP, false, true],
   ["tombstone-fuel", "fuelstop-gone-fuel", "10000000-0000-0000-0000-000000000008", 60, NEEDS_STOP, false, true],
+  // GV-415 findings 3 and 4, one fixture each. Both workspaces are stamped, both hold
+  // only OLD active rows, so migration 155's as_of gate passes for both and CANNOT be
+  // what excludes them — the model revision is. Removing the delete-path bump makes the
+  // first one due; removing the settings-path bump makes the second one due.
+  ["deleted-after-stamp", "fuelstop-deleted-after", "10000000-0000-0000-0000-000000000010", 60, NEEDS_STOP, false, false],
+  ["settings-changed", "fuelstop-settings-changed", "10000000-0000-0000-0000-000000000011", 60, NEEDS_STOP, false, false],
   // GVM-486: a booking whose persisted plan carries the whole stop SEQUENCE. Due, and
   // for the same reason a one-stop plan would be. If `station` ever stops being written
   // because the sequence moved into `stations`, this row leaves the claimed set entirely
@@ -690,6 +775,35 @@ assert.equal(
 );
 checked += 1;
 
+// GV-415 finding 1, on the LEGACY six-argument signature — the one govehlo-mobile still
+// calls, so this is the half that protects production today. Migration 155's `<=` kept an
+// equal watermark accepted so a re-sent offline write stays idempotent, but `<=` also
+// accepted an equal watermark carrying DIFFERENT numbers, and the last writer won. Two app
+// versions, a stale device or a hand-rolled client could therefore each publish its own
+// plausible tank level under the same freshness proof.
+const conflicting = JSON.parse(
+  run(`select public.set_tank_state('fuelstop-test', 7, '${equalAsOf}'::timestamptz, 5, 0, 150)::text;`),
+);
+assert.equal(
+  conflicting.applied,
+  false,
+  "an equal watermark carrying DIFFERENT numbers must be refused. `tank_state_as_of <= as_of_value` " +
+    "accepted it and let the last writer win (GV-415 finding 1); the equality branch must now " +
+    "require the stored numbers to match.",
+);
+assert.equal(
+  conflicting.reason,
+  "value_conflict",
+  "a same-watermark disagreement is not a stale watermark and must not be reported as one — the " +
+    "two have different causes and different fixes",
+);
+assert.equal(
+  run("select l.tank_state_liters from public.ledgers l where l.id = 'fuelstop-test';"),
+  "11",
+  "a refused same-watermark write must leave the stored tank state untouched",
+);
+checked += 1;
+
 // ── Part 3b: the bounds on the client's numbers (GV-411) ────────────────────────
 // The five numbers come straight from the client's model and that is by design
 // (GV-405), but the absurd is still refused — and refused by RAISING, like every other
@@ -739,52 +853,205 @@ assert.equal(
 );
 checked += 1;
 
-// ── Part 3c: set_tank_state under a REAL interleaving (GV-411) ──────────────────
-// This is the only check that can tell migration 155's set_tank_state from 154's.
-// Calling the RPC twice in a row passes under both implementations — 154's separate
-// select/compare/update reads a committed row and refuses the older watermark exactly
-// as 155 does. The defect only exists while two calls OVERLAP, so the test has to
-// produce that overlap rather than approximate it.
+// ── Part 3d: the revision-carrying signature (GV-415) ───────────────────────────
+// The seven-argument overload is the real fix; the six-argument one above is the
+// compatibility surface govehlo-mobile still calls. Here the client tells the server which
+// model revision it computed FROM, so the server no longer has to take a client-chosen
+// freshness proof on trust — and the two failures the watermark could not express become
+// two distinct, named refusals.
+const modelRevision = () =>
+  Number(run("select l.tank_model_revision from public.ledgers l where l.id = 'fuelstop-test';"));
+const stampAtRevision = (liters, revision, asOf = "now()") =>
+  JSON.parse(
+    run(
+      `select public.set_tank_state('fuelstop-test', ${liters}, ${asOf}, 5, 0, 150, ${revision}::bigint)::text;`,
+    ),
+  );
+
+// The member gate is in-body and must hold on the new signature too — a new overload is a
+// new door, and 148's revoke convention only closes it for anon.
+const outsiderRevisioned = psql(CONTAINER, DB, [
+  "-c",
+  `select set_config('request.jwt.claims', '{"email":"stranger@test.dk"}', false);
+   select public.set_tank_state('fuelstop-test', 11, now(), 5, 0, 150, 0::bigint);`,
+]);
+assert.notEqual(outsiderRevisioned.status, 0, "the revision-carrying set_tank_state must refuse a non-member");
+assert.match(
+  outsiderRevisioned.stderr,
+  /Only an active workspace member can record tank state/,
+  "the member gate must be the reason, on both overloads",
+);
+checked += 1;
+
+// Part 3b's legacy writes already stamped the workspace's current revision, so move the
+// model on before the first-writer-wins cases below — otherwise they would be measuring
+// the conflict rule against a stamp left behind by the bounds tests.
+if (
+  psql(CONTAINER, DB, [
+    "-c",
+    `insert into public.trips (ledger_id, trip_date, start_km, end_km, driver_member_id)
+     values ('fuelstop-test', current_date, 200, 300, '10000000-0000-0000-0000-000000000001');`,
+  ]).status !== 0
+) {
+  fail("Could not move the tank model on before the revision cases.");
+}
+
+const currentRevision = modelRevision();
+const firstAtRevision = stampAtRevision(12, currentRevision);
+assert.equal(firstAtRevision.applied, true, "a stamp carrying the workspace's current model revision must apply");
+assert.equal(
+  Number(firstAtRevision.tank_state_revision),
+  currentRevision,
+  "the applied stamp must record the revision it was computed from, not the one it landed on",
+);
+checked += 1;
+
+// Idempotence, the rule migration 155's `<=` existed to protect, now expressed on the
+// revision instead: the offline outbox re-sends writes, and an identical re-send has to
+// stay a quiet success or every retry would report a conflict the user cannot act on.
+assert.equal(
+  stampAtRevision(12, currentRevision).applied,
+  true,
+  "an IDENTICAL re-send at the same revision must still apply quietly — the offline outbox " +
+    "re-sends writes, and first-writer-wins must not turn a retry into a conflict",
+);
+checked += 1;
+
+// GV-415 finding 1 on the new signature. Within one revision the model inputs are
+// identical, so two different answers cannot both be right and nothing in the data chooses
+// between them. First writer wins; the second is refused rather than allowed to overwrite.
+const sameRevisionOtherNumbers = stampAtRevision(13, currentRevision);
+assert.equal(
+  sameRevisionOtherNumbers.applied,
+  false,
+  "the same model revision carrying DIFFERENT numbers must be REFUSED, not applied. This is the " +
+    "defect the watermark could not express: identical freshness proof, two different tank levels, " +
+    "last writer wins (GV-415 finding 1).",
+);
+assert.equal(
+  sameRevisionOtherNumbers.reason,
+  "value_conflict",
+  "a disagreement inside one revision must be named as a conflict, not as staleness — the client " +
+    "cannot fix staleness by recomputing here, because nothing has changed to recompute from",
+);
+assert.equal(
+  run("select l.tank_state_liters from public.ledgers l where l.id = 'fuelstop-test';"),
+  "12",
+  "a refused conflicting stamp must leave the first writer's numbers in place",
+);
+checked += 1;
+
+// Move the model on. The insert goes through the ordinary table, not an RPC, which is the
+// whole point of putting the bump on a trigger.
+if (
+  psql(CONTAINER, DB, [
+    "-c",
+    `insert into public.trips (ledger_id, trip_date, start_km, end_km, driver_member_id)
+     values ('fuelstop-test', current_date, 300, 400, '10000000-0000-0000-0000-000000000001');`,
+  ]).status !== 0
+) {
+  fail("Could not move the tank model on for the stale-revision case.");
+}
+const movedRevision = modelRevision();
+assert.equal(
+  movedRevision,
+  currentRevision + 1,
+  "an ordinary trip INSERT must move ledgers.tank_model_revision — that is the whole mechanism",
+);
+checked += 1;
+
+const staleRevision = stampAtRevision(14, currentRevision);
+assert.equal(
+  staleRevision.applied,
+  false,
+  "a stamp computed from a revision the workspace has moved past must be refused",
+);
+assert.equal(staleRevision.reason, "stale_revision", "a superseded revision must say so");
+assert.equal(
+  Number(staleRevision.tank_model_revision),
+  movedRevision,
+  "the refusal must hand back the CURRENT revision, so the client knows what to recompute against",
+);
+checked += 1;
+
+// A revision AHEAD of the workspace cannot be honest — the counter only ever increases, so
+// no client can hold one the server has not reached. It raises rather than no-ops, exactly
+// like the future-watermark check, because it is a bug or a fabrication, not a lost race.
+const aheadRevision = psql(CONTAINER, DB, [
+  "-c",
+  `select public.set_tank_state('fuelstop-test', 14, now(), 5, 0, 150, ${movedRevision + 99}::bigint);`,
+]);
+assert.notEqual(aheadRevision.status, 0, "a revision ahead of the workspace must raise");
+assert.match(
+  aheadRevision.stderr,
+  /model revision is ahead of the workspace/,
+  "a revision from the future must be refused by its own check, not by something incidental",
+);
+checked += 1;
+
+const missingRevision = psql(CONTAINER, DB, [
+  "-c",
+  "select public.set_tank_state('fuelstop-test', 14, now(), 5, 0, 150, null::bigint);",
+]);
+assert.notEqual(missingRevision.status, 0, "the revision-carrying signature must refuse a null revision");
+assert.match(
+  missingRevision.stderr,
+  /needs the model revision it was computed from/,
+  "a null revision must be refused as a missing revision, not silently treated as revision zero",
+);
+checked += 1;
+
+// After a DELETION the client's watermark can legitimately move BACKWARDS: the newest row
+// it could see is gone, so the newest greatest(created_at, updated_at) across what remains
+// is older than the one it sent last time. Migration 155's monotonic `as_of` rule would
+// refuse that stamp forever and freeze the tank state at the deleted row's timestamp. The
+// revision orders these writes now, so an older watermark at a NEWER revision must apply.
+const olderWatermarkNewerRevision = stampAtRevision(15, movedRevision, "now() - interval '2 hours'");
+assert.equal(
+  olderWatermarkNewerRevision.applied,
+  true,
+  "a NEWER revision carrying an OLDER watermark must apply. After a deletion the client's " +
+    "watermark legitimately regresses, and refusing it would freeze the stamp at a row that no " +
+    "longer exists.",
+);
+checked += 1;
+
+// ── Part 3e: set_tank_state under a REAL interleaving (GV-411, extended by GV-415) ──
+// This is the only check that can tell migration 155's set_tank_state from 154's, and now
+// also the only one that can tell 156's conflict rule from a version that just lets the
+// second writer win. Calling the RPC twice in a ROW passes under every implementation —
+// the second call reads a committed row and refuses on that basis. The defect only exists
+// while two calls OVERLAP, so the test has to produce that overlap rather than
+// approximate it.
 //
 // dblink gives two extra sessions from inside one psql call, and dblink_send_query is
 // asynchronous, which is what makes the interleaving deterministic rather than a race
 // the test itself has to win:
 //
-//   A: begin; set_tank_state(NEWER watermark)   → holds the row lock, uncommitted
-//   B: begin; set_tank_state(OLDER watermark)   → sent async, blocks on A's lock
+//   A: begin; set_tank_state(the write that should win)  → holds the row lock, uncommitted
+//   B: begin; set_tank_state(the write that should lose) → sent async, blocks on A's lock
 //   (assert B really is blocked — otherwise the two never overlapped)
-//   A: commit                                   → B unblocks
+//   A: commit                                            → B unblocks
 //   B: read the answer, commit
 //
-// Under 154: B's select ran BEFORE A committed, so it saw the pre-A watermark, passed
-// the comparison, and its update — queued behind A's lock — lands LAST. B answers
-// applied=true and the stored tank state is B's older calculation. The watermark's
-// entire guarantee is gone.
-// Under 155: there is no separate select. B's conditional update re-evaluates its WHERE
-// against the row version A committed (READ COMMITTED), matches nothing, and answers
-// applied=false / stale_as_of. A's numbers stay.
-if (
-  psql(CONTAINER, DB, [
-    "-c",
-    `create extension if not exists dblink;
-     update public.ledgers l
-        set tank_state_as_of = now() - interval '30 minutes',
-            tank_state_liters = 20,
-            tank_state_consumption = 5,
-            tank_state_consumption_spread = 0,
-            tank_state_capacity = 150
-      where l.id = 'fuelstop-test';`,
-  ]).status !== 0
-) {
+// Under 154: B's select ran BEFORE A committed, so it saw the pre-A state, passed the
+// comparison, and its update — queued behind A's lock — lands LAST. B answers
+// applied=true and the stored tank state is B's calculation. The guarantee is gone.
+// Under 155/156: there is no separate select. B's conditional update re-evaluates its
+// WHERE against the row version A committed (READ COMMITTED), matches nothing, and
+// answers applied=false. A's numbers stay.
+if (psql(CONTAINER, DB, ["-c", "create extension if not exists dblink;"]).status !== 0) {
   fail("Could not set up the interleaving probe (dblink unavailable?).");
 }
 
 // The probe runs entirely on the two dblink sessions; nothing it reports comes from the
-// calling transaction's snapshot, which was taken before either of them committed.
+// calling transaction's snapshot, which was taken before either of them committed. Both
+// calls are passed in whole (GV-415) so the same machinery can drive the legacy watermark
+// race and the revision race without two copies of it.
 const probe = `
-create or replace function public.gv411_race_probe(
-  winner_as_of timestamptz,
-  loser_as_of timestamptz
+create or replace function public.gv415_race_probe(
+  winner_call text,
+  loser_call text
 )
 returns jsonb
 language plpgsql
@@ -795,21 +1062,17 @@ declare
   blocked integer := 0;
   attempts integer := 0;
 begin
-  perform dblink_connect('gv411_winner', 'dbname=' || current_database());
-  perform dblink_connect('gv411_loser', 'dbname=' || current_database());
-  perform dblink_exec('gv411_winner', 'begin');
-  perform dblink_exec('gv411_loser', 'begin');
+  perform dblink_connect('gv415_winner', 'dbname=' || current_database());
+  perform dblink_connect('gv415_loser', 'dbname=' || current_database());
+  perform dblink_exec('gv415_winner', 'begin');
+  perform dblink_exec('gv415_loser', 'begin');
 
-  -- A stamps the NEWER watermark and keeps the row lock by staying open.
+  -- A writes and keeps the row lock by staying open.
   select r into winner_result
-  from dblink('gv411_winner', format(
-    'select public.set_tank_state(%L, 11, %L::timestamptz, 5, 0, 150)::text',
-    'fuelstop-test', winner_as_of)) as w(r text);
+  from dblink('gv415_winner', winner_call) as w(r text);
 
-  -- B stamps the OLDER one. Asynchronous, so it can sit on A's lock while we watch.
-  perform dblink_send_query('gv411_loser', format(
-    'select public.set_tank_state(%L, 42, %L::timestamptz, 5, 0, 150)::text',
-    'fuelstop-test', loser_as_of));
+  -- B writes too. Asynchronous, so it can sit on A's lock while we watch.
+  perform dblink_send_query('gv415_loser', loser_call);
 
   -- Wait until B is demonstrably blocked. pg_stat_activity is snapshotted per
   -- transaction, so the snapshot has to be cleared on every pass or this loop reads the
@@ -826,16 +1089,16 @@ begin
     attempts := attempts + 1;
   end loop;
 
-  perform dblink_exec('gv411_winner', 'commit');
+  perform dblink_exec('gv415_winner', 'commit');
 
-  select r into loser_result from dblink_get_result('gv411_loser') as l(r text);
+  select r into loser_result from dblink_get_result('gv415_loser') as l(r text);
   -- libpq hands back one result per send; the empty trailing one has to be drained or
   -- the next command on that connection errors with "another command is already in
   -- progress".
-  perform * from dblink_get_result('gv411_loser') as l(r text);
-  perform dblink_exec('gv411_loser', 'commit');
-  perform dblink_disconnect('gv411_winner');
-  perform dblink_disconnect('gv411_loser');
+  perform * from dblink_get_result('gv415_loser') as l(r text);
+  perform dblink_exec('gv415_loser', 'commit');
+  perform dblink_disconnect('gv415_winner');
+  perform dblink_disconnect('gv415_loser');
 
   return jsonb_build_object(
     'winner', winner_result::jsonb,
@@ -848,54 +1111,264 @@ if (psql(CONTAINER, DB, ["-c", probe]).status !== 0) {
   fail("Could not create the interleaving probe.");
 }
 
-const race = JSON.parse(
-  run(`select public.gv411_race_probe(
-         now() - interval '2 minutes',
-         now() - interval '10 minutes'
-       )::text;`),
+const runRace = (winnerCall, loserCall) =>
+  JSON.parse(
+    run(
+      `select public.gv415_race_probe(${sqlLiteral(winnerCall.replace(/'/g, "''"))},
+                                      ${sqlLiteral(loserCall.replace(/'/g, "''"))})::text;`,
+    ),
+  );
+
+// ── Race 1: the legacy watermark (migration 155's case, unchanged) ─────────────
+if (
+  psql(CONTAINER, DB, [
+    "-c",
+    `update public.ledgers l
+        set tank_state_as_of = now() - interval '30 minutes',
+            tank_state_liters = 20,
+            tank_state_consumption = 5,
+            tank_state_consumption_spread = 0,
+            tank_state_capacity = 150,
+            tank_state_revision = l.tank_model_revision
+      where l.id = 'fuelstop-test';`,
+  ]).status !== 0
+) {
+  fail("Could not reset the tank state for the watermark race.");
+}
+
+const watermarkRace = runRace(
+  `select public.set_tank_state('fuelstop-test', 11, now() - interval '2 minutes', 5, 0, 150)::text`,
+  `select public.set_tank_state('fuelstop-test', 42, now() - interval '10 minutes', 5, 0, 150)::text`,
 );
 
 assert.equal(
-  race.loser_blocked_on_winner,
+  watermarkRace.loser_blocked_on_winner,
   true,
   "the two stamps never overlapped — the loser was not waiting on the winner's row lock, so this " +
     "run proves nothing about concurrency. Sequential calls pass under the buggy implementation too.",
 );
 assert.equal(
-  race.winner.applied,
+  watermarkRace.winner.applied,
   true,
   "the stamp with the newer watermark must be the one that applies",
 );
 assert.equal(
-  race.loser.applied,
+  watermarkRace.loser.applied,
   false,
   "the concurrent stamp carrying the OLDER watermark must be refused. It passed a pre-lock read " +
     "of the watermark, so only a condition ON the update can catch it (migration 155); with the " +
     "read-compare-update of migration 154 it lands last and moves the tank level backwards.",
 );
-assert.equal(race.loser.reason, "stale_as_of", "a lost race must keep its documented reason code");
-checked += 1;
-
-// Read the survivors from a fresh session — the probe's own transaction predates both
-// commits and cannot see them.
-const survived = run(
-  "select l.tank_state_liters from public.ledgers l where l.id = 'fuelstop-test';",
-);
+assert.equal(watermarkRace.loser.reason, "stale_as_of", "a lost race must keep its documented reason code");
 assert.equal(
-  survived,
+  run("select l.tank_state_liters from public.ledgers l where l.id = 'fuelstop-test';"),
   "11",
   "the winner's numbers must be what is stored. 42 here means the older calculation committed " +
     "last and overwrote the newer one — the exact backwards write the watermark exists to prevent.",
 );
 checked += 1;
 
+// ── Race 2: two stamps at the SAME revision, overlapping (GV-415 finding 1) ────
+// The whole point of the conflict rule is that the two calls are indistinguishable on
+// freshness — same revision, same watermark, different numbers — so only the ORDER in
+// which they land can decide, and the loser must be refused rather than allowed to
+// overwrite. Sequential calls prove nothing here either: the second one would read a
+// committed row and refuse under any implementation that checks at all. It has to be
+// two calls holding the same row at the same time.
+if (
+  psql(CONTAINER, DB, [
+    "-c",
+    `update public.ledgers l
+        set tank_state_as_of = now() - interval '30 minutes',
+            tank_state_liters = 20,
+            tank_state_consumption = 5,
+            tank_state_consumption_spread = 0,
+            tank_state_capacity = 150,
+            tank_state_revision = l.tank_model_revision - 1
+      where l.id = 'fuelstop-test';`,
+  ]).status !== 0
+) {
+  fail("Could not reset the tank state for the revision race.");
+}
+const raceRevision = modelRevision();
+
+const revisionRace = runRace(
+  `select public.set_tank_state('fuelstop-test', 11, now(), 5, 0, 150, ${raceRevision}::bigint)::text`,
+  `select public.set_tank_state('fuelstop-test', 42, now(), 5, 0, 150, ${raceRevision}::bigint)::text`,
+);
+
+assert.equal(
+  revisionRace.loser_blocked_on_winner,
+  true,
+  "the two stamps never overlapped, so this run says nothing about the conflict rule under " +
+    "concurrency — which is the only condition under which it can fail",
+);
+assert.equal(revisionRace.winner.applied, true, "the first stamp at a revision must apply");
+assert.equal(
+  revisionRace.loser.applied,
+  false,
+  "a CONCURRENT stamp at the same revision carrying different numbers must be refused. It read " +
+    "the pre-winner row and saw an older tank_state_revision, so only a condition ON the update " +
+    "catches it once the winner commits.",
+);
+assert.equal(
+  revisionRace.loser.reason,
+  "value_conflict",
+  "the loser of a same-revision race must be told it disagreed, not that it was stale — nothing " +
+    "moved on, so recomputing would produce the same refusal",
+);
+assert.equal(
+  run("select l.tank_state_liters from public.ledgers l where l.id = 'fuelstop-test';"),
+  "11",
+  "the first writer's numbers must survive. 42 here means the conflict rule is not on the update " +
+    "and the second writer overwrote the first — GV-415 finding 1, exactly as migration 155 left it.",
+);
+checked += 1;
+
+// ── Part 4: the revision counter itself (GV-415) ────────────────────────────────
+// Everything above tests what the two RPCs DO with ledgers.tank_model_revision. This tests
+// the counter, which is a different claim and the one with more ways to be quietly wrong:
+// the bump lives in triggers precisely so it also fires for writes that never reach an RPC
+// (govehlo-web's admin console PATCHes deleted_at straight onto trips and fuel_payments),
+// so every statement below is a plain table write with no RPC anywhere near it.
+//
+// The must-NOT-bump cases matter as much as the must-bump ones. Over-invalidation is not
+// harmless here: the mobile service dedupes on the stamp payload, so a bump the client
+// cannot see in its own numbers produces no re-stamp, and the workspace's reminders simply
+// stop. period_id in particular is re-pointed across a whole queued period on every period
+// open (promote_settlement_carryover_on_open, migration 140).
+const counterRevision = () =>
+  Number(run("select l.tank_model_revision from public.ledgers l where l.id = 'fuelstop-counter';"));
+
+function bumpsBy(label, sql, expectedDelta) {
+  const before = counterRevision();
+  const result = psql(CONTAINER, DB, ["-c", sql]);
+  if (result.status !== 0) fail(`Part 4 setup failed for "${label}":\n${result.stderr}\n--- SQL ---\n${sql}`);
+  const after = counterRevision();
+  assert.equal(
+    after - before,
+    expectedDelta,
+    expectedDelta === 0
+      ? `${label} must NOT move ledgers.tank_model_revision — it changes nothing the tank model ` +
+          `reads, and a spurious bump silently switches this workspace's reminders off (the mobile ` +
+          `service dedupes on the payload, so it will not re-stamp for a change it cannot see). ` +
+          `Went from ${before} to ${after}.`
+      : `${label} must move ledgers.tank_model_revision by ${expectedDelta}. Went from ${before} to ` +
+          `${after}. A missing bump leaves a stamp reading as fresh over inputs that changed, which ` +
+          `is what GV-415 findings 3 and 4 are.`,
+  );
+  checked += 1;
+}
+
+bumpsBy(
+  "a trip INSERT",
+  `insert into public.trips (legacy_id, ledger_id, trip_date, start_km, end_km, driver_member_id)
+   values ('counter-1', 'fuelstop-counter', current_date, 100, 200, '10000000-0000-0000-0000-000000000012');`,
+  1,
+);
+bumpsBy(
+  "editing a trip's odometer",
+  `update public.trips t set start_km = 150 where t.legacy_id = 'counter-1';`,
+  1,
+);
+bumpsBy(
+  "re-pointing a trip's period_id (migration 140's carryover promotion)",
+  `update public.trips t set period_id = t.period_id where t.legacy_id = 'counter-1';`,
+  0,
+);
+bumpsBy(
+  "touching a trip's updated_at and nothing else",
+  `update public.trips t set updated_at = now() where t.legacy_id = 'counter-1';`,
+  0,
+);
+bumpsBy(
+  "SOFT-deleting a trip (the admin console's PATCH, GV-415 finding 4)",
+  `update public.trips t set deleted_at = now() where t.legacy_id = 'counter-1';`,
+  1,
+);
+bumpsBy(
+  "hard-deleting a trip",
+  `delete from public.trips t where t.legacy_id = 'counter-1';`,
+  1,
+);
+bumpsBy(
+  "a fuel payment INSERT",
+  `insert into public.fuel_payments (legacy_id, ledger_id, payment_date, amount, payer_member_id)
+   values ('counter-fuel', 'fuelstop-counter', current_date, 400, '10000000-0000-0000-0000-000000000012');`,
+  1,
+);
+bumpsBy(
+  "SOFT-deleting a fuel payment",
+  `update public.fuel_payments fp set deleted_at = now() where fp.legacy_id = 'counter-fuel';`,
+  1,
+);
+
+// Statement-level, not row-level: the admin console's set-based soft delete stamps
+// deleted_at on EVERY row of a workspace in ONE PATCH, and one bump is the right answer
+// for one statement. A row-level trigger would rewrite the ledger row once per trip.
+bumpsBy(
+  "inserting three trips in one statement",
+  `insert into public.trips (legacy_id, ledger_id, trip_date, start_km, end_km, driver_member_id)
+   values ('counter-a', 'fuelstop-counter', current_date, 100, 200, '10000000-0000-0000-0000-000000000012'),
+          ('counter-b', 'fuelstop-counter', current_date, 200, 300, '10000000-0000-0000-0000-000000000012'),
+          ('counter-c', 'fuelstop-counter', current_date, 300, 400, '10000000-0000-0000-0000-000000000012');`,
+  1,
+);
+bumpsBy(
+  "soft-deleting all three in one statement",
+  `update public.trips t set deleted_at = now()
+   where t.ledger_id = 'fuelstop-counter' and t.deleted_at is null;`,
+  1,
+);
+
+// GV-415 finding 3's other half: the car's own settings and baseline are model inputs the
+// watermark never covered at all, because the client derives it only from trip and fuel
+// rows.
+bumpsBy(
+  "changing the car's consumption setting",
+  `update public.ledgers l set estimated_consumption_l_per_100km = 8 where l.id = 'fuelstop-counter';`,
+  1,
+);
+bumpsBy(
+  "writing the SAME consumption setting again",
+  `update public.ledgers l set estimated_consumption_l_per_100km = 8 where l.id = 'fuelstop-counter';`,
+  0,
+);
+bumpsBy(
+  "changing the tank capacity",
+  `update public.ledgers l set fuel_tank_capacity_l = 60 where l.id = 'fuelstop-counter';`,
+  1,
+);
+bumpsBy(
+  "changing the tank baseline (migration 092's anchor)",
+  `update public.ledgers l set tank_baseline_odometer = 1000, tank_baseline_fraction = 0.5
+   where l.id = 'fuelstop-counter';`,
+  1,
+);
+bumpsBy(
+  "re-recording an IDENTICAL tank baseline",
+  `update public.ledgers l set tank_baseline_odometer = 1000, tank_baseline_fraction = 0.5,
+                               tank_baseline_recorded_at = now()
+   where l.id = 'fuelstop-counter';`,
+  0,
+);
+bumpsBy(
+  "renaming the workspace",
+  `update public.ledgers l set name = 'Renamed' where l.id = 'fuelstop-counter';`,
+  0,
+);
+
 removeContainer(CONTAINER);
 finished = true;
 console.log(
-  `ok - fuel-stop verdict contract: ${checked} checks. The SQL in migrations 154/155 returns the ` +
-    "same verdicts as govehlo-mobile/src/lib/fuel-stop-revalidation.ts for every scenario in " +
+  `ok - fuel-stop verdict contract: ${checked} checks. The SQL in migrations 154/155/156 returns ` +
+    "the same verdicts as govehlo-mobile/src/lib/fuel-stop-revalidation.ts for every scenario in " +
     "its vitest suite, a GVM-486 multi-stop plan reads exactly like a one-stop plan, the claim's " +
-    "due-ness and lease/token contract holds (tombstoned trips and fuel rows do not silence it), " +
-    "and set_tank_state is monotonic on its as_of watermark, bounded on its inputs, and monotonic " +
-    "under a real interleaving of two overlapping stamps.",
+    "due-ness and lease/token contract holds on BOTH freshness gates (a tombstone the stamp " +
+    "already covers does not silence it; a deletion or a settings change after the stamp does), " +
+    "set_tank_state is monotonic on its as_of watermark, bounded on its inputs, refuses a second " +
+    "set of numbers under the same watermark or the same revision while staying idempotent on an " +
+    "identical re-send, and holds both of those under a real interleaving of two overlapping " +
+    "stamps — and ledgers.tank_model_revision moves for every trip, fuel, settings and baseline " +
+    "change including soft deletes, and for nothing else.",
 );
