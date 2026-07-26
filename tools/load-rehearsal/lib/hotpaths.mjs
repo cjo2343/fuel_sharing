@@ -26,6 +26,7 @@ export const EVENT_TYPE_EXCLUDE = [
   "close_reminder_sent",
   "booking_completion_reminder_sent",
   "weekly_digest_sent",
+  "booking_fuel_reminder_sent",
 ];
 
 // Explicit projections (data minimisation) — copied verbatim from the gateway.
