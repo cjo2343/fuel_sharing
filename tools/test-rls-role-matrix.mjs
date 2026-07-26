@@ -3244,6 +3244,81 @@ end`,
     op: `perform public.prune_push_tokens(array['ExponentPushToken[dead]']);`,
     expect: "42501",
   }),
+
+  // ── Pre-departure fuel-stop reminders (migration 154, GV-405) ──────────────
+  // Two different authorisation shapes in one migration. set_tank_state is the
+  // client's write path and is member-gated in-body; the claim/confirm pair is
+  // service-role only with NO in-body gate, so — exactly like the push-target RPCs
+  // above — the privilege system IS the whole contract and the denial cases below
+  // are the only thing asserting it.
+  rpcCase({
+    name: "tank-state-member-writes",
+    desc: "an active member records the car's tank state",
+    actor: B,
+    op: `perform public.set_tank_state('${WS1}', 32.5, now(), 5.4, 0.6, 55);`,
+    expect: "ok",
+    post: `if (select l.tank_state_liters from public.ledgers l where l.id = '${WS1}') <> 32.5
+      then raise exception 'CASEFAIL tank-state-member-writes: the stamp did not land'; end if;`,
+  }),
+  rpcCase({
+    name: "tank-state-foreign-member-denied",
+    desc: "E (a member of the OTHER workspace) cannot stamp tank state on this car",
+    actor: E,
+    op: `perform public.set_tank_state('${WS1}', 5, now(), 5.4, 0.6, 55);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "tank-state-anon-denied",
+    desc: "anon cannot stamp tank state",
+    actor: ANON,
+    op: `perform public.set_tank_state('${WS1}', 5, now(), 5.4, 0.6, 55);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "tank-state-stale-watermark-noop",
+    desc: "a member writing an OLDER as_of watermark is refused without an exception, and the stored stamp survives",
+    setup: [step(SUPER, `update public.ledgers set tank_state_liters = 40, tank_state_as_of = now(),
+      tank_state_consumption = 5.4, tank_state_consumption_spread = 0.6, tank_state_capacity = 55
+      where id = '${WS1}';`)],
+    actor: B,
+    // A losing race is normal, so the client must be able to ignore it quietly: this
+    // returns applied=false rather than raising. A regression to an exception would
+    // surface as a crash on an ordinary background write.
+    op: `if (public.set_tank_state('${WS1}', 5, now() - interval '1 day', 5.4, 0.6, 55) ->> 'applied')::boolean
+         then raise exception 'a stale watermark must not be applied'; end if;`,
+    expect: "ok",
+    post: `if (select l.tank_state_liters from public.ledgers l where l.id = '${WS1}') <> 40
+      then raise exception 'CASEFAIL tank-state-stale-watermark-noop: a refused stamp overwrote the stored tank state'; end if;`,
+  }),
+  rpcCase({
+    name: "booking-fuel-claim-member-blocked",
+    desc: "an authenticated workspace admin cannot claim pre-departure fuel reminders",
+    actor: A,
+    op: `perform public.claim_due_booking_fuel_reminders(10);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "booking-fuel-claim-anon-blocked",
+    desc: "anon cannot claim pre-departure fuel reminders",
+    actor: ANON,
+    op: `perform public.claim_due_booking_fuel_reminders(10);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "booking-fuel-confirm-member-blocked",
+    desc: "an authenticated workspace admin cannot confirm pre-departure fuel reminders",
+    actor: A,
+    op: `perform public.confirm_booking_fuel_reminders('[]'::jsonb);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "booking-fuel-claim-service-role-allowed",
+    desc: "the service role — the push engine's identity — may claim and confirm",
+    actor: SERVICE,
+    op: `perform public.claim_due_booking_fuel_reminders(10);
+         perform public.confirm_booking_fuel_reminders('[]'::jsonb);`,
+    expect: "ok",
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────

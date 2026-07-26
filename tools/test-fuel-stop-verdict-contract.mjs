@@ -225,6 +225,15 @@ function fail(message) {
   process.exit(1);
 }
 
+// A failing assertion throws, and the whole point of this file is to fail sometimes, so
+// the disposable container must be reaped on the way out or a red run leaves one behind
+// on every retry. `process.on('exit')` covers both the assertion path and a crash;
+// removeContainer is synchronous, which is what makes it legal in an exit handler.
+let finished = false;
+process.on("exit", () => {
+  if (!finished) removeContainer(CONTAINER);
+});
+
 function run(sql) {
   const res = psql(CONTAINER, DB, ["-t", "-A", "-F", "|", "-c", sql]);
   if (res.status !== 0) fail(`psql failed:\n${res.stderr}\n--- SQL ---\n${sql}`);
@@ -504,6 +513,7 @@ assert.equal(
 checked += 1;
 
 removeContainer(CONTAINER);
+finished = true;
 console.log(
   `ok - fuel-stop verdict contract: ${checked} checks. The SQL in migration 154 returns the ` +
     "same verdicts as govehlo-mobile/src/lib/fuel-stop-revalidation.ts for every scenario in " +

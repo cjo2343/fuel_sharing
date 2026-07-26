@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 153 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 154 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -58,6 +58,9 @@ export type Database = {
           created_by_member_id: string | null
           deleted_at: string | null
           end_at: string
+          fuel_reminded_at: string | null
+          fuel_reminder_claim_token: string | null
+          fuel_reminder_claimed_at: string | null
           fuel_stop: Json | null
           id: string
           ledger_id: string
@@ -76,6 +79,9 @@ export type Database = {
           created_by_member_id?: string | null
           deleted_at?: string | null
           end_at: string
+          fuel_reminded_at?: string | null
+          fuel_reminder_claim_token?: string | null
+          fuel_reminder_claimed_at?: string | null
           fuel_stop?: Json | null
           id?: string
           ledger_id: string
@@ -94,6 +100,9 @@ export type Database = {
           created_by_member_id?: string | null
           deleted_at?: string | null
           end_at?: string
+          fuel_reminded_at?: string | null
+          fuel_reminder_claim_token?: string | null
+          fuel_reminder_claimed_at?: string | null
           fuel_stop?: Json | null
           id?: string
           ledger_id?: string
@@ -540,6 +549,11 @@ export type Database = {
           tank_baseline_fraction: number | null
           tank_baseline_odometer: number | null
           tank_baseline_recorded_at: string | null
+          tank_state_as_of: string | null
+          tank_state_capacity: number | null
+          tank_state_consumption: number | null
+          tank_state_consumption_spread: number | null
+          tank_state_liters: number | null
           updated_at: string
           vehicle_info: Json
           vehicle_lookup_at: string | null
@@ -590,6 +604,11 @@ export type Database = {
           tank_baseline_fraction?: number | null
           tank_baseline_odometer?: number | null
           tank_baseline_recorded_at?: string | null
+          tank_state_as_of?: string | null
+          tank_state_capacity?: number | null
+          tank_state_consumption?: number | null
+          tank_state_consumption_spread?: number | null
+          tank_state_liters?: number | null
           updated_at?: string
           vehicle_info?: Json
           vehicle_lookup_at?: string | null
@@ -640,6 +659,11 @@ export type Database = {
           tank_baseline_fraction?: number | null
           tank_baseline_odometer?: number | null
           tank_baseline_recorded_at?: string | null
+          tank_state_as_of?: string | null
+          tank_state_capacity?: number | null
+          tank_state_consumption?: number | null
+          tank_state_consumption_spread?: number | null
+          tank_state_liters?: number | null
           updated_at?: string
           vehicle_info?: Json
           vehicle_lookup_at?: string | null
@@ -1729,6 +1753,19 @@ export type Database = {
           retry_after_seconds: number
         }[]
       }
+      claim_due_booking_fuel_reminders: {
+        Args: { p_limit?: number }
+        Returns: {
+          booking_id: string
+          claim_token: string
+          ledger_id: string
+          member_email: string
+          member_id: string
+          reserve_km: number
+          stored_stop_km: number
+          verdict: string
+        }[]
+      }
       claim_due_booking_trip_reminders: {
         Args: { p_limit?: number }
         Returns: {
@@ -1866,6 +1903,10 @@ export type Database = {
         }
         Returns: Json
       }
+      confirm_booking_fuel_reminders: {
+        Args: { confirmations: Json }
+        Returns: number
+      }
       confirm_booking_trip_reminders: {
         Args: { confirmations: Json }
         Returns: number
@@ -1919,6 +1960,17 @@ export type Database = {
       }
       fuel_ledger_healthcheck: {
         Args: { target_ledger_id?: string }
+        Returns: Json
+      }
+      fuel_stop_revalidation_verdict: {
+        Args: {
+          p_consumption: number
+          p_consumption_spread: number
+          p_deadband_km: number
+          p_liters_now: number
+          p_stored_fuel_stop: Json
+          p_tank_capacity: number
+        }
         Returns: Json
       }
       generate_all_due_recurring_expenses: {
@@ -2133,6 +2185,17 @@ export type Database = {
           event_title?: string
           fraction_value: number
           odometer_value: number
+          target_ledger_id: string
+        }
+        Returns: Json
+      }
+      set_tank_state: {
+        Args: {
+          as_of_value: string
+          capacity_value: number
+          consumption_value: number
+          liters_value: number
+          spread_value: number
           target_ledger_id: string
         }
         Returns: Json
