@@ -332,6 +332,14 @@ jobs:
       - name: Run booking-ended reminder smoke
         run: bash tools/test-booking-reminder-functional.sh
 
+      # GV-405. The fast `validate` job also runs this, but WITHOUT --strict: it skips
+      # with a warning where Docker is absent so `npm run validate` keeps its
+      # dependency-free promise. Here a skip is a failure — this is the only thing
+      # holding migration 154's arithmetic to the mobile TypeScript it duplicates, and a
+      # guard that can quietly not run is the guard this project keeps re-learning about.
+      - name: Run pre-departure fuel-stop verdict contract
+        run: node tools/test-fuel-stop-verdict-contract.mjs --strict
+
       - name: Run deferred fuel-close smoke
         run: bash tools/test-deferred-fuel-close-functional.sh
 

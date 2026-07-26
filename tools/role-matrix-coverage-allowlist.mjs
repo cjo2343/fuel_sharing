@@ -61,4 +61,22 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
+  {
+    fn: 'set_tank_state',
+    reason:
+      'Dark ON PURPOSE, and only until GVM-480 lands. Migration 154 (GV-405) is the ' +
+      'backend half of the pre-departure fuel-stop push, split across three tickets: this ' +
+      'migration, the Cloudflare hook endpoint (GV-406), and the mobile stamp writer ' +
+      'that calls this RPC after every trip / fuel write (GVM-480). Until that last one ' +
+      'ships, nothing writes ledgers.tank_state_*, so the claim RPC finds no complete ' +
+      'stamp and pushes nothing — the feature degrades to silence rather than to a wrong ' +
+      'nudge, which is the intended staging. The guard exercises it because the member ' +
+      'gate is the only thing standing between one workspace and another workspace\'s ' +
+      'tank data, and a gate nobody tests is the gate migration 068 dropped. What would ' +
+      'change this answer: GVM-480 merging, at which point findClientCallers sees the ' +
+      'call site, this entry goes STALE, and deleting it is the correct fix. If GVM-480 ' +
+      'is ABANDONED instead, the honest fix is to revoke the authenticated grant and ' +
+      'retire the RPC, not to renew this entry.',
+    reviewBy: '2026-10-26',
+  },
 ];
