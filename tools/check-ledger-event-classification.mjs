@@ -457,7 +457,10 @@ function describeSources(sources) {
   return rest.length ? `${first} (and ${rest.length} later file${rest.length === 1 ? "" : "s"})` : first;
 }
 
-export function classify(types, { excluded, visible }) {
+// `staleExempt` holds types whose writer was not scanned on this run — the govehlo-web
+// ones when that sibling is absent. Without it the stale check turns "we could not look"
+// into "nothing writes this", i.e. it fails the register for being right.
+export function classify(types, { excluded, visible, staleExempt = [] }) {
   const unclassified = [];
   const both = [];
   for (const [type, sources] of types) {
@@ -467,7 +470,7 @@ export function classify(types, { excluded, visible }) {
     else if (!inExcluded && !inVisible) unclassified.push({ type, sources: [...sources].sort() });
   }
   const known = new Set(types.keys());
-  const staleVisible = visible.filter((t) => !known.has(t));
+  const staleVisible = visible.filter((t) => !known.has(t) && !staleExempt.includes(t));
   return { unclassified: unclassified.sort((a, b) => a.type.localeCompare(b.type)), both, staleVisible };
 }
 
@@ -496,7 +499,9 @@ function walkJs(dir) {
 }
 
 async function main() {
-  const { FEED_VISIBLE_EVENT_TYPES, COMPUTED_EVENT_TYPE_EXPRESSIONS } = await import("./ledger-event-visibility.mjs");
+  const { FEED_VISIBLE_EVENT_TYPES, COMPUTED_EVENT_TYPE_EXPRESSIONS, WEB_WRITTEN_EVENT_TYPES } = await import(
+    "./ledger-event-visibility.mjs"
+  );
   const { EVENT_TYPE_EXCLUDE } = await import("./load-rehearsal/lib/hotpaths.mjs");
 
   const sites = [];
@@ -532,7 +537,8 @@ async function main() {
   if (!webChecked) {
     const msg =
       `govehlo-web not found at ${WEB_FUNCTIONS} — the event types it writes directly ` +
-      `(operator_data_removed) were NOT verified against the register. The migrations half ran in full.`;
+      `(${WEB_WRITTEN_EVENT_TYPES.join(", ")}) were NOT verified against the register. ` +
+      `The migrations half ran in full.`;
     if (STRICT) {
       process.stderr.write(`\n::error title=Web event types not checked::${msg}\n`);
       process.exit(1);
@@ -544,9 +550,22 @@ async function main() {
   const { unclassified, both, staleVisible } = classify(types, {
     excluded: EVENT_TYPE_EXCLUDE,
     visible: FEED_VISIBLE_EVENT_TYPES,
+    // When govehlo-web was not scanned, the types only it writes are unverified, not
+    // absent. Exempting them is the difference between "we could not look" and "nothing
+    // writes this" — without it this guard fails its own register in fuel_sharing's CI.
+    staleExempt: webChecked ? [] : WEB_WRITTEN_EVENT_TYPES,
   });
 
   const failures = [];
+
+  for (const type of WEB_WRITTEN_EVENT_TYPES) {
+    if (!FEED_VISIBLE_EVENT_TYPES.includes(type) && !EVENT_TYPE_EXCLUDE.includes(type)) {
+      failures.push(
+        `'${type}' is declared in WEB_WRITTEN_EVENT_TYPES but is in neither list. govehlo-web writes it into ` +
+          `ledger_events, so it needs the same feed-or-audit choice as anything a migration writes.`,
+      );
+    }
+  }
 
   const byExpression = new Map();
   for (const item of undeclaredExpressions) {

@@ -288,6 +288,19 @@ test("a visible entry nothing writes any more is reported as stale", () => {
   assert.deepEqual(staleVisible, ["ancient_type"]);
 });
 
+test("a type whose writer was NOT scanned is exempt from the stale check, not failed", () => {
+  // Found by running the guard in a tree with no sibling repos: without the exemption
+  // it reported operator_data_removed — written by govehlo-web, correctly registered —
+  // as "nothing writes this any more", i.e. it failed the register for being right.
+  const { types } = collectEventTypes(scanFixture(), {});
+  const visible = [...REGISTER.visible, "operator_did_something"];
+  assert.deepEqual(classify(types, { ...REGISTER, visible }).staleVisible, ["operator_did_something"]);
+  assert.deepEqual(
+    classify(types, { ...REGISTER, visible, staleExempt: ["operator_did_something"] }).staleVisible,
+    [],
+  );
+});
+
 // ── The historical case: migration 118 ──
 test("the guard would have caught confirm_reminder_sent at migration 118", () => {
   // Replays the real regression against the real migration file rather than a fixture:

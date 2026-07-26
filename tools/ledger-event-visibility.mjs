@@ -107,6 +107,18 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   "confirm_reminder_sent",
 ];
 
+// ── Event types written outside the migrations ──────────────────────────────
+// govehlo-web writes straight into ledger_events from the operator console rather than
+// through an RPC, so a migrations-only scan cannot see these at all. The guard reads
+// govehlo-web when that repo is checked out (a dev machine, or the umbrella workflow)
+// and skips it otherwise — so this list is what stops "we could not look" being
+// mistaken for "nothing writes this" on a run where only fuel_sharing is present.
+//
+// Every entry still has to be classified feed-or-audit above like anything else; the
+// guard fails if one is not. Add to this list when govehlo-web starts writing a new
+// event type directly, and delete from it when it stops.
+export const WEB_WRITTEN_EVENT_TYPES = ["operator_data_removed"];
+
 // ── Event types no static scan can read ─────────────────────────────────────
 // Six migrations build the settlement event type by concatenation:
 //
