@@ -19,6 +19,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { EVENT_TYPE_EXCLUDE } from "./load-rehearsal/lib/hotpaths.mjs";
+import { FEED_VISIBLE_EVENT_TYPES } from "./ledger-event-visibility.mjs";
 import {
   EventScanError,
   stripSqlComments,
@@ -305,20 +306,40 @@ test("a type whose writer was NOT scanned is exempt from the stale check, not fa
 test("the guard would have caught confirm_reminder_sent at migration 118", () => {
   // Replays the real regression against the real migration file rather than a fixture:
   // migration 118 introduced confirm_reminder_sent, it never reached EVENT_TYPE_EXCLUDE,
-  // and it has been visible in every member's feed ever since (GVM-490).
+  // and it was visible in every member's feed from then until GVM-490.
   //
-  // `excluded` is the LIVE EVENT_TYPE_EXCLUDE, not a reconstruction of the 2026-era
-  // list — the point is that even today, with four sibling *_reminder_sent types
-  // filtered out, this one is in neither list. `visible: []` stands in for a tree where
-  // GV-413's register does not yet name it.
+  // `excluded` is the LIVE EVENT_TYPE_EXCLUDE minus the entry GVM-490 added — i.e. the
+  // list exactly as it stood while the row was leaking, derived from the real list
+  // rather than hardcoded, so it keeps tracking the other five. `visible: []` stands in
+  // for a tree where GV-413's register does not yet name it. Both halves of the
+  // pre-fix state are reproduced, so this stays a test of the scanner and not of a
+  // frozen snapshot.
   const sites = scanSqlSource(
     readFileSync(new URL("../supabase/migrations/118_confirm_receipt_reminders.sql", import.meta.url), "utf8"),
     "supabase/migrations/118_confirm_receipt_reminders.sql",
   );
   const { types } = collectEventTypes(sites, {});
-  const { unclassified } = classify(types, { excluded: EVENT_TYPE_EXCLUDE, visible: [] });
+  const preFixExcluded = EVENT_TYPE_EXCLUDE.filter((t) => t !== "confirm_reminder_sent");
+  assert.equal(preFixExcluded.length, EVENT_TYPE_EXCLUDE.length - 1, "GVM-490's entry must still be in the live list");
+  const { unclassified } = classify(types, { excluded: preFixExcluded, visible: [] });
   assert.deepEqual(unclassified.map((u) => u.type), ["confirm_reminder_sent"]);
   assert.deepEqual(unclassified[0].sources, ["supabase/migrations/118_confirm_receipt_reminders.sql"]);
+});
+
+test("...and the live register now classifies it as audit-only, not feed-visible (GVM-490)", () => {
+  // The other half of the move: with the shipped EVENT_TYPE_EXCLUDE the same scan is
+  // clean, and the type is NOT in FEED_VISIBLE_EVENT_TYPES. Without this the test above
+  // would still pass if a later change put confirm_reminder_sent back in the feed.
+  const sites = scanSqlSource(
+    readFileSync(new URL("../supabase/migrations/118_confirm_receipt_reminders.sql", import.meta.url), "utf8"),
+    "supabase/migrations/118_confirm_receipt_reminders.sql",
+  );
+  const { types } = collectEventTypes(sites, {});
+  const live = classify(types, { excluded: EVENT_TYPE_EXCLUDE, visible: FEED_VISIBLE_EVENT_TYPES });
+  assert.deepEqual(live.unclassified.map((u) => u.type), []);
+  assert.deepEqual(live.both, []);
+  assert.ok(!FEED_VISIBLE_EVENT_TYPES.includes("confirm_reminder_sent"));
+  assert.ok(EVENT_TYPE_EXCLUDE.includes("confirm_reminder_sent"));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
