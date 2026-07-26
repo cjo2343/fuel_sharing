@@ -69,9 +69,15 @@
        --text-tertiary  body text that should read quieter than --text-secondary.
                         This is the DEFAULT for any text a user has to read.
        --text-muted     non-text only: Lucide glyphs, spinners, decorative separators,
-                        badge fills — plus text at the WCAG large-text threshold
-                        (>=18px, or >=14px bold), where 3:1 is the bar. (GV-378's
-                        --color-amber-text documents the same split for the amber family.)
+                        badge fills — plus text at the WCAG large-text threshold,
+                        where 3:1 is the bar. (GV-378's --color-amber-text documents
+                        the same split for the amber family.)
+
+     WCAG large text is 18 POINT, or 14 point bold — which in CSS pixels is
+     >=24px, or >=18.66px bold. Not 18px/14px: the point figures read like pixel
+     figures and carrying them over as-is is the easy mistake, and it errs the
+     dangerous way. It would hand the 3:1 allowance to every 18-23px run of body
+     text, which actually needs 4.5:1 and is a size real paragraphs are set at.
 
      Contrast on white: primary 14.44:1 · secondary 7.44:1 · tertiary 5.52:1 · muted 3.60:1.
      On --color-deep-forest the ramp inverts and none of these apply — that is
