@@ -227,9 +227,53 @@ for (const name of Object.keys(sqlSources)) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Part 3: the mobile mirror
 // ═══════════════════════════════════════════════════════════════════════════════
-const MOBILE = join(ROOT, "..", "govehlo-mobile", "src", "lib");
+// CROSSING_CONTRACT_MOBILE_ROOT repoints the sibling lookup at another checkout of
+// govehlo-mobile. It exists so this file's own pins can be proved — pointed at a
+// scratch copy carrying a deliberate mutation, a pin that does not fail is a pin that
+// is not holding — without ever writing into the real sibling repo. Nothing in CI sets
+// it; the default is the checkout next to fuel_sharing, exactly as before.
+const MOBILE_ROOT = process.env.CROSSING_CONTRACT_MOBILE_ROOT || join(ROOT, "..", "govehlo-mobile");
+const MOBILE = join(MOBILE_ROOT, "src", "lib");
 const CALC = join(MOBILE, "settlement-calc.ts");
 const SNAPSHOT = join(MOBILE, "period-snapshot.ts");
+
+// ── Why every slice below is measured from a construct, never from an offset ─────
+// The first version of this file read the crossing fold as `calc.slice(idx, idx + 4000)`
+// where idx was the FIRST match of /crossing/i. That match is `crossingPaid` in the
+// PersonLedger type near the top of the file, ~8.600 chars before the fold it meant to
+// read; it only ever passed because the named crossingSplit helper happened to land
+// inside the window with ~2.000 chars of headroom. Both failure directions were live,
+// and GV-416 reproduced both against scratch copies of the real file:
+//
+//   • false RED — 5.000 chars of new prose, either prepended as a file header that
+//     happens to say "crossing" (which re-anchors idx to the top) or added anywhere
+//     between the type and the helper, push the helper past the window. The behaviour
+//     never changed; the contract goes red anyway.
+//   • false GREEN, the dangerous half — the window does not have to contain the LIVE
+//     code, only text that satisfies the regexes. A doc comment restating the rule for
+//     readers of the type satisfies them. So does the crossingSplit helper itself once
+//     the fold has been changed to call splitByWeights inline with km weights, leaving
+//     the correct helper sitting there, orphaned, being read by the pin. That mutation
+//     — the exact drift this file exists to catch — passed the old pin.
+//
+// So: find the thing, then read from the thing.
+//
+// A brace-balanced read of the function whose header matches `header`, from the header
+// to its closing brace, or null if there is no such function. Naive about braces inside
+// string literals — fine for these two functions, neither of which contains one, and a
+// contract test that mis-reads a body fails loudly rather than silently passing.
+function functionSource(src, header) {
+  const match = src.match(header);
+  if (!match) return null;
+  const open = src.indexOf("{", match.index);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < src.length; i += 1) {
+    if (src[i] === "{") depth += 1;
+    else if (src[i] === "}" && (depth -= 1) === 0) return src.slice(match.index, i + 1);
+  }
+  return null;
+}
 
 function checkMobileMirror() {
   if (!existsSync(CALC) || !existsSync(SNAPSHOT)) {
@@ -268,21 +312,52 @@ function checkMobileMirror() {
   });
 
   pin("settlement-calc.ts: the split uses splitByWeights with EQUAL weights over the trip's assignees", () => {
-    // Find the crossing fold and require that its weights are the assignee list at
-    // weight 1 each — not people.get(id)!.km, and not memberIds (the workspace-wide
-    // universe the expense/repair folds use).
-    const idx = calc.search(/crossing/i);
-    assert.notEqual(idx, -1);
-    const fold = calc.slice(idx, idx + 4000);
-    assert.match(
-      fold,
-      /splitByWeights\(/,
-      "the crossing split must go through splitByWeights, the same largest-remainder helper the SQL mirrors",
+    // Followed as dataflow, in two hops, so that neither hop depends on where in the
+    // file anything sits.
+    //
+    // Hop 1 — the fold. `.crossingShare +=` is executable: it cannot occur in the
+    // PersonLedger type, in a comment about the rule, or anywhere else that merely
+    // mentions a crossing, so it IS the fold and nothing else. Read back a short window
+    // FROM it (200 chars, i.e. the fold's own statement and the line or two above,
+    // whether it is written as a one-liner or an opened block) for the map being
+    // iterated, and take its name — whatever that name happens to be.
+    const foldIdx = calc.search(/\.crossingShare\s*\+=/);
+    assert.notEqual(foldIdx, -1, "settlement-calc.ts folds nothing into crossingShare — the crossing never lands on anybody");
+    const iterated = [...calc.slice(Math.max(0, foldIdx - 200), foldIdx).matchAll(/\bof\s+([\w.]+)\s*\)/g)];
+    assert.notEqual(
+      iterated.length,
+      0,
+      "crossingShare is not folded from an iterated share map — the split cannot be traced to a splitter",
     );
+    const shares = iterated[iterated.length - 1][1];
+
+    // Hop 2 — where that map is BUILT. A named helper (today: crossingSplit) or
+    // splitByWeights called inline are both legitimate; either way the weights are read
+    // from the construction the fold actually consumes, so a second, correct
+    // splitByWeights call elsewhere in the file cannot stand in for this one.
+    const built = calc.match(new RegExp(`\\b${shares}\\b[^=\\n]*=\\s*([A-Za-z_$][\\w$]*)\\(`));
+    assert.ok(built, `settlement-calc.ts never assigns ${shares} — the crossing shares come from nowhere`);
+    const builder = built[1];
+    const weights =
+      builder === "splitByWeights"
+        ? calc.slice(built.index, calc.indexOf(";", built.index) + 1)
+        : functionSource(calc, new RegExp(`function ${builder}\\s*\\(`));
+    assert.ok(weights, `${builder}() builds the crossing shares but is not defined in settlement-calc.ts`);
+
+    // The weights themselves: the assignee list at weight 1 each — not
+    // people.get(id)!.km, and not memberIds (the workspace-wide universe the
+    // expense/repair folds use). Required ADJACENT to the splitByWeights call, so an
+    // equal-weight expression that is computed and then ignored does not satisfy it.
     assert.match(
-      fold,
-      /assignees\.map\(\s*id\s*=>\s*\[\s*id\s*,\s*1\s*\]/,
-      "crossing weights must be 1 per ASSIGNEE (equal split over the people on that trip)",
+      weights,
+      /splitByWeights\(\s*[\w.]+\s*,\s*assignees\.map\(\s*(\w+)\s*=>\s*\[\s*\1\s*,\s*1\s*\]/,
+      "crossing weights must be 1 per ASSIGNEE (equal split over the people on that trip), passed straight " +
+        "into splitByWeights — the same largest-remainder helper the SQL mirrors",
+    );
+    assert.doesNotMatch(
+      weights,
+      /\bkm\b/i,
+      "a crossing is a flat per-trip cost: nothing in the expression that weights it may read km",
     );
   });
 
@@ -305,11 +380,35 @@ function checkMobileMirror() {
   });
 
   pin("period-snapshot.ts: the fingerprint's trips component is [id, øre] pairs", () => {
-    const fn = snapshot.slice(snapshot.indexOf("export function periodEntryFingerprint"));
-    assert.notEqual(fn.length, 0);
+    // The function's own braces, not "from its name to the end of the file" — otherwise
+    // a later function's arithmetic can satisfy pins meant for this one.
+    const fn = functionSource(snapshot, /export function periodEntryFingerprint\s*\(/);
+    assert.ok(fn, "period-snapshot.ts no longer exports periodEntryFingerprint");
     // Same shape the repair pairs already use: Math.round(kr * 100), sorted by id.
     assert.match(fn, /Math\.round\(\(Number\([\w.]+\) \|\| 0\) \* 100\)/);
-    assert.match(fn, /trips:\s*tripPairs|tripPairs/, "trips must be emitted as pairs, not as bare ids");
+
+    // Bound to the construction, not to a name. Asserting `tripPairs` appears somewhere
+    // and that the øre arithmetic appears somewhere let a mutation through that KEPT the
+    // name `tripPairs` while emitting bare ids: the øre assertion was satisfied by the
+    // REPAIR pairs on the next line, and the name assertion by the hollowed-out variable.
+    // So read the trip pairs as one expression — derived from `trips`, each entry an id
+    // beside Math.round on that entry's crossingCost — capture whatever it is called,
+    // and require the `trips` key to be that. Renaming it is then free; hollowing it out
+    // is not, and neither is pointing `trips` at something else.
+    const pairs = fn.match(
+      /const\s+(\w+)[^=\n]*=\s*trips\b[\s\S]{0,40}?\.map\(\s*(\w+)\s*=>\s*\[\s*String\(\s*\2\s*\.id[\s\S]{0,60}?,\s*Math\.round\(\(\s*Number\(\s*\2\.crossingCost\s*\)\s*\|\|\s*0\s*\)\s*\*\s*100\)\s*\]/,
+    );
+    assert.ok(
+      pairs,
+      "the trips fingerprint component must be built from `trips` as [id, Math.round(crossingCost * 100)] " +
+        "pairs — migration 157 emits [\"<id>\",<øre>], so a component that carries no crossing cost cannot " +
+        "match the server no matter what the variable holding it is called",
+    );
+    assert.match(
+      fn,
+      new RegExp(`trips:\\s*${pairs[1]}\\b`),
+      `the fingerprint's trips key must be the ${pairs[1]} pairs construction itself, not some other value`,
+    );
     assert.doesNotMatch(
       fn,
       /trips:\s*norm\(tripIds\)/,
