@@ -42,6 +42,15 @@
 // what the SERVER does with the pairing, which is the half that decides whether anyone
 // gets a notification.
 //
+// GVM-485 added the same thing one level deeper: a tur/retur can now carry a whole second
+// LEG in an additive `returnRoute` object, with its own `station`, its own `stations` and
+// its own km figures measured from the start of THAT leg. The server neither knows nor
+// needs to — but "the server ignores it cleanly" is a claim about `->` and `->>` over a
+// shape this SQL has never met, which no amount of TypeScript can check. So there is one
+// fixture carrying the block, asserted as an EQUALITY against the same plan without it,
+// plus a due-ness row proving a two-leg booking is still claimed and still reports the
+// OUTBOUND stop's position.
+//
 // ── Docker ──────────────────────────────────────────────────────────────────────
 // Real arithmetic needs a real Postgres — a regex over the SQL would pass a mutation
 // that changes the answer. Docker-free machines get a loud warning and a pass, the same
@@ -130,6 +139,50 @@ const MULTI_STOP_PLAN = {
     { brand: "Circle K", lat: 57.0, lng: 10.4, kmIn: 420, pricePerLiter: 13.29 },
     { brand: "OK", lat: 56.3, lng: 10.0, kmIn: 810, pricePerLiter: 13.49 },
   ],
+};
+
+// ── The same plan with a way home of its own (GVM-485) ──────────────────────────
+// The planner can now plan the RETURN leg on a different road — you drive out over
+// Storebælt and come home by ferry, or the other way round when the ferry is sold out.
+// That second leg is persisted as an ADDITIVE `returnRoute` object beside everything
+// above, and this SQL has never seen it and never will: it is a key the server keeps
+// ignoring, exactly as it ignores `stations`.
+//
+// This is the DARK SHAPE this file exists for. The mobile suite can assert what the
+// client writes; only a real Postgres can say what `->` and `->>` do when an object they
+// have never met turns up as a sibling. Three things have to hold and all three are
+// invisible from TypeScript:
+//
+//   1. the claim still reads the OUTBOUND `station.kmIn` — not the way home's, which sits
+//      in `returnRoute.station.kmIn` at a DIFFERENT number in a DIFFERENT frame (km into
+//      that leg, not km into the trip);
+//   2. the extra nesting changes no answer at all, asserted as an equality against
+//      MULTI_STOP_PLAN rather than as a second transcribed guess;
+//   3. the booking is still CLAIMED, because a two-leg plan going quiet is exactly how
+//      the pre-departure push would disappear for the trips that need it most.
+//
+// The numbers are deliberately chosen so a mix-up cannot pass. The outbound first stop is
+// 34 km in; the way home's is 120 km into that leg. Reading the wrong one moves
+// storedStopKm from 34 to 120 and flips the verdict's arithmetic outright.
+const RETURN_ROUTE_PLAN = {
+  ...MULTI_STOP_PLAN,
+  returnRoute: {
+    from: { label: "Skagen", lat: 57.72, lng: 10.58 },
+    to: { label: "Aarhus", lat: 56.16, lng: 10.2 },
+    distanceKm: 512,
+    driveMinutes: 350,
+    needsFuel: true,
+    kmUntilRefuel: null,
+    station: { brand: "Q8", lat: 56.8, lng: 9.9, kmIn: 120, pricePerLiter: 13.19 },
+    stations: [
+      { brand: "Q8", lat: 56.8, lng: 9.9, kmIn: 120, pricePerLiter: 13.19 },
+      { brand: "Uno-X", lat: 56.4, lng: 9.7, kmIn: 400, pricePerLiter: 12.99 },
+    ],
+    crossings: [
+      { kind: "ferry", fromPoint: { lat: 56.0, lng: 10.8 }, toPoint: { lat: 55.97, lng: 11.36 }, km: 34 },
+    ],
+    estimated: false,
+  },
 };
 
 // The same plan as a single-stop booking would have persisted it: `stations` omitted
@@ -311,6 +364,18 @@ const scenarios = [
     litersNow: MULTI_STOP_LITERS,
     expect: { verdict: "move-earlier", reserveKm: 20, storedStopKm: 34 },
   },
+
+  // ── the two-leg plan (GVM-485; see RETURN_ROUTE_PLAN above) ───────────────────
+  // storedStopKm must still be the OUTBOUND first stop's own position (station.kmIn =
+  // 34). The way home's first stop is 120 — a number this row would report if the SQL
+  // ever started descending into `returnRoute`, and a number that is in a different
+  // frame besides (km into that leg, not km into the trip).
+  {
+    name: "a plan with a separate way home still reads the OUTBOUND station",
+    fuelStop: RETURN_ROUTE_PLAN,
+    litersNow: MULTI_STOP_LITERS,
+    expect: { verdict: "move-earlier", reserveKm: 20, storedStopKm: 34 },
+  },
 ];
 
 // ── Runner ──────────────────────────────────────────────────────────────────────
@@ -406,6 +471,31 @@ assert.deepEqual(
 );
 checked += 1;
 
+// The same equality one level deeper (GVM-485): `returnRoute` is a nested OBJECT carrying
+// its own `station`, its own `stations` array and its own `kmUntilRefuel`, all in a
+// different frame from the ones this SQL reads. Asserted against MULTI_STOP_PLAN rather
+// than against transcribed expectations, so the claim being made — "a whole second leg
+// changes NOTHING" — is checked as an equality instead of two guesses that could be wrong
+// in the same direction.
+//
+// Mutation check for whoever edits this next: point RETURN_ROUTE_PLAN's OUTBOUND
+// `station` somewhere else (say kmIn 120, the way home's figure) and this fails naming
+// storedStopKm, because the two sides stop agreeing.
+const withReturnRoute = run(
+  `select public.fuel_stop_revalidation_verdict(${jsonArg(RETURN_ROUTE_PLAN)}, ${MULTI_STOP_LITERS}::numeric,
+     ${CAR.consumption}::numeric, ${CAR.spread}::numeric, ${CAR.capacity}::numeric, 10::numeric)::text;`,
+);
+assert.deepEqual(
+  JSON.parse(withReturnRoute),
+  JSON.parse(withStations),
+  "a plan carrying the GVM-485 `returnRoute` block must read exactly like the same plan without it. " +
+    "The way home is an additive key the server never descends into: its own `station.kmIn` (120) is " +
+    "km into THAT LEG, while everything this SQL compares — the reserve crossing and the stored stop — " +
+    "is km into the whole trip. A verdict that moved here means the server started reading the second " +
+    "leg, and every two-leg booking's pre-departure push is now timed off the wrong number.",
+);
+checked += 1;
+
 // ── Part 2: due-ness end to end ─────────────────────────────────────────────────
 // The verdict is only half the contract; the claim decides WHICH bookings it is even
 // asked about. Each case below seeds one booking that differs from the due one in
@@ -431,7 +521,11 @@ const seed = `
          -- Its own workspace purely for the tank level: MULTI_STOP_PLAN's first stop
          -- sits 34 km in, so the reserve crossing has to land before that for the plan
          -- to be re-validated as move-earlier. 16 litres puts it at 20 km.
-         ('fuelstop-multistop', 'Multi stop', 'fuelstop-multistop', 16, now() - interval '1 hour', 5, 0, 150);
+         ('fuelstop-multistop', 'Multi stop', 'fuelstop-multistop', 16, now() - interval '1 hour', 5, 0, 150),
+         -- GVM-485: its own workspace for the same reason as the one above — the two-leg
+         -- plan's OUTBOUND first stop sits 34 km in, so 16 litres puts the reserve
+         -- crossing at 20 km and the plan re-validates as move-earlier.
+         ('fuelstop-returnroute', 'Return route', 'fuelstop-returnroute', 16, now() - interval '1 hour', 5, 0, 150);
 
   insert into public.ledger_members (id, ledger_id, name, email, role, is_active) values
     ('10000000-0000-0000-0000-000000000001', 'fuelstop-test', 'Driver', 'driver@test.dk', 'member', true),
@@ -447,7 +541,8 @@ const seed = `
     ('10000000-0000-0000-0000-000000000009', 'fuelstop-multistop', 'Driver', 'driver7@test.dk', 'member', true),
     ('10000000-0000-0000-0000-000000000010', 'fuelstop-deleted-after', 'Driver', 'driver8@test.dk', 'member', true),
     ('10000000-0000-0000-0000-000000000011', 'fuelstop-settings-changed', 'Driver', 'driver9@test.dk', 'member', true),
-    ('10000000-0000-0000-0000-000000000012', 'fuelstop-counter', 'Driver', 'driver10@test.dk', 'member', true);
+    ('10000000-0000-0000-0000-000000000012', 'fuelstop-counter', 'Driver', 'driver10@test.dk', 'member', true),
+    ('10000000-0000-0000-0000-000000000013', 'fuelstop-returnroute', 'Driver', 'driver11@test.dk', 'member', true);
 
   -- Trips and fuel payments need an open period to land in (migration 121's boundary
   -- trigger), which every real workspace has.
@@ -589,6 +684,10 @@ const bookings = [
   // because the sequence moved into `stations`, this row leaves the claimed set entirely
   // — which is exactly how the pre-departure push would go dark in production.
   ["multi-stop", "fuelstop-multistop", "10000000-0000-0000-0000-000000000009", 60, JSON.stringify(MULTI_STOP_PLAN), false, true],
+  // GVM-485: a booking whose plan carries a whole second LEG. Due, and for the same
+  // reason a one-leg plan would be — the way home is an additive key, not a new shape.
+  // If the claim ever started descending into it, this row is where that shows up.
+  ["return-route", "fuelstop-returnroute", "10000000-0000-0000-0000-000000000013", 60, JSON.stringify(RETURN_ROUTE_PLAN), false, true],
 ];
 
 const bookingRows = bookings
@@ -654,6 +753,31 @@ assert.equal(
   "the claim must report the FIRST stop's own position (station.kmIn = 34) — not the reserve km " +
     "(kmUntilRefuel = 37, which is what a nulled `station` would fall back to) and not a later " +
     "entry in the stations array",
+);
+checked += 1;
+
+// GVM-485 end to end: a plan with a way home of its own must be claimed, and the claim
+// must hand the endpoint the OUTBOUND stop's position — the one the driver reaches first
+// and the only one measured in trip km.
+const returnRouteRow = claimed.find((row) => row[0] === "return-route");
+assert.ok(
+  returnRouteRow,
+  "a booking whose plan carries the GVM-485 `returnRoute` block must still be claimed. Missing " +
+    "here is the production symptom for two-leg trips: the additive key made the claim's jsonb " +
+    "reads stop matching, no locatable stop, verdict falls back to `holds`, and the pre-departure " +
+    "push vanishes for exactly the long trips that need it.",
+);
+assert.equal(
+  returnRouteRow[1],
+  "move-earlier",
+  "the two-leg plan's verdict must survive the round trip through the claim",
+);
+assert.equal(
+  Number(returnRouteRow[3]),
+  34,
+  "the claim must report the OUTBOUND first stop's own position (station.kmIn = 34) — not the " +
+    "way home's first stop (returnRoute.station.kmIn = 120, which is km into THAT LEG rather " +
+    "than km into the trip) and not the reserve km (kmUntilRefuel = 37)",
 );
 checked += 1;
 
@@ -1363,7 +1487,9 @@ finished = true;
 console.log(
   `ok - fuel-stop verdict contract: ${checked} checks. The SQL in migrations 154/155/156 returns ` +
     "the same verdicts as govehlo-mobile/src/lib/fuel-stop-revalidation.ts for every scenario in " +
-    "its vitest suite, a GVM-486 multi-stop plan reads exactly like a one-stop plan, the claim's " +
+    "its vitest suite, a GVM-486 multi-stop plan reads exactly like a one-stop plan, a GVM-485 " +
+    "plan carrying a separate way home reads exactly like one without it and still reports the " +
+    "OUTBOUND stop, the claim's " +
     "due-ness and lease/token contract holds on BOTH freshness gates (a tombstone the stamp " +
     "already covers does not silence it; a deletion or a settings change after the stamp does), " +
     "set_tank_state is monotonic on its as_of watermark, bounded on its inputs, refuses a second " +
