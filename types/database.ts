@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 156 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 157 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1314,6 +1314,9 @@ export type Database = {
           completion_fuel_legacy_id: string | null
           created_at: string
           created_by_member_id: string | null
+          crossing_cost_dkk: number | null
+          crossing_note: string | null
+          crossing_paid_by_member_id: string | null
           deleted_at: string | null
           driver_member_id: string | null
           end_km: number
@@ -1332,6 +1335,9 @@ export type Database = {
           completion_fuel_legacy_id?: string | null
           created_at?: string
           created_by_member_id?: string | null
+          crossing_cost_dkk?: number | null
+          crossing_note?: string | null
+          crossing_paid_by_member_id?: string | null
           deleted_at?: string | null
           driver_member_id?: string | null
           end_km: number
@@ -1350,6 +1356,9 @@ export type Database = {
           completion_fuel_legacy_id?: string | null
           created_at?: string
           created_by_member_id?: string | null
+          crossing_cost_dkk?: number | null
+          crossing_note?: string | null
+          crossing_paid_by_member_id?: string | null
           deleted_at?: string | null
           driver_member_id?: string | null
           end_km?: number
@@ -1374,6 +1383,13 @@ export type Database = {
           {
             foreignKeyName: "trips_created_by_member_id_fkey"
             columns: ["created_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_crossing_paid_by_member_id_fkey"
+            columns: ["crossing_paid_by_member_id"]
             isOneToOne: false
             referencedRelation: "ledger_members"
             referencedColumns: ["id"]
@@ -1860,6 +1876,9 @@ export type Database = {
       complete_booking_trip_with_fuel: {
         Args: {
           booking_driver_member_id: string
+          crossing_cost_value?: number
+          crossing_note_value?: string
+          crossing_paid_by?: string
           end_km_value: number
           fuel_amount_value?: number
           fuel_currency_value?: string
@@ -2335,6 +2354,9 @@ export type Database = {
       upsert_booking_trip_with_participants: {
         Args: {
           booking_driver_member_id: string
+          crossing_cost_value?: number
+          crossing_note_value?: string
+          crossing_paid_by?: string
           end_km_value: number
           event_body?: string
           event_title?: string
@@ -2433,6 +2455,9 @@ export type Database = {
       }
       upsert_trip_with_participants: {
         Args: {
+          crossing_cost_value?: number
+          crossing_note_value?: string
+          crossing_paid_by?: string
           driver_member_id: string
           end_km_value: number
           event_body?: string

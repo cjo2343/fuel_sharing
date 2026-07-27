@@ -324,3 +324,19 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/check-ledger-event-classification.mjs --strict
+
+      # 8. The bro/færge crossing split lives twice (GVM-415): in
+      #    calculate_period_settlement and in govehlo-mobile's settlement-calc.ts, with
+      #    the entry fingerprint's trips component mirrored a third time in
+      #    period-snapshot.ts. `npm run validate` runs the SQL half of this and warns
+      #    that the mobile half was not checked; only here can it be.
+      #
+      #    This is a PAIRED merge, and this step is what enforces it: migration 157
+      #    changes the fingerprint's trips component from bare ids to ["<id>",<øre>]
+      #    pairs, so a client without the mirror cannot close a period at all. Expect
+      #    this step red between the platform merge and the mobile merge — that is the
+      #    alarm working, exactly as the DB-types step above is red in the same window.
+      - name: Crossing split mirror (strict, needs govehlo-mobile)
+        if: steps.probe.outputs.has_token == 'true'
+        working-directory: fuel_sharing
+        run: node tools/test-crossing-split-contract.mjs --strict

@@ -37650,8 +37650,6 @@ begin
   -- the row (the settlement ignores a null cost, but the trip detail screen would
   -- still show a label for a crossing that no longer exists). A negative cost is
   -- rejected here rather than left to the table CHECK so the client gets a message.
-  -- The credited payer defaults to the driver; an explicit payer must be an active
-  -- member of this ledger, the same rule the driver itself is held to.
   if crossing_cost_value is not null and crossing_cost_value < 0 then
     raise exception 'Crossing cost cannot be negative' using errcode = '23514';
   end if;
@@ -37666,9 +37664,22 @@ begin
     if length(coalesce(resolved_crossing_note, '')) > 120 then
       raise exception 'Crossing note must be 120 characters or fewer' using errcode = '22023';
     end if;
+    -- Payer: null means the driver paid. A NAMED payer must be an ACTIVE member of
+    -- this workspace, the same rule insert_repair holds a named repair payer to
+    -- (108/114) — member_belongs_to_ledger is deliberately NOT used here, because it
+    -- only asks whether the row exists in the workspace and would let a departed
+    -- member be named as today's payer. That is a different case from the settlement
+    -- CREDITING an inactive payer (GV-274), which is about a member who left AFTER
+    -- the crossing was logged.
     resolved_crossing_payer := coalesce(crossing_paid_by, driver_member_id);
-    if not public.member_belongs_to_ledger(resolved_crossing_payer, target_ledger_id) then
-      raise exception 'Crossing payer must be an active member of this ledger' using errcode = '23514';
+    if not exists (
+      select 1
+      from public.ledger_members lm
+      where lm.id = resolved_crossing_payer
+        and lm.ledger_id = target_ledger_id
+        and lm.is_active = true
+    ) then
+      raise exception 'Crossing payer must be an active member of this workspace' using errcode = '23514';
     end if;
   end if;
 
@@ -38661,7 +38672,7 @@ $$;
 insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values (
   '157_trip_crossing_cost',
-  'Bro/faerge crossing cost on the trip (GVM-415). public.trips gains crossing_cost_dkk numeric(12,2) (named CHECK: null or >= 0), crossing_note text and crossing_paid_by_member_id uuid (FK, on delete set null). The three trip-writing RPCs each gain crossing_cost_value / crossing_note_value / crossing_paid_by immediately before their trailing event params: upsert_trip_with_participants (off 054) normalises them — null or zero cost clears the note and payer too, a negative cost is rejected, the payer defaults to the driver and must be an active member — and persists them on both the INSERT and the ON CONFLICT UPDATE path; upsert_booking_trip_with_participants (off 123) and complete_booking_trip_with_fuel (off 151) pass them through. All three are DROP + CREATE, not create-or-replace, because a differing parameter list would leave the old overload live and PostgREST could not resolve between them (the 156/063 lesson); ACLs are restated with anon named explicitly per 148. calculate_period_settlement (off 114) folds crossings: the payer, coalesce(crossing_paid_by_member_id, driver_member_id), is credited crossingPaid, and each cost is split EQUALLY over that trip''s assignees (the existing trip_assignees CTE: active participants, driver fallback) through the same integer-oere largest-remainder chain the expense and repair splits use, ties broken by member id ascending, as crossingShare. A crossing does NOT follow the workspace Afregning rule and is never km-weighted. An INACTIVE crossing payer joins settlement_members credit-only exactly as fuel/expense/repair payers do (GV-274); a trip with no active assignees is skipped on both sides so the period still nets to zero. New output keys: totalCrossings at the top level, crossingPaid and crossingShare per person, and net = fuelPaid + expensePaid + repairPaid + crossingPaid - tripCost - expenseShare - repairShare - crossingShare. calculate_period_entry_fingerprint (off 114) emits trips as ["<id>",<oere>] pairs (oere = round(coalesce(crossing_cost_dkk, 0) * 100)) instead of bare ids, so a crossing-cost edit busts a prepared close the way a repair-cost edit has since GV-277; the mobile client mirrors the format byte-identically and must ship with this.'
+  'Bro/faerge crossing cost on the trip (GVM-415). public.trips gains crossing_cost_dkk numeric(12,2) (named CHECK: null or >= 0), crossing_note text and crossing_paid_by_member_id uuid (FK, on delete set null). The three trip-writing RPCs each gain crossing_cost_value / crossing_note_value / crossing_paid_by immediately before their trailing event params: upsert_trip_with_participants (off 054) normalises them — null or zero cost clears the note and payer too, a negative cost is rejected, the payer defaults to the driver and a named payer must be an ACTIVE member (the insert_repair rule) — and persists them on both the INSERT and the ON CONFLICT UPDATE path; upsert_booking_trip_with_participants (off 123) and complete_booking_trip_with_fuel (off 151) pass them through. All three are DROP + CREATE, not create-or-replace, because a differing parameter list would leave the old overload live and PostgREST could not resolve between them (the 156/063 lesson); ACLs are restated with anon named explicitly per 148. calculate_period_settlement (off 114) folds crossings: the payer, coalesce(crossing_paid_by_member_id, driver_member_id), is credited crossingPaid, and each cost is split EQUALLY over that trip''s assignees (the existing trip_assignees CTE: active participants, driver fallback) through the same integer-oere largest-remainder chain the expense and repair splits use, ties broken by member id ascending, as crossingShare. A crossing does NOT follow the workspace Afregning rule and is never km-weighted. An INACTIVE crossing payer joins settlement_members credit-only exactly as fuel/expense/repair payers do (GV-274); a trip with no active assignees is skipped on both sides so the period still nets to zero. New output keys: totalCrossings at the top level, crossingPaid and crossingShare per person, and net = fuelPaid + expensePaid + repairPaid + crossingPaid - tripCost - expenseShare - repairShare - crossingShare. calculate_period_entry_fingerprint (off 114) emits trips as ["<id>",<oere>] pairs (oere = round(coalesce(crossing_cost_dkk, 0) * 100)) instead of bare ids, so a crossing-cost edit busts a prepared close the way a repair-cost edit has since GV-277; the mobile client mirrors the format byte-identically and must ship with this.'
 )
 on conflict (migration_id) do update
 set description = excluded.description,
