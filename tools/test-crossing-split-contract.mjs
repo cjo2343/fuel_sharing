@@ -335,8 +335,20 @@ function checkMobileMirror() {
     // splitByWeights called inline are both legitimate; either way the weights are read
     // from the construction the fold actually consumes, so a second, correct
     // splitByWeights call elsewhere in the file cannot stand in for this one.
-    const built = calc.match(new RegExp(`\\b${shares}\\b[^=\\n]*=\\s*([A-Za-z_$][\\w$]*)\\(`));
-    assert.ok(built, `settlement-calc.ts never assigns ${shares} — the crossing shares come from nowhere`);
+    //
+    // The LAST assignment above the fold, not the first in the file: `shares` is a
+    // thoroughly reused local — the expense fold, the repair fold and splitByWeights'
+    // own internals all bind it — and the one in scope at the fold is the nearest one
+    // above it. Anchored on the fold again, so this stays position-independent.
+    const assignments = [
+      ...calc.slice(0, foldIdx).matchAll(new RegExp(`\\b${shares}\\b[^=\\n]*=\\s*([A-Za-z_$][\\w$]*)\\(`, "g")),
+    ];
+    assert.notEqual(
+      assignments.length,
+      0,
+      `settlement-calc.ts never assigns ${shares} above the fold — the crossing shares come from nowhere`,
+    );
+    const built = assignments[assignments.length - 1];
     const builder = built[1];
     const weights =
       builder === "splitByWeights"
