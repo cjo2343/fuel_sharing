@@ -117,6 +117,8 @@ select public.complete_booking_trip_with_fuel(
   'Circle K',
   'Circle K',
   false,
+  -- GVM-415 crossing cost / note / payer: this completion has none.
+  null, null, null,
   'Tur registreret',
   '100 km',
   'Tankning registreret',
@@ -151,6 +153,7 @@ select public.complete_booking_trip_with_fuel(
   'Circle K',
   'Circle K',
   false,
+  null, null, null,
   'Tur registreret',
   '112 km',
   'Tankning registreret',
@@ -312,14 +315,14 @@ do $$
 begin
   if has_function_privilege(
     'anon',
-    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,text,text,text,text)',
+    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,numeric,text,uuid,text,text,text,text)',
     'EXECUTE'
   ) then
     raise exception 'FAIL: anon retains EXECUTE on atomic completion';
   end if;
   if not has_function_privilege(
     'authenticated',
-    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,text,text,text,text)',
+    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,numeric,text,uuid,text,text,text,text)',
     'EXECUTE'
   ) then
     raise exception 'FAIL: authenticated lacks EXECUTE on atomic completion';

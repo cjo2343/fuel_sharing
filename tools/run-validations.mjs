@@ -43,6 +43,15 @@ const scripts = [
   // contract check-hotpath-mirror.mjs uses for an absent sibling — so `npm run validate`
   // stays dependency-free; CI runs it --strict in the functional-smoke job.
   "node tools/test-fuel-stop-verdict-contract.mjs",
+  // Anti-drift contract for the bro/færge crossing split (GVM-415). Same two reasons as
+  // the line above and one more: the crossing is the only split in the settlement engine
+  // that follows NEITHER of the rules already in the file — its universe is the trip's
+  // own assignees rather than the workspace's active members, and its weights are always
+  // equal — so "implemented like repairs" produces a plausible number on one side and a
+  // wrong one on the other. Runs the 250,00 kr / 3 øre-exact case against a real
+  // Postgres. Warns and exits 0 without Docker, and warns while govehlo-mobile's twin
+  // has not landed; a PARTIAL mobile mirror fails hard. The umbrella runs it --strict.
+  "node tools/test-crossing-split-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths
