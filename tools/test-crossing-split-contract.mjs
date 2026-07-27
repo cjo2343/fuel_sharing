@@ -429,11 +429,26 @@ select '${id}', unnest(array[${participants.map((p) => `'${p}'::uuid`).join(",")
   // tie-break. Every plausible mistake lands somewhere else — per-member rounding gives
   // 83,33 × 3 = 249,99 (0,01 kr short, and the period stops netting to zero), km weights
   // give a lopsided split, splitting workspace-wide gives 62,50 × 4.
+  //
+  // The 800 km solo trip in front of it exists ONLY to make that second mistake visible
+  // here. Without it all three riders carry identical km, so a km-weighted implementation
+  // returns the very same 83,34 / 83,33 / 83,33 and this case certifies nothing about the
+  // weights. With it, Anna carries 833,33 km to Bo's and Clara's 33,33, so km weights
+  // would hand her ~236 kr of the ferry.
   resetTrips();
+  addTrip({
+    id: "30000000-0000-0000-0000-000000000000",
+    driver: M(1),
+    participants: [M(1)],
+    startKm: 0,
+    endKm: 800,
+  });
   addTrip({
     id: "30000000-0000-0000-0000-000000000001",
     driver: M(1),
     participants: [M(1), M(2), M(3)],
+    startKm: 800,
+    endKm: 900,
     cost: 250.0,
     note: "Storebaeltsbroen",
   });
