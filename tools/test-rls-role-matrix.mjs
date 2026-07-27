@@ -3290,6 +3290,54 @@ end`,
     post: `if (select l.tank_state_liters from public.ledgers l where l.id = '${WS1}') <> 40
       then raise exception 'CASEFAIL tank-state-stale-watermark-noop: a refused stamp overwrote the stored tank state'; end if;`,
   }),
+
+  // ── The tank model revision (migration 156, GV-415) ────────────────────────
+  // The seven-argument set_tank_state is a NEW overload, so it is a new door: the
+  // grants and the in-body member gate have to be asserted for it in their own right,
+  // not inherited from the six-argument signature above.
+  rpcCase({
+    name: "tank-state-revisioned-member-writes",
+    desc: "an active member records the car's tank state on the revision-carrying signature",
+    actor: B,
+    op: `perform public.set_tank_state('${WS1}', 31.5, now(), 5.4, 0.6, 55,
+           (select l.tank_model_revision from public.ledgers l where l.id = '${WS1}'));`,
+    expect: "ok",
+    post: `if (select l.tank_state_liters from public.ledgers l where l.id = '${WS1}') <> 31.5
+      then raise exception 'CASEFAIL tank-state-revisioned-member-writes: the stamp did not land'; end if;`,
+  }),
+  rpcCase({
+    name: "tank-state-revisioned-foreign-member-denied",
+    desc: "E (a member of the OTHER workspace) cannot stamp tank state on the revision-carrying signature either",
+    actor: E,
+    op: `perform public.set_tank_state('${WS1}', 5, now(), 5.4, 0.6, 55, 0::bigint);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "tank-state-revisioned-anon-denied",
+    desc: "anon cannot stamp tank state on the revision-carrying signature",
+    actor: ANON,
+    op: `perform public.set_tank_state('${WS1}', 5, now(), 5.4, 0.6, 55, 0::bigint);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "tank-model-revision-bumps-for-a-plain-member",
+    desc: "an ordinary member's trip INSERT moves ledgers.tank_model_revision even though migration 125 revoked UPDATE on ledgers from authenticated",
+    actor: B,
+    // The privilege claim this case exists for. The bump is a trigger that UPDATEs
+    // public.ledgers, and an authenticated member has neither an UPDATE grant on that
+    // table (revoked in migration 125) nor an RLS policy allowing it. Without SECURITY
+    // DEFINER on public.bump_tank_model_revision the update matches zero rows and
+    // raises NOTHING — the counter would simply never move for the one write path that
+    // matters most, every stamp would read as permanently fresh, and the whole of
+    // GV-415 would be dead code with a green test suite. Nothing else in this file or
+    // in the contract test would notice, because both run as superuser.
+    op: `insert into public.trips (ledger_id, period_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id)
+         values ('${WS1}', '${P1}', '${ID.B}', current_date, 7000, 7100, '${ID.B}');`,
+    expect: "ok",
+    post: `if (select l.tank_model_revision from public.ledgers l where l.id = '${WS1}') = 0
+      then raise exception 'CASEFAIL tank-model-revision-bumps-for-a-plain-member: the trigger''s UPDATE on public.ledgers was filtered away for an authenticated caller (missing SECURITY DEFINER), so the revision never moved'; end if;`,
+  }),
+
   rpcCase({
     name: "booking-fuel-claim-member-blocked",
     desc: "an authenticated workspace admin cannot claim pre-departure fuel reminders",

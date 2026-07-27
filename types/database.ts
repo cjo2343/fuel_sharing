@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 155 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 156 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -549,11 +549,13 @@ export type Database = {
           tank_baseline_fraction: number | null
           tank_baseline_odometer: number | null
           tank_baseline_recorded_at: string | null
+          tank_model_revision: number
           tank_state_as_of: string | null
           tank_state_capacity: number | null
           tank_state_consumption: number | null
           tank_state_consumption_spread: number | null
           tank_state_liters: number | null
+          tank_state_revision: number | null
           updated_at: string
           vehicle_info: Json
           vehicle_lookup_at: string | null
@@ -604,11 +606,13 @@ export type Database = {
           tank_baseline_fraction?: number | null
           tank_baseline_odometer?: number | null
           tank_baseline_recorded_at?: string | null
+          tank_model_revision?: number
           tank_state_as_of?: string | null
           tank_state_capacity?: number | null
           tank_state_consumption?: number | null
           tank_state_consumption_spread?: number | null
           tank_state_liters?: number | null
+          tank_state_revision?: number | null
           updated_at?: string
           vehicle_info?: Json
           vehicle_lookup_at?: string | null
@@ -659,11 +663,13 @@ export type Database = {
           tank_baseline_fraction?: number | null
           tank_baseline_odometer?: number | null
           tank_baseline_recorded_at?: string | null
+          tank_model_revision?: number
           tank_state_as_of?: string | null
           tank_state_capacity?: number | null
           tank_state_consumption?: number | null
           tank_state_consumption_spread?: number | null
           tank_state_liters?: number | null
+          tank_state_revision?: number | null
           updated_at?: string
           vehicle_info?: Json
           vehicle_lookup_at?: string | null
@@ -2189,17 +2195,30 @@ export type Database = {
         }
         Returns: Json
       }
-      set_tank_state: {
-        Args: {
-          as_of_value: string
-          capacity_value: number
-          consumption_value: number
-          liters_value: number
-          spread_value: number
-          target_ledger_id: string
-        }
-        Returns: Json
-      }
+      set_tank_state:
+        | {
+            Args: {
+              as_of_value: string
+              capacity_value: number
+              consumption_value: number
+              liters_value: number
+              spread_value: number
+              target_ledger_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              as_of_value: string
+              capacity_value: number
+              consumption_value: number
+              expected_model_revision: number
+              liters_value: number
+              spread_value: number
+              target_ledger_id: string
+            }
+            Returns: Json
+          }
       set_weekly_digest_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
         Returns: undefined
@@ -2444,6 +2463,15 @@ export type Database = {
           target_open_period_id: string
         }
         Returns: Json
+      }
+      validated_tank_state_spread: {
+        Args: {
+          capacity_value: number
+          consumption_value: number
+          liters_value: number
+          spread_value: number
+        }
+        Returns: number
       }
     }
     Enums: {
