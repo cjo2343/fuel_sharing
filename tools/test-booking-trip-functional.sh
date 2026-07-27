@@ -87,6 +87,8 @@ select public.upsert_booking_trip_with_participants(
   1100,
   'Aarhus',
   array['10000000-0000-0000-0000-000000000001'::uuid],
+  -- GVM-415 crossing cost / note / payer: this trip has none.
+  null, null, null,
   'Driver logged a trip',
   '100 km'
 );
@@ -107,6 +109,7 @@ select public.upsert_booking_trip_with_participants(
     '10000000-0000-0000-0000-000000000001'::uuid,
     '10000000-0000-0000-0000-000000000002'::uuid
   ],
+  null, null, null,
   'Driver logged a trip',
   '112 km'
 );
