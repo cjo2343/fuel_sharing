@@ -315,14 +315,14 @@ do $$
 begin
   if has_function_privilege(
     'anon',
-    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,numeric,text,uuid,text,text,text,text)',
+    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,numeric,text,uuid,text,text,text,text,boolean)',
     'EXECUTE'
   ) then
     raise exception 'FAIL: anon retains EXECUTE on atomic completion';
   end if;
   if not has_function_privilege(
     'authenticated',
-    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,numeric,text,uuid,text,text,text,text)',
+    'public.complete_booking_trip_with_fuel(text,uuid,uuid,text,uuid,date,numeric,numeric,text,uuid[],text,text,uuid,date,numeric,text,numeric,numeric,numeric,text,text,boolean,numeric,text,uuid,text,text,text,text,boolean)',
     'EXECUTE'
   ) then
     raise exception 'FAIL: authenticated lacks EXECUTE on atomic completion';
