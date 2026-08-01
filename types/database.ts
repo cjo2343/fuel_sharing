@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 157 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 158 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1879,6 +1879,7 @@ export type Database = {
           crossing_cost_value?: number
           crossing_note_value?: string
           crossing_paid_by?: string
+          crossing_provided?: boolean
           end_km_value: number
           fuel_amount_value?: number
           fuel_currency_value?: string
@@ -2357,6 +2358,7 @@ export type Database = {
           crossing_cost_value?: number
           crossing_note_value?: string
           crossing_paid_by?: string
+          crossing_provided?: boolean
           end_km_value: number
           event_body?: string
           event_title?: string
@@ -2458,6 +2460,7 @@ export type Database = {
           crossing_cost_value?: number
           crossing_note_value?: string
           crossing_paid_by?: string
+          crossing_provided?: boolean
           driver_member_id: string
           end_km_value: number
           event_body?: string
