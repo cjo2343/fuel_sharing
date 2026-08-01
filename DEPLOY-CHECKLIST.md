@@ -101,4 +101,23 @@ PR merges** — that is the drift alarm working, not a failure to fix in place.
       confirmed", sync PRs, umbrella run).
 - [ ] Backups: if the change is structurally significant, refresh the restore
       dump before relying on it (GV-325 drill; dump predating the migration
-      restores a pre-migration schema).
+      restores a pre-migration schema). After a drill, update the machine-read
+      `Seneste drill: migration NNN (YYYY-MM-DD)` line in
+      [`docs/gdpr/backup-restore.md`](docs/gdpr/backup-restore.md) — the release
+      gate below reads that line, not the prose around it.
+
+## 6. Before a public release (not per migration)
+
+`npm run check:release-gates` (GV-422) is the machine-readable half of this
+document and of GV-104's go-live gates: it fails while a known launch blocker is
+present, so "are we ready?" is a command rather than a re-read. It is not part of
+`npm run validate` — it judges the product, not the commit — and the umbrella
+workflow runs it `--strict`.
+
+- [ ] `npm run check:release-gates` with **govehlo-web checked out alongside**
+      (without the sibling, gate 1 reports `UNAVAILABLE` and certifies nothing).
+- [ ] Every `BLOCKED` line cleared: privacy-page placeholder (GV-177), Supabase
+      plan off Free (GV-313), restore drill within 15 migrations of HEAD.
+- [ ] `docs/release-attestations.json` signed and dated for the two items no repo
+      can observe — app-link secrets and Sentry source maps. Read that file's
+      `_README` for what "verified" has to mean; attestations expire after 30 days.

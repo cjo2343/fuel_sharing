@@ -78,7 +78,8 @@ storage-schema guard, re-declaring off the *newest* prior definition, the dynami
 there. It had no inbound link from anywhere until GV-393, so agents read this shorter
 list and missed all four.
 
-The ones you will actually reach for (`npm run` with no args lists all 23):
+The ones you will actually reach for (`npm run` with no args lists all 28 — the
+count was already three stale before GV-422 added two; trust `npm run`, not this line):
 
 ```sh
 npm run validate                 # fast gate, run before every commit (see below)
@@ -90,12 +91,21 @@ npm run check:vendored-db-types  # reports a stale client copy without writing a
 npm run check:role-matrix        # Docker: RLS role matrix, 173 cases (own CI job)
 npm run test:functional-smoke    # Docker: runs delete_my_account / push-token RPCs and asserts scrubs
 npm run drill:restore            # GDPR restore drill — needs a FRESH prod dump (docs/gdpr/backup-restore.md)
+npm run check:release-gates      # the known launch blockers as code (GV-422); --strict in the umbrella
 ```
 
 The remainder are per-feature SQL contract tests (`test:booking-*`, `test:deferred-fuel-close`,
 `test:member-recurring-suspension`, `test:syn-acknowledgement`, `test:retired-rpcs`,
-`test:drill-*`, `test:load-rehearsal`), the load-rehearsal drivers (`load:schema`,
-`load:seed`, `load:run`) and `hooks:install`. Most already run inside `npm run validate`.
+`test:drill-*`, `test:load-rehearsal`, `test:release-gates`), the load-rehearsal drivers
+(`load:schema`, `load:seed`, `load:run`) and `hooks:install`. Most already run inside
+`npm run validate`.
+
+**Before a release** (not before a commit): `npm run check:release-gates`. It fails on the
+launch blockers we already know about — the unfilled `[DATAANSVARLIG …]` placeholder on the
+live privacy page, the Free-plan backup posture (GV-313), a restore drill too far behind the
+schema, and the two items nothing in any repo can observe (app-link secrets, Sentry source
+maps), which are attested in `docs/release-attestations.json`. It is deliberately NOT in
+`npm run validate` — it judges the product, not the commit — and it is red today on purpose.
 
 `npm run validate` is dependency-free (no Python, no Docker) and runs in CI, plus on
 every push if you enable the hook with `npm run hooks:install`. It is **not** three
