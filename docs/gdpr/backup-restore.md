@@ -86,6 +86,16 @@ ikke kan genskabes, er ingen backup.
 
 ## Drill-log
 
+Seneste drill: migration 133 (2026-07-18)
+
+> Linjen ovenfor er **maskinlæst** af [`tools/check-release-gates.mjs`](../../tools/check-release-gates.mjs)
+> (GV-422), som sammenligner tallet med det højeste migrationsnummer i
+> `supabase/migrations/` og markerer et efterslæb over 15 migrationer som en
+> release-blocker. Formatet er fast: `Seneste drill: migration NNN (YYYY-MM-DD)`.
+> Opdatér den — sammen med en ny række i tabellen — hver gang en drill er kørt.
+> Indtil GV-422 stod tallet kun i prosa, og derfor var der intet, der kunne se, at
+> drillen sakkede bagud.
+
 | Dato | Dump | Checksum | Størrelse | Tracker-status | Workspaces | Fejl | Rækker | Tracker | Resultat |
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-07-17 | vehloshare-backup.sql.gz | sha256:30bb7db46da5… | 0.5 MB | 132 migrationer (130_operational_retention) | 9 workspaces | 350 tolereret (uklassificeret) | ikke verificeret | — | BESTÅET (før hærdning) |
