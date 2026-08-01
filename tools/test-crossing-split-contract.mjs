@@ -96,11 +96,14 @@ function pin(label, fn) {
 // Both files must carry it. check-schema-equivalence proves they REPLAY the same;
 // only this says the thing they both replay is the thing GVM-415 decided.
 const MIGRATION = join(ROOT, "supabase", "migrations", "157_trip_crossing_cost.sql");
+const MIGRATION_158 = join(ROOT, "supabase", "migrations", "158_crossing_provided_contract.sql");
 const CONSOLIDATED = join(ROOT, "supabase-schema.sql");
+
+const consolidatedSql = readFileSync(CONSOLIDATED, "utf8");
 
 const sqlSources = {
   "migration 157": readFileSync(MIGRATION, "utf8"),
-  "supabase-schema.sql": readFileSync(CONSOLIDATED, "utf8"),
+  "supabase-schema.sql": consolidatedSql,
 };
 
 // The consolidated schema contains every historical definition, so a bare search for
@@ -113,6 +116,21 @@ function liveSql(name) {
   assert.notEqual(idx, -1, "supabase-schema.sql is missing the migration 157 mirror block");
   return source.slice(idx);
 }
+
+// GV-417 re-declared the three trip-writing RPCs AGAIN, so 157's copies of them are no
+// longer the live ones and pinning the write path against 157 would pin a superseded
+// definition — the exact "reads text that is not the live code" failure the notes above
+// warn about. The settlement and fingerprint pins above stay on 157 (158 does not touch
+// either); everything about the write path is read from 158 and from the consolidated
+// schema's 158 tail.
+const writePathSources = {
+  "migration 158": readFileSync(MIGRATION_158, "utf8"),
+  "supabase-schema.sql (158 tail)": (() => {
+    const idx = consolidatedSql.lastIndexOf("-- Migration 158:");
+    assert.notEqual(idx, -1, "supabase-schema.sql is missing the migration 158 mirror block");
+    return consolidatedSql.slice(idx);
+  })(),
+};
 
 process.stdout.write("\nSQL shape (migration 157 + its supabase-schema.sql mirror):\n");
 for (const name of Object.keys(sqlSources)) {
@@ -184,19 +202,34 @@ for (const name of Object.keys(sqlSources)) {
     assert.match(fp, /order by t\.id::text collate "C"/i);
   });
 
-  pin(`${name}: each RPC drops its OLD signature before creating the wider one`, () => {
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Part 2b: the WRITE path's shape — migration 158 (GV-417)
+// ═══════════════════════════════════════════════════════════════════════════════
+process.stdout.write("\nSQL shape (migration 158 + its supabase-schema.sql mirror):\n");
+for (const [name, sql] of Object.entries(writePathSources)) {
+  pin(`${name}: each RPC drops its 157 signature before creating the wider one`, () => {
     // create-or-replace with a different parameter list makes a second overload, and
     // PostgREST cannot resolve between two candidates whose extra params all default
-    // (the migration 156 lesson). Every one of the three must DROP first.
+    // (the migration 156 lesson, which 157 learned and 158 has to learn again — the
+    // signature it drops here is the one 157 created). Every one of the three must
+    // DROP first, and restate its ACL, because DROP + CREATE resets the grants.
     for (const [fn, oldSig] of [
-      ["upsert_trip_with_participants", "text, uuid, text, uuid, date, numeric, numeric, text, uuid[], text, text"],
-      ["upsert_booking_trip_with_participants", "text, uuid, uuid, text, uuid, date, numeric, numeric, text, uuid[], text, text"],
+      [
+        "upsert_trip_with_participants",
+        "text, uuid, text, uuid, date, numeric, numeric, text, uuid[], numeric, text, uuid, text, text",
+      ],
+      [
+        "upsert_booking_trip_with_participants",
+        "text, uuid, uuid, text, uuid, date, numeric, numeric, text, uuid[], numeric, text, uuid, text, text",
+      ],
       ["complete_booking_trip_with_fuel", null],
     ]) {
       const dropRe = oldSig
         ? new RegExp(`drop function if exists public\\.${fn}\\(${oldSig.replace(/[[\]]/g, "\\$&")}\\);`)
         : new RegExp(`drop function if exists public\\.complete_booking_trip_with_fuel\\(`);
-      assert.match(sql, dropRe, `${fn} must drop its old exact signature`);
+      assert.match(sql, dropRe, `${fn} must drop the exact signature migration 157 created`);
       assert.match(
         sql,
         new RegExp(`revoke all on function public\\.${fn}\\([\\s\\S]{0,300}?\\) from anon;`),
@@ -210,17 +243,88 @@ for (const name of Object.keys(sqlSources)) {
     }
   });
 
-  pin(`${name}: a null/zero cost stores no orphaned note or payer`, () => {
-    const rpc = sql.slice(
-      sql.indexOf("create or replace function public.upsert_trip_with_participants"),
-      sql.indexOf("create or replace function public.upsert_booking_trip_with_participants"),
+  const tripRpc = sql.slice(
+    sql.indexOf("create or replace function public.upsert_trip_with_participants"),
+    sql.indexOf("create or replace function public.upsert_booking_trip_with_participants"),
+  );
+
+  pin(`${name}: crossing_provided is the LAST parameter of all three RPCs`, () => {
+    // Last, i.e. AFTER the trailing event params, so every positional caller — this
+    // file's own fixtures, the functional suites, the RPCs calling each other — keeps
+    // its argument order and simply omits the new one. A flag inserted anywhere else
+    // silently re-points somebody's arguments.
+    for (const [fn, lastExisting] of [
+      ["upsert_trip_with_participants", "event_body text default null"],
+      ["upsert_booking_trip_with_participants", "event_body text default null"],
+      ["complete_booking_trip_with_fuel", "fuel_event_body text default null"],
+    ]) {
+      assert.match(
+        sql,
+        new RegExp(
+          `create or replace function public\\.${fn}\\([\\s\\S]*?${lastExisting},\\s*\\n\\s*crossing_provided boolean default false\\s*\\n\\)`,
+        ),
+        `${fn} must take crossing_provided as its last parameter, after the event params`,
+      );
+    }
+  });
+
+  pin(`${name}: without the flag, the UPDATE path PRESERVES each crossing column`, () => {
+    // The GV-417 defect itself: 157 wrote `crossing_cost_dkk = excluded.crossing_cost_dkk`
+    // unconditionally, so a client whose build predates the crossing UI — every argument
+    // defaulted to null — erased a crossing a newer device had logged, just by editing
+    // the trip or retrying a queued write. In ON CONFLICT DO UPDATE the surviving row is
+    // referenced by the TABLE name, so `else trips.x` is "keep what is there".
+    for (const column of ["crossing_cost_dkk", "crossing_note", "crossing_paid_by_member_id"]) {
+      assert.match(
+        tripRpc,
+        new RegExp(
+          `${column} = case when crossing_provided then excluded\\.${column} else trips\\.${column} end,`,
+        ),
+        `${column} must be preserved, per column, when the caller sent no crossing`,
+      );
+      assert.doesNotMatch(
+        tripRpc,
+        new RegExp(`^\\s*${column} = excluded\\.${column},`, "m"),
+        `${column} must never be written unconditionally from excluded — that is the GV-417 defect`,
+      );
+    }
+  });
+
+  pin(`${name}: with the flag, a null/zero cost still stores no orphaned note or payer`, () => {
+    // Migration 157's semantics, unchanged, but now reachable only through the guard —
+    // so the clearing behaviour must sit INSIDE `if crossing_provided then`, not beside
+    // it. Read the guarded block by its own boundaries rather than the whole function.
+    const guardStart = tripRpc.indexOf("if crossing_provided then");
+    assert.notEqual(guardStart, -1, "the crossing normalisation must be guarded by crossing_provided");
+    const guarded = tripRpc.slice(guardStart, tripRpc.indexOf("perform pg_advisory_xact_lock"));
+    assert.match(guarded, /if crossing_cost_value is not null and crossing_cost_value < 0 then/);
+    assert.match(
+      guarded,
+      /if crossing_cost_value is null or round\(crossing_cost_value, 2\) = 0 then\s*\n\s*resolved_crossing_cost := null;\s*\n\s*resolved_crossing_note := null;\s*\n\s*resolved_crossing_payer := null;/,
     );
-    assert.match(rpc, /if crossing_cost_value is null or round\(crossing_cost_value, 2\) = 0 then\s*\n\s*resolved_crossing_cost := null;\s*\n\s*resolved_crossing_note := null;\s*\n\s*resolved_crossing_payer := null;/);
-    assert.match(rpc, /resolved_crossing_payer := coalesce\(crossing_paid_by, driver_member_id\);/);
-    // Both write paths, or an edit that adds/removes a crossing goes nowhere.
-    assert.match(rpc, /crossing_cost_dkk = excluded\.crossing_cost_dkk,/);
-    assert.match(rpc, /crossing_note = excluded\.crossing_note,/);
-    assert.match(rpc, /crossing_paid_by_member_id = excluded\.crossing_paid_by_member_id,/);
+    assert.match(guarded, /resolved_crossing_payer := coalesce\(crossing_paid_by, driver_member_id\);/);
+    assert.match(guarded, /Crossing payer must be an active member of this workspace/);
+  });
+
+  pin(`${name}: the two booking RPCs FORWARD the flag rather than defaulting it away`, () => {
+    const bookingRpc = sql.slice(
+      sql.indexOf("create or replace function public.upsert_booking_trip_with_participants"),
+      sql.indexOf("create or replace function public.complete_booking_trip_with_fuel"),
+    );
+    // Both completion paths route through the canonical trip upsert, so a booking
+    // completion that dropped the flag on the floor would re-open the same hole for
+    // exactly the calls (retry, re-completion) most likely to hit an existing trip.
+    assert.match(
+      bookingRpc,
+      /public\.upsert_trip_with_participants\([\s\S]*?event_body,\s*\n\s*crossing_provided\s*\n\s*\);/,
+      "upsert_booking_trip_with_participants must forward crossing_provided to the trip upsert",
+    );
+    const fuelRpc = sql.slice(sql.indexOf("create or replace function public.complete_booking_trip_with_fuel"));
+    assert.match(
+      fuelRpc,
+      /public\.upsert_booking_trip_with_participants\([\s\S]*?trip_event_body,\s*\n\s*crossing_provided\s*\n\s*\);/,
+      "complete_booking_trip_with_fuel must forward crossing_provided to the booking trip upsert",
+    );
   });
 }
 
@@ -694,27 +798,62 @@ select '${id}', unnest(array[${participants.map((p) => `'${p}'::uuid`).join(",")
   });
 
   // ── 6. The RPC write path ─────────────────────────────────────────────────────
+  // Every call below is written the way its CLIENT writes it. A crossing-aware client
+  // always ends its argument list with `true` (GV-417); an old build ends at the event
+  // params and never mentions the flag at all. Those two shapes are the whole contract,
+  // so the fixtures use them literally rather than passing a variable.
+  const crossingRow = (legacyId) =>
+    run(
+      `select coalesce(crossing_cost_dkk::text,'-'), coalesce(crossing_note,'-'), coalesce(crossing_paid_by_member_id::text,'-')
+       from public.trips where ledger_id = 'cross' and legacy_id = '${legacyId}';`,
+    ).split("|");
+
   resetTrips();
   pin("upsert_trip_with_participants persists the crossing and defaults the payer to the driver", () => {
     const res = asAnna(`select public.upsert_trip_with_participants(
            'cross', '${PERIOD}', 'legacy-1', '${M(1)}', current_date, 0, 120, 'Aarhus',
            array['${M(1)}'::uuid, '${M(2)}'::uuid],
-           250.00, '  Storebaeltsbroen - retur  ', null, 'Tur', '120 km');`);
+           250.00, '  Storebaeltsbroen - retur  ', null, 'Tur', '120 km', true);`);
     if (res.status !== 0) fail(`saving a trip with a crossing failed:\n${res.stderr}`);
-    const row = run(
-      `select coalesce(crossing_cost_dkk::text,'-'), coalesce(crossing_note,'-'), coalesce(crossing_paid_by_member_id::text,'-')
-       from public.trips where ledger_id = 'cross' and legacy_id = 'legacy-1';`,
-    ).split("|");
+    const row = crossingRow("legacy-1");
     assert.equal(row[0], "250.00");
     assert.equal(row[1], "Storebaeltsbroen - retur", "the note is trimmed, not stored raw");
     assert.equal(row[2], M(1), "a null payer defaults to the driver");
   });
 
-  pin("re-saving the trip WITHOUT a crossing clears the cost, the note and the payer together", () => {
+  pin("GV-417: an OLD client editing the same trip PRESERVES the crossing it cannot see", () => {
+    // The regression this migration exists for. The call is exactly what a build from
+    // before the crossing UI emits — the argument list simply ends at the event params —
+    // and it edits the trip (new note, new end km) the way such a build would. Before
+    // migration 158 this wrote three nulls over a crossing another device had logged.
+    const res = asAnna(`select public.upsert_trip_with_participants(
+           'cross', '${PERIOD}', 'legacy-1', '${M(1)}', current_date, 0, 140, 'Aarhus og retur',
+           array['${M(1)}'::uuid, '${M(2)}'::uuid],
+           null, null, null, 'Tur', '140 km');`);
+    if (res.status !== 0) fail(`an old client's trip edit failed:\n${res.stderr}`);
+    const row = crossingRow("legacy-1");
+    assert.deepEqual(
+      row,
+      ["250.00", "Storebaeltsbroen - retur", M(1)],
+      "a caller that sent no crossing must leave all three crossing columns untouched",
+    );
+    // ...and the rest of the edit still landed, or "preserve" would just mean "ignore".
+    assert.equal(Number(run(`select end_km from public.trips where legacy_id = 'legacy-1';`)), 140);
+  });
+
+  pin("GV-417: an OLD client CREATING a trip stores no crossing (nothing to preserve)", () => {
+    const res = asAnna(`select public.upsert_trip_with_participants(
+           'cross', '${PERIOD}', 'legacy-old-new', '${M(1)}', current_date, 0, 30, null,
+           array['${M(1)}'::uuid], null, null, null, 'Tur', '30 km');`);
+    if (res.status !== 0) fail(`an old client's new trip failed:\n${res.stderr}`);
+    assert.deepEqual(crossingRow("legacy-old-new"), ["-", "-", "-"]);
+  });
+
+  pin("re-saving WITH crossing_provided and no crossing clears the cost, the note and the payer together", () => {
     const res = asAnna(`select public.upsert_trip_with_participants(
            'cross', '${PERIOD}', 'legacy-1', '${M(1)}', current_date, 0, 120, 'Aarhus',
            array['${M(1)}'::uuid, '${M(2)}'::uuid],
-           null, null, null, 'Tur', '120 km');`);
+           null, null, null, 'Tur', '120 km', true);`);
     if (res.status !== 0) fail(`re-saving the trip without a crossing failed:\n${res.stderr}`);
     const row = run(
       `select coalesce(crossing_cost_dkk::text,'-'), coalesce(crossing_note,'-'), coalesce(crossing_paid_by_member_id::text,'-')
@@ -730,9 +869,26 @@ select '${id}', unnest(array[${participants.map((p) => `'${p}'::uuid`).join(",")
     ]) {
       const res = asAnna(`select public.upsert_trip_with_participants(
            'cross', '${PERIOD}', 'legacy-bad', '${M(1)}', current_date, 0, 10, null,
-           array['${M(1)}'::uuid], ${args}, null, null);`);
+           array['${M(1)}'::uuid], ${args}, null, null, true);`);
       assert.notEqual(res.status, 0, `${why} must be rejected`);
     }
+  });
+
+  pin("GV-417: without the flag the crossing arguments are IGNORED, not validated", () => {
+    // The deliberate corollary of skipping normalisation: with crossing_provided false
+    // the three crossing arguments carry no information, so a cost that WOULD be
+    // rejected is not rejected — it is simply not read, and nothing is stored. Pinned
+    // because it is the one surprising edge of the contract: anything that means to
+    // send a crossing must send the flag with it.
+    const res = asAnna(`select public.upsert_trip_with_participants(
+           'cross', '${PERIOD}', 'legacy-ignored', '${M(1)}', current_date, 0, 10, null,
+           array['${M(1)}'::uuid], -10, 'ignored', null, null, null);`);
+    assert.equal(res.status, 0, "a crossing argument sent without the flag must not raise");
+    assert.deepEqual(
+      crossingRow("legacy-ignored"),
+      ["-", "-", "-"],
+      "and it must not be stored either — the flag is what makes a crossing argument real",
+    );
   });
 
   finished = true;
