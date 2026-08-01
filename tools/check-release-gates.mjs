@@ -499,50 +499,54 @@ function main() {
   const results = runGates();
   const { counts, failed } = summarise(results, strict);
 
+  // ONE stream, ONE write. The first CI run of this script split pass lines onto
+  // stdout and failure lines onto stderr, and GitHub's log merge interleaved them:
+  // the "158 migrations registered" detail printed under the RESTORE-DRILL heading,
+  // attributing a pass to a blocked gate. A report about misleading output must not
+  // be misleading output.
   const icon = { pass: "✓", blocked: "✗", unavailable: "?", error: "!" };
+  const out = [];
   for (const r of results) {
-    const label = `${icon[r.severity]} [${r.severity.toUpperCase()}] ${r.id}: ${r.title}`;
-    const write = r.severity === SEVERITY.PASS ? console.log : console.error;
-    write(label);
-    for (const detail of r.details) write(`    ${detail}`);
+    out.push(`${icon[r.severity]} [${r.severity.toUpperCase()}] ${r.id}: ${r.title}`);
+    for (const detail of r.details) out.push(`    ${detail}`);
   }
 
-  console.log(
+  out.push(
     `\ncheck-release-gates: ${counts.pass} pass, ${counts.blocked} blocked, ` +
       `${counts.unavailable} unavailable, ${counts.error} error (mode: ${strict ? "strict" : "advisory"}).`,
   );
 
   if (counts.unavailable > 0 && !strict) {
-    console.warn(
+    out.push(
       "⚠ check-release-gates: at least one gate could not read the state it judges — it certified NOTHING. " +
         "Check the sibling repo(s) out alongside fuel_sharing for a complete run.",
     );
   }
   if (counts.blocked > 0 && !strict) {
-    console.warn(
+    out.push(
       "⚠ check-release-gates: known launch blockers are present (listed above). This run is advisory; " +
         "`--strict` — which is what the umbrella workflow runs — fails on them.",
     );
   }
 
   if (failed) {
-    console.error(
+    out.push(
       "\nRelease gates FAILED. Each line above names the state to change, not the check to delete; " +
         "the gates exist because the same items sat unnoticed in prose checklists (DEPLOY-CHECKLIST.md, GV-104).",
     );
+    process.stdout.write(`${out.join("\n")}\n`);
     process.exit(1);
   }
   // Advisory mode exits 0 with blockers outstanding — but it must never claim they
   // are absent. "Exit code 0" and "ready to release" are different statements, and
   // conflating them is the whole bug class this script was written for.
-  if (counts.blocked > 0 || counts.unavailable > 0) {
-    console.log(
-      "check-release-gates: advisory run complete — NOT release-ready; the items above are still open. " +
-        "Re-run with --strict once they are cleared.",
-    );
-    return;
-  }
-  console.log("check-release-gates: OK — no known launch blocker detected.");
+  out.push(
+    counts.blocked > 0 || counts.unavailable > 0
+      ? "check-release-gates: advisory run complete — NOT release-ready; the items above are still open. " +
+        "Re-run with --strict once they are cleared."
+      : "check-release-gates: OK — no known launch blocker detected.",
+  );
+  process.stdout.write(`${out.join("\n")}\n`);
 }
 
 // Only run when invoked directly, so the unit test can import the pure logic.
