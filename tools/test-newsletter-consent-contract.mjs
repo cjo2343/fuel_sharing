@@ -26,7 +26,7 @@
 // the database contract those Functions are written against.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const SOURCES = [
   ["supabase/migrations/161_newsletter_subscribers.sql", null],
@@ -290,6 +290,130 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
   assert.ok(
     !schemaStatementsOnly("-- never seeded from public.ledger_members or auth.users\nselect 1;").includes("ledger_members"),
     "prose in a line comment must not read as a seeding path",
+  );
+}
+
+// ── 6. The properties hold GLOBALLY, not only inside the 161 block ───────────
+//
+// Everything above scans the 161 block: the migration file, and the consolidated
+// schema from the block's marker down to its tracker insert. During the GV-366 audit,
+// a `grant select … to service_role` and an auth.users seeding INSERT appended AFTER
+// that tracker — which is exactly where migration 162, 163, … will land in
+// supabase-schema.sql — passed untouched. The block scan protects 161 from being
+// EDITED; the additions the header promises to catch arrive OUTSIDE the block.
+//
+// So this section rescans every migration file and the whole consolidated schema for
+// the properties that are safe to assert globally. It cannot use the forbidden-table
+// scan globally (auth.users and ledger_members appear legitimately everywhere), so
+// seeding is caught by shape instead: any statement that writes newsletter_subscribers,
+// and any function whose body touches the table, is examined individually.
+{
+  const globAll = (dir) =>
+    readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => `${dir}/${f}`);
+  const files = [...globAll("supabase/migrations"), "supabase-schema.sql"];
+  const FORBIDDEN_SOURCES = ["auth.users", "ledger_members", "public.ledgers", "expo_push_tokens"];
+  const ALLOWED_FUNCTIONS = new Set(RPCS);
+
+  // Prose stripped like the block scan strips it, but WITHOUT schemaStatementsOnly:
+  // that helper truncates at the first tracker insert, which is correct for a sliced
+  // block and cuts a whole file off at migration 001. Here every tracker insert is
+  // removed in place instead (161's description argues about auth.users at length;
+  // the standard skeleton always ends `applied_at = now();`, the anchor used here),
+  // and comments go the same way as in the block scan.
+  const stripGlobal = (sql) =>
+    sql
+      .replace(/insert into public\.fuel_ledger_schema_migrations[\s\S]*?applied_at = now\(\);/g, "")
+      .replace(/\bcomment on [\s\S]*?\bis\s*'(?:[^']|'')*'\s*;/g, "")
+      .split("\n")
+      .map((line) => {
+        const at = line.indexOf("--");
+        return at === -1 ? line : line.slice(0, at);
+      })
+      .join("\n");
+
+  for (const file of files) {
+    const sql = stripGlobal(readFileSync(file, "utf8"));
+    if (!/newsletter_subscribers/i.test(sql)) continue;
+    const where = (what) => `${file}: ${what}`;
+
+    // No grant on the table, to ANY role, anywhere.
+    const grants = [
+      ...sql.matchAll(/grant\s+[\s\S]{0,80}?\s+on\s+(?:table\s+)?(?:public\.)?newsletter_subscribers\s+to\s+(\w+)/gi),
+    ];
+    assert.deepEqual(
+      grants.map((m) => m[1]),
+      [],
+      where("a GRANT on newsletter_subscribers (deny-all is the design, service_role included)"),
+    );
+
+    // No policy near the table name, anywhere.
+    assert.ok(
+      !/create\s+policy[\s\S]{0,400}newsletter_subscribers/i.test(sql),
+      where("a policy on newsletter_subscribers — the table is not client-facing"),
+    );
+
+    // No tombstone column, anywhere, under any spelling that includes the word.
+    assert.ok(
+      !/unsubscribed_at/i.test(sql),
+      where("an unsubscribed_at column — unsubscribing hard-deletes, it never flags"),
+    );
+
+    // Every statement that writes the table must not read a forbidden source. 800
+    // chars bounds a single INSERT … SELECT; a seeding path too long for the window
+    // would have to be a function, which the allowlist below catches.
+    for (const m of sql.matchAll(/insert\s+into\s+(?:public\.)?newsletter_subscribers[\s\S]{0,800}?;/gi)) {
+      for (const forbidden of FORBIDDEN_SOURCES) {
+        assert.ok(
+          !m[0].includes(forbidden),
+          where(`a statement writes newsletter_subscribers from ${forbidden} — the list is never seeded from product users`),
+        );
+      }
+    }
+
+    // Every function whose body touches the table must be one of the three RPCs. A
+    // seeding path, an export helper or an enumeration RPC added later is a NEW name.
+    for (const m of sql.matchAll(/create\s+or\s+replace\s+function\s+((?:public\.)?[a-z0-9_]+)\s*\(([\s\S]*?)\$\$;/gi)) {
+      const name = m[1].startsWith("public.") ? m[1] : `public.${m[1]}`;
+      if (!/newsletter_subscribers/i.test(m[2])) continue;
+      assert.ok(
+        ALLOWED_FUNCTIONS.has(name),
+        where(
+          `function ${name} touches newsletter_subscribers. Only the three GV-366 RPCs may — ` +
+            "a new function on this table is an owner decision and a new ticket, and it must be " +
+            "added to ALLOWED_FUNCTIONS here on purpose",
+        ),
+      );
+    }
+
+    // The three RPCs stay server-only everywhere, including future re-declarations.
+    assert.ok(
+      !/grant execute on function (?:public\.)?newsletter_[a-z_]+\([^)]*\) to (anon|authenticated)\s*;/i.test(sql),
+      where("a newsletter RPC granted to a browser role — only service_role may call these"),
+    );
+  }
+
+  // Self-test: plant the two audit mutations at END OF FILE, where the block scan
+  // cannot see them, and require the global scan to catch both.
+  const schema = readFileSync("supabase-schema.sql", "utf8");
+  const planted = {
+    grant: stripGlobal(schema + "\ngrant select on public.newsletter_subscribers to service_role;\n"),
+    seed: stripGlobal(
+      schema +
+        "\ninsert into public.newsletter_subscribers (email, consent_text_version, unsubscribe_token_hash)\n" +
+        "select u.email, 'v1', md5(u.id::text || u.email) from auth.users u;\n",
+    ),
+  };
+  assert.notDeepEqual(
+    [...planted.grant.matchAll(/grant\s+[\s\S]{0,80}?\s+on\s+(?:table\s+)?(?:public\.)?newsletter_subscribers\s+to\s+(\w+)/gi)].map((m) => m[1]),
+    [],
+    "self-test: the global grant scan must fire on an EOF grant",
+  );
+  const seededWrites = [...planted.seed.matchAll(/insert\s+into\s+(?:public\.)?newsletter_subscribers[\s\S]{0,800}?;/gi)];
+  assert.ok(
+    seededWrites.some((m) => m[0].includes("auth.users")),
+    "self-test: the global seeding scan must fire on an EOF insert-select from auth.users",
   );
 }
 
