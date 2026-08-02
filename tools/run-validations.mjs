@@ -64,6 +64,17 @@ const scripts = [
   // since every existing workspace has them null. Warns and exits 0 without Docker; the
   // umbrella runs it --strict.
   "node tools/test-booking-caps-contract.mjs",
+  // Anti-drift contract for the optimistic-concurrency preconditions (GV-421). Docker
+  // for the same reason as the three above, plus the one specific to migration 160:
+  // its central promise is a NEGATIVE — that passing NO token leaves every shipped
+  // client's behaviour byte-identical — and the only way to certify a negative is to
+  // run both paths and compare the rows. Pins that a null token is still
+  // last-write-wins, that a token on a create is ignored, that a stale token raises
+  // GV42T / GV42F / GV42B AND leaves the row and the feed untouched (a check placed
+  // after the upsert would look identical in a diff and would already have done the
+  // damage), and both sides of the millisecond-truncation rule. Warns and exits 0
+  // without Docker.
+  "node tools/test-conflict-precondition-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths
