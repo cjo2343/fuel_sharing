@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 160 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 161 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -762,6 +762,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      newsletter_subscribers: {
+        Row: {
+          confirm_token_hash: string | null
+          confirmed_at: string | null
+          consent_text_version: string
+          email: string
+          id: string
+          requested_at: string
+          unsubscribe_token_hash: string
+        }
+        Insert: {
+          confirm_token_hash?: string | null
+          confirmed_at?: string | null
+          consent_text_version: string
+          email: string
+          id?: string
+          requested_at?: string
+          unsubscribe_token_hash: string
+        }
+        Update: {
+          confirm_token_hash?: string | null
+          confirmed_at?: string | null
+          consent_text_version?: string
+          email?: string
+          id?: string
+          requested_at?: string
+          unsubscribe_token_hash?: string
+        }
+        Relationships: []
       }
       notification_preferences: {
         Row: {
@@ -2114,6 +2144,24 @@ export type Database = {
       member_is_active_in_ledger: {
         Args: { p_ledger_id: string; p_member_id: string }
         Returns: boolean
+      }
+      newsletter_confirm_subscription: {
+        Args: { confirm_hash: string; pending_ttl_hours?: number }
+        Returns: Json
+      }
+      newsletter_request_subscription: {
+        Args: {
+          confirm_hash: string
+          consent_version: string
+          pending_ttl_hours?: number
+          subscriber_email: string
+          unsubscribe_hash: string
+        }
+        Returns: Json
+      }
+      newsletter_unsubscribe: {
+        Args: { unsubscribe_hash: string }
+        Returns: Json
       }
       normalize_ledger_slug: { Args: { raw_slug: string }; Returns: string }
       owner_settlement_integrity_batch: {
