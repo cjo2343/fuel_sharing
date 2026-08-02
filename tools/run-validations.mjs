@@ -88,6 +88,27 @@ const scripts = [
   // fast gate and fails on the PR that adds the migration; only the govehlo-web half
   // of the scan tolerates a missing sibling (the umbrella runs it --strict).
   "node tools/check-ledger-event-classification.mjs",
+  // Unit + fixture tests for the release gates (GV-422). The GATE SCRIPT ITSELF —
+  // `node tools/check-release-gates.mjs` — is deliberately NOT in this array, and
+  // adding it would be a mistake, not a fix:
+  //
+  //   Every other entry here judges the COMMIT. The release gates judge the
+  //   PRODUCT — a paid Supabase plan (GV-313), a restore drill someone has to run
+  //   by hand against a fresh prod dump, a CVR that unblocks the privacy page
+  //   (GV-177), an attestation a human signs. Those are red today, on purpose, and
+  //   no author of an unrelated commit can turn any of them green. Wiring them
+  //   into the per-commit gate (and therefore the pre-push hook) would make every
+  //   commit in the repo red for reasons its author cannot act on, which is the
+  //   fastest known way to teach everyone that red means nothing — the same
+  //   argument the umbrella workflow's header makes about its own token probe.
+  //   It runs pre-release and in the umbrella instead (`npm run check:release-gates`).
+  //
+  // THIS line is the unit test, which is a different thing: fixtures only, no
+  // product state, sub-second, and green. It is here for the reason the five
+  // scanner tests above are — the gate script is EXPECTED to be red, so its
+  // greenness is never observed in practice, and a logic bug that made it pass
+  // everything would look exactly like progress.
+  "node tools/test-release-gates.mjs",
   "node tools/check-token-drift.mjs",
   // Cross-repo: does the load rehearsal still replay what the mobile client actually
   // sends? Warns and exits 0 when govehlo-mobile is absent (fuel_sharing CI); the

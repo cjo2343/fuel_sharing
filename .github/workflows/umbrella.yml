@@ -66,10 +66,34 @@
 # CROSS_REPO_TOKEN (Settings → Secrets and variables → Actions).
 #
 # If the secret is absent or revoked, this workflow does NOT fail: the token
-# probe (the first step of the single job below) emits a loud ::warning::
-# annotation and every check step is skipped. A red X on a scheduled cross-repo
-# audit would train everyone to ignore it; a visible warning that the audit could
-# not run is the correct signal.
+# probe (the first step of the single job below) sets an output, the step right
+# after it emits a loud ::warning:: annotation, and every check step is skipped.
+# A red X on a scheduled cross-repo audit would train everyone to ignore it; a
+# visible warning that the audit could not run is the correct signal.
+#
+# GV-422 — the probe used to LIE, and the fix is why the warning is its own step:
+#   The warning text used to live inside the probe's own `run:` block, in the else
+#   branch. GitHub echoes the entire `run:` script into the log inside the
+#   collapsed ##[group] header before executing a line of it, so
+#   "CROSS_REPO_TOKEN is not set … checks were SKIPPED, not run" appeared verbatim
+#   in EVERY run's log — including runs where the token was present and all eight
+#   checks demonstrably executed two seconds later (see run 30719329737, which
+#   prints the skip sentence and "CROSS_REPO_TOKEN present — running cross-repo
+#   checks." in the same step). Anyone reading or grepping the log concluded the
+#   audit had been skipped when it had run in full.
+#
+#   Root cause established (2026-08-01): the token is genuinely REQUIRED and
+#   genuinely PRESENT. `gh repo view` reports govehlo-web and govehlo-mobile as
+#   PRIVATE while fuel_sharing is PUBLIC, so the job's default GITHUB_TOKEN —
+#   scoped to fuel_sharing alone — cannot read either sibling; and
+#   `gh secret list` shows CROSS_REPO_TOKEN configured on this repo since
+#   2026-07-10. So the probe is not removable ("the token is unnecessary" is
+#   false), and the contradiction was purely the echoed script body.
+#
+#   The fix, therefore, is that the sentence lives in a step that RUNS ONLY WHEN
+#   THE CHECKS ARE ACTUALLY SKIPPED. A skipped step prints nothing at all — not
+#   even its script — so the words "were SKIPPED, not run" can now appear in the
+#   log if and only if that is true.
 #
 # Known limit of the GV-391 `pull_request` trigger: fuel_sharing is public, and a PR
 # from a FORK gets no secrets, so the probe sees no token, warns, and the checks
@@ -138,18 +162,29 @@ jobs:
       #
       # Wall clock is unchanged: preflight ran BEFORE umbrella (a `needs:` edge),
       # so its ~2s was already serial. It is now a ~1s step in the same job.
+      #
+      # GV-422: this step no longer CONTAINS the skip warning — see the
+      # CROSS_REPO_TOKEN section of the header. Its script is echoed into the log
+      # verbatim on every run, so any sentence written here is a sentence the log
+      # asserts unconditionally, true or not. It now only answers the question;
+      # the step below states the consequence, and only when there is one.
       - name: Probe CROSS_REPO_TOKEN
         id: probe
         env:
           CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
         run: |
-          if [ -n "$CROSS_REPO_TOKEN" ]; then
-            echo "has_token=true" >> "$GITHUB_OUTPUT"
-            echo "CROSS_REPO_TOKEN present — running cross-repo checks."
-          else
-            echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Umbrella checks skipped::CROSS_REPO_TOKEN is not set on fuel_sharing — cross-repo drift checks were SKIPPED, not run. Add a fine-grained PAT (Contents: Read on govehlo-web + govehlo-mobile) as the Actions secret CROSS_REPO_TOKEN to enable them."
-          fi
+          if [ -n "$CROSS_REPO_TOKEN" ]; then HAS_TOKEN=true; else HAS_TOKEN=false; fi
+          echo "has_token=$HAS_TOKEN" >> "$GITHUB_OUTPUT"
+          # Interpolated, never a literal claim: what the log shows is what was measured.
+          echo "CROSS_REPO_TOKEN configured: $HAS_TOKEN"
+
+      # Runs ONLY when the checks are genuinely skipped. A skipped step prints
+      # nothing — not even its own script — so this warning appearing in the log
+      # is now proof that the audit did not run, rather than boilerplate.
+      - name: Warn that cross-repo checks are skipped
+        if: steps.probe.outputs.has_token != 'true'
+        run: |
+          echo "::warning title=Umbrella checks skipped::CROSS_REPO_TOKEN is not set on fuel_sharing — cross-repo drift checks were SKIPPED, not run. Add a fine-grained PAT (Contents: Read on govehlo-web + govehlo-mobile) as the Actions secret CROSS_REPO_TOKEN to enable them."
 
       # Every step below carries the same gate. Keep it on ALL of them: a step
       # that loses the guard would run without the sibling checkouts present and
@@ -340,3 +375,30 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         working-directory: fuel_sharing
         run: node tools/test-crossing-split-contract.mjs --strict
+
+      # 9. Release gates, STRICT (GV-422). The known launch blockers — the
+      #    unfilled `[DATAANSVARLIG …]` placeholder on the live privacy page, the
+      #    Free-plan (= zero backups) posture, a restore drill 25 migrations behind
+      #    the schema, and the two externally-attested items — expressed as a script
+      #    instead of as prose in DEPLOY-CHECKLIST.md and on GV-104. Gate 1 needs
+      #    govehlo-web, so like every step above this workflow is the only place it
+      #    is real; the rest read this repo's own evidence files.
+      #
+      #    EXPECT THIS STEP RED until those items are cleared — that is the ticket,
+      #    not a bug. Which is exactly why it does not fail PRs: this workflow runs
+      #    on `pull_request` and GV-391 made it a merge gate, and a blocker only the
+      #    owner can clear (a paid Supabase plan, a CVR, a human attestation) must
+      #    not block an unrelated migration for weeks. So the step always runs
+      #    --strict and always prints the full verdict, and `continue-on-error` is
+      #    switched on for `pull_request` only: PRs see the annotation, while the
+      #    scheduled audit, main and manual runs fail hard. The alternative — a
+      #    permanently red required check — gets the requirement removed within a
+      #    week, the same argument this file's TRIGGERS note already makes.
+      #
+      #    Not in `npm run validate` on purpose; see the comment beside the scripts
+      #    array in tools/run-validations.mjs.
+      - name: Release gates (strict, needs govehlo-web)
+        if: steps.probe.outputs.has_token == 'true'
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        working-directory: fuel_sharing
+        run: node tools/check-release-gates.mjs --strict

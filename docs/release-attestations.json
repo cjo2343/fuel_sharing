@@ -1,0 +1,50 @@
+{
+  "_README": [
+    "Release attestations (GV-422) — read by tools/check-release-gates.mjs.",
+    "",
+    "WHY THIS FILE EXISTS: two launch gates judge state that exists in NO repository.",
+    "The app-link association files are served from vehloshare.app but their contents",
+    "come from the Apple Developer / Google Play consoles (Team ID, signing SHA-256),",
+    "and Sentry source maps live in a Sentry release that a build machine uploads.",
+    "Nothing a CI job can grep proves either one, so the only honest gate is a human",
+    "writing down what they checked, when, and under their own name — with an expiry,",
+    "because an attestation nobody has re-made in a month describes a state nobody has",
+    "looked at in a month.",
+    "",
+    "HOW TO ATTEST (per entry):",
+    "  1. Actually verify it. The 'note' field says what 'verified' has to mean; do not",
+    "     lower the bar to the thing that is easy to check.",
+    "  2. Set \"state\": \"verified\".",
+    "  3. Set \"verified_on\" to today in YYYY-MM-DD (UTC).",
+    "  4. Set \"attested_by\" to the person who ran the check (name or email) — an",
+    "     unsigned attestation is not one, and the gate rejects it.",
+    "  5. Commit it in the PR that made the state true, so the claim and the change are",
+    "     reviewed together.",
+    "",
+    "RULES THE GATE ENFORCES:",
+    "  - state must be \"verified\"; anything else (\"unverified\", \"expired\", ...) is a",
+    "    launch blocker: a warning locally, a hard failure under --strict.",
+    "  - verified_on must be a YYYY-MM-DD date no more than 30 days old.",
+    "  - attested_by must be non-empty; note must actually explain the item.",
+    "  - The seeded state below is deliberately \"unverified\": neither item has been",
+    "    verified as of 2026-08-01, and a gate that starts green would be a gate that",
+    "    never once told the truth.",
+    "",
+    "This file records CLAIMS, not secrets. Never paste a token, key, signing",
+    "fingerprint or Team ID into it — the repo is public."
+  ],
+  "attestations": {
+    "app_link_secrets": {
+      "state": "unverified",
+      "verified_on": null,
+      "attested_by": null,
+      "note": "Universal Links / App Links are live: https://vehloshare.app/.well-known/apple-app-site-association returns 200 as application/json with the real TEAMID.app.vehloshare appID and the /join/* + /auth/* paths, /.well-known/assetlinks.json returns 200 with the production signing SHA-256, _middleware does not intercept /.well-known/*, and a device test opens the app from a real invite link. See RENAME-VEHLOSHARE-RUNBOOK.md; the Team ID depends on the Apple enrollment tracked in GV-320."
+    },
+    "sentry_source_maps": {
+      "state": "unverified",
+      "verified_on": null,
+      "attested_by": null,
+      "note": "The mobile build being released has uploaded its source maps to the Sentry EU project (govehlo / react-native) under the matching release + dist, and a deliberately thrown error in that exact build symbolicates to a TypeScript file and line in the Sentry issue — not to a minified bundle offset. Checking that a sourcemap file was produced locally is NOT this attestation."
+    }
+  }
+}
