@@ -14,7 +14,19 @@
      --color-amber itself is 1.8:1 on --color-amber-light and 2.1:1 on white, so a
      money badge painted with it is unreadable; this is 5.6:1 on --color-amber-light
      and 6.6:1 on white. Still money-only, like the rest of the family. Distinct from
-     --text-on-amber, which is what goes ON the solid amber fill. (GV-378) */
+     --text-on-amber, which is what goes ON the solid amber fill. (GV-378)
+
+     ALL FIVE light surfaces, because money is painted on all of them and the two
+     tinted ones are the tight cases — verifying against white alone is how a value
+     that fails gets chosen:
+       #FFFFFF 6.62:1 · --color-warm-white 6.26:1 · --color-surface-band 5.89:1 ·
+       --color-mist 5.61:1 · --color-amber-light 5.59:1.
+     The binding surfaces are the last two: a candidate loses roughly a full point
+     between white and --color-amber-light, so anything at or below ~5.4:1 on white
+     is already under AA on the tint it will actually sit on. #A85A00, proposed
+     during GVM-471 on white/--color-warm-white/--color-surface-band evidence only
+     (5.09 / 4.81 / 4.52), is 4.31:1 on --color-mist and 4.29:1 on
+     --color-amber-light — a regression from this value and below AA on both. */
   --color-amber-text:    #865013;
 
   /* ─── Surfaces & Neutral ─── */
@@ -102,6 +114,33 @@
   --color-warning-light: var(--color-amber-light);
   --color-error:         #D95050;
   --color-error-light:   #FDEDED;
+  /* Text tone of the error family — the third and last member of the fill/text split
+     that GV-378 introduced for amber and attention. --color-error is a FILL: an icon
+     disc, a left border, a destructive button's background. As TEXT it reaches only
+     4.03:1 on white and 3.55:1 on --color-error-light, so it clears WCAG's 3:1 non-text
+     bar and nothing more — the same shape as --color-attention before it got a text
+     tone, and the same shape as --text-muted before GVM-473 split it.
+
+     That gap is not theoretical. The admin console painted error COPY with the fill
+     colour at 11 sites (GV-408) — badge, chip, health pill, login message, error code,
+     4xx pill, retry link, decommission action, and the two error banners — every one of
+     them body text at 3.55:1 on --color-error-light. There was no legible error text
+     colour to reach for, so each surface either failed AA or invented its own red.
+
+     Derived exactly the way --text-tertiary was: a LIGHTNESS-only move off the fill, so
+     the family stays one hue. --color-error is HSL 0.0 / 64.3% / 58.2%; this is
+     0.0 / 64.7% / 40.0% — same hue to a decimal, same saturation, darker. It lands in
+     the contrast band the other two text tones already occupy on white
+     (--color-amber-text 6.62:1 · this 7.14:1 · --color-attention-text 8.57:1), rather
+     than at the lightest value that scrapes past the bar: hue 0 at 49% lightness would
+     also "pass" at 4.62:1 on --color-error-light, with 0.12 of margin and no room for a
+     surface a shade darker.
+
+     Contrast: 7.14:1 on white · 6.75:1 on --color-warm-white · 6.29:1 on
+     --color-error-light · 6.34:1 on --color-surface-band · 6.04:1 on --color-mist.
+     Like the rest of the family it is for LIGHT surfaces; on --color-deep-forest the
+     roles invert and --color-error is the readable one. (GV-408) */
+  --color-error-text:    #A82424;
 
   /* ─── Informational Blue — "requested" payment status ONLY ─── */
   --color-blue:      #355d9c;
