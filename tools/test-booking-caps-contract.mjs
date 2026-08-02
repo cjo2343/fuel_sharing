@@ -526,7 +526,356 @@ pin("a stranger cannot count another workspace's booked days (42501)", () => {
   );
 });
 
-// ── Part 7: the static half ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7. THE ABSOLUTE DURATION CEILING — 92 days, a constant, not a setting (GV-426)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Migration 162. Until it landed, `end > start` was the only length rule and a booking
+// running to 2031 was a valid booking. The ceiling is measured the SAME way the day
+// count is — inclusive calendar days in Europe/Copenhagen — so the number in the
+// refusal and the "N dage" the booking sheet prints above the form agree. A nights
+// implementation, or an `interval '92 days'` comparison against the two timestamps,
+// is off by exactly one at the boundary, which is what the two cases either side of
+// 92 are here to catch.
+
+clearBookings();
+setCaps({ days: null, horizon: null });
+
+pin("a booking spanning exactly 92 days is ACCEPTED", () => {
+  // Day 1 through day 92 inclusive is 92 days. `>` not `>=`, so the ceiling itself is
+  // reachable — same convention as the day cap one section up.
+  assert.equal(bookState({ legacy: "v-1", fromDay: 1, toDay: 92 }), "OK");
+  assert.equal(bookingCount(), 1, "and it is really stored");
+  assert.equal(bookedDays(), 92, "the count agrees with the ceiling's own arithmetic");
+});
+
+pin("a booking spanning 93 days is REFUSED with errcode GV46V", () => {
+  clearBookings();
+  assert.equal(
+    bookState({ legacy: "v-2", fromDay: 1, toDay: 93 }),
+    "GV46V",
+    "one day past the ceiling must raise the duration code, not the day cap's",
+  );
+  assert.equal(bookingCount(), 0, "and nothing may be written");
+});
+
+pin("the boundary is measured in COPENHAGEN calendar days, not in 24-hour blocks", () => {
+  // 92 calendar days that are SHORTER than 92×24h: 00:05 on day 1 to 23:55 on day 92
+  // is 91 days 23:50 of elapsed time, so an `end - start > interval '92 days'` test
+  // accepts it — and so does this, because it is 92 calendar days. The discriminating
+  // half is the next assertion.
+  clearBookings();
+  assert.equal(
+    bookState({ legacy: "v-3", fromDay: 1, toDay: 92, fromTime: "00:05", toTime: "23:55" }),
+    "OK",
+  );
+  // And now 93 calendar days that are barely LONGER than 92×24h: 23:55 on day 1 to
+  // 00:05 on day 93 is 92 days 00:10 elapsed. An interval test would call this 92-and-a-
+  // bit and let it through on a rounding; the calendar-day count says 93 and refuses.
+  clearBookings();
+  assert.equal(
+    bookState({ legacy: "v-4", fromDay: 1, toDay: 93, fromTime: "23:55", toTime: "00:05" }),
+    "GV46V",
+    "an elapsed-time comparison would accept this; inclusive calendar days must not",
+  );
+});
+
+pin("a booking inside ONE day is 1 day, not 0 — the count is inclusive at both ends", () => {
+  // The other end of the same arithmetic. A nights implementation makes this 0 and
+  // then everything below 92 passes for the wrong reason.
+  clearBookings();
+  assert.equal(bookState({ legacy: "v-5", fromDay: 1, toDay: 1, fromTime: "09:00", toTime: "18:00" }), "OK");
+  assert.equal(bookedDays(), 1);
+});
+
+pin("the ceiling applies with BOTH caps off — it is a sanity bound, not a workspace rule", () => {
+  clearBookings();
+  setCaps({ days: null, horizon: null });
+  assert.equal(
+    bookState({ legacy: "v-6", fromDay: 1, toDay: 400 }),
+    "GV46V",
+    "no group has opted into anything here; a years-long booking must still be refused",
+  );
+  assert.equal(bookingCount(), 0);
+});
+
+pin("an ADMIN is not exempt from the duration ceiling", () => {
+  clearBookings();
+  assert.equal(bookState({ legacy: "v-7", fromDay: 1, toDay: 200, actor: "anna@test.dk" }), "GV46V");
+});
+
+pin("BACKDATING is bounded too — a long window in the past is refused the same way", () => {
+  clearBookings();
+  assert.equal(bookState({ legacy: "v-8", fromDay: -200, toDay: -1 }), "GV46V");
+  assert.equal(bookState({ legacy: "v-9", fromDay: -92, toDay: -1 }), "OK", "92 days back still fits");
+});
+
+pin("the ceiling is judged BEFORE the horizon, so an over-long booking says GV46V", () => {
+  // With a tight horizon both rules fire on a far-future 400-day booking. The duration
+  // check sits with the window validation, ahead of every lookup, so the code the user
+  // sees names the thing they can actually fix by editing the form.
+  clearBookings();
+  setCaps({ days: null, horizon: 30 });
+  assert.equal(bookState({ legacy: "v-10", fromDay: 100, toDay: 500 }), "GV46V");
+  setCaps({ days: null, horizon: null });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 8. THE CAP COUNT UNDER A REAL INTERLEAVING (GV-426)
+// ═══════════════════════════════════════════════════════════════════════════════
+// The defect migration 162 closes only exists while two saves OVERLAP, so this has to
+// produce the overlap rather than approximate it. Two calls in a ROW pass under the
+// broken implementation too: the second reads a committed row and counts correctly.
+//
+// The advisory lock migration 063 added is keyed on the BOOKING
+// (ledger || ':booking:' || legacy_id), so two saves with DIFFERENT legacy ids take
+// different locks and never wait for each other, while the cap counts across every
+// booking the MEMBER holds. Both read the count before either inserts, both see room,
+// both are written. Migration 162 adds a second lock keyed on (ledger, member), taken
+// only when the cap is on.
+//
+//   A: begin; save booking 'race-a' (3 days)   → passes the count, holds the member lock
+//   B: begin; save booking 'race-b' (3 days)   → sent async, blocks on A's member lock
+//   (assert B really is blocked — otherwise the two never overlapped and this proves
+//    nothing)
+//   A: commit                                  → B unblocks, re-counts, sees A's 3 days
+//   B: refused with GV46D
+//
+// Without the member lock B never waits, counts 0 + 3 = 3 against a cap of 5, and both
+// bookings are stored — six booked days in a workspace that set the ceiling at five.
+//
+// dblink gives two extra sessions from inside one psql call, and dblink_send_query is
+// asynchronous, which is what makes the interleaving deterministic. Cribbed from
+// test-fuel-stop-verdict-contract.mjs's GV-415 probe.
+
+clearBookings();
+setCaps({ days: 5, horizon: null });
+
+if (psql(CONTAINER, DB, ["-c", "create extension if not exists dblink;"]).status !== 0) {
+  fail("Could not set up the interleaving probe (dblink unavailable?).");
+}
+
+// The RPC raises on refusal, and an exception crossing dblink_get_result would abort
+// the probe. So each side calls a wrapper that converts the outcome into a value.
+const bookHelper = `
+create or replace function public.gv426_try_book(
+  legacy text,
+  from_day integer,
+  to_day integer
+)
+returns text
+language plpgsql
+as $helper$
+begin
+  perform public.upsert_car_booking(
+    'caps',
+    legacy,
+    '${M(1)}',
+    ((((now() at time zone 'Europe/Copenhagen')::date + from_day) + time '09:00') at time zone 'Europe/Copenhagen'),
+    ((((now() at time zone 'Europe/Copenhagen')::date + to_day) + time '18:00') at time zone 'Europe/Copenhagen'),
+    null, null, null, null);
+  return 'OK';
+exception when others then
+  return sqlstate;
+end;
+$helper$;`;
+if (psql(CONTAINER, DB, ["-c", bookHelper]).status !== 0) fail("Could not create the booking helper.");
+
+// Each dblink session is its own backend with its own GUCs, so the JWT claims have to
+// be SET on the connection or the membership gate never fires there.
+const CLAIMS = `set request.jwt.claims = ''{"email":"anna@test.dk","role":"authenticated"}''`;
+
+const raceProbe = `
+create or replace function public.gv426_race_probe(winner_call text, loser_call text)
+returns jsonb
+language plpgsql
+as $probe$
+declare
+  winner_result text;
+  loser_result text;
+  blocked integer := 0;
+  attempts integer := 0;
+begin
+  perform dblink_connect('gv426_a', 'dbname=' || current_database());
+  perform dblink_connect('gv426_b', 'dbname=' || current_database());
+  perform dblink_exec('gv426_a', '${CLAIMS}');
+  perform dblink_exec('gv426_b', '${CLAIMS}');
+  perform dblink_exec('gv426_a', 'begin');
+  perform dblink_exec('gv426_b', 'begin');
+
+  -- A saves and stays open, so its transaction-scoped advisory locks are still held.
+  select r into winner_result from dblink('gv426_a', winner_call) as w(r text);
+
+  -- B saves too. Asynchronous, so it can sit on A's lock while we watch.
+  perform dblink_send_query('gv426_b', loser_call);
+
+  -- Wait until B is demonstrably blocked. pg_stat_activity is snapshotted per
+  -- transaction, so the snapshot has to be cleared on every pass or this loop reads
+  -- the same stale row 100 times.
+  while attempts < 100 and blocked = 0 loop
+    perform pg_sleep(0.1);
+    perform pg_stat_clear_snapshot();
+    select count(*) into blocked
+    from pg_stat_activity a
+    where a.datname = current_database()
+      and a.pid <> pg_backend_pid()
+      and a.wait_event_type = 'Lock'
+      and a.query like '%gv426_try_book%';
+    attempts := attempts + 1;
+  end loop;
+
+  perform dblink_exec('gv426_a', 'commit');
+
+  select r into loser_result from dblink_get_result('gv426_b') as l(r text);
+  -- libpq hands back one result per send; the empty trailing one has to be drained or
+  -- the next command on that connection errors with "another command is already in
+  -- progress".
+  perform * from dblink_get_result('gv426_b') as l(r text);
+  perform dblink_exec('gv426_b', 'commit');
+  perform dblink_disconnect('gv426_a');
+  perform dblink_disconnect('gv426_b');
+
+  return jsonb_build_object(
+    'winner', winner_result,
+    'loser', loser_result,
+    'loser_blocked_on_winner', blocked > 0
+  );
+end;
+$probe$;`;
+if (psql(CONTAINER, DB, ["-c", raceProbe]).status !== 0) fail("Could not create the interleaving probe.");
+
+const race = JSON.parse(
+  psql(CONTAINER, DB, [
+    "-t",
+    "-A",
+    "-c",
+    `select public.gv426_race_probe(
+       $$select public.gv426_try_book('race-a', 1, 3)$$,
+       $$select public.gv426_try_book('race-b', 10, 12)$$
+     )::text;`,
+  ]).stdout.trim(),
+);
+
+pin("two CONCURRENT bookings for one member really do overlap on the member lock", () => {
+  assert.equal(
+    race.loser_blocked_on_winner,
+    true,
+    "the second save never waited on the first, so the two never overlapped and this run proves " +
+      "nothing about the race. Sequential saves pass under the unlocked implementation too.",
+  );
+});
+
+pin("the loser is refused with GV46D — the cap cannot be walked past by two writers", () => {
+  assert.equal(race.winner, "OK", "the first save fits the cap and must land");
+  assert.equal(
+    race.loser,
+    "GV46D",
+    "three days plus three days is six against a cap of five. Without the member-scoped lock the " +
+      "loser counts against a snapshot taken before the winner committed, sees 3, and is saved.",
+  );
+});
+
+pin("only ONE of the two concurrent bookings is stored, and the cap is intact", () => {
+  assert.equal(bookingCount(), 1, "a second row here is the over-booking the lock exists to prevent");
+  assert.equal(bookedDays(), 3, "the member holds three days, not six, against a cap of five");
+});
+
+// ── The other half of the promise: a cap-less workspace gains NO contention ────
+// The lock has to be free for every group that never opted in, or migration 162 pays
+// for a rule almost nobody has turned on with serialization everybody feels. Proved
+// two ways: by counting the advisory locks the session actually holds, and by trying
+// the member key from another session — the session-level and transaction-level
+// advisory functions share one lock space, so a successful try is proof the key is
+// not held rather than proof of a lock count.
+
+const MEMBER_KEY = `caps:bookingcap:${M(1)}`;
+
+const lockProbe = `
+create or replace function public.gv426_lock_probe(call_sql text, member_key text)
+returns jsonb
+language plpgsql
+as $probe$
+declare
+  probe_pid integer;
+  advisory_locks integer;
+  member_key_free boolean;
+begin
+  perform dblink_connect('gv426_lp', 'dbname=' || current_database());
+  perform dblink_exec('gv426_lp', '${CLAIMS}');
+  perform dblink_exec('gv426_lp', 'begin');
+  select p into probe_pid from dblink('gv426_lp', 'select pg_backend_pid()') as t(p integer);
+  perform * from dblink('gv426_lp', call_sql) as t(r text);
+
+  select count(*)::integer into advisory_locks
+  from pg_locks
+  where locktype = 'advisory' and pid = probe_pid and granted;
+
+  select pg_try_advisory_lock(hashtext(member_key)) into member_key_free;
+  if member_key_free then
+    perform pg_advisory_unlock(hashtext(member_key));
+  end if;
+
+  -- Nothing the probe wrote is kept; the point was only which locks were taken.
+  perform dblink_exec('gv426_lp', 'rollback');
+  perform dblink_disconnect('gv426_lp');
+
+  return jsonb_build_object('advisory_locks', advisory_locks, 'member_key_free', member_key_free);
+end;
+$probe$;`;
+if (psql(CONTAINER, DB, ["-c", lockProbe]).status !== 0) fail("Could not create the lock probe.");
+
+const lockProbeRun = (legacy) =>
+  JSON.parse(
+    psql(CONTAINER, DB, [
+      "-t",
+      "-A",
+      "-c",
+      `select public.gv426_lock_probe(
+         $$select public.gv426_try_book('${legacy}', 1, 2)$$,
+         '${MEMBER_KEY}'
+       )::text;`,
+    ]).stdout.trim(),
+  );
+
+clearBookings();
+setCaps({ days: null, horizon: null });
+
+pin("with the day cap NULL the member lock is NOT taken — no new contention for anyone", () => {
+  const probe = lockProbeRun("lock-off");
+  assert.equal(
+    probe.advisory_locks,
+    1,
+    "a cap-less save must hold exactly the ONE per-booking lock migration 063 added. Two here means " +
+      "the member lock escaped its branch and every group in the product now serializes on it.",
+  );
+  assert.equal(
+    probe.member_key_free,
+    true,
+    "and the (ledger, member) key specifically must be free — session and transaction advisory locks " +
+      "share one space, so another session can take it while the save is still open",
+  );
+});
+
+setCaps({ days: 30, horizon: null });
+
+pin("with the day cap SET the member lock IS taken, on the (ledger, member) key", () => {
+  const probe = lockProbeRun("lock-on");
+  assert.equal(
+    probe.advisory_locks,
+    2,
+    "the per-booking lock plus the member lock. One here means the count is still unserialized.",
+  );
+  assert.equal(
+    probe.member_key_free,
+    false,
+    `pg_try_advisory_lock(hashtext('${MEMBER_KEY}')) must FAIL while the save is open. This is the ` +
+      "key identity check: a lock on any other key would still make the count above 2.",
+  );
+});
+
+setCaps({ days: null, horizon: null });
+clearBookings();
+
+// ── Part 9: the static half ────────────────────────────────────────────────────
 // The equivalence checker proves the migration and supabase-schema.sql replay
 // identically; this proves the shape is the INTENDED one rather than identically
 // wrong in both, which is the failure a replay diff cannot see.
@@ -559,11 +908,89 @@ pin("the two errcodes are distinct and are the documented ones", () => {
   assert.ok(migration.includes("errcode = 'GV46H'"), "the horizon must raise GV46H");
 });
 
+// Migration 162's static half (GV-426). The lock-count pins above prove the member
+// lock is conditional by observation; this proves it is conditional by CONSTRUCTION,
+// which is the version that survives someone rewriting the branch.
+
+const lockMigration = readFileSync(
+  path.join(ROOT, "supabase/migrations/162_booking_cap_lock_and_duration.sql"),
+  "utf8",
+);
+
+pin("migration 162 raises GV46V for the duration ceiling, and names 92 in the Danish message", () => {
+  assert.ok(lockMigration.includes("errcode = 'GV46V'"), "the duration ceiling must raise GV46V");
+  assert.match(
+    lockMigration,
+    /raise exception 'Bookingen varer % dage, og en booking kan højst vare 92 dage'/,
+    "the refusal has to name the limit — a bare 'for lang' leaves the user guessing what fits",
+  );
+});
+
+pin("92 is a hard constant: no column, no setter RPC, nothing a workspace can change", () => {
+  assert.doesNotMatch(
+    lockMigration,
+    /alter table[\s\S]{0,200}booking_max_duration|set_booking_max_duration/i,
+    "the ceiling is a sanity bound, not a policy. A setting would need a ceiling of its own.",
+  );
+});
+
+pin("the member lock sits INSIDE the `cap_max_days is not null` branch", () => {
+  // The branch is what keeps every cap-less workspace free of new contention. Matched
+  // as "the branch opens, and the next advisory lock is the member one, with no `end
+  // if` in between" so the lock cannot be hoisted out without this failing.
+  const branch = lockMigration.match(
+    /if cap_max_days is not null then([\s\S]*?)would_hold_days := public\.booked_days_in_open_period\(/,
+  );
+  assert.ok(branch, "the day-cap branch must still open before the count");
+  assert.match(
+    branch[1],
+    /perform pg_advisory_xact_lock\(hashtext\(target_ledger_id \|\| ':bookingcap:' \|\| booking_member_id::text\)\);/,
+    "the (ledger, member) lock must be taken inside the branch and before the count",
+  );
+  assert.doesNotMatch(branch[1], /end if;/, "nothing may close the branch between the lock and the count");
+});
+
+pin("the member key is DISTINCT from the per-booking key", () => {
+  assert.ok(
+    lockMigration.includes("':booking:' || legacy_booking_id"),
+    "the per-booking lock from migration 063 must survive",
+  );
+  assert.ok(
+    lockMigration.includes("':bookingcap:' || booking_member_id::text"),
+    "and the member lock must use its own infix, or the two key spaces collide",
+  );
+});
+
+pin("the GV-421 conflict guard still sits AHEAD of the caps", () => {
+  const guard = lockMigration.indexOf("errcode = 'GV42B'");
+  const dayCap = lockMigration.indexOf("errcode = 'GV46D'");
+  const horizon = lockMigration.indexOf("errcode = 'GV46H'");
+  assert.ok(guard > 0 && dayCap > 0 && horizon > 0, "all three codes must still be in the function");
+  assert.ok(
+    guard < horizon && guard < dayCap,
+    'migration 160 put the precondition first on purpose: "loftet er nået" is the wrong sentence ' +
+      "for a row that simply moved",
+  );
+});
+
+pin("the duration check is judged before any ledger lookup", () => {
+  const duration = lockMigration.indexOf("errcode = 'GV46V'");
+  const membership = lockMigration.indexOf("public.is_ledger_member(target_ledger_id)");
+  assert.ok(duration > 0 && membership > 0);
+  assert.ok(
+    duration < membership,
+    "it judges only the two timestamps the caller sent, so it needs no lookup and leaks nothing",
+  );
+});
+
 removeContainer(CONTAINER);
 
 process.stdout.write(
   `\nok - booking caps contract: ${checked} checks. Both caps are OFF by default and byte-identical when null; ` +
     `a day is an inclusive calendar day in Europe/Copenhagen counted DISTINCT within the open period; ` +
     `the day cap accepts exactly ON the cap and refuses one past it with GV46D; the horizon accepts day N ` +
-    `at any hour and refuses day N+1 with GV46H; backdating is untouched.\n`,
+    `at any hour and refuses day N+1 with GV46H; backdating is untouched. A booking spans at most 92 ` +
+    `inclusive Copenhagen days (GV46V at 93, with both caps off, for admins and for backdating alike), ` +
+    `and the day cap survives a REAL interleaving: the second of two concurrent saves blocks on the ` +
+    `(ledger, member) advisory lock and is refused, while a cap-less workspace takes no member lock at all.\n`,
 );
