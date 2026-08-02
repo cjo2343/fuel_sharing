@@ -38,8 +38,13 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   "fuel_created",
   "trip_fuel_closed",
 
-  // Bookings (migrations 051, 063).
+  // Bookings (migrations 051, 063) and the handover that ends one (164).
   "booking_created",
+  // handover_created is written on CREATE only (never on an edit) and is feed-visible
+  // on purpose: the whole point of a handover is that the NEXT driver learns where the
+  // car and its keys were left, and the feed is where the group looks. The title comes
+  // from the client, so it says what happened without repeating the free-text location.
+  "handover_created",
 
   // Members (migrations 059, 079, 096, 112).
   "member_joined",

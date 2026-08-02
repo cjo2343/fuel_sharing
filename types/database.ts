@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 163 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 164 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -51,6 +51,79 @@ export type Database = {
           variant?: string
         }
         Relationships: []
+      }
+      booking_handovers: {
+        Row: {
+          author_member_id: string
+          booking_id: string
+          condition_note: string | null
+          condition_ok: boolean | null
+          created_at: string
+          end_odometer: number | null
+          fuel_fraction: number | null
+          id: string
+          key_location: string | null
+          keys_confirmed: boolean
+          ledger_id: string
+          note_to_next: string | null
+          parking_location: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_member_id: string
+          booking_id: string
+          condition_note?: string | null
+          condition_ok?: boolean | null
+          created_at?: string
+          end_odometer?: number | null
+          fuel_fraction?: number | null
+          id?: string
+          key_location?: string | null
+          keys_confirmed?: boolean
+          ledger_id: string
+          note_to_next?: string | null
+          parking_location?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_member_id?: string
+          booking_id?: string
+          condition_note?: string | null
+          condition_ok?: boolean | null
+          created_at?: string
+          end_odometer?: number | null
+          fuel_fraction?: number | null
+          id?: string
+          key_location?: string | null
+          keys_confirmed?: boolean
+          ledger_id?: string
+          note_to_next?: string | null
+          parking_location?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_handovers_author_member_id_fkey"
+            columns: ["author_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_handovers_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: true
+            referencedRelation: "car_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_handovers_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       car_bookings: {
         Row: {
@@ -2432,6 +2505,24 @@ export type Database = {
           repair_status_value?: string
           target_incident_id: string
           title_value?: string
+        }
+        Returns: Json
+      }
+      upsert_booking_handover: {
+        Args: {
+          condition_note_value?: string
+          condition_ok_value?: boolean
+          end_odometer_value?: number
+          event_body?: string
+          event_title?: string
+          expected_updated_at?: string
+          fuel_fraction_value?: number
+          key_location_value?: string
+          keys_confirmed_value?: boolean
+          note_to_next_value?: string
+          parking_location_value?: string
+          target_booking_id: string
+          target_ledger_id: string
         }
         Returns: Json
       }
