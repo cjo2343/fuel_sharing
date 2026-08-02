@@ -94,6 +94,12 @@ const scripts = [
   // it earns its place for the reason the two lines above do: if the scanner breaks, the
   // failure must read as "the scanner is broken", not as "every migration is unmirrored".
   "node tools/test-tracker-insert-scan.mjs",
+  // Consent contract for the newsletter list (GV-366). Docker-free on purpose: every
+  // legal property of a marketing list is about something ABSENT — no seeding path from
+  // the product's own users, no policy or grant reopening the table, no tombstone
+  // holding the address of the person who unsubscribed — and the role matrix can only
+  // exercise paths that exist, so it cannot fail when one is ADDED.
+  "node tools/test-newsletter-consent-contract.mjs",
   // Unit test for the cross-repo hot-path mirror scanner (GV-393). Same reason as the
   // three lines above: check-hotpath-mirror.mjs only does real work where
   // govehlo-mobile is checked out (the umbrella workflow, or a dev machine), so

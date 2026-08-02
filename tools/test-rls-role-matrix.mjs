@@ -3367,6 +3367,153 @@ end`,
          perform public.confirm_booking_fuel_reminders('[]'::jsonb);`,
     expect: "ok",
   }),
+
+  // ── Newsletter list (GV-366, migration 161) ────────────────────────────────
+  //
+  // A marketing list is the one table in this schema where "the server can read it"
+  // buys nothing, so migration 161 revokes every grant INCLUDING service_role and puts
+  // the whole flow behind three security-definer functions. That is an unusual posture
+  // and the only thing standing behind it is these cases: the guard the design leans on
+  // is not the revoke line, it is the proof that a real Postgres denies the read.
+  rpcCase({
+    name: "newsletter-table-anon-blocked",
+    desc: "anon cannot read the newsletter address list",
+    actor: ANON,
+    op: `perform 1 from public.newsletter_subscribers;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-table-authenticated-blocked",
+    desc: "a signed-in app user cannot read the newsletter address list",
+    actor: A,
+    op: `perform 1 from public.newsletter_subscribers;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-table-service-role-blocked",
+    desc: "even the service role — the key the Pages Functions hold — cannot query the list",
+    actor: SERVICE,
+    op: `perform 1 from public.newsletter_subscribers;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-table-service-role-insert-blocked",
+    desc: "the service role cannot write a subscriber row directly either — only the RPCs",
+    actor: SERVICE,
+    op: `insert into public.newsletter_subscribers (email, consent_text_version, confirm_token_hash, unsubscribe_token_hash)
+         values ('direct@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-request-anon-blocked",
+    desc: "anon cannot call the subscribe RPC (the public form goes through the Pages Function)",
+    actor: ANON,
+    op: `perform public.newsletter_request_subscription('x@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-request-authenticated-blocked",
+    desc: "a signed-in app user cannot call the subscribe RPC",
+    actor: A,
+    op: `perform public.newsletter_request_subscription('x@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-confirm-authenticated-blocked",
+    desc: "a signed-in app user cannot confirm a subscription on someone else's behalf",
+    actor: A,
+    op: `perform public.newsletter_confirm_subscription(repeat('a', 64));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-unsubscribe-anon-blocked",
+    desc: "anon cannot call the unsubscribe RPC directly",
+    actor: ANON,
+    op: `perform public.newsletter_unsubscribe(repeat('b', 64));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-double-opt-in-round-trip",
+    desc: "the service role can request, confirm and unsubscribe — and the row is GONE afterwards",
+    actor: SERVICE,
+    op: `perform public.newsletter_request_subscription('signup@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));
+         perform public.newsletter_confirm_subscription(repeat('a', 64));
+         perform public.newsletter_unsubscribe(repeat('b', 64));`,
+    expect: "ok",
+    // Hard-delete, not a tombstone: article 17 is satisfied by the click itself, so
+    // there must be nothing left carrying the address.
+    post: `if exists (select 1 from public.newsletter_subscribers where email = 'signup@example.dk') then
+             raise exception 'CASEFAIL newsletter-double-opt-in-round-trip: unsubscribing left a row behind';
+           end if;`,
+  }),
+  rpcCase({
+    name: "newsletter-confirm-is-single-use",
+    desc: "a confirmation link works once; replaying it reports invalid rather than re-confirming",
+    actor: SERVICE,
+    op: `declare v_first jsonb; v_second jsonb;
+         begin
+           perform public.newsletter_request_subscription('once@example.dk', '2026-08-01', repeat('c', 64), repeat('d', 64));
+           v_first := public.newsletter_confirm_subscription(repeat('c', 64));
+           v_second := public.newsletter_confirm_subscription(repeat('c', 64));
+           if v_first ->> 'status' <> 'confirmed' then
+             raise exception 'CASEFAIL newsletter-confirm-is-single-use: first click did not confirm (%)', v_first;
+           end if;
+           if v_second ->> 'status' <> 'invalid' then
+             raise exception 'CASEFAIL newsletter-confirm-is-single-use: replayed link was accepted again (%)', v_second;
+           end if;
+         end;`,
+    expect: "ok",
+  }),
+  rpcCase({
+    name: "newsletter-pending-expires-after-window",
+    desc: "a pending signup older than the 7-day window can no longer be confirmed, and is purged by the next signup",
+    actor: SERVICE,
+    op: `declare v_result jsonb;
+         begin
+           perform public.newsletter_request_subscription('stale@example.dk', '2026-08-01', repeat('e', 64), repeat('f', 64));
+           -- Age the request past the window. The Function never does this and cannot:
+           -- service_role has no grant on the table, which is the point of the four deny
+           -- cases above. So step out of the role for the one statement that only the
+           -- passage of time would otherwise produce, then step back in.
+           reset role;
+           update public.newsletter_subscribers set requested_at = now() - interval '8 days'
+             where email = 'stale@example.dk';
+           set local role service_role;
+           v_result := public.newsletter_confirm_subscription(repeat('e', 64));
+           if v_result ->> 'status' <> 'invalid' then
+             raise exception 'CASEFAIL newsletter-pending-expires-after-window: an expired token still confirmed (%)', v_result;
+           end if;
+           -- The next person's signup is what sweeps it: an abandoned address must not
+           -- depend on that particular person coming back to be removed.
+           perform public.newsletter_request_subscription('fresh@example.dk', '2026-08-01', repeat('1', 64), repeat('2', 64));
+         end;`,
+    expect: "ok",
+    // The sweep's effect is asserted in `post`, which the template runs after `reset
+    // role` — nothing inside the case body may read the table, because service_role has
+    // no grant on it. That denial is the point of the four cases above, so working
+    // around it here would be testing a schema this repo does not ship.
+    post: `if exists (select 1 from public.newsletter_subscribers where email = 'stale@example.dk') then
+             raise exception 'CASEFAIL newsletter-pending-expires-after-window: the expired pending row survived the next signup''s sweep';
+           end if;
+           if not exists (select 1 from public.newsletter_subscribers where email = 'fresh@example.dk') then
+             raise exception 'CASEFAIL newsletter-pending-expires-after-window: the sweep took the live pending row with it';
+           end if;`,
+  }),
+  rpcCase({
+    name: "newsletter-resubmit-does-not-remail-a-confirmed-address",
+    desc: "re-submitting an already-confirmed address returns send_mail false — the database, not the endpoint, decides",
+    actor: SERVICE,
+    op: `declare v_again jsonb;
+         begin
+           perform public.newsletter_request_subscription('member@example.dk', '2026-08-01', repeat('7', 64), repeat('8', 64));
+           perform public.newsletter_confirm_subscription(repeat('7', 64));
+           v_again := public.newsletter_request_subscription('member@example.dk', '2026-08-01', repeat('9', 64), repeat('0', 64));
+           if v_again ->> 'status' <> 'already_confirmed' or (v_again ->> 'send_mail') <> 'false' then
+             raise exception 'CASEFAIL newsletter-resubmit-does-not-remail-a-confirmed-address: %', v_again;
+           end if;
+         end;`,
+    expect: "ok",
+  }),
 ];
 
 // ── 7. Run ───────────────────────────────────────────────────────────────────
