@@ -170,12 +170,19 @@ const fuelState = ({ legacy, amount = 100, station = "", token = "null", actor =
 // `from`/`to` are whole days from now. Every booking case below gets its OWN
 // window: car_bookings carries an overlap exclusion constraint, so two fixtures
 // sharing a day would fail with 23P01 and say nothing about preconditions.
+// Booking windows are anchored to 09:00-13:00 UTC on the target day rather than to
+// the test run's own time of day. `now() + interval 'N day' + interval '4 hour'`
+// crossed Copenhagen midnight whenever the suite ran between 20:00 and 24:00 local,
+// which made the ordering pin's one-day seed count as TWO days against its cap of 1
+// and turned every evening validate/CI run red (found 2026-08-02 at 21:17). 09:00Z
+// is 10:00 or 11:00 in Copenhagen year-round, so start and end always share a day.
 const bookingState = ({ legacy, purpose = "", from = 1, to = from, token = "null", actor = "anna@test.dk" }) =>
   sqlstateOf(
     actor,
     `perform public.upsert_car_booking(
        '${L}', '${legacy}', '${M(1)}',
-       now() + interval '${from} day', now() + interval '${to} day' + interval '4 hour',
+       date_trunc('day', now()) + interval '${from} day' + interval '9 hour',
+       date_trunc('day', now()) + interval '${to} day' + interval '13 hour',
        ${purpose === "" ? "null" : `'${purpose}'`}, null, null, null, ${token});`,
   );
 
