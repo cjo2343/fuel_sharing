@@ -36,7 +36,10 @@ Cloudflare Access + Supabase-login).
 - **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos.
   Ved kvitterings-OCR: Mindee (planlagt — se
   subprocessors.md). Ved ruteplanlægning: GraphHopper (DE) og Photon (koordinater,
-  ingen konto-id'er).
+  ingen konto-id'er) — samt Cloudflare KV som korttids-cache (GV-428): den
+  normaliserede rute (geometri, alternativer, krydsninger) gemmes i 10 minutter
+  under en hashet koordinat-nøgle uden bruger-id eller adressetekst, så gentagne
+  opslag ikke koster et nyt GraphHopper-kald. Se retention.md-rækken "Rute-cache".
 - **Sletning:** Regnskabs- og hændelsesdata består som fælles, pseudonymiseret
   køretøjshistorik efter kontosletning (øvrige medlemmers regnskab og dokumentation,
   art. 17(3)); fotoets forfatterkobling fjernes. Se deletion-limitations.md.
