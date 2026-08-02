@@ -52,6 +52,18 @@ const scripts = [
   // Postgres. Warns and exits 0 without Docker, and warns while govehlo-mobile's twin
   // has not landed; a PARTIAL mobile mirror fails hard. The umbrella runs it --strict.
   "node tools/test-crossing-split-contract.mjs",
+  // Anti-drift contract for the booking caps — booked days + horizon (GVM-463). Docker
+  // for the same reason as the two above, plus the one that is specific to this pair:
+  // migration 159 is the first booking setting that REJECTS a write rather than letting
+  // the client decide (152 only stores its number), so the guarantee under test is that
+  // a stale client cannot over-book — and nothing but a real Postgres refusing a real
+  // booking can certify that. Pins both boundaries (exactly ON the day cap is accepted,
+  // one past it is GV46D; horizon day N at any hour is accepted, day N+1 is GV46H), that
+  // a day is an inclusive calendar day so a booking spanning midnight counts 2, and —
+  // the one that protects live data — that both caps NULL is byte-identical behaviour,
+  // since every existing workspace has them null. Warns and exits 0 without Docker; the
+  // umbrella runs it --strict.
+  "node tools/test-booking-caps-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths
