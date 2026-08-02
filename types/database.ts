@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 158 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 159 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -511,6 +511,8 @@ export type Database = {
       ledgers: {
         Row: {
           booking_future_cap_per_member: number | null
+          booking_horizon_days: number | null
+          booking_max_days_per_member: number | null
           bootstrap_locked_at: string | null
           close_reminder_enabled: boolean
           created_at: string
@@ -568,6 +570,8 @@ export type Database = {
         }
         Insert: {
           booking_future_cap_per_member?: number | null
+          booking_horizon_days?: number | null
+          booking_max_days_per_member?: number | null
           bootstrap_locked_at?: string | null
           close_reminder_enabled?: boolean
           created_at?: string
@@ -625,6 +629,8 @@ export type Database = {
         }
         Update: {
           booking_future_cap_per_member?: number | null
+          booking_horizon_days?: number | null
+          booking_max_days_per_member?: number | null
           bootstrap_locked_at?: string | null
           close_reminder_enabled?: boolean
           created_at?: string
@@ -1744,6 +1750,16 @@ export type Database = {
         }
         Returns: Json
       }
+      booked_days_in_open_period: {
+        Args: {
+          exclude_booking_id?: string
+          extra_end?: string
+          extra_start?: string
+          target_ledger_id: string
+          target_member_id: string
+        }
+        Returns: number
+      }
       calculate_period_entry_fingerprint: {
         Args: { target_ledger_id: string; target_period_id: string }
         Returns: string
@@ -2166,6 +2182,24 @@ export type Database = {
         Returns: Json
       }
       set_booking_future_cap: {
+        Args: {
+          cap_value: number
+          event_body?: string
+          event_title?: string
+          target_ledger_id: string
+        }
+        Returns: undefined
+      }
+      set_booking_horizon_days: {
+        Args: {
+          event_body?: string
+          event_title?: string
+          horizon_value: number
+          target_ledger_id: string
+        }
+        Returns: undefined
+      }
+      set_booking_max_days_per_member: {
         Args: {
           cap_value: number
           event_body?: string
