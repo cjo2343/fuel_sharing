@@ -39,6 +39,21 @@
 # stale) with nothing blocking a single merge in the meantime. A post-hoc guard
 # that nobody has to clear is a guard that trains people to ignore red.
 #
+# GV-424 then split the severity in two. Every multi-repo wave NECESSARILY turns
+# this job red on its pull request: the canonical half carries a token, a
+# migration or a type generation its sibling MAINS cannot have yet, because the
+# sibling halves are still open PRs in the same declared merge set (#217, #220 —
+# every such red this repo has seen was predicted in the PR body, none was a
+# find). A red that only ever means "mid-rollout, as announced" trains people to
+# ignore red just as surely as the pre-GV-391 kind did. So:
+#   - pull_request runs are ADVISORY: `continue-on-error` below keeps the full
+#     diff in the log and the ::error annotations on the PR, but does not block.
+#   - push-to-main, schedule and dispatch runs stay HARD failures. That is the
+#     run that fires minutes after a merge and catches the genuinely forgotten
+#     sibling half — the GV-391 failure mode — before anything builds on it.
+# The release-gates step (GV-422) chose the same two-tier model for the same
+# reason; keep the two in step if this policy ever changes.
+#
 # No `paths:` filter, deliberately. Two reasons, and the second is the decisive one:
 #   1. There is no honest filter to write. These checks span design tokens, the
 #      migration directory, the invite host and the generated DB types — close to
@@ -140,6 +155,10 @@ jobs:
   umbrella:
     name: Cross-repo consistency
     runs-on: ubuntu-latest
+    # GV-424: advisory on pull requests, hard everywhere else — see the header.
+    # A PR in a declared merge set is EXPECTED to disagree with sibling mains;
+    # the push-to-main run minutes later is the one that must never be ignored.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
       # -----------------------------------------------------------------------
       # Token probe (was its own `preflight` job until GV-394)
