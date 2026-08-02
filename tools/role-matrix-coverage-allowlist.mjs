@@ -61,6 +61,24 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
+  {
+    fn: 'upsert_booking_handover',
+    reason:
+      'Deliberately unreachable RIGHT NOW, and dated accordingly. GVM-529 is slice 1 of the ' +
+      'Vehicle Handover epic (GVM-519) and ships the data model ALONE — the table, the write ' +
+      'RPC and the feed event — because the SQL has to be applied by hand in the Supabase SQL ' +
+      'Editor before a client that calls it can ship; a mobile build sending a body PostgREST ' +
+      'cannot resolve fails with PGRST202 and cannot save at all. So the sequencing is ' +
+      'migration first, sheet second (slice 2, GVM-530), and for exactly that window this ' +
+      'guard is the only caller. That is the shape GV-277 warns about, which is why it is ' +
+      'written here rather than left silent: the difference is that this one has a named ' +
+      'successor ticket and a date, not an indefinite "somebody will wire it up". What ' +
+      'changes the answer: govehlo-mobile calling it, at which point the guard reports this ' +
+      'entry STALE and the fix is to DELETE it — exactly what happened to set_tank_state in ' +
+      'GV-411. If the review date arrives and no client calls it, the honest options are to ' +
+      'ship the sheet, or to drop the table and the RPC rather than renew this.',
+    reviewBy: '2026-11-01',
+  },
   // set_tank_state's entry was deleted in GV-411, exactly as the entry itself said it
   // should be: it existed only while the mobile stamp writer (GVM-480) was unmerged, and
   // that has landed — findClientCallers now sees govehlo-mobile/src/lib/supabase-helpers.ts

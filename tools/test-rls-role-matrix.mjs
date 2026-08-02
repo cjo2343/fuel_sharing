@@ -377,6 +377,28 @@ const SOFT_DELETE_WS1 = `perform public.admin_soft_delete_workspace('${WS1}', tr
 const LOG_INCIDENT_B = `perform public.log_vehicle_incident('${WS1}', current_date, 'Ridse i lak', 'Ridse ved parkering', null, null, null, null, 'open', null, 'Skade logget', 'Bo loggede en skade');`;
 const LATEST_WS1_INCIDENT = `(select id from public.vehicle_incidents where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
 
+// GVM-529 vehicle-handover helpers (migration 164). Two bookings in ws1 — one held by
+// B (the normal writer) and one held by the INACTIVE member D — inserted as the
+// service role, because this suite's fixture has no bookings of its own and routing
+// them through upsert_car_booking would drag migration 159/162's caps into a failure
+// message that is not about handovers. Windows are anchored to 09:00–13:00 UTC on a
+// whole day rather than to `now() + N hours`: PR #224's lesson is that the latter
+// crosses Copenhagen midnight on any evening run.
+const HANDOVER_BOOKING_B = "55555555-0000-0000-0000-000000000001";
+const HANDOVER_BOOKING_D = "55555555-0000-0000-0000-000000000002";
+const SEED_HANDOVER_BOOKINGS = `insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
+  ('${HANDOVER_BOOKING_B}', '${WS1}', '${ID.B}',
+   date_trunc('day', now()) + interval '1 day' + interval '9 hour',
+   date_trunc('day', now()) + interval '1 day' + interval '13 hour', '${ID.B}'),
+  ('${HANDOVER_BOOKING_D}', '${WS1}', '${ID.D}',
+   date_trunc('day', now()) + interval '2 day' + interval '9 hour',
+   date_trunc('day', now()) + interval '2 day' + interval '13 hour', '${ID.B}');`;
+// B hands the car over. The event_title arg makes the CREATE write a feed event.
+const SAVE_HANDOVER_B = `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+  82345, 0.5, 'P-kaelder niveau 2, plads 14', 'Noegler i postkassen', true, null,
+  'Husk at tanke', true, 'Bo har afleveret bilen', 'Parkeret i P-kaelderen');`;
+const HANDOVER_TOKEN_B = `(select bh.updated_at from public.booking_handovers bh where bh.booking_id = '${HANDOVER_BOOKING_B}')`;
+
 // Push devices for the migration-150 target RPCs (GV-398). Deliberately shaped to
 // carry the two arguments those functions exist for: one owner with TWO devices (so
 // pruning by owner instead of by token would take the live one down with the dead
@@ -3513,6 +3535,189 @@ end`,
            end if;
          end;`,
     expect: "ok",
+  }),
+
+  // ── 15. Vehicle handover (migration 164: GVM-529) ─────────────────────────
+  // The handover is the first table in the platform whose free text is
+  // personal-adjacent LOCATION data — where a shared car is parked, where its keys
+  // are kept. So the cross-workspace read case below is not a formality: it is the
+  // one failure here that would be a data-protection incident rather than a bug.
+  // Reads are for every member of the workspace (the NEXT driver is the audience);
+  // writes are for the booking's member, the linked trip's driver, or an admin, and
+  // go only through the RPC — the table has no write policy at all.
+  rpcCase({
+    name: "handover-booking-member-writes",
+    desc: "B, whose booking it is, saves the handover for it",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: B,
+    op: SAVE_HANDOVER_B,
+    expect: "ok",
+    post: `if not exists (select 1 from public.booking_handovers
+        where booking_id = '${HANDOVER_BOOKING_B}' and ledger_id = '${WS1}'
+          and author_member_id = '${ID.B}' and keys_confirmed = true
+          and parking_location = 'P-kaelder niveau 2, plads 14')
+      then raise exception 'CASEFAIL handover-booking-member-writes: row not created with author = caller'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-bystander-write-denied",
+    desc: "bystander C, an active member who is neither the booking member, the trip driver nor an admin, cannot author it",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: C,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      null, null, 'Cilles gaet', null, null, null, null, false, null, null, null);`,
+    expect: "42501",
+    post: `if exists (select 1 from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
+      then raise exception 'CASEFAIL handover-bystander-write-denied: a refused write left a row behind'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-admin-writes",
+    desc: "workspace admin A can save the handover for another member booking (the GV-253 escape hatch)",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: A,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      null, null, 'Annas rettelse', null, null, null, null, false, null, null, null);`,
+    expect: "ok",
+    post: `if (select author_member_id from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}') <> '${A_ID}'
+      then raise exception 'CASEFAIL handover-admin-writes: author is not the admin who wrote it'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-foreign-member-write-denied",
+    desc: "member E of another workspace cannot save a handover into ws1",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: E,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      null, null, 'Eriks fusk', null, null, null, null, false, null, null, null);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "handover-inactive-member-write-denied",
+    desc: "D, deactivated but still holding a booking, cannot save its handover",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: D,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_D}'::uuid,
+      null, null, 'Dans forsoeg', null, null, null, null, false, null, null, null);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "handover-anon-write-denied",
+    desc: "anon cannot save a handover",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: ANON,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      null, null, 'anon', null, null, null, null, false, null, null, null);`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "handover-member-can-read-workspace",
+    desc: "bystander member C READS the handover — the next driver is exactly who it is for",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: C,
+    assert: `if not exists (select 1 from public.booking_handovers
+        where ledger_id = '${WS1}' and parking_location = 'P-kaelder niveau 2, plads 14') then
+      raise exception 'CASEFAIL handover-member-can-read-workspace: a member of the group could not see where the car is';
+    end if`,
+  }),
+  queryCase({
+    name: "handover-outsider-isolated",
+    desc: "E, a signed-in member of ANOTHER workspace, cannot read ws1 parking and key locations",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: E,
+    assert: `if exists (select 1 from public.booking_handovers where ledger_id = '${WS1}') then
+      raise exception 'CASEFAIL handover-outsider-isolated: a stranger with a valid JWT read another workspace parking location';
+    end if`,
+  }),
+  rpcCase({
+    name: "handover-anon-read-denied",
+    desc: "anon has no grant on the table at all, so the denial comes from the privilege system before RLS",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: ANON,
+    op: `perform 1 from public.booking_handovers;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "handover-direct-insert-denied",
+    desc: "authenticated admin A cannot bypass the RPC with a direct table INSERT",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: A,
+    op: `insert into public.booking_handovers (ledger_id, booking_id, author_member_id, parking_location)
+         values ('${WS1}', '${HANDOVER_BOOKING_B}', '${A_ID}', 'Direkte');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "handover-direct-update-denied",
+    desc: "authenticated B cannot bypass the RPC with a direct table UPDATE of her own handover",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: B,
+    op: `update public.booking_handovers set parking_location = 'Direkte' where booking_id = '${HANDOVER_BOOKING_B}';`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "handover-direct-delete-denied",
+    desc: "authenticated admin A cannot bypass the RPC with a direct table DELETE",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: A,
+    op: `delete from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}';`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "handover-second-save-edits-the-same-row",
+    desc: "saving twice leaves ONE handover per booking, and writes exactly one feed event",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: B,
+    assert: `begin
+  ${SAVE_HANDOVER_B}
+  perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+    null, null, 'P-kaelder niveau 3, plads 7', null, null, null, null, false,
+    'Bo rettede parkeringen', 'Niveau 3, ikke 2');
+  if (select count(*) from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}') <> 1 then
+    raise exception 'CASEFAIL handover-second-save-edits-the-same-row: a second save stacked a duplicate handover';
+  end if;
+  if (select count(*) from public.ledger_events where ledger_id = '${WS1}' and event_type = 'handover_created') <> 1 then
+    raise exception 'CASEFAIL handover-second-save-edits-the-same-row: an EDIT wrote a second feed event';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "handover-stale-token-refused",
+    desc: "a stale expected_updated_at raises GV42O and writes nothing (GV-421 semantics, migration 160)",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: B,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      null, null, 'for sent', null, null, null, null, false, null, null,
+      timestamptz '2020-01-01 00:00:00+00');`,
+    expect: "GV42O",
+    post: `if (select parking_location from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
+             <> 'P-kaelder niveau 2, plads 14'
+      then raise exception 'CASEFAIL handover-stale-token-refused: the refused write landed anyway'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-fresh-token-accepted",
+    desc: "an edit carrying the row CURRENT updated_at is accepted and lands",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
+    actor: B,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      null, null, 'Flyttet til gaden', null, null, null, null, false, null, null,
+      ${HANDOVER_TOKEN_B});`,
+    expect: "ok",
+    post: `if (select parking_location from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}') <> 'Flyttet til gaden'
+      then raise exception 'CASEFAIL handover-fresh-token-accepted: the accepted edit did not land'; end if;`,
+  }),
+  queryCase({
+    name: "handover-create-logs-a-feed-event",
+    desc: "the CREATE writes one handover_created event with the caller as actor and both ids in metadata",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: B,
+    assert: `begin
+  ${SAVE_HANDOVER_B}
+  if not exists (select 1 from public.ledger_events ev
+    where ev.ledger_id = '${WS1}' and ev.event_type = 'handover_created'
+      and ev.actor_member_id = '${ID.B}'
+      and (ev.metadata->>'booking_id') = '${HANDOVER_BOOKING_B}'
+      and (ev.metadata->>'handover_id') =
+        (select bh.id::text from public.booking_handovers bh where bh.booking_id = '${HANDOVER_BOOKING_B}')) then
+    raise exception 'CASEFAIL handover-create-logs-a-feed-event: no handover_created event with the caller as actor and both ids';
+  end if;
+end`,
   }),
 ];
 

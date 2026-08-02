@@ -20,6 +20,7 @@
     "test:crossing-split": "node tools/test-crossing-split-contract.mjs --strict",
     "test:booking-caps": "node tools/test-booking-caps-contract.mjs --strict",
     "test:conflict-preconditions": "node tools/test-conflict-precondition-contract.mjs --strict",
+    "test:booking-handover": "node tools/test-booking-handover-contract.mjs --strict",
     "test:deferred-fuel-close": "bash tools/test-deferred-fuel-close-functional.sh",
     "test:member-recurring-suspension": "bash tools/test-member-recurring-suspension-functional.sh",
     "test:syn-acknowledgement": "bash tools/test-acknowledge-inspection-booking-functional.sh",

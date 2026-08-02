@@ -75,6 +75,20 @@ const scripts = [
   // damage), and both sides of the millisecond-truncation rule. Warns and exits 0
   // without Docker.
   "node tools/test-conflict-precondition-contract.mjs",
+  // Anti-drift contract for the vehicle handover (GVM-529). Docker for the same reason
+  // as the four above, plus the one specific to migration 164: its free text is
+  // personal-adjacent LOCATION data — where a shared car is parked, where its keys are
+  // — so the RLS posture is a privacy boundary rather than a tidiness one, and that is
+  // exactly what a regex over the SQL certifies least well. The shape half is asserted
+  // against the CATALOG of a replayed database (relrowsecurity, pg_policies,
+  // pg_constraint, has_table_privilege), because a regex can be satisfied by a line
+  // that never runs. Pins the members-only SELECT policy with NO write policy at all,
+  // the UNIQUE on booking_id (without it a retried save stacks a second, contradictory
+  // handover), the absence of any coordinate column, the write gate per role including
+  // the narrow trip-driver branch, the Danish length/bounds sentences, GV42O's four
+  // semantics with the row byte-identical after a refusal, and that handover_created is
+  // written once on create and never on an edit. Warns and exits 0 without Docker.
+  "node tools/test-booking-handover-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths
