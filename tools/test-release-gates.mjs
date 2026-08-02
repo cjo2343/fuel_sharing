@@ -47,6 +47,8 @@ import {
   parseDrillMarker,
   runGates,
   summarise,
+  parseMobileGeneration,
+  parseWebExpected,
 } from "./check-release-gates.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -270,10 +272,12 @@ const CLEAN_PRIVACY_PAGE = `<main>
 const root = mkdtempSync(join(tmpdir(), "gv422-"));
 const fixture = join(root, "fuel_sharing");
 const webFixture = join(root, "govehlo-web");
+const mobileFixture = join(root, "govehlo-mobile");
 
-function writeFixture({ backupDoc = CLEAN_BACKUP_DOC, attestations = CLEAN_ATTESTATIONS, privacyPage = CLEAN_PRIVACY_PAGE } = {}) {
+function writeFixture({ backupDoc = CLEAN_BACKUP_DOC, attestations = CLEAN_ATTESTATIONS, privacyPage = CLEAN_PRIVACY_PAGE, webExpected = 158, mobileGeneration = 158 } = {}) {
   rmSync(fixture, { recursive: true, force: true });
   rmSync(webFixture, { recursive: true, force: true });
+  rmSync(mobileFixture, { recursive: true, force: true });
   mkdirSync(join(fixture, "supabase", "migrations"), { recursive: true });
   mkdirSync(join(fixture, "docs", "gdpr"), { recursive: true });
   mkdirSync(join(webFixture, "privatliv"), { recursive: true });
@@ -289,6 +293,11 @@ function writeFixture({ backupDoc = CLEAN_BACKUP_DOC, attestations = CLEAN_ATTES
   writeFileSync(join(webFixture, "index.html"), "<h1>VehloShare</h1>\n");
   writeFileSync(join(webFixture, "privatliv", "index.html"), privacyPage);
   writeFileSync(join(webFixture, "functions", "join", "[code].js"), "export const onRequest = () => new Response('ok');\n");
+  // GV-429: the applied-schema floor + the mobile generation the gate compares.
+  mkdirSync(join(webFixture, "functions", "api", "owner"), { recursive: true });
+  writeFileSync(join(webFixture, "functions", "api", "owner", "migrations.js"), `const EXPECTED_LATEST_MIGRATION = ${webExpected};\n`);
+  mkdirSync(join(mobileFixture, "src", "types"), { recursive: true });
+  writeFileSync(join(mobileFixture, "src", "types", "database-generation.ts"), `export const DB_TYPES_GENERATION = {\n  migration: ${mobileGeneration},\n  digest: 'abcdefabcdef',\n} as const;\n`);
   // Must never be scanned: a vendored copy would make every run red forever.
   writeFileSync(join(webFixture, "node_modules", "junk", "evil.html"), "[DATAANSVARLIG: vendored noise]\n");
 }
@@ -301,7 +310,7 @@ const migrationValidatorFails = () => {
 };
 
 function runFixture({ validator = migrationValidatorOk, today = TODAY } = {}) {
-  const results = runGates({ repoRoot: fixture, webRoot: webFixture, today, runMigrationValidator: validator });
+  const results = runGates({ repoRoot: fixture, webRoot: webFixture, mobileRoot: mobileFixture, today, runMigrationValidator: validator });
   return Object.fromEntries(results.map((r) => [r.id, r]));
 }
 
@@ -319,13 +328,14 @@ check("GREEN baseline: all five gates pass, strict exits 0", () => {
     "backup-evidence": "pass",
     "restore-drill-freshness": "pass",
     "external-attestations": "pass",
+    "mobile-schema-vs-applied": "pass",
   });
   assert.equal(summarise(Object.values(green), true).failed, false);
 });
 
 check("the scanner walks published pages and skips node_modules", () => {
   const pages = collectPublishedPages(webFixture);
-  assert.deepEqual(pages, ["functions/join/[code].js", "index.html", "privatliv/index.html"]);
+  assert.deepEqual(pages, ["functions/api/owner/migrations.js", "functions/join/[code].js", "index.html", "privatliv/index.html"]);
 });
 
 // --- mutation (a): plant the placeholder -------------------------------------
@@ -435,6 +445,55 @@ check("RESTORED — with every mutation reverted the fixture is green again", ()
 });
 
 rmSync(root, { recursive: true, force: true });
+
+// --- gate 6 (GV-429): the mobile build vs the applied-schema floor -----------
+console.log("gate 6 (GV-429): mobile generation vs applied floor");
+
+check("parseMobileGeneration / parseWebExpected read the real formats and refuse noise", () => {
+  assert.equal(parseMobileGeneration("export const DB_TYPES_GENERATION = {\n  migration: 163,\n  digest: 'x',\n}"), 163);
+  assert.equal(parseMobileGeneration("no numbers of that shape here"), null);
+  assert.equal(parseWebExpected("const EXPECTED_LATEST_MIGRATION = 163;"), 163);
+  assert.equal(parseWebExpected("EXPECTED_LATEST_MIGRATION is documented elsewhere"), null);
+});
+
+writeFixture({ webExpected: 158, mobileGeneration: 159 });
+check("MUTATION h — a mobile build one migration AHEAD of the floor is blocked, and only gate 6", () => {
+  const r = runFixture();
+  assert.equal(r["mobile-schema-vs-applied"].severity, "blocked");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /generated against migration 159.*floor.*158/s);
+  for (const [id, sev] of Object.entries(severities(r))) {
+    if (id !== "mobile-schema-vs-applied") assert.equal(sev, "pass", `${id} must be unaffected`);
+  }
+  assert.equal(summarise(Object.values(r), true).failed, true);
+});
+
+writeFixture({ webExpected: 159, mobileGeneration: 158 });
+check("MUTATION h2 — a mobile build BEHIND the floor is fine (old client, new schema is the supported direction)", () => {
+  const r = runFixture();
+  assert.equal(r["mobile-schema-vs-applied"].severity, "pass");
+});
+
+writeFixture();
+rmSync(join(mobileFixture, "src"), { recursive: true, force: true });
+check("MUTATION i — an absent govehlo-mobile is UNAVAILABLE and names the missing sibling", () => {
+  const r = runFixture();
+  assert.equal(r["mobile-schema-vs-applied"].severity, "unavailable");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /govehlo-mobile/);
+});
+
+writeFixture();
+writeFileSync(join(mobileFixture, "src", "types", "database-generation.ts"), "// the pin moved house\n");
+check("MUTATION j — an unparseable generation file is an ERROR, never a silent pass", () => {
+  const r = runFixture();
+  assert.equal(r["mobile-schema-vs-applied"].severity, "error");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /lost its format/);
+});
+
+writeFixture();
+check("RESTORED after gate-6 mutations — the fixture is green again", () => {
+  const r = runFixture();
+  assert.equal(r["mobile-schema-vs-applied"].severity, "pass");
+});
 
 if (failures > 0) {
   console.error(`\n❌ test-release-gates: ${failures} failing check(s).`);

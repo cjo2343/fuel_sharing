@@ -471,9 +471,71 @@ function gateAttestations(repoRoot, today) {
  * tools/test-release-gates.mjs can drive each gate red and green against
  * fixtures without touching the real repo.
  */
+// ── Gate 6: the mobile build's schema generation vs what prod has APPLIED ──────
+//
+// GV-429 (external review P2): nothing automatic proved that a mobile build is not
+// released AHEAD of its own migration. The merge-order discipline (SQL before client)
+// is process, and PGRST202 parking makes the failure soft — but a gate should catch
+// the day the process slips. The proxy for "applied in prod" is deliberately LOCAL:
+// govehlo-web's EXPECTED_LATEST_MIGRATION moves only in the post-apply bump PR (the
+// deferred pattern every migration follows), so the sibling checkout's constant is a
+// floor on what production has run. A stale web checkout can only make this gate
+// falsely BLOCK (constant too low), never falsely pass — the conservative direction.
+// No network: this tool judges checkouts, like every gate above it.
+
+/** DB_TYPES_GENERATION.migration out of the mobile sibling, or null. */
+export function parseMobileGeneration(source) {
+  const m = /migration:\s*(\d+)\s*,/.exec(source);
+  return m ? Number(m[1]) : null;
+}
+
+/** EXPECTED_LATEST_MIGRATION out of the web sibling, or null. */
+export function parseWebExpected(source) {
+  const m = /EXPECTED_LATEST_MIGRATION\s*=\s*(\d+)/.exec(source);
+  return m ? Number(m[1]) : null;
+}
+
+function gateMobileSchemaVsApplied(webRoot, mobileRoot) {
+  const title = "Mobile build does not run ahead of the applied schema";
+  const mobilePath = join(mobileRoot, "src", "types", "database-generation.ts");
+  const webPath = join(webRoot, "functions", "api", "owner", "migrations.js");
+  if (!existsSync(mobilePath) || !existsSync(webPath)) {
+    const missing = [
+      existsSync(mobilePath) ? null : "govehlo-mobile",
+      existsSync(webPath) ? null : "govehlo-web",
+    ].filter(Boolean);
+    return unavailable("mobile-schema-vs-applied", title, [
+      `Sibling checkout missing: ${missing.join(", ")} — the build-vs-applied comparison did not run.`,
+    ]);
+  }
+  const generation = parseMobileGeneration(readFileSync(mobilePath, "utf8"));
+  const expected = parseWebExpected(readFileSync(webPath, "utf8"));
+  if (generation == null || expected == null) {
+    return error("mobile-schema-vs-applied", title, [
+      generation == null
+        ? `Could not parse DB_TYPES_GENERATION.migration from ${mobilePath} — the file lost its format.`
+        : `Could not parse EXPECTED_LATEST_MIGRATION from ${webPath} — the file lost its format.`,
+    ]);
+  }
+  if (generation > expected) {
+    return blocked("mobile-schema-vs-applied", title, [
+      `The mobile build was generated against migration ${generation}, but the applied-schema floor ` +
+        `(govehlo-web's post-apply constant) is ${expected}. Releasing this build ships RPC arguments ` +
+        `production does not have. Apply the platform SQL and merge the drift-bump PR first — or pull ` +
+        `the govehlo-web sibling if it is simply behind origin/main.`,
+    ]);
+  }
+  return pass(
+    "mobile-schema-vs-applied",
+    title,
+    `Mobile generation ${generation} ≤ applied floor ${expected}.`,
+  );
+}
+
 export function runGates({
   repoRoot = REPO_ROOT,
   webRoot = join(repoRoot, "..", "govehlo-web"),
+  mobileRoot = join(repoRoot, "..", "govehlo-mobile"),
   today = new Date().toISOString().slice(0, 10),
   runMigrationValidator = defaultMigrationValidator,
 } = {}) {
@@ -484,6 +546,7 @@ export function runGates({
     gateBackupEvidence(repoRoot, today),
     gateRestoreDrill(repoRoot, migrationFiles),
     gateAttestations(repoRoot, today),
+    gateMobileSchemaVsApplied(webRoot, mobileRoot),
   ];
 }
 
