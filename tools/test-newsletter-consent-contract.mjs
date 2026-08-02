@@ -314,7 +314,13 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
       .map((f) => `${dir}/${f}`);
   const files = [...globAll("supabase/migrations"), "supabase-schema.sql"];
   const FORBIDDEN_SOURCES = ["auth.users", "ledger_members", "public.ledgers", "expo_push_tokens"];
-  const ALLOWED_FUNCTIONS = new Set(RPCS);
+  const ALLOWED_FUNCTIONS = new Set([
+    ...RPCS,
+    // GV-431 (migration 163): operator-only COUNTS for admin Health. Returns two
+    // integers and nothing else; a count enumerates nobody. This line is the
+    // deliberate decision the allowlist exists to force.
+    "public.newsletter_subscriber_counts",
+  ]);
 
   // Prose stripped like the block scan strips it, but WITHOUT schemaStatementsOnly:
   // that helper truncates at the first tracker insert, which is correct for a sliced
