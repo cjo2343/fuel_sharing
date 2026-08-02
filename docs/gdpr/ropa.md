@@ -30,6 +30,10 @@ Cloudflare Access + Supabase-login).
   udgifter og reparationer (beløb, værksted, kvitteringsdata), bookinger,
   skader/hændelser (titel, beskrivelse, dato, kilometerstand, status, valgfrit
   skadenummer, fører og relation til booking/tur) samt valgfri hændelsesfotos,
+  overdragelser ved bookingens afslutning (kilometerstand, brændstofniveau,
+  **parkerings- og nøgleplacering som fritekst**, stand og bemærkning, besked til
+  næste fører, nøglekvittering — lokationsangivelserne er personhenførbare og gemmes
+  bevidst som fritekst uden koordinater),
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
