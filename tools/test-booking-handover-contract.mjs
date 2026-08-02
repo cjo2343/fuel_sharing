@@ -514,8 +514,15 @@ pin("the trip-driver branch: after the booking is REASSIGNED, the person who dro
   raw(`insert into public.trips (id, ledger_id, period_id, booking_id, driver_member_id, trip_date, start_km, end_km, created_by_member_id)
        values ('50000000-0000-0000-0000-000000000001', '${L}', '${PERIOD}', '${BOOKING(4)}', '${BO}',
                current_date, 1000, 1100, '${BO}');`);
-  // Now an admin reassigns the booking to Cille. Bo drove it; Cille owns the booking.
+  // Now the booking is reassigned to Cille. Bo drove it; Cille owns the booking.
+  // Done as the schema owner rather than through upsert_car_booking, because the point
+  // is the resulting STATE, not the reassignment RPC's own GV-253 gate.
   raw(`update public.car_bookings set member_id = '${CILLE}' where id = '${BOOKING(4)}';`);
+  assert.equal(
+    scalar(`select member_id::text from public.car_bookings where id = '${BOOKING(4)}';`),
+    CILLE,
+    "the reassignment must really have happened, or this case proves nothing",
+  );
   assert.equal(
     saveHandover({ booking: BOOKING(4), parking: "Bo parkerede den på Nørre Allé", actor: "bo@test.dk" }),
     "OK",

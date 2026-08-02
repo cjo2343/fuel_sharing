@@ -386,13 +386,21 @@ const LATEST_WS1_INCIDENT = `(select id from public.vehicle_incidents where ledg
 // crosses Copenhagen midnight on any evening run.
 const HANDOVER_BOOKING_B = "55555555-0000-0000-0000-000000000001";
 const HANDOVER_BOOKING_D = "55555555-0000-0000-0000-000000000002";
+// D is INACTIVE in the fixture and migration 103's enforce_identity_reassignment
+// refuses to insert a booking for an inactive member, so D is reactivated for the
+// length of that one INSERT and deactivated again — which models the real history
+// (you book while you are in the group, then you leave) rather than a state the
+// product cannot reach. The whole setup rolls back with the case.
 const SEED_HANDOVER_BOOKINGS = `insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
   ('${HANDOVER_BOOKING_B}', '${WS1}', '${ID.B}',
    date_trunc('day', now()) + interval '1 day' + interval '9 hour',
-   date_trunc('day', now()) + interval '1 day' + interval '13 hour', '${ID.B}'),
+   date_trunc('day', now()) + interval '1 day' + interval '13 hour', '${ID.B}');
+update public.ledger_members set is_active = true where id = '${ID.D}';
+insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
   ('${HANDOVER_BOOKING_D}', '${WS1}', '${ID.D}',
    date_trunc('day', now()) + interval '2 day' + interval '9 hour',
-   date_trunc('day', now()) + interval '2 day' + interval '13 hour', '${ID.B}');`;
+   date_trunc('day', now()) + interval '2 day' + interval '13 hour', '${ID.B}');
+update public.ledger_members set is_active = false where id = '${ID.D}';`;
 // B hands the car over. The event_title arg makes the CREATE write a feed event.
 const SAVE_HANDOVER_B = `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
   82345, 0.5, 'P-kaelder niveau 2, plads 14', 'Noegler i postkassen', true, null,
