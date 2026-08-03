@@ -176,6 +176,7 @@ const expected = [
   "163_newsletter_subscriber_counts.sql",
   "164_booking_handovers.sql",
   "165_newsletter_pending_purge_in_retention.sql",
+  "166_incident_damage_kind_and_repair_link.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
