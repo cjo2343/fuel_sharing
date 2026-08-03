@@ -1,0 +1,256 @@
+/* GoVehlo Color Tokens — Dark Mode (GV-86)
+   Documentation only. No client currently reads `data-theme` — activating this in
+   govehlo-mobile is a separate ticket (React Native has no CSS custom properties;
+   see guidelines/dark-mode.md for the porting note). The web admin console CAN
+   consume this file as-is once something sets the attribute.
+
+   Every custom property below OVERRIDES the same-named token from ./colors.css.
+   Nothing in that file is edited — this is an additive override layer scoped to
+   `:root[data-theme="dark"]`, activated by the consuming app setting that attribute
+   (not a bare `prefers-color-scheme` query — see guidelines/dark-mode.md for why
+   explicit beats automatic here).
+
+   Because CSS custom properties resolve at USE time against the nearest definition
+   in scope, the SEMANTIC ALIASES at the bottom of colors.css (--color-background,
+   --color-primary-light, --color-surface-tint, --color-accent, …) need no dark
+   override of their own: each is already `var(--color-warm-white)` /
+   `var(--color-leaf)` / etc., so once the base token they point at is overridden
+   here, the alias picks up the dark value for free. They are re-listed at the
+   bottom of this file, unchanged, so a reader sees the whole picture in one place —
+   not because they need a new rule.
+
+   Method: dark surfaces are NOT the light surfaces inverted (light bg ~97% lightness
+   negated is not a usable dark background — it has no green in it, and reads as
+   generic app-chrome black). Every dark surface and text tone below is derived from
+   --color-deep-forest's own hue/saturation family (H135°/S28%, the same family
+   --text-muted already sits in at H150°/S15%) by moving LIGHTNESS only — darker for
+   surfaces, lighter for the text/status tones that have to sit ON those surfaces.
+   That is the same one-axis derivation colors.css already uses for --text-tertiary
+   and --color-error-text; dark mode runs it in the opposite direction because the
+   background it has to clear moved from ~97% lightness to ~7-18%.
+   Full reasoning: guidelines/dark-mode.md. */
+:root[data-theme="dark"] {
+  /* ─── Brand Greens ───
+     --color-forest and --color-amber are FILLS carried over unchanged — see the
+     "tokens that do not change" note in guidelines/dark-mode.md for why. */
+  --color-deep-forest:   #1A2E1F;   /* unchanged hex, but its ROLE flips: no longer
+                                        --text-primary's source (see Text below) —
+                                        reused wholesale as the dark card surface,
+                                        the same green family already used to build
+                                        every light surface. Do not read it as a
+                                        text tone in a dark context. */
+  --color-forest:        #2D6A4F;   /* unchanged — stays a BUTTON FILL (with
+                                        --text-on-forest white on top, contrast
+                                        6.39:1, intrinsic to the pair, not the
+                                        surrounding theme). As bare text/icon color
+                                        ON a dark surface it is only 1.9-2.9:1 —
+                                        use --color-leaf there instead (below). */
+  --color-leaf:          #7EE0AB;   /* = light-leaf's own light-mode value (GV-378
+                                        already minted this exact hue/lightness for
+                                        "leaf on dark surfaces where #52B788 fails
+                                        contrast" — this is that surface). Fill
+                                        --color-leaf itself only reaches 4.95:1 on
+                                        the lightest dark surface below; the value
+                                        already on the shelf clears 7.67:1 there. */
+  --color-light-leaf:    #7EE0AB;   /* unchanged — already the value above; kept
+                                        defined so a caller who reached for this
+                                        token specifically still gets a value. */
+  --color-mist:          #243A2A;   /* was a near-white mint tint (light mode);
+                                        the closest existing dark analogue is the
+                                        admin WorkspaceSwitcher's own dark panel
+                                        colour (readme.md, "Dropdown: Dark panel
+                                        #243A2A") — already the same hue family,
+                                        already shipped as a dark surface. Reused
+                                        rather than inventing a second dark green
+                                        one step away from it. */
+
+  /* ─── Accent — money ───
+     --color-amber is the OTHER fill kept unchanged: 5.94:1 against the lightest
+     dark surface below (--color-surface-raised), 7.00:1 against --color-surface —
+     the same role-inversion badge-contrast.test.ts already documents for amber on
+     --color-deep-forest (light mode's one dark surface), just extended to the rest
+     of this file's dark surfaces. Unlike light mode, the fill does not need a
+     separate text tone to be legible — --color-amber-text below exists for extra
+     headroom and so money text keeps a visually distinct (brighter, not just
+     "the same orange") tone from money fills/borders, not because AA requires it. */
+  --color-amber:         #F4A261;   /* unchanged */
+  --color-amber-light:   #41432B;   /* dark wash: 18% --color-amber over
+                                        --color-surface (#1A2E1F). Still reads as a
+                                        dark surface, not a tint-toward-white the
+                                        way the light value is — see dark-mode.md. */
+  /* Money-text tone for dark surfaces. Same hue/saturation as --color-amber
+     (H26.5°/S87%), lightness moved from 66.9% to 72% — the mirror of how
+     --color-amber-text moved the light-mode fill DARKER to clear a light
+     background; here it moves LIGHTER to clear a dark one.
+     Contrast: 10.01:1 on --color-warm-white · 7.84:1 on --color-surface ·
+     6.66:1 on --color-surface-raised · 5.53:1 on --color-amber-light (the tight
+     case — a money value badged on its own tint, the same shape GV-378 flagged
+     as the binding surface for the light value). All five clear AA (4.5:1). */
+  --color-amber-text:    #F6B079;
+  --color-amber-hover:   #F6B683;   /* light mode darkens the fill for a press
+                                        state (visible against a light bg); dark
+                                        mode lightens it instead — darkening here
+                                        would move it toward the surface and erase
+                                        the feedback. Non-text fill; no AA target. */
+
+  /* ─── Surfaces & Neutral ───
+     Three-tier elevation, darkest to lightest, so a card can still visibly "lift"
+     off the page the way --color-surface (white) lifts off --color-warm-white in
+     light mode — just compressed into a much narrower lightness band (7-18%
+     instead of 97-100%), because going lighter than that stops reading as dark
+     mode at all. */
+  --color-warm-white:    #0D1610;   /* app background — H140°/S26%/L7%, one step
+                                        darker than --color-deep-forest itself */
+  --color-surface:       #1A2E1F;   /* card surface — literally --color-deep-forest.
+                                        Not a new hex: the darkest brand green
+                                        already in the palette becomes the resting
+                                        card surface once the theme's baseline
+                                        lightness drops below it. */
+  --color-border:        #35503C;   /* H136°/S20%/L26% — a divider, not a UI
+                                        component boundary; WCAG 1.4.11 exempts
+                                        purely decorative separators from the 3:1
+                                        non-text bar, so this is tuned for
+                                        visibility against all three surfaces
+                                        (1.4-2.1:1) rather than for that threshold. */
+  --color-border-strong: #5A8766;   /* H136°/S20%/L44% — for input borders and
+                                        emphasis dividers that DO want to read as a
+                                        boundary: 4.47:1 on --color-warm-white,
+                                        3.50:1 on --color-surface, 2.97:1 on
+                                        --color-surface-raised (its own card,
+                                        essentially at the 3:1 non-text bar). */
+  --color-surface-raised: #243A2A;  /* NEW tier, no light-mode equivalent: modals,
+                                        bottom sheets, dropdown menus — content that
+                                        sits above a card, the way
+                                        --shadow-elevated lifts a light surface
+                                        further than --shadow-card. Reuses the same
+                                        WorkspaceSwitcher panel colour as
+                                        --color-mist above (H136.4°/S23.4%/L18.4%) —
+                                        it was already the palette's one shipped
+                                        "elevated dark panel" precedent. */
+  --color-surface-band:  #132016;   /* banded section — one step LIGHTER than
+                                        --color-warm-white (H135°/S26%/L10% vs L7%),
+                                        the same direction --color-surface-band
+                                        moves in light mode (one step off the page
+                                        background, not all the way to card). */
+  --color-chip-neutral:  #2E4233;   /* neutral badge/chip fill — H136°/S18%/L22%,
+                                        between --color-surface and
+                                        --color-surface-raised, distinct from both
+                                        so a no-status chip doesn't read as either
+                                        a card or a border. */
+
+  /* ─── Disabled / read-only — still deliberately NOT brand-green, just a dark
+     neutral rather than a light one. No AA target: colors.css does not assert one
+     for the light values either — disabled controls are outside WCAG's scope. */
+  --color-disabled-bg:     #252D27;
+  --color-disabled-border: #37433A;
+  --color-disabled-text:   #6E8774;
+
+  /* ─── Attention — non-amber status / health signal ───
+     Same fill/text split logic as amber above, except here the FILL genuinely does
+     stay non-text-only: --color-attention reaches just 3.12:1 on the lightest dark
+     surface (--color-surface-raised) — clears the 3:1 icon/non-text bar and nothing
+     more, the same shape as the light-mode fill (3.42:1 on --color-attention-light).
+     A text tone is still required, not optional, unlike amber. */
+  --color-attention:       #C4673D;   /* unchanged fill */
+  --color-attention-light: #393824;   /* dark wash: 18% --color-attention over
+                                          --color-surface */
+  /* H18.7°/S53.4°, lightness 50.4% -> 70%. 8.44:1 on --color-warm-white · 6.61:1 on
+     --color-surface · 5.61:1 on --color-surface-raised · 5.45:1 on
+     --color-attention-light. All clear AA. */
+  --color-attention-text:  #DBA38A;
+
+  /* ─── Text ───
+     Same four-step ramp as colors.css, same split (tertiary = default body text,
+     muted = non-text/large-text only), derived the same way --text-tertiary was —
+     a lightness-only move at --text-muted's own hue/saturation (H130°/S15%, close
+     enough to colors.css's 150°/15% to read as the same neutral-green family,
+     nudged toward the surfaces' own H135-140° so the ramp and the surfaces feel
+     like one palette). The move runs lighter, not darker, because the surface
+     lightness itself moved from ~97-100% to ~7-18%.
+
+     Checked against all THREE dark surfaces a body of text could sit on
+     (--color-warm-white the page, --color-surface the typical card,
+     --color-surface-raised the tightest case — the brightest dark surface, where
+     text has the least room):
+       primary   #F0F4F1  16.60 / 13.00 / 11.04
+       secondary #BECFC1  11.31 /  8.86 /  7.52
+       tertiary  #8AA88F   7.09 /  5.55 /  4.71   <- lightest value clearing 4.5:1
+                                                      on all three
+       muted     #64876A   4.58 /  3.59 /  3.04   <- clears 3:1 (non-text) on all
+                                                      three; not reliably 4.5:1 (the
+                                                      same job it has in light mode)
+     Which to reach for is unchanged from colors.css: --text-tertiary is the
+     default for anything a user reads; --text-muted is icons, spinners, decorative
+     separators, and text already at the WCAG large-text threshold. */
+  --text-primary:   #F0F4F1;
+  --text-secondary: #BECFC1;
+  --text-tertiary:  #8AA88F;
+  --text-muted:     #64876A;
+  --text-on-forest: #FFFFFF;              /* unchanged — pairs against the FOREST
+                                              FILL (6.39:1), not the app surface */
+  --text-on-amber:  var(--color-deep-forest); /* unchanged, same reasoning: this
+                                              pairs against the AMBER FILL (7.00:1),
+                                              which did not change either */
+
+  /* ─── Interaction States ───
+     Non-text fills; no AA target (transient press/hover feedback, not content).
+     Light mode darkens the fill for a press state, which reads against a light
+     background; dark mode lightens instead, for the same reason --color-amber-hover
+     does above — darkening here would move a fill toward the surface it sits on and
+     erase the feedback instead of showing it. */
+  --color-forest-hover:  #3A8865;
+  --color-forest-active: #439E75;
+  --color-leaf-hover:    #5BD794;
+
+  /* ─── Semantic ─── */
+  --color-success:       var(--color-leaf);      /* inherited: resolves to #7EE0AB */
+  --color-success-light: #244732;                /* dark wash: 18% --color-leaf
+                                                      (the #52B788 fill, not
+                                                      light-leaf) over --color-surface */
+  --color-warning:       var(--color-amber);      /* inherited — money-warning ONLY,
+                                                      same rule as light mode */
+  --color-warning-light: var(--color-amber-light);
+  --color-error:         #D95050;   /* unchanged fill — 3.04:1 on
+                                        --color-surface-raised, the same
+                                        icon/non-text-only shape --color-attention
+                                        has above (and the light-mode fill has:
+                                        3.55:1 on --color-error-light) */
+  --color-error-light:   #3C3428;   /* dark wash: 18% --color-error over
+                                        --color-surface */
+  /* H0°/S64.3%, lightness 58.2% -> 74% (pushed a full 15.6pt rather than the ~20pt
+     amber/attention moved, because red desaturates less gracefully at very high
+     lightness before it reads as pink). 7.83:1 on --color-warm-white · 6.14:1 on
+     --color-surface · 5.21:1 on --color-surface-raised and on --color-error-light
+     alike. All clear AA with more margin than the 4.5:1 floor needs, deliberately —
+     GV-408's light-mode value already documents landing mid-band rather than at
+     the scraping-past-the-bar value, and this keeps that discipline. */
+  --color-error-text:    #E79292;
+
+  /* ─── Informational Blue — "Requested" payment status ONLY ───
+     Unlike amber/attention/error, light mode never split --color-blue into a
+     separate fill/text pair — the one token (#355d9c) is dark enough to serve as
+     TEXT on its own light --color-blue-soft tint without help. That stops being
+     true on a dark surface: the same hex is only 1.87-2.81:1 there, so this
+     overrides --color-blue itself rather than adding a new "-text" token, keeping
+     it single-purpose the way light mode has it.
+     H216.7°/S49.3%, lightness 41% -> 70%. 7.79:1 on --color-warm-white · 6.10:1 on
+     --color-surface · 5.18:1 on --color-surface-raised · 5.34:1 on
+     --color-blue-soft (below). Still "Requested" status ONLY — the single-purpose
+     rule does not loosen because the value changed. */
+  --color-blue:      #8DAAD8;
+  --color-blue-soft: #1F3738;   /* dark wash: 20% --color-blue (light-mode #355d9c)
+                                    over --color-surface */
+
+  /* ─── Semantic Aliases ───
+     Not overridden here — each already resolves through a base token above and
+     picks up its dark value automatically (see the file header). Listed for
+     completeness only:
+       --color-primary       -> var(--color-forest)      (unchanged fill, see above)
+       --color-primary-dark  -> var(--color-deep-forest)  (now a SURFACE, not a text
+                                 tone — see the note on --color-deep-forest above;
+                                 do not use this alias for text in dark mode)
+       --color-primary-light -> var(--color-leaf)          (-> #7EE0AB)
+       --color-background    -> var(--color-warm-white)    (-> #0D1610)
+       --color-surface-tint  -> var(--color-mist)           (-> #243A2A)
+       --color-accent        -> var(--color-amber)          (unchanged) */
+}
