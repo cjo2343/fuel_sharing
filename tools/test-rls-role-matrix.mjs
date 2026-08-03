@@ -374,7 +374,7 @@ const SOFT_DELETE_WS1 = `perform public.admin_soft_delete_workspace('${WS1}', tr
 // GVM-396 vehicle-incident helpers. B logs one incident into ws1; later steps
 // resolve it via the workspace's newest incident id (each case is isolated, so
 // there is exactly one). The event_title arg makes the create write a feed event.
-const LOG_INCIDENT_B = `perform public.log_vehicle_incident('${WS1}', current_date, 'Ridse i lak', 'Ridse ved parkering', null, null, null, null, 'open', null, 'Skade logget', 'Bo loggede en skade');`;
+const LOG_INCIDENT_B = `perform public.log_vehicle_incident('${WS1}', current_date, 'Ridse i lak', 'Ridse ved parkering', null, null, null, null, 'open', null, 'new_incident', 'Skade logget', 'Bo loggede en skade');`;
 const LATEST_WS1_INCIDENT = `(select id from public.vehicle_incidents where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
 
 // GVM-529 vehicle-handover helpers (migration 164). Two bookings in ws1 — one held by
@@ -2898,26 +2898,71 @@ end`,
     name: "incident-member-logs",
     desc: "active member A logs a vehicle incident into their own workspace",
     actor: A,
-    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Bulet doer', 'Parkeringsskade', null, null, null, 12345, 'open', 'SKADE-99', 'Skade logget', 'A loggede en skade');`,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Bulet doer', 'Parkeringsskade', null, null, null, 12345, 'open', 'SKADE-99', 'new_incident', 'Skade logget', 'A loggede en skade');`,
     expect: "ok",
     post: `if not exists (select 1 from public.vehicle_incidents
         where ledger_id = '${WS1}' and title = 'Bulet doer' and repair_status = 'open'
           and odometer = 12345 and insurance_ref = 'SKADE-99'
+          and damage_kind = 'new_incident' and repair_id is null
           and reporter_member_id = '${A_ID}')
       then raise exception 'CASEFAIL incident-member-logs: incident row not created with reporter = caller'; end if;`,
+  }),
+  // ── GVM-521: existing damage vs new incident ──────────────────────────────
+  // Through log_vehicle_incident / update_vehicle_incident, both of which the mobile
+  // client already calls, so these cases certify a path production takes (GV-379).
+  rpcCase({
+    name: "incident-existing-damage-logged",
+    desc: "a member can log damage that was ALREADY on the car as existing_damage (GVM-521)",
+    actor: A,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Gammel bule', 'Var der da vi overtog bilen', null, null, null, null, 'open', null, 'existing_damage', 'Eksisterende skade', 'A registrerede en eksisterende skade');`,
+    expect: "ok",
+    post: `if (select damage_kind from public.vehicle_incidents where ledger_id = '${WS1}') <> 'existing_damage'
+      then raise exception 'CASEFAIL incident-existing-damage-logged: damage_kind not stored'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-invalid-damage-kind-rejected",
+    desc: "a damage kind outside the two allowed values is rejected before any row is written",
+    actor: A,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Skade', 'Ridser', null, null, null, null, 'open', null, 'maybe', 't', 'b');`,
+    expect: "22023",
+    post: `if exists (select 1 from public.vehicle_incidents where ledger_id = '${WS1}')
+      then raise exception 'CASEFAIL incident-invalid-damage-kind-rejected: a row was written anyway'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-reporter-can-reclassify",
+    desc: "the reporter can move an incident to existing_damage after the fact (GVM-521)",
+    setup: [step(B, LOG_INCIDENT_B)],
+    actor: B,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, null, null, null, null, null, 'existing_damage', 'Omklassificeret', 'Bo rettede skadetypen');`,
+    expect: "ok",
+    post: `if (select damage_kind from public.vehicle_incidents where ledger_id = '${WS1}') <> 'existing_damage'
+      then raise exception 'CASEFAIL incident-reporter-can-reclassify: damage_kind not updated'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-old-client-edit-preserves-damage-kind",
+    desc: "an edit that omits damage_kind_value leaves the stored classification alone (GV-417 shape)",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(B, `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, null, null, null, null, null, 'existing_damage', null, null);`),
+    ],
+    actor: B,
+    op: `perform public.update_vehicle_incident(target_incident_id => ${LATEST_WS1_INCIDENT}, repair_status_value => 'under_repair');`,
+    expect: "ok",
+    post: `if (select damage_kind from public.vehicle_incidents where ledger_id = '${WS1}') <> 'existing_damage'
+      then raise exception 'CASEFAIL incident-old-client-edit-preserves-damage-kind: a pre-GVM-521 client reclassified the incident'; end if;`,
   }),
   rpcCase({
     name: "incident-foreign-member-log-denied",
     desc: "member E of another workspace cannot log an incident into ws1",
     actor: E,
-    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Fusk', 'Uautoriseret', null, null, null, null, 'open', null, 'x', 'y');`,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Fusk', 'Uautoriseret', null, null, null, null, 'open', null, 'new_incident', 'x', 'y');`,
     expect: "42501",
   }),
   rpcCase({
     name: "incident-anon-log-denied",
     desc: "anon cannot log an incident",
     actor: ANON,
-    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Fusk', 'Uautoriseret', null, null, null, null, 'open', null, 'x', 'y');`,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Fusk', 'Uautoriseret', null, null, null, null, 'open', null, 'new_incident', 'x', 'y');`,
     expect: "42501",
   }),
   rpcCase({
@@ -2926,7 +2971,7 @@ end`,
     setup: [step(SUPER, `insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id)
       values ('44444444-0000-0000-0000-000000000001', '${WS2}', '${E_ID}', now() + interval '1 day', now() + interval '2 day', '${E_ID}');`)],
     actor: A,
-    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Skade', 'Ridser', null, '44444444-0000-0000-0000-000000000001', null, null, 'open', null, 't', 'b');`,
+    op: `perform public.log_vehicle_incident('${WS1}', current_date, 'Skade', 'Ridser', null, '44444444-0000-0000-0000-000000000001', null, null, 'open', null, 'new_incident', 't', 'b');`,
     expect: "22023",
   }),
   queryCase({
@@ -2952,7 +2997,7 @@ end`,
     desc: "bystander C (not admin, not reporter B) cannot edit the incident (GV-253)",
     setup: [step(B, LOG_INCIDENT_B)],
     actor: C,
-    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'under_repair', null, null, null, null, 'x', 'y');`,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'under_repair', null, null, null, null, null, 'x', 'y');`,
     expect: "42501",
     post: `if (select repair_status from public.vehicle_incidents where ledger_id = '${WS1}') <> 'open'
       then raise exception 'CASEFAIL incident-nonadmin-nonreporter-edit-denied: status changed after rejection'; end if;`,
@@ -2962,7 +3007,7 @@ end`,
     desc: "the reporter B can change their own incident's repair status",
     setup: [step(B, LOG_INCIDENT_B)],
     actor: B,
-    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'repaired', null, null, null, null, 'Skade repareret', 'Bo opdaterede status');`,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'repaired', null, null, null, null, null, 'Skade repareret', 'Bo opdaterede status');`,
     expect: "ok",
     post: `if (select repair_status from public.vehicle_incidents where ledger_id = '${WS1}') <> 'repaired'
       then raise exception 'CASEFAIL incident-reporter-can-edit: status not updated'; end if;`,
@@ -2972,7 +3017,7 @@ end`,
     desc: "a workspace admin A (not the reporter) can edit the incident (GV-253)",
     setup: [step(B, LOG_INCIDENT_B)],
     actor: A,
-    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'closed', null, null, null, null, null, null);`,
+    op: `perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'closed', null, null, null, null, null, null, null);`,
     expect: "ok",
     post: `if (select repair_status from public.vehicle_incidents where ledger_id = '${WS1}') <> 'closed'
       then raise exception 'CASEFAIL incident-admin-can-edit: status not updated'; end if;`,
@@ -2983,7 +3028,7 @@ end`,
     setup: [step(B, LOG_INCIDENT_B)],
     actor: A,
     assert: `begin
-  perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'under_repair', null, null, null, null, 'Under reparation', 'A opdaterede status');
+  perform public.update_vehicle_incident(${LATEST_WS1_INCIDENT}, null, null, 'under_repair', null, null, null, null, null, 'Under reparation', 'A opdaterede status');
   if not exists (select 1 from public.ledger_events
     where ledger_id = '${WS1}' and event_type = 'incident_updated'
       and (metadata->>'repair_status') = 'under_repair') then
