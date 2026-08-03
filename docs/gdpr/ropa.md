@@ -89,6 +89,19 @@ Cloudflare Access + Supabase-login).
 - **Retsgrundlag:** Kontrakt (brugeren initierer opslaget).
 - **Sletning:** Opslaget persisteres kun som bilens stamdata i workspacet.
 
+## A7 — Nyhedsbrev (markedsføring)
+
+- **Formål:** Udsende nyhedsbrev til personer der selv har bedt om det (dobbelt opt-in, GV-366).
+- **Registrerede:** Nyhedsbrevsabonnenter — en SELVSTÆNDIG kreds; listen kan pr. konstruktion
+  ikke seedes fra appens brugere (håndhævet af konsent-vagten i CI).
+- **Datakategorier:** E-mailadresse, requested_at, confirmed_at, samtykketekst-version,
+  token-digests (sha256). Bevidst IKKE: IP, user agent, navn, kobling til workspace.
+- **Retsgrundlag:** Samtykke (art. 6(1)(a)) + markedsføringslovens § 10; beviset er
+  requested_at + confirmed_at + consent_text_version.
+- **Modtagere:** Supabase (EU, lager) og Sweego (Frankrig, EU — udsendelse); se subprocessors.md.
+- **Sletning:** Afmelding hård-sletter rækken med det samme; ubekræftede tilmeldinger slettes
+  automatisk efter 7 dage (dagligt sweep fra migration 165 + ved hver ny tilmelding). Se retention.md.
+
 ## Tekniske og organisatoriske foranstaltninger (TOMs)
 
 - Row-Level Security på alle domænetabeller; adfærden CI-testes af en rollematrix
