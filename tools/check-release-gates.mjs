@@ -482,6 +482,80 @@ function gateAttestations(repoRoot, today) {
 // floor on what production has run. A stale web checkout can only make this gate
 // falsely BLOCK (constant too low), never falsely pass — the conservative direction.
 // No network: this tool judges checkouts, like every gate above it.
+//
+// GV-434 (external review P2, the known trade-off written into the paragraph above):
+// the constant is a discipline FLOOR, not proof of applied SQL. When the operator
+// opts in — RELEASE_GATE_SUPABASE_URL + RELEASE_GATE_SUPABASE_SERVICE_ROLE_KEY in the
+// environment — the gate reads public.fuel_ledger_schema_migrations itself and judges
+// against what production has ACTUALLY applied. Three deliberate boundaries:
+//
+//   • The env names are DEDICATED. The load-rehearsal env file exports plain
+//     SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY for a throwaway project; generic names
+//     here would let a sourced rehearsal shell silently point "prod applied" at the
+//     wrong database. Nothing short of the RELEASE_GATE_ prefix may activate this.
+//   • No CI secret. The ticket parks that decision explicitly — a service key in CI
+//     is its own attack surface — so these variables belong on the owner's machine
+//     (and nowhere else) until that decision is made deliberately. Without them the
+//     gate is byte-for-byte the offline floor it always was.
+//   • Configured-but-broken is NOT the same as unconfigured. If the variables are
+//     set and the lookup fails, the operator asked for live verification and did not
+//     get it: the gate reports UNAVAILABLE (fails --strict) rather than quietly
+//     re-certifying via the floor — "I could not look" must never print as "I looked".
+
+/** Max applied migration number out of PostgREST rows of {migration_id}, or null. */
+export function parseAppliedFromRows(rows) {
+  if (!Array.isArray(rows)) return null;
+  let max = null;
+  for (const row of rows) {
+    const m = /^(\d+)/.exec(String(row && row.migration_id ? row.migration_id : ""));
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (max == null || n > max) max = n;
+  }
+  return max;
+}
+
+/**
+ * Resolve the live applied-migration number, or describe why we could not.
+ * Returns null when the gate is not configured for live lookup (the default),
+ * { applied, host } on success, { error } on any failure with the variables set.
+ */
+export async function fetchAppliedMigration(env = process.env, fetchImpl = globalThis.fetch) {
+  const url = env.RELEASE_GATE_SUPABASE_URL;
+  const key = env.RELEASE_GATE_SUPABASE_SERVICE_ROLE_KEY;
+  if (!url && !key) return null;
+  if (!url || !key) {
+    return {
+      error:
+        "half-configured: exactly one of RELEASE_GATE_SUPABASE_URL / " +
+        "RELEASE_GATE_SUPABASE_SERVICE_ROLE_KEY is set. Set both or neither.",
+    };
+  }
+  let host;
+  try {
+    host = new URL(url).host;
+  } catch {
+    return { error: "RELEASE_GATE_SUPABASE_URL is not a URL." };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetchImpl(`${url.replace(/\/$/, "")}/rest/v1/fuel_ledger_schema_migrations?select=migration_id`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) return { error: `tracker lookup returned HTTP ${res.status} (host ${host}).` };
+    const applied = parseAppliedFromRows(await res.json());
+    if (applied == null) {
+      return { error: `tracker lookup succeeded but no migration_id parsed (host ${host}) — wrong project?` };
+    }
+    return { applied, host };
+  } catch (e) {
+    return { error: `tracker lookup failed: ${e.name === "AbortError" ? "timed out after 10s" : e.message} (host ${host}).` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** DB_TYPES_GENERATION.migration out of the mobile sibling, or null. */
 export function parseMobileGeneration(source) {
@@ -495,7 +569,7 @@ export function parseWebExpected(source) {
   return m ? Number(m[1]) : null;
 }
 
-function gateMobileSchemaVsApplied(webRoot, mobileRoot) {
+function gateMobileSchemaVsApplied(webRoot, mobileRoot, live = null) {
   const title = "Mobile build does not run ahead of the applied schema";
   const mobilePath = join(mobileRoot, "src", "types", "database-generation.ts");
   const webPath = join(webRoot, "functions", "api", "owner", "migrations.js");
@@ -517,14 +591,52 @@ function gateMobileSchemaVsApplied(webRoot, mobileRoot) {
         : `Could not parse EXPECTED_LATEST_MIGRATION from ${webPath} — the file lost its format.`,
     ]);
   }
-  if (generation > expected) {
-    return blocked("mobile-schema-vs-applied", title, [
-      `The mobile build was generated against migration ${generation}, but the applied-schema floor ` +
-        `(govehlo-web's post-apply constant) is ${expected}. Releasing this build ships RPC arguments ` +
-        `production does not have. Apply the platform SQL and merge the drift-bump PR first — or pull ` +
-        `the govehlo-web sibling if it is simply behind origin/main.`,
+  const floorBlocked = generation > expected;
+  const floorDetail =
+    `The mobile build was generated against migration ${generation}, but the applied-schema floor ` +
+    `(govehlo-web's post-apply constant) is ${expected}. Releasing this build ships RPC arguments ` +
+    `production does not have. Apply the platform SQL and merge the drift-bump PR first — or pull ` +
+    `the govehlo-web sibling if it is simply behind origin/main.`;
+
+  // GV-434: live lookup was configured but failed. The floor verdict still stands
+  // for what it can certify, but this run must not read as a completed live check.
+  if (live && live.error) {
+    if (floorBlocked) return blocked("mobile-schema-vs-applied", title, [floorDetail, `Live lookup also failed: ${live.error}`]);
+    return unavailable("mobile-schema-vs-applied", title, [
+      `Live tracker lookup was configured but failed: ${live.error}`,
+      `The local floor alone is satisfied (generation ${generation} ≤ floor ${expected}) — that certifies ` +
+        `the merge-order discipline, not what production has applied. Fix the lookup or unset the ` +
+        `RELEASE_GATE_* variables to run the offline floor deliberately.`,
     ]);
   }
+
+  // GV-434: live truth available — judge against it, and audit the floor with it.
+  if (live && live.applied != null) {
+    const details = [];
+    if (generation > live.applied) {
+      details.push(
+        `The mobile build was generated against migration ${generation}, but production has APPLIED ` +
+          `only ${live.applied} (live tracker read, host ${live.host}). Apply the platform SQL first.`,
+      );
+    }
+    if (expected > live.applied) {
+      details.push(
+        `govehlo-web's EXPECTED_LATEST_MIGRATION (${expected}) is AHEAD of what production has applied ` +
+          `(${live.applied}, live) — the drift-bump merged before its SQL ran, so the local floor now ` +
+          `overstates production and every offline run of this gate trusts a lie. Apply the SQL, or ` +
+          `revert the bump until it is applied.`,
+      );
+    }
+    if (details.length > 0) return blocked("mobile-schema-vs-applied", title, details);
+    return pass(
+      "mobile-schema-vs-applied",
+      title,
+      `Mobile generation ${generation} ≤ applied ${live.applied} (LIVE tracker read, host ${live.host}); ` +
+        `local floor ${expected} consistent.`,
+    );
+  }
+
+  if (floorBlocked) return blocked("mobile-schema-vs-applied", title, [floorDetail]);
   return pass(
     "mobile-schema-vs-applied",
     title,
@@ -538,6 +650,9 @@ export function runGates({
   mobileRoot = join(repoRoot, "..", "govehlo-mobile"),
   today = new Date().toISOString().slice(0, 10),
   runMigrationValidator = defaultMigrationValidator,
+  // GV-434: resolved BEFORE this sync runner (see main) so every gate stays a pure
+  // function of its inputs and the test harness never has to mock the network.
+  liveApplied = null,
 } = {}) {
   const migrationFiles = listMigrationFiles(repoRoot);
   return [
@@ -546,7 +661,7 @@ export function runGates({
     gateBackupEvidence(repoRoot, today),
     gateRestoreDrill(repoRoot, migrationFiles),
     gateAttestations(repoRoot, today),
-    gateMobileSchemaVsApplied(webRoot, mobileRoot),
+    gateMobileSchemaVsApplied(webRoot, mobileRoot, liveApplied),
   ];
 }
 
@@ -557,9 +672,12 @@ export function summarise(results, strict) {
   return { counts, failed };
 }
 
-function main() {
+async function main() {
   const strict = process.argv.includes("--strict");
-  const results = runGates();
+  // GV-434: the only async step, resolved up front. null = not configured (the
+  // default offline run); the gate itself never touches the network.
+  const liveApplied = await fetchAppliedMigration();
+  const results = runGates({ liveApplied });
   const { counts, failed } = summarise(results, strict);
 
   // ONE stream, ONE write. The first CI run of this script split pass lines onto
@@ -613,4 +731,9 @@ function main() {
 }
 
 // Only run when invoked directly, so the unit test can import the pure logic.
-if (process.argv[1] && process.argv[1].endsWith("check-release-gates.mjs")) main();
+if (process.argv[1] && process.argv[1].endsWith("check-release-gates.mjs")) {
+  main().catch((e) => {
+    process.stderr.write(`check-release-gates: unexpected failure: ${e.stack || e.message}\n`);
+    process.exit(1);
+  });
+}
