@@ -49,6 +49,8 @@ import {
   summarise,
   parseMobileGeneration,
   parseWebExpected,
+  parseAppliedFromRows,
+  fetchAppliedMigration,
 } from "./check-release-gates.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -309,8 +311,8 @@ const migrationValidatorFails = () => {
   throw e;
 };
 
-function runFixture({ validator = migrationValidatorOk, today = TODAY } = {}) {
-  const results = runGates({ repoRoot: fixture, webRoot: webFixture, mobileRoot: mobileFixture, today, runMigrationValidator: validator });
+function runFixture({ validator = migrationValidatorOk, today = TODAY, liveApplied = null } = {}) {
+  const results = runGates({ repoRoot: fixture, webRoot: webFixture, mobileRoot: mobileFixture, today, runMigrationValidator: validator, liveApplied });
   return Object.fromEntries(results.map((r) => [r.id, r]));
 }
 
@@ -493,6 +495,116 @@ writeFixture();
 check("RESTORED after gate-6 mutations — the fixture is green again", () => {
   const r = runFixture();
   assert.equal(r["mobile-schema-vs-applied"].severity, "pass");
+});
+
+// --- GV-434: the optional LIVE tracker lookup ---------------------------------
+// These sit BEFORE the summary/exit block below — the first gate-6 tests were once
+// appended after process.exit and silently never ran (the GV-429 lesson, kept here
+// as placement law).
+console.log("GV-434: optional live lookup in the prod migration tracker");
+
+check("parseAppliedFromRows takes the numeric max and refuses noise", () => {
+  assert.equal(
+    parseAppliedFromRows([{ migration_id: "099_x" }, { migration_id: "166_incident" }, { migration_id: "100_y" }]),
+    166,
+    "must compare numerically, not as text — '099' vs '166' vs '100'",
+  );
+  assert.equal(parseAppliedFromRows([{ migration_id: "junk" }, {}, null]), null);
+  assert.equal(parseAppliedFromRows([]), null);
+  assert.equal(parseAppliedFromRows("not rows"), null);
+});
+
+// check() is synchronous, so every awaited value is resolved HERE and the check
+// callbacks below only assert — an async callback would pass vacuously.
+const fakeFetchOk = (rows) => async () => ({ ok: true, status: 200, json: async () => rows });
+let fetchWasCalled = false;
+const spyFetch = async () => {
+  fetchWasCalled = true;
+  throw new Error("fetch must not run when the gate is not configured");
+};
+const liveEnv = {
+  RELEASE_GATE_SUPABASE_URL: "https://proj.supabase.co",
+  RELEASE_GATE_SUPABASE_SERVICE_ROLE_KEY: "k",
+};
+const liveUnconfigured = await fetchAppliedMigration({}, spyFetch);
+const liveHalf = await fetchAppliedMigration({ RELEASE_GATE_SUPABASE_URL: "https://x.supabase.co" }, spyFetch);
+const liveOk = await fetchAppliedMigration(liveEnv, fakeFetchOk([{ migration_id: "166_incident" }, { migration_id: "165_purge" }]));
+const liveDenied = await fetchAppliedMigration(liveEnv, async () => ({ ok: false, status: 401 }));
+const liveDown = await fetchAppliedMigration(liveEnv, async () => {
+  throw new Error("ECONNREFUSED");
+});
+const liveEmpty = await fetchAppliedMigration(liveEnv, fakeFetchOk([]));
+
+check("unconfigured env resolves to null without touching the network", () => {
+  assert.equal(liveUnconfigured, null);
+  assert.equal(fetchWasCalled, false, "the spy fetch must never have run for the unconfigured case");
+});
+
+check("half-configured env is a loud error, not a silent offline run", () => {
+  assert.match(liveHalf.error, /half-configured/);
+});
+
+check("a good lookup returns the applied max and the host, never the key", () => {
+  assert.deepEqual(liveOk, { applied: 166, host: "proj.supabase.co" });
+  assert.doesNotMatch(JSON.stringify(liveOk), /"k"/, "the service key must not ride along in the result");
+});
+
+check("an HTTP failure is an error carrying the status", () => {
+  assert.match(liveDenied.error, /HTTP 401/);
+});
+
+check("a network failure is an error, not an exception", () => {
+  assert.match(liveDown.error, /ECONNREFUSED/);
+});
+
+check("an empty tracker reads as 'wrong project?', never applied=0", () => {
+  assert.match(liveEmpty.error, /wrong project/);
+});
+
+writeFixture({ webExpected: 166, mobileGeneration: 166 });
+check("LIVE pass — applied ≥ generation passes and says LIVE", () => {
+  const r = runFixture({ liveApplied: { applied: 166, host: "proj.supabase.co" } });
+  assert.equal(r["mobile-schema-vs-applied"].severity, "pass");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /LIVE tracker read.*proj\.supabase\.co/s);
+});
+
+writeFixture({ webExpected: 166, mobileGeneration: 166 });
+check("LIVE catch — prod applied BELOW the build's generation blocks even when the floor is satisfied", () => {
+  // This is the case the offline floor cannot see: drift-bump merged, SQL never run.
+  const r = runFixture({ liveApplied: { applied: 165, host: "proj.supabase.co" } });
+  assert.equal(r["mobile-schema-vs-applied"].severity, "blocked");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /APPLIED\s+only 165/s);
+});
+
+writeFixture({ webExpected: 166, mobileGeneration: 165 });
+check("LIVE audit — a floor AHEAD of prod is blocked as a lying floor, even with the build safe", () => {
+  const r = runFixture({ liveApplied: { applied: 165, host: "proj.supabase.co" } });
+  assert.equal(r["mobile-schema-vs-applied"].severity, "blocked");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /overstates production/);
+});
+
+writeFixture({ webExpected: 166, mobileGeneration: 166 });
+check("LIVE failure with a clean floor is UNAVAILABLE — configured-but-broken never re-certifies via the floor", () => {
+  const r = runFixture({ liveApplied: { error: "tracker lookup timed out" } });
+  assert.equal(r["mobile-schema-vs-applied"].severity, "unavailable");
+  assert.match(r["mobile-schema-vs-applied"].details.join("\n"), /timed out/);
+  assert.equal(summarise(Object.values(r), true).failed, true, "strict must fail on it");
+  assert.equal(summarise(Object.values(r), false).failed, false, "advisory warns");
+});
+
+writeFixture({ webExpected: 165, mobileGeneration: 166 });
+check("LIVE failure cannot mask a floor block — blocked stays blocked", () => {
+  const r = runFixture({ liveApplied: { error: "tracker lookup timed out" } });
+  assert.equal(r["mobile-schema-vs-applied"].severity, "blocked");
+});
+
+writeFixture();
+check("REGRESSION — with no live config the gate is byte-for-byte the offline floor", () => {
+  const withNull = runFixture({ liveApplied: null });
+  const without = runFixture();
+  assert.deepEqual(withNull["mobile-schema-vs-applied"], without["mobile-schema-vs-applied"]);
+  assert.equal(withNull["mobile-schema-vs-applied"].severity, "pass");
+  assert.doesNotMatch(withNull["mobile-schema-vs-applied"].details.join("\n"), /LIVE/);
 });
 
 if (failures > 0) {
