@@ -3036,6 +3036,101 @@ end`,
   end if;
 end`,
   }),
+  // ── GVM-521: set_incident_repair — the repair link's ONLY writer ───────────
+  // Coverage was first pinned solely by tools/test-incident-repair-link-contract.mjs
+  // on the "no client caller yet" argument; the mobile caller merged within hours
+  // (govehlo-mobile #560), so the GV-379 coverage rule applies and the RPC is
+  // exercised here like every other authenticated-granted function. The fixtures
+  // are SUPER inserts (the matrix already carries open periods, so the
+  // entry-period trigger is satisfied), with explicit ids per case isolation.
+  rpcCase({
+    name: "incident-repair-link-reporter",
+    desc: "the reporter B links a live same-workspace repair to their incident (GVM-521)",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id)
+        values ('52100000-0000-0000-0000-000000000001', '${WS1}', current_date, 'Ny kofanger', 4200.00, '${A_ID}');`),
+    ],
+    actor: B,
+    op: `perform public.set_incident_repair(${LATEST_WS1_INCIDENT}, '52100000-0000-0000-0000-000000000001'::uuid, null, null);`,
+    expect: "ok",
+    post: `if (select repair_id from public.vehicle_incidents where ledger_id = '${WS1}') is distinct from '52100000-0000-0000-0000-000000000001'::uuid
+      then raise exception 'CASEFAIL incident-repair-link-reporter: repair_id not written'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-repair-unlink-null",
+    desc: "null means UNLINK — a mis-linked repair is never permanent (GVM-521)",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id)
+        values ('52100000-0000-0000-0000-000000000002', '${WS1}', current_date, 'Lakering', 2500.00, '${A_ID}');`),
+      step(B, `perform public.set_incident_repair(${LATEST_WS1_INCIDENT}, '52100000-0000-0000-0000-000000000002'::uuid, null, null);`),
+    ],
+    actor: B,
+    op: `perform public.set_incident_repair(${LATEST_WS1_INCIDENT}, null, null, null);`,
+    expect: "ok",
+    post: `if (select repair_id from public.vehicle_incidents where ledger_id = '${WS1}') is not null
+      then raise exception 'CASEFAIL incident-repair-unlink-null: null did not unlink'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-repair-link-bystander-denied",
+    desc: "bystander C (not admin, not reporter) cannot re-attribute B's incident to a repair (GV-253)",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id)
+        values ('52100000-0000-0000-0000-000000000003', '${WS1}', current_date, 'Bremser', 900.00, '${A_ID}');`),
+    ],
+    actor: C,
+    op: `perform public.set_incident_repair(${LATEST_WS1_INCIDENT}, '52100000-0000-0000-0000-000000000003'::uuid, null, null);`,
+    expect: "42501",
+    post: `if (select repair_id from public.vehicle_incidents where ledger_id = '${WS1}') is not null
+      then raise exception 'CASEFAIL incident-repair-link-bystander-denied: link written after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-repair-link-foreign-denied",
+    desc: "member E of another workspace cannot link anything to ws1's incident, even holding its id",
+    // RLS already hides ws1's incidents from E, so resolving the id via a subquery
+    // dies earlier (22023 Missing incident id) and never reaches the gate under
+    // test. The incident is therefore SUPER-inserted with an explicit id: the pin
+    // is that an outsider who somehow HOLDS a leaked id is still denied 42501.
+    setup: [
+      step(SUPER, `insert into public.vehicle_incidents (id, ledger_id, reporter_member_id, incident_date, title, description)
+        values ('52100000-0000-0000-0000-000000000014', '${WS1}', '${ID.B}', current_date, 'Ridse i lak', 'Ridse ved parkering');`),
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id)
+        values ('52100000-0000-0000-0000-000000000004', '${WS1}', current_date, 'Ruder', 700.00, '${A_ID}');`),
+    ],
+    actor: E,
+    op: `perform public.set_incident_repair('52100000-0000-0000-0000-000000000014'::uuid, '52100000-0000-0000-0000-000000000004'::uuid, null, null);`,
+    expect: "42501",
+    post: `if (select repair_id from public.vehicle_incidents where id = '52100000-0000-0000-0000-000000000014') is not null
+      then raise exception 'CASEFAIL incident-repair-link-foreign-denied: link written after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-repair-crossws-rejected",
+    desc: "ANOTHER workspace's repair is rejected — vehicle_repairs.id is globally unique, the FK alone accepts it (GVM-521)",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id)
+        values ('52100000-0000-0000-0000-000000000005', '${WS2}', current_date, 'Andres reparation', 9900.00, '${E_ID}');`),
+    ],
+    actor: B,
+    op: `perform public.set_incident_repair(${LATEST_WS1_INCIDENT}, '52100000-0000-0000-0000-000000000005'::uuid, null, null);`,
+    expect: "22023",
+    post: `if (select repair_id from public.vehicle_incidents where ledger_id = '${WS1}') is not null
+      then raise exception 'CASEFAIL incident-repair-crossws-rejected: cross-workspace link written'; end if;`,
+  }),
+  rpcCase({
+    name: "incident-repair-softdeleted-rejected",
+    desc: "a soft-deleted repair in the same workspace is rejected (22023)",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(SUPER, `insert into public.vehicle_repairs (id, ledger_id, repair_date, description, cost_dkk, created_by_member_id, deleted_at)
+        values ('52100000-0000-0000-0000-000000000006', '${WS1}', current_date, 'Fortrudt', 100.00, '${A_ID}', now());`),
+    ],
+    actor: B,
+    op: `perform public.set_incident_repair(${LATEST_WS1_INCIDENT}, '52100000-0000-0000-0000-000000000006'::uuid, null, null);`,
+    expect: "22023",
+  }),
   rpcCase({
     name: "incident-direct-insert-denied",
     desc: "authenticated admin A cannot bypass the RPC with a direct table INSERT",
