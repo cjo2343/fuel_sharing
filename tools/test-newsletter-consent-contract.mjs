@@ -320,6 +320,10 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     // integers and nothing else; a count enumerates nobody. This line is the
     // deliberate decision the allowlist exists to force.
     "public.newsletter_subscriber_counts",
+    // GV-433 (migration 165): the daily retention sweep deletes EXPIRED PENDING rows
+    // (confirmed_at is null, older than the promised 7 days) and counts them. It can
+    // never read an address out, and confirmed subscribers are untouched.
+    "public.run_operational_retention",
   ]);
 
   // Prose stripped like the block scan strips it, but WITHOUT schemaStatementsOnly:
