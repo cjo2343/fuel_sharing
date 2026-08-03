@@ -89,6 +89,19 @@ const scripts = [
   // semantics with the row byte-identical after a refusal, and that handover_created is
   // written once on create and never on an edit. Warns and exits 0 without Docker.
   "node tools/test-booking-handover-contract.mjs",
+  // Anti-drift contract for the damage log's repair link (GVM-521, migration 166). Docker
+  // for the same reason as the five above, plus the one specific to this column:
+  // vehicle_repairs.id is unique across every workspace, so the foreign key is satisfied
+  // just as happily by ANOTHER group's repair as by your own. The whole workspace boundary
+  // is one `and vr.ledger_id = ...` inside set_incident_repair, which can be deleted
+  // without the migration looking wrong and without the FK complaining — a regex over the
+  // SQL is exactly the wrong instrument for that, so the rule is exercised by actually
+  // trying the cross-workspace link and reading the row back. Also pins damage_kind's
+  // not-null default (flipping it would assert every logged dent predates the group), that
+  // null means UNLINK rather than "leave unchanged", and that the table still has no write
+  // grant — the property that makes RPC-only enforcement sound instead of conventional.
+  // Warns and exits 0 without Docker; CI runs it --strict.
+  "node tools/test-incident-repair-link-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths

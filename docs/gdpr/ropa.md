@@ -28,8 +28,10 @@ Cloudflare Access + Supabase-login).
 - **Registrerede:** Workspace-medlemmer.
 - **Datakategorier:** Ture (km, datoer, deltagere), brændstofkøb (beløb, liter),
   udgifter og reparationer (beløb, værksted, kvitteringsdata), bookinger,
-  skader/hændelser (titel, beskrivelse, dato, kilometerstand, status, valgfrit
-  skadenummer, fører og relation til booking/tur) samt valgfri hændelsesfotos,
+  skader/hændelser (titel, beskrivelse, dato, kilometerstand, status, skadetype
+  — eksisterende skade eller ny hændelse — valgfrit skadenummer, fører og relation
+  til booking/tur samt til den reparation, der udbedrede skaden) samt valgfri
+  hændelsesfotos,
   overdragelser ved bookingens afslutning (kilometerstand, brændstofniveau,
   **parkerings- og nøgleplacering som fritekst**, stand og bemærkning, besked til
   næste fører, nøglekvittering — lokationsangivelserne er personhenførbare og gemmes

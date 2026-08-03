@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 165 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 166 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1579,6 +1579,7 @@ export type Database = {
         Row: {
           booking_id: string | null
           created_at: string
+          damage_kind: string
           description: string
           driver_member_id: string | null
           id: string
@@ -1586,6 +1587,7 @@ export type Database = {
           insurance_ref: string | null
           ledger_id: string
           odometer: number | null
+          repair_id: string | null
           repair_status: string
           reporter_member_id: string | null
           title: string
@@ -1595,6 +1597,7 @@ export type Database = {
         Insert: {
           booking_id?: string | null
           created_at?: string
+          damage_kind?: string
           description: string
           driver_member_id?: string | null
           id?: string
@@ -1602,6 +1605,7 @@ export type Database = {
           insurance_ref?: string | null
           ledger_id: string
           odometer?: number | null
+          repair_id?: string | null
           repair_status?: string
           reporter_member_id?: string | null
           title: string
@@ -1611,6 +1615,7 @@ export type Database = {
         Update: {
           booking_id?: string | null
           created_at?: string
+          damage_kind?: string
           description?: string
           driver_member_id?: string | null
           id?: string
@@ -1618,6 +1623,7 @@ export type Database = {
           insurance_ref?: string | null
           ledger_id?: string
           odometer?: number | null
+          repair_id?: string | null
           repair_status?: string
           reporter_member_id?: string | null
           title?: string
@@ -1644,6 +1650,13 @@ export type Database = {
             columns: ["ledger_id"]
             isOneToOne: false
             referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_incidents_repair_id_fkey"
+            columns: ["repair_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_repairs"
             referencedColumns: ["id"]
           },
           {
@@ -2192,6 +2205,7 @@ export type Database = {
       log_vehicle_incident: {
         Args: {
           booking_id_value?: string
+          damage_kind_value?: string
           description_value: string
           driver_member_id_value?: string
           event_body?: string
@@ -2333,6 +2347,15 @@ export type Database = {
       set_close_reminder_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
         Returns: undefined
+      }
+      set_incident_repair: {
+        Args: {
+          event_body?: string
+          event_title?: string
+          p_incident_id: string
+          p_repair_id?: string
+        }
+        Returns: Json
       }
       set_member_name: {
         Args: {
@@ -2495,6 +2518,7 @@ export type Database = {
       }
       update_vehicle_incident: {
         Args: {
+          damage_kind_value?: string
           description_value?: string
           driver_member_id_value?: string
           event_body?: string
