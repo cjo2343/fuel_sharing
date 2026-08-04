@@ -214,6 +214,12 @@ const sqlLit = (v) => (v === null || v === undefined ? "null" : `'${String(v).re
 /**
  * Call upsert_booking_handover. `token` is a SQL EXPRESSION so a case can pass null,
  * a literal timestamp, or a sub-select against the row itself.
+ *
+ * `lat`/`lng` are the migration-170 pin parameters (GVM-540) and are SQL EXPRESSIONS
+ * too, so a case can pass a number, `null`, or a deliberately malformed half-pair.
+ * Positional, because these calls are the file's fixtures rather than a client's
+ * request: the two parameters sit between keys_confirmed_value and event_title, and a
+ * case that gets that wrong fails loudly on a type mismatch rather than quietly.
  */
 function saveHandover({
   ledger = L,
@@ -226,6 +232,8 @@ function saveHandover({
   conditionNote = null,
   noteToNext = null,
   keysConfirmed = false,
+  lat = "null",
+  lng = "null",
   eventTitle = null,
   eventBody = null,
   token = "null",
@@ -241,8 +249,29 @@ function saveHandover({
        ${conditionOk === null ? "null" : conditionOk},
        ${sqlLit(conditionNote)}, ${sqlLit(noteToNext)},
        ${keysConfirmed},
+       ${lat}, ${lng},
        ${sqlLit(eventTitle)}, ${sqlLit(eventBody)},
        ${token});`,
+  );
+}
+
+/**
+ * The call a client that predates migration 170 makes: the THIRTEEN named keys
+ * govehlo-mobile has always posted, with no mention of the pin, resolved against the
+ * fifteen-argument signature through its two defaults. Named notation on purpose —
+ * this is the one helper here that imitates a real PostgREST body rather than a
+ * fixture, because what it proves is that the body still resolves at all.
+ */
+function saveHandoverPre170({ booking, parking = null, keyLocation = null, actor = "bo@test.dk" } = {}) {
+  return sqlstateOf(
+    actor,
+    `perform public.upsert_booking_handover(
+       target_ledger_id => ${sqlLit(L)}, target_booking_id => ${sqlLit(booking)}::uuid,
+       end_odometer_value => null, fuel_fraction_value => null,
+       parking_location_value => ${sqlLit(parking)}, key_location_value => ${sqlLit(keyLocation)},
+       condition_ok_value => null, condition_note_value => null, note_to_next_value => null,
+       keys_confirmed_value => false,
+       event_title => null, event_body => null, expected_updated_at => null);`,
   );
 }
 
@@ -256,7 +285,8 @@ function saveMessage(opts) {
        ${opts.fuel === undefined || opts.fuel === null ? "null" : opts.fuel},
        ${sqlLit(opts.parking ?? null)}, ${sqlLit(opts.keyLocation ?? null)},
        null, ${sqlLit(opts.conditionNote ?? null)}, ${sqlLit(opts.noteToNext ?? null)},
-       false, null, null, ${opts.token ?? "null"});`,
+       false, ${opts.lat ?? "null"}, ${opts.lng ?? "null"},
+       null, null, ${opts.token ?? "null"});`,
   );
 }
 
@@ -385,7 +415,12 @@ pin("keys_confirmed is NOT NULL and defaults to false", () => {
   assert.equal(row, "true/false", '"not confirmed" and "explicitly not returned" are the same thing');
 });
 
-pin("there is NO coordinate column — parking is free text by design (GDPR)", () => {
+// Still true after migration 170, and now carrying MORE weight rather than less: the
+// handover RPC can accept a pin since GVM-540, and this asserts that accepting one did
+// not turn into storing one per row. The pin is CURRENT CAR STATE and lives on ledgers;
+// a coordinate on this table would accumulate one position per booking, which is the
+// movement history of a named person that migration 168 explicitly refused to build.
+pin("there is NO coordinate column — the handover ROW stores no pin (GDPR)", () => {
   const cols = scalar(
     `select string_agg(attname, ',' order by attname) from pg_attribute
       where attrelid = 'public.booking_handovers'::regclass and attnum > 0 and not attisdropped;`,
@@ -394,8 +429,9 @@ pin("there is NO coordinate column — parking is free text by design (GDPR)", (
     assert.doesNotMatch(
       cols,
       new RegExp(`(^|,)[a-z_]*${banned}[a-z_]*(,|$)`),
-      `data minimisation: a shared car's parking spot is free text, never geodata (migrations 151, 062/071 ` +
-        `dropped coordinates twice; adding "${banned}" back needs its own decision)`,
+      `data minimisation: a handover is HISTORY, so a coordinate here would be one stored position per ` +
+        `booking — a movement history of a named person. Migration 170 lets the RPC ACCEPT a pin and pass ` +
+        `it to the workspace row; it must never land on this table (adding "${banned}" needs its own decision)`,
     );
   }
 });
@@ -422,6 +458,21 @@ pin("expected_updated_at is the LAST parameter, after the event params", () => {
   );
 });
 
+pin("the pin parameters sit BEFORE the event pair, and both DEFAULT to null", () => {
+  const args = scalar(
+    `select pg_get_function_arguments(p.oid) from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'upsert_booking_handover';`,
+  );
+  assert.match(
+    args,
+    /keys_confirmed_value boolean DEFAULT false, parking_lat_value numeric DEFAULT NULL::numeric, parking_lng_value numeric DEFAULT NULL::numeric, event_title text/,
+    "migration 170 (GVM-540) follows the 051 convention — the event pair stays last, so the NEXT " +
+      "addition lands in the same place — and the two defaults are what let a pre-170 client's " +
+      "thirteen-key body resolve at all",
+  );
+});
+
 pin("exactly ONE overload of the RPC exists", () => {
   assert.equal(
     scalar(
@@ -435,7 +486,7 @@ pin("exactly ONE overload of the RPC exists", () => {
 
 pin("authenticated may EXECUTE the RPC; anon may not (migration 148 convention)", () => {
   const fn =
-    "public.upsert_booking_handover(text, uuid, integer, numeric, text, text, boolean, text, text, boolean, text, text, timestamptz)";
+    "public.upsert_booking_handover(text, uuid, integer, numeric, text, text, boolean, text, text, boolean, numeric, numeric, text, text, timestamptz)";
   assert.equal(scalar(`select has_function_privilege('authenticated', '${fn}', 'EXECUTE');`), "t");
   assert.equal(scalar(`select has_function_privilege('anon', '${fn}', 'EXECUTE');`), "f");
 });
@@ -1141,6 +1192,136 @@ pin("a handover that mentions NEITHER location touches neither the text nor the 
   assert.equal(ledgerPin(), "55.6761 / 12.5683", "the mirror did not run at all, so the pin cannot have moved");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 10. THE PIN TRAVELS WITH THE HANDOVER (GVM-540, migration 170)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Migration 168 cleared the pin on every mirrored parking text for one stated reason:
+// "a handover form has no way to drop a pin". GVM-540 gives it one, and the rule turns
+// symmetric — a fresh pin REPLACES, no pin still CLEARS, no parking text still
+// PRESERVES. The two unchanged cases are re-asserted against the NEW signature in the
+// section above, which is the point of leaving them there: adding two parameters must
+// not have moved them.
+//
+// What this section adds is the third case, its refusals, and the one property that
+// makes the migration safe to apply before the mobile half ships — a pre-170 client's
+// thirteen-key body still resolving, and still producing the row it produces today.
+
+pin("a handover carrying a FRESH pin writes it to the workspace", () => {
+  raw(
+    `update public.ledgers set parking_location = 'Gaden foran nr. 14', key_location = 'Nøgler hos Anna'
+      where id = '${L}';`,
+  );
+  setLedgerPin("null", "null");
+
+  assert.equal(
+    saveHandover({
+      booking: BOOKING(9),
+      parking: "P-huset på Nørrebrogade",
+      lat: "55.6761",
+      lng: "12.5683",
+      actor: "bo@test.dk",
+    }),
+    "OK",
+  );
+  assert.equal(ledgerLocation(), "P-huset på Nørrebrogade / Nøgler hos Anna", "the text mirrors as it always did");
+  assert.equal(
+    ledgerPin(),
+    "55.6761 / 12.5683",
+    "the driver standing at the car tapped 'brug min placering' on the handover sheet — throwing that " +
+      "away is exactly the hole migration 170 closes",
+  );
+});
+
+pin("a FRESH pin REPLACES the stored one rather than merging with it", () => {
+  setLedgerPin("55.6761", "12.5683");
+  assert.equal(
+    saveHandover({
+      booking: BOOKING(9),
+      parking: "Flyttet til Amager",
+      lat: "55.6600",
+      lng: "12.6100",
+      actor: "bo@test.dk",
+    }),
+    "OK",
+  );
+  assert.equal(ledgerPin(), "55.6600 / 12.6100", "one pin per workspace, overwritten in place — never a second row");
+});
+
+pin("a pin sent WITHOUT a parking text is ignored, not stored", () => {
+  raw(`update public.ledgers set parking_location = 'Gaden foran nr. 14' where id = '${L}';`);
+  setLedgerPin("55.6761", "12.5683");
+
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), keyLocation: "Nøgler hos Bo", lat: "55.6600", lng: "12.6100" }),
+    "OK",
+    "the call is valid — a well-formed pair is never refused on account of the text",
+  );
+  assert.equal(ledgerLocation(), "Gaden foran nr. 14 / Nøgler hos Bo", "the parking text is preserved, as always");
+  assert.equal(
+    ledgerPin(),
+    "55.6761 / 12.5683",
+    "the pin RIDES THE TEXT: with no parking text there is nothing for the new coordinates to belong to, " +
+      "and attaching them to a text somebody else wrote days ago is the stale-pin failure from the other side",
+  );
+});
+
+pin("half a pin is refused in Danish, and nothing is written", () => {
+  raw(`update public.ledgers set parking_location = 'Gaden foran nr. 14' where id = '${L}';`);
+  setLedgerPin("55.6761", "12.5683");
+  const before = rowSnapshot(BOOKING(9));
+
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), parking: "Kun en halv nål", lat: "55.6761", lng: "null" }),
+    "22023",
+    "a lone latitude is a marker on the prime meridian, not a degraded pin",
+  );
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), parking: "Kun en halv nål", lat: "null", lng: "12.5683" }),
+    "22023",
+    "and the same in the other direction",
+  );
+  assert.equal(
+    saveMessage({ booking: BOOKING(9), parking: "Kun en halv nål", lat: "55.6761", lng: "null" }),
+    "Parkeringsnålen mangler den ene koordinat.",
+    "every guard this RPC raises is a finished Danish sentence shown to the member as-is — there is no " +
+      "mapping table in the client, unlike set_vehicle_location's English twins",
+  );
+  assert.equal(rowSnapshot(BOOKING(9)), before, "a refused write must leave the handover row byte-identical");
+  assert.equal(ledgerPin(), "55.6761 / 12.5683", "and must not touch the pin it refused to replace");
+});
+
+pin("a coordinate outside its range is refused in Danish, before the check constraint has to answer", () => {
+  setLedgerPin("55.6761", "12.5683");
+
+  assert.equal(saveHandover({ booking: BOOKING(9), parking: "Nordpolen og forbi", lat: "91", lng: "12.5" }), "22023");
+  assert.equal(saveHandover({ booking: BOOKING(9), parking: "Vestpå og forbi", lat: "55.6", lng: "181" }), "22023");
+  assert.equal(
+    saveMessage({ booking: BOOKING(9), parking: "Nordpolen og forbi", lat: "91", lng: "12.5" }),
+    "Parkeringsnålens koordinater er ugyldige.",
+    "the RPC answers politely; ledgers_parking_lat_range_check is the half a direct write cannot talk past",
+  );
+  assert.equal(ledgerPin(), "55.6761 / 12.5683", "nothing was written");
+});
+
+pin("a pre-170 client's THIRTEEN-key body still resolves, and still clears the pin", () => {
+  raw(`update public.ledgers set parking_location = 'Gaden foran nr. 14' where id = '${L}';`);
+  setLedgerPin("55.6761", "12.5683");
+
+  assert.equal(
+    saveHandoverPre170({ booking: BOOKING(9), parking: "Gammel klient flyttede bilen" }),
+    "OK",
+    "PGRST202/PGRST203 would show up here as a failure to resolve: an old build in the App Store must keep " +
+      "saving handovers after this migration is applied and before the mobile half ships",
+  );
+  assert.equal(ledgerLocation(), "Gammel klient flyttede bilen / Nøgler hos Bo", "the old-signature save landed");
+  assert.equal(
+    ledgerPin(),
+    "NULL / NULL",
+    "and produced the IDENTICAL row it produces today: both coordinates arrive null through the defaults, " +
+      "so a new parking text clears a pin that now describes where the car used to be",
+  );
+});
+
 removeContainer(CONTAINER);
 
 process.stdout.write(
@@ -1154,6 +1335,10 @@ process.stdout.write(
     `once on create and never on an edit; the GVM-520 mirror onto ledgers is NULL-PRESERVING per field, so a ` +
     `handover that mentions no parking leaves the car's known spot, its author and its stamp exactly as they were; ` +
     `and the GVM-536 parking pin — the ONE approved coordinate pair, two nullable numerics behind three named ` +
-    `check constraints and a comment that states the reversal — is CLEARED whenever the mirror writes a new ` +
-    `parking text and preserved whenever it does not, because the pin belongs to the text it was set with.\n`,
+    `check constraints and a comment that states the reversal — belongs to the text it was set with, so since ` +
+    `GVM-540 the mirror is symmetric: a new parking text WITH a fresh pin writes it, a new text WITHOUT one ` +
+    `clears it, and a handover that says nothing about the parking preserves both — while a pin sent without a ` +
+    `text is ignored, half a pin and an out-of-range pair are refused in Danish with nothing written, the ` +
+    `handover ROW still has no coordinate column of its own, and a pre-170 client's thirteen-key body still ` +
+    `resolves through the two defaults and still produces the row it produces today.\n`,
 );

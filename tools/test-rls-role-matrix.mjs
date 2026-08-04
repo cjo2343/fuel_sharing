@@ -446,16 +446,33 @@ insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, cre
    date_trunc('day', now()) + interval '2 day' + interval '13 hour', '${ID.B}');
 update public.ledger_members set is_active = false where id = '${ID.D}';`;
 // B hands the car over. The event_title arg makes the CREATE write a feed event.
-const SAVE_HANDOVER_B = `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-  82345, 0.5, 'P-kaelder niveau 2, plads 14', 'Noegler i postkassen', true, null,
-  'Husk at tanke', true, 'Bo har afleveret bilen', 'Parkeret i P-kaelderen');`;
+//
+// NAMED arguments throughout, for migration 170's reason (GVM-540): the two pin
+// parameters were inserted BEFORE the trailing event pair, so a positional call that
+// carries an event title would silently hand it to parking_lat. Named notation is also
+// what govehlo-mobile posts, so these read like the real requests.
+const SAVE_HANDOVER_B = `perform public.upsert_booking_handover(
+  target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+  end_odometer_value => 82345, fuel_fraction_value => 0.5,
+  parking_location_value => 'P-kaelder niveau 2, plads 14',
+  key_location_value => 'Noegler i postkassen',
+  condition_ok_value => true, condition_note_value => null,
+  note_to_next_value => 'Husk at tanke', keys_confirmed_value => true,
+  parking_lat_value => null, parking_lng_value => null,
+  event_title => 'Bo har afleveret bilen', event_body => 'Parkeret i P-kaelderen');`;
 const HANDOVER_TOKEN_B = `(select bh.updated_at from public.booking_handovers bh where bh.booking_id = '${HANDOVER_BOOKING_B}')`;
 // A handover that says nothing about where the car or the keys were left — the shape
 // the mirror's null-preserving rule exists for (migration 167). Same booking as
 // SAVE_HANDOVER_B, so the two cannot be used in one case without colliding on the
 // unique key, which is exactly what the mirroring cases want.
-const SAVE_HANDOVER_B_NO_LOCATION = `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-  82345, 0.5, null, null, true, null, 'Husk at tanke', true, null, null, null);`;
+const SAVE_HANDOVER_B_NO_LOCATION = `perform public.upsert_booking_handover(
+  target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+  end_odometer_value => 82345, fuel_fraction_value => 0.5,
+  parking_location_value => null, key_location_value => null,
+  condition_ok_value => true, condition_note_value => null,
+  note_to_next_value => 'Husk at tanke', keys_confirmed_value => true,
+  parking_lat_value => null, parking_lng_value => null,
+  event_title => null, event_body => null, expected_updated_at => null);`;
 
 // GVM-520 vehicle-location helpers (migration 167). The car's CURRENT parking and key
 // placement live on the ledgers row; set_vehicle_location is the standalone writer and
@@ -488,6 +505,32 @@ const SET_LOCATION_B_WITH_PIN = `perform public.set_vehicle_location(
   key_location_value => 'Noegler hos Bo, 2. sal',
   parking_lat_value => ${PIN_LAT}, parking_lng_value => ${PIN_LNG},
   event_title => 'Bo satte en naal', event_body => 'Den staar bag Netto nu');`;
+// GVM-540 (migration 170): the handover sheet can now carry a pin of its own, so the
+// driver standing at the car drops one on the form they are already filling in. Same
+// booking as SAVE_HANDOVER_B — one handover per booking — and the same Copenhagen
+// coordinates, so a case can assert the pin the handover wrote against the same pair
+// set_vehicle_location writes.
+const SAVE_HANDOVER_B_WITH_PIN = `perform public.upsert_booking_handover(
+  target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+  end_odometer_value => 82345, fuel_fraction_value => 0.5,
+  parking_location_value => 'P-kaelder niveau 2, plads 14',
+  key_location_value => 'Noegler i postkassen',
+  condition_ok_value => true, condition_note_value => null,
+  note_to_next_value => 'Husk at tanke', keys_confirmed_value => true,
+  parking_lat_value => ${PIN_LAT}, parking_lng_value => ${PIN_LNG},
+  event_title => 'Bo har afleveret bilen', event_body => 'Parkeret i P-kaelderen');`;
+// EXACTLY the body govehlo-mobile's shipped handover call sends: the thirteen named keys
+// that existed before migration 170, and no mention of the pin. PostgREST resolves it
+// against the fifteen-argument signature through the two defaults.
+const SAVE_HANDOVER_B_OLD_SIGNATURE = `perform public.upsert_booking_handover(
+  target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+  end_odometer_value => 82345, fuel_fraction_value => 0.5,
+  parking_location_value => 'Gammel klient flyttede bilen',
+  key_location_value => 'Noegler i postkassen',
+  condition_ok_value => true, condition_note_value => null,
+  note_to_next_value => 'Husk at tanke', keys_confirmed_value => true,
+  event_title => 'Bo har afleveret bilen', event_body => 'Parkeret i P-kaelderen',
+  expected_updated_at => null);`;
 // Reading the two columns and the two stamps back, as one string, so a CASEFAIL says
 // what the row actually holds instead of just "not what was expected".
 const WS1_LOCATION = `(select coalesce(l.parking_location, 'NULL') || ' / ' || coalesce(l.key_location, 'NULL')
@@ -4062,7 +4105,7 @@ end`,
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
     actor: C,
     op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      null, null, 'Cilles gaet', null, null, null, null, false, null, null, null);`,
+      null, null, 'Cilles gaet', null, null, null, null, false, null, null, null, null, null);`,
     expect: "42501",
     post: `if exists (select 1 from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
       then raise exception 'CASEFAIL handover-bystander-write-denied: a refused write left a row behind'; end if;`,
@@ -4073,7 +4116,7 @@ end`,
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
     actor: A,
     op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      null, null, 'Annas rettelse', null, null, null, null, false, null, null, null);`,
+      null, null, 'Annas rettelse', null, null, null, null, false, null, null, null, null, null);`,
     expect: "ok",
     post: `if (select author_member_id from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}') <> '${A_ID}'
       then raise exception 'CASEFAIL handover-admin-writes: author is not the admin who wrote it'; end if;`,
@@ -4084,7 +4127,7 @@ end`,
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
     actor: E,
     op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      null, null, 'Eriks fusk', null, null, null, null, false, null, null, null);`,
+      null, null, 'Eriks fusk', null, null, null, null, false, null, null, null, null, null);`,
     expect: "42501",
   }),
   rpcCase({
@@ -4093,7 +4136,7 @@ end`,
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
     actor: D,
     op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_D}'::uuid,
-      null, null, 'Dans forsoeg', null, null, null, null, false, null, null, null);`,
+      null, null, 'Dans forsoeg', null, null, null, null, false, null, null, null, null, null);`,
     expect: "42501",
   }),
   rpcCase({
@@ -4102,7 +4145,7 @@ end`,
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
     actor: ANON,
     op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      null, null, 'anon', null, null, null, null, false, null, null, null);`,
+      null, null, 'anon', null, null, null, null, false, null, null, null, null, null);`,
     expect: "42501",
   }),
   queryCase({
@@ -4164,9 +4207,10 @@ end`,
     actor: B,
     assert: `begin
   ${SAVE_HANDOVER_B}
-  perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-    null, null, 'P-kaelder niveau 3, plads 7', null, null, null, null, false,
-    'Bo rettede parkeringen', 'Niveau 3, ikke 2');
+  perform public.upsert_booking_handover(
+    target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+    parking_location_value => 'P-kaelder niveau 3, plads 7',
+    event_title => 'Bo rettede parkeringen', event_body => 'Niveau 3, ikke 2');
   if (select count(*) from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}') <> 1 then
     raise exception 'CASEFAIL handover-second-save-edits-the-same-row: a second save stacked a duplicate handover';
   end if;
@@ -4180,9 +4224,10 @@ end`,
     desc: "a stale expected_updated_at raises GV42O and writes nothing (GV-421 semantics, migration 160)",
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
     actor: B,
-    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      null, null, 'for sent', null, null, null, null, false, null, null,
-      timestamptz '2020-01-01 00:00:00+00');`,
+    op: `perform public.upsert_booking_handover(
+      target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+      parking_location_value => 'for sent',
+      expected_updated_at => timestamptz '2020-01-01 00:00:00+00');`,
     expect: "GV42O",
     post: `if (select parking_location from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
              <> 'P-kaelder niveau 2, plads 14'
@@ -4193,9 +4238,10 @@ end`,
     desc: "an edit carrying the row CURRENT updated_at is accepted and lands",
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B)],
     actor: B,
-    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      null, null, 'Flyttet til gaden', null, null, null, null, false, null, null,
-      ${HANDOVER_TOKEN_B});`,
+    op: `perform public.upsert_booking_handover(
+      target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+      parking_location_value => 'Flyttet til gaden',
+      expected_updated_at => ${HANDOVER_TOKEN_B});`,
     expect: "ok",
     post: `if (select parking_location from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}') <> 'Flyttet til gaden'
       then raise exception 'CASEFAIL handover-fresh-token-accepted: the accepted edit did not land'; end if;`,
@@ -4469,13 +4515,115 @@ end`,
     desc: "parking mirrors, the omitted key location keeps C's value — per field, not all-or-nothing",
     setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(C, SET_LOCATION_C)],
     actor: B,
-    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
-      82345, 0.5, 'Flyttet til P-huset', null, true, null, null, true, null, null, null);`,
+    op: `perform public.upsert_booking_handover(
+      target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+      end_odometer_value => 82345, fuel_fraction_value => 0.5,
+      parking_location_value => 'Flyttet til P-huset', key_location_value => null,
+      condition_ok_value => true, keys_confirmed_value => true);`,
     expect: "ok",
     post: `if ${WS1_LOCATION} <> 'Flyttet til P-huset / Noegler i postkassen hos Cille'
       then raise exception 'CASEFAIL handover-mirrors-only-the-field-it-carries: columns hold %', ${WS1_LOCATION}; end if;
       if ${WS1_LOCATION_AUTHOR} <> '${ID.B}'
       then raise exception 'CASEFAIL handover-mirrors-only-the-field-it-carries: a mirror that wrote something must stamp its author (%)', ${WS1_LOCATION_AUTHOR}; end if;`,
+  }),
+
+  // ── 16c. The pin travels WITH the handover (migration 170: GVM-540) ────────
+  // Migration 168 bound the pin to the parking TEXT and had the handover mirror CLEAR
+  // it, for the reason 168 wrote down: "a handover form has no way to drop a pin".
+  // GVM-540 gives it one, so the rule becomes symmetric — a fresh pin REPLACES, no pin
+  // still CLEARS, no parking text still PRESERVES. Two of those three are migration
+  // 168's behaviour unchanged, and they are re-pinned here against the NEW signature so
+  // that adding the parameters cannot have quietly changed them.
+  //
+  // The case that matters most is the last one: an old client posts the thirteen named
+  // keys that existed before 170 and must produce the IDENTICAL row it produces today,
+  // pin cleared and all. That is what makes this migration safe to apply before the
+  // mobile half ships.
+  rpcCase({
+    name: "handover-pin-lands-on-the-workspace",
+    desc: "a handover carrying a fresh pin writes it — the driver at the car tapped 'brug min placering'",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SET_LOCATION_B)],
+    actor: B,
+    op: SAVE_HANDOVER_B_WITH_PIN,
+    expect: "ok",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL handover-pin-lands-on-the-workspace: the pin holds %', ${WS1_PIN}; end if;
+      if ${WS1_LOCATION} <> 'P-kaelder niveau 2, plads 14 / Noegler i postkassen'
+      then raise exception 'CASEFAIL handover-pin-lands-on-the-workspace: the text did not mirror (%)', ${WS1_LOCATION}; end if;
+      if (select count(*) from public.booking_handovers bh
+            where bh.booking_id = '${HANDOVER_BOOKING_B}') <> 1
+      then raise exception 'CASEFAIL handover-pin-lands-on-the-workspace: the handover itself was not saved'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-with-a-new-text-and-no-pin-still-clears-it",
+    desc: "migration 168's rule, re-pinned against the new signature: a text without a pin drops the stale one",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: B,
+    op: SAVE_HANDOVER_B,
+    expect: "ok",
+    post: `if ${WS1_PIN} <> 'NULL / NULL'
+      then raise exception 'CASEFAIL handover-with-a-new-text-and-no-pin-still-clears-it: a pin from the PREVIOUS spot survived (%)', ${WS1_PIN}; end if;
+      if ${WS1_LOCATION} <> 'P-kaelder niveau 2, plads 14 / Noegler i postkassen'
+      then raise exception 'CASEFAIL handover-with-a-new-text-and-no-pin-still-clears-it: the text did not mirror (%)', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "handover-without-a-parking-text-preserves-the-pin",
+    desc: "a handover that asserts nothing about the parking leaves both the text and the pin alone",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: B,
+    op: SAVE_HANDOVER_B_NO_LOCATION,
+    expect: "ok",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL handover-without-a-parking-text-preserves-the-pin: the pin moved to %', ${WS1_PIN}; end if;
+      if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
+      then raise exception 'CASEFAIL handover-without-a-parking-text-preserves-the-pin: the text moved to %', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "handover-lone-latitude-refused",
+    desc: "half a pin is 22023 and nothing is written — not the handover row, not the workspace",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: B,
+    op: `perform public.upsert_booking_handover(
+      target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+      parking_location_value => 'Kun en halv naal',
+      parking_lat_value => ${PIN_LAT}, parking_lng_value => null);`,
+    expect: "22023",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL handover-lone-latitude-refused: the refused write moved the pin (%)', ${WS1_PIN}; end if;
+      if exists (select 1 from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
+      then raise exception 'CASEFAIL handover-lone-latitude-refused: a refused write left a handover behind'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-pin-out-of-range-refused",
+    desc: "a latitude of 91 is 22023 — the RPC answers before the ledgers check constraint has to",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: B,
+    op: `perform public.upsert_booking_handover(
+      target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+      parking_location_value => 'Nordpolen og forbi',
+      parking_lat_value => 91, parking_lng_value => 12.5);`,
+    expect: "22023",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL handover-pin-out-of-range-refused: the refused write moved the pin (%)', ${WS1_PIN}; end if;
+      if exists (select 1 from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
+      then raise exception 'CASEFAIL handover-pin-out-of-range-refused: a refused write left a handover behind'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-old-client-call-clears-the-pin",
+    desc: "the pre-170 thirteen-key body still saves, and still clears the pin — byte-identical to today",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: B,
+    // The whole point of the two defaults. A client that predates migration 170 posts
+    // the thirteen named keys it always has; PostgREST resolves that body against the
+    // fifteen-argument signature, both coordinates arrive null, and the middle rule
+    // applies. If this ever fails, an old build in the App Store has stopped saving
+    // handovers — which is why it is a case and not a comment.
+    op: SAVE_HANDOVER_B_OLD_SIGNATURE,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'Gammel klient flyttede bilen / Noegler i postkassen'
+      then raise exception 'CASEFAIL handover-old-client-call-clears-the-pin: the old-signature save did not land (%)', ${WS1_LOCATION}; end if;
+      if ${WS1_PIN} <> 'NULL / NULL'
+      then raise exception 'CASEFAIL handover-old-client-call-clears-the-pin: a pin from the PREVIOUS spot survived a text-only save (%)', ${WS1_PIN}; end if;`,
   }),
 ];
 

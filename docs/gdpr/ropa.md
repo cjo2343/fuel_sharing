@@ -50,7 +50,8 @@ Cloudflare Access + Supabase-login).
   nøgleplacering** på selve workspacet (samme slags personhenførbare fritekst uden
   koordinater, med angivelse af hvilket medlem der sidst opdaterede den og hvornår),
   hertil **ét valgfrit koordinatpar til bilens parkering** — "parkeringsnålen"
-  (GVM-536, migration 168). Det er den **bevidste og eneste undtagelse** fra
+  (GVM-536, migration 168; siden GVM-540/migration 170 kan nålen også sættes fra
+  overdragelsen). Det er den **bevidste og eneste undtagelse** fra
   fritekst-uden-koordinater-holdningen ovenfor, truffet af den dataansvarlige
   2026-08-04, og den er en undtagelse — ikke en opblødning: platformen fjernede
   koordinater i migration 062/071 (GPS på tankninger) og 151 (tankstationer), og
@@ -59,7 +60,11 @@ Cloudflare Access + Supabase-login).
   aldrig position i baggrunden), **ét enkelt punkt om en parkeret bil**, der
   **overskrives på stedet** uden historik, og den **ryddes**, når parkeringsteksten
   ændres uden en ny nål (en ældre klients gem, eller en overdragelse der spejler ny
-  parkeringstekst), så en forældet nål aldrig kan overleve den tekst, den hørte til.
+  parkeringstekst uden selv at bære en nål), så en forældet nål aldrig kan overleve
+  den tekst, den hørte til. Bærer overdragelsen selv en frisk nål, **erstattes** den
+  gamle — det er stadig ét punkt, overskrevet på stedet, og overdragelsens egen række
+  gemmer aldrig koordinater (de ville blive én position pr. booking, altså en
+  bevægelseshistorik).
   Koordinaterne optræder aldrig i aktivitetsfeedet (hændelsens metadata bærer kun
   boolean-feltet `parking_pin_set`), aldrig i URL'er, query-strenge eller logs. Vises
   nålen på et minikort, hentes korttiles hos MapTiler (CH/EU) — se
