@@ -406,6 +406,27 @@ const SAVE_HANDOVER_B = `perform public.upsert_booking_handover('${WS1}', '${HAN
   82345, 0.5, 'P-kaelder niveau 2, plads 14', 'Noegler i postkassen', true, null,
   'Husk at tanke', true, 'Bo har afleveret bilen', 'Parkeret i P-kaelderen');`;
 const HANDOVER_TOKEN_B = `(select bh.updated_at from public.booking_handovers bh where bh.booking_id = '${HANDOVER_BOOKING_B}')`;
+// A handover that says nothing about where the car or the keys were left — the shape
+// the mirror's null-preserving rule exists for (migration 167). Same booking as
+// SAVE_HANDOVER_B, so the two cannot be used in one case without colliding on the
+// unique key, which is exactly what the mirroring cases want.
+const SAVE_HANDOVER_B_NO_LOCATION = `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+  82345, 0.5, null, null, true, null, 'Husk at tanke', true, null, null, null);`;
+
+// GVM-520 vehicle-location helpers (migration 167). The car's CURRENT parking and key
+// placement live on the ledgers row; set_vehicle_location is the standalone writer and
+// upsert_booking_handover mirrors into the same two columns.
+const SET_LOCATION_B = `perform public.set_vehicle_location('${WS1}',
+  'P-plads bag Netto, plads 12', 'Noegler hos Bo, 2. sal',
+  'Bo flyttede bilen', 'Den staar bag Netto nu');`;
+const SET_LOCATION_C = `perform public.set_vehicle_location('${WS1}',
+  'Gaden foran nr. 14', 'Noegler i postkassen hos Cille', null, null);`;
+// Reading the two columns and the two stamps back, as one string, so a CASEFAIL says
+// what the row actually holds instead of just "not what was expected".
+const WS1_LOCATION = `(select coalesce(l.parking_location, 'NULL') || ' / ' || coalesce(l.key_location, 'NULL')
+  from public.ledgers l where l.id = '${WS1}')`;
+const WS1_LOCATION_AUTHOR = `(select coalesce(l.location_updated_by_member_id::text, 'NULL')
+  from public.ledgers l where l.id = '${WS1}')`;
 
 // Push devices for the migration-150 target RPCs (GV-398). Deliberately shaped to
 // carry the two arguments those functions exist for: one owner with TWO devices (so
@@ -3866,6 +3887,154 @@ end`,
     raise exception 'CASEFAIL handover-create-logs-a-feed-event: no handover_created event with the caller as actor and both ids';
   end if;
 end`,
+  }),
+
+  // ── 16. The car's current location (migration 167: GVM-520) ───────────────
+  // ledgers.parking_location / key_location carry the same personal-adjacent free
+  // text booking_handovers does, so the cross-workspace refusal below is the same
+  // privacy boundary rather than a formality. Two properties here are DECISIONS
+  // that a later "tightening" would quietly reverse, and they are pinned as such:
+  //
+  //   • ANY active member may write it, and a second member overwriting the first
+  //     is CORRECT — the car moved again. Whoever moved it is the only person who
+  //     knows where it is, and is usually not the admin.
+  //   • the handover mirror is NULL-PRESERVING while set_vehicle_location is a full
+  //     set. A handover that mentions no parking must not erase the car's known
+  //     spot; a mutation to a plain assignment would look ordinary in a diff and
+  //     would wipe the location on every partial handover.
+  rpcCase({
+    name: "vehicle-location-member-writes",
+    desc: "B, an ordinary member, records where she just left the car and the keys",
+    actor: B,
+    op: SET_LOCATION_B,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
+      then raise exception 'CASEFAIL vehicle-location-member-writes: columns hold %', ${WS1_LOCATION}; end if;
+      if ${WS1_LOCATION_AUTHOR} <> '${ID.B}'
+      then raise exception 'CASEFAIL vehicle-location-member-writes: stamped author is %', ${WS1_LOCATION_AUTHOR}; end if;
+      if (select l.location_updated_at from public.ledgers l where l.id = '${WS1}') is null
+      then raise exception 'CASEFAIL vehicle-location-member-writes: location_updated_at was not stamped'; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-second-member-overwrites",
+    desc: "C overwrites B's location — any-member is the decided policy, because the car moved again",
+    setup: [step(B, SET_LOCATION_B)],
+    actor: C,
+    op: SET_LOCATION_C,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'Gaden foran nr. 14 / Noegler i postkassen hos Cille'
+      then raise exception 'CASEFAIL vehicle-location-second-member-overwrites: columns hold %', ${WS1_LOCATION}; end if;
+      if ${WS1_LOCATION_AUTHOR} <> '${ID.C}'
+      then raise exception 'CASEFAIL vehicle-location-second-member-overwrites: the stamp still names %', ${WS1_LOCATION_AUTHOR}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-foreign-member-denied",
+    desc: "E, a signed-in member of ANOTHER workspace, cannot state where ws1's car is",
+    setup: [step(B, SET_LOCATION_B)],
+    actor: E,
+    op: `perform public.set_vehicle_location('${WS1}', 'Eriks fusk', 'Eriks noegler', null, null);`,
+    expect: "42501",
+    post: `if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
+      then raise exception 'CASEFAIL vehicle-location-foreign-member-denied: a refused write landed anyway (%)', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-inactive-member-denied",
+    desc: "D, deactivated, is a member row but not an active membership",
+    actor: D,
+    op: `perform public.set_vehicle_location('${WS1}', 'Dans forsoeg', null, null, null);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "vehicle-location-anon-denied",
+    desc: "anon cannot state where the car is",
+    actor: ANON,
+    op: `perform public.set_vehicle_location('${WS1}', 'anon', null, null, null);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "vehicle-location-too-long-refused",
+    desc: "201 characters is refused with 22023 and nothing is written",
+    setup: [step(B, SET_LOCATION_B)],
+    actor: C,
+    op: `perform public.set_vehicle_location('${WS1}', repeat('x', 201), null, null, null);`,
+    expect: "22023",
+    post: `if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
+      then raise exception 'CASEFAIL vehicle-location-too-long-refused: the refused write changed the row (%)', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-is-a-full-set-so-null-clears",
+    desc: "an omitted field CLEARS the column — the client prefills both, so this is 'where it is now', not a patch",
+    setup: [step(B, SET_LOCATION_B)],
+    actor: C,
+    op: `perform public.set_vehicle_location('${WS1}', 'Kun parkeringen er kendt', null, null, null);`,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'Kun parkeringen er kendt / NULL'
+      then raise exception 'CASEFAIL vehicle-location-is-a-full-set-so-null-clears: columns hold %', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-logs-one-feed-event-with-no-location-text",
+    desc: "a title writes exactly one vehicle_location_updated event, and its metadata never carries the free text",
+    actor: B,
+    op: SET_LOCATION_B,
+    expect: "ok",
+    post: `if (select count(*) from public.ledger_events
+        where ledger_id = '${WS1}' and event_type = 'vehicle_location_updated'
+          and actor_member_id = '${ID.B}') <> 1
+      then raise exception 'CASEFAIL vehicle-location-logs-one-feed-event-with-no-location-text: not exactly one event by the caller'; end if;
+      if exists (select 1 from public.ledger_events
+        where ledger_id = '${WS1}' and event_type = 'vehicle_location_updated'
+          and metadata::text like '%Netto%')
+      then raise exception 'CASEFAIL vehicle-location-logs-one-feed-event-with-no-location-text: the parking text leaked into event metadata'; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-without-a-title-is-silent",
+    desc: "no event_title writes no feed event at all, but still moves the columns",
+    actor: B,
+    op: `perform public.set_vehicle_location('${WS1}', 'Stille flytning', null, null, null);`,
+    expect: "ok",
+    post: `if exists (select 1 from public.ledger_events where ledger_id = '${WS1}' and event_type = 'vehicle_location_updated')
+      then raise exception 'CASEFAIL vehicle-location-without-a-title-is-silent: an event was written with no title'; end if;
+      if ${WS1_LOCATION} <> 'Stille flytning / NULL'
+      then raise exception 'CASEFAIL vehicle-location-without-a-title-is-silent: the write did not land (%)', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "handover-mirrors-its-locations-onto-the-workspace",
+    desc: "saving a handover that carries parking and keys updates the car's CURRENT location too",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS)],
+    actor: B,
+    op: SAVE_HANDOVER_B,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'P-kaelder niveau 2, plads 14 / Noegler i postkassen'
+      then raise exception 'CASEFAIL handover-mirrors-its-locations-onto-the-workspace: columns hold %', ${WS1_LOCATION}; end if;
+      if ${WS1_LOCATION_AUTHOR} <> '${ID.B}'
+      then raise exception 'CASEFAIL handover-mirrors-its-locations-onto-the-workspace: the mirror did not stamp its author (%)', ${WS1_LOCATION_AUTHOR}; end if;`,
+  }),
+  rpcCase({
+    name: "handover-without-a-location-preserves-the-workspace-one",
+    desc: "a handover that mentions neither parking nor keys leaves C's earlier location — and her stamp — untouched",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(C, SET_LOCATION_C)],
+    actor: B,
+    op: SAVE_HANDOVER_B_NO_LOCATION,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'Gaden foran nr. 14 / Noegler i postkassen hos Cille'
+      then raise exception 'CASEFAIL handover-without-a-location-preserves-the-workspace-one: a partial handover erased the car location (%)', ${WS1_LOCATION}; end if;
+      if ${WS1_LOCATION_AUTHOR} <> '${ID.C}'
+      then raise exception 'CASEFAIL handover-without-a-location-preserves-the-workspace-one: the stamp moved to % although nothing mirrored', ${WS1_LOCATION_AUTHOR}; end if;
+      if not exists (select 1 from public.booking_handovers where booking_id = '${HANDOVER_BOOKING_B}')
+      then raise exception 'CASEFAIL handover-without-a-location-preserves-the-workspace-one: the handover itself was not saved'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-mirrors-only-the-field-it-carries",
+    desc: "parking mirrors, the omitted key location keeps C's value — per field, not all-or-nothing",
+    setup: [step(SUPER, SEED_HANDOVER_BOOKINGS), step(C, SET_LOCATION_C)],
+    actor: B,
+    op: `perform public.upsert_booking_handover('${WS1}', '${HANDOVER_BOOKING_B}'::uuid,
+      82345, 0.5, 'Flyttet til P-huset', null, true, null, null, true, null, null, null);`,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'Flyttet til P-huset / Noegler i postkassen hos Cille'
+      then raise exception 'CASEFAIL handover-mirrors-only-the-field-it-carries: columns hold %', ${WS1_LOCATION}; end if;
+      if ${WS1_LOCATION_AUTHOR} <> '${ID.B}'
+      then raise exception 'CASEFAIL handover-mirrors-only-the-field-it-carries: a mirror that wrote something must stamp its author (%)', ${WS1_LOCATION_AUTHOR}; end if;`,
   }),
 ];
 
