@@ -27,6 +27,17 @@ Cloudflare Access + Supabase-login).
   skader/hændelser samt beregne/afregne omkostningsfordeling mellem medlemmer.
 - **Registrerede:** Workspace-medlemmer.
 - **Datakategorier:** Ture (km, datoer, deltagere), brændstofkøb (beløb, liter),
+  hertil **valgfrie kvitteringsfotos på den enkelte tankning** (GVM-537, migration
+  169) — formålet er gruppens fælles dokumentation af en delt udgift: fotoet svarer
+  på "hvad stod der på kvitteringen?", mens pengene stadig er i bevægelse. Kategorien
+  er **opt-in pr. tankning** (der uploades aldrig noget af sig selv, og der findes
+  ingen workspace-indstilling, der slår det til for alle), **ét foto pr. tankning**
+  som en ny vedhæftning erstatter frem for at lægge oveni, og det **slettes
+  automatisk**, når tankningens afregningsperiode er lukket og betalt — se
+  retention.md. Fotoet kan indeholde tidspunkt, sted og fx de sidste fire cifre af et
+  betalingskort; det ligger i en privat Supabase-bucket i EU, hentes kun af
+  workspacets medlemmer, og hverken sti eller signeret URL optræder i URL'er,
+  query-strenge eller logs,
   udgifter og reparationer (beløb, værksted, kvitteringsdata), bookinger,
   skader/hændelser (titel, beskrivelse, dato, kilometerstand, status, skadetype
   — eksisterende skade eller ny hændelse — valgfrit skadenummer, fører og relation
@@ -56,7 +67,9 @@ Cloudflare Access + Supabase-login).
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
-- **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos.
+- **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos og
+  kvitteringsfotos (to adskilte private buckets, begge kun læsbare for workspacets
+  medlemmer).
   Ved kvitterings-OCR: Mindee (planlagt — se
   subprocessors.md). Ved ruteplanlægning: GraphHopper (DE) og Photon (koordinater,
   ingen konto-id'er) — samt Cloudflare KV som korttids-cache (GV-428): den

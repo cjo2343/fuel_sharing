@@ -61,6 +61,36 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
+  {
+    fn: 'attach_fuel_payment_receipt',
+    reason:
+      'Migration 169 (GVM-537) is the PLATFORM half of a two-repo ticket and lands first, ' +
+      'because PostgREST answers PGRST202 for a function that does not exist yet — so the ' +
+      'SQL must be applied before govehlo-mobile can call it. Until the mobile half merges, ' +
+      'this guard is the only caller of the RPC anywhere, which is exactly the GV-379 shape ' +
+      'and exactly why it is written down here instead of being silently tolerated. The RPC ' +
+      'is NOT dead: it is the sole writer behind "vedhæft kvittering" on a tankning, and it ' +
+      'is the only thing that can create a fuel_payment_receipts row at all (the table has ' +
+      'no write grant for any client role). What would change this answer: govehlo-mobile ' +
+      'shipping its GVM-537 half, at which point findClientCallers sees the call, this entry ' +
+      'goes STALE and must be DELETED rather than renewed — the same course set_vehicle_location, ' +
+      'upsert_booking_handover and set_tank_state ran below. If instead the mobile half is ' +
+      'abandoned, the honest fix is to revoke the authenticated grant and drop the feature, ' +
+      'not to push this date out again.',
+    reviewBy: '2026-11-04',
+  },
+  {
+    fn: 'detach_fuel_payment_receipt',
+    reason:
+      'The other half of the same migration-169-first window as attach_fuel_payment_receipt ' +
+      'above, and it stands or falls with it: it is the uploader/admin-gated remover behind ' +
+      '"fjern kvittering", the only way a member can delete a receipt row before the ' +
+      'retention sweep does, and it exists precisely so the delete decision is made in SQL ' +
+      'rather than by whoever holds a Storage token. Same expiry course: when govehlo-mobile ' +
+      'ships its GVM-537 half this entry goes STALE and is DELETED, not renewed; if the ' +
+      'mobile half is abandoned the authenticated grant should be revoked instead.',
+    reviewBy: '2026-11-04',
+  },
   // set_vehicle_location's entry was deleted here on the entry's own instruction:
   // it covered only the migration-167-first window, and govehlo-mobile has called
   // the RPC since PR #561 (src/lib/vehicle-location.ts via supabase-helpers.ts) —
