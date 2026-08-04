@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 166 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 167 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -612,10 +612,14 @@ export type Database = {
           is_public_signup_enabled: boolean
           join_code: string | null
           join_code_rotated_at: string | null
+          key_location: string | null
+          location_updated_at: string | null
+          location_updated_by_member_id: string | null
           low_fuel_threshold_percent: number
           name: string
           next_service_date: string | null
           next_service_km: number | null
+          parking_location: string | null
           repairs_split_mode: string
           rule_lock_period_after_payment: boolean
           rule_require_requests_before_close: boolean
@@ -671,10 +675,14 @@ export type Database = {
           is_public_signup_enabled?: boolean
           join_code?: string | null
           join_code_rotated_at?: string | null
+          key_location?: string | null
+          location_updated_at?: string | null
+          location_updated_by_member_id?: string | null
           low_fuel_threshold_percent?: number
           name?: string
           next_service_date?: string | null
           next_service_km?: number | null
+          parking_location?: string | null
           repairs_split_mode?: string
           rule_lock_period_after_payment?: boolean
           rule_require_requests_before_close?: boolean
@@ -730,10 +738,14 @@ export type Database = {
           is_public_signup_enabled?: boolean
           join_code?: string | null
           join_code_rotated_at?: string | null
+          key_location?: string | null
+          location_updated_at?: string | null
+          location_updated_by_member_id?: string | null
           low_fuel_threshold_percent?: number
           name?: string
           next_service_date?: string | null
           next_service_km?: number | null
+          parking_location?: string | null
           repairs_split_mode?: string
           rule_lock_period_after_payment?: boolean
           rule_require_requests_before_close?: boolean
@@ -759,7 +771,15 @@ export type Database = {
           weekly_digest_enabled?: boolean
           weekly_digest_sent_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ledgers_location_updated_by_member_id_fkey"
+            columns: ["location_updated_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       message_read_state: {
         Row: {
@@ -2418,6 +2438,16 @@ export type Database = {
             }
             Returns: Json
           }
+      set_vehicle_location: {
+        Args: {
+          event_body?: string
+          event_title?: string
+          key_location_value?: string
+          parking_location_value?: string
+          target_ledger_id: string
+        }
+        Returns: Json
+      }
       set_weekly_digest_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
         Returns: undefined

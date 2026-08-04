@@ -35,7 +35,9 @@ Cloudflare Access + Supabase-login).
   overdragelser ved bookingens afslutning (kilometerstand, brændstofniveau,
   **parkerings- og nøgleplacering som fritekst**, stand og bemærkning, besked til
   næste fører, nøglekvittering — lokationsangivelserne er personhenførbare og gemmes
-  bevidst som fritekst uden koordinater),
+  bevidst som fritekst uden koordinater), bilens **aktuelle parkerings- og
+  nøgleplacering** på selve workspacet (samme slags personhenførbare fritekst uden
+  koordinater, med angivelse af hvilket medlem der sidst opdaterede den og hvornår),
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).

@@ -22,7 +22,11 @@
 //   • the GV-421 precondition being checked AFTER the write (identical-looking
 //     diff, damage already done), or raising the wrong code;
 //   • the feed event firing on every EDIT, turning three corrections to a parking
-//     spot into three notifications for the whole group.
+//     spot into three notifications for the whole group;
+//   • the GVM-520 mirror onto ledgers losing its coalesce (migration 167), so a
+//     handover that mentions no parking ERASES the car's known parking spot. That
+//     mutation reads as a simplification in a diff, passes every other check in this
+//     file, and destroys the group's only record of where their car is.
 //
 // Shape is asserted against the CATALOG of a replayed database rather than against
 // the SQL text: `select relrowsecurity`, `pg_policies`, `pg_constraint`,
@@ -135,8 +139,10 @@ insert into public.ledger_members (id, ledger_id, name, email, role, is_active) 
 insert into public.settlement_periods (id, ledger_id, status, label, opened_at)
 values ('${PERIOD}', '${L}', 'open', 'Open', now() - interval '60 days');
 
--- Six bookings for Bo, one per behavioural case, each on its own day so nothing in
--- the fixture depends on booking-window rules. Day N at 09:00Z–13:00Z.
+-- Nine bookings for Bo, one per behavioural case, each on its own day so nothing in
+-- the fixture depends on booking-window rules. Day N at 09:00Z–13:00Z. (The last two
+-- belong to the GVM-520 mirroring section; the id template is single-digit, so a
+-- tenth needs a wider one rather than another row here.)
 insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id)
 select
   ('30000000-0000-0000-0000-00000000000' || n)::uuid,
@@ -144,7 +150,7 @@ select
   date_trunc('day', now()) + (n || ' day')::interval + interval '9 hour',
   date_trunc('day', now()) + (n || ' day')::interval + interval '13 hour',
   '${BO}'
-from generate_series(1, 8) as n;
+from generate_series(1, 9) as n;
 
 -- One booking in the OTHER workspace, so "the booking belongs to this ledger" can be
 -- tested with a real id rather than a random uuid.
@@ -871,6 +877,141 @@ pin("the RPC returns handover_id, created and the row's new updated_at", () => {
   assert.match(edited, /"created": false/, "the second call must report itself as an update");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 8. THE MIRROR ONTO THE WORKSPACE ROW (GVM-520, migration 167)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Migration 167 put the car's CURRENT parking and key placement on ledgers, and made
+// this RPC mirror into it. The mirror is NULL-PRESERVING per field, which is the one
+// property in this file a mutation could break while looking completely ordinary in a
+// diff: `set parking_location = v_parking` instead of `coalesce(v_parking,
+// l.parking_location)` reads as a simplification, passes every other test here, and
+// wipes the group's only record of where their car is on every partial handover — the
+// precise failure the handover was built to prevent.
+
+/** The workspace's current location columns, as one string. */
+const ledgerLocation = () =>
+  scalar(
+    `select coalesce(parking_location, 'NULL') || ' / ' || coalesce(key_location, 'NULL')
+       from public.ledgers where id = '${L}';`,
+  );
+const ledgerLocationAuthor = () =>
+  scalar(`select coalesce(location_updated_by_member_id::text, 'NULL') from public.ledgers where id = '${L}';`);
+const ledgerLocationStamp = () =>
+  scalar(`select coalesce(location_updated_at::text, 'NULL') from public.ledgers where id = '${L}';`);
+
+pin("the workspace's location columns are free text with a 200-char check and NO coordinate column", () => {
+  const columns = scalar(
+    `select string_agg(column_name || ':' || data_type, '|' order by column_name)
+       from information_schema.columns
+      where table_schema = 'public' and table_name = 'ledgers'
+        and column_name in ('parking_location', 'key_location', 'location_updated_by_member_id', 'location_updated_at');`,
+  );
+  assert.equal(
+    columns,
+    "key_location:text|location_updated_at:timestamp with time zone|location_updated_by_member_id:uuid|parking_location:text",
+    "all four GVM-520 columns must exist, and the two locations must be TEXT",
+  );
+  const geo = scalar(
+    `select coalesce(string_agg(column_name, ','), 'none')
+       from information_schema.columns
+      where table_schema = 'public' and table_name = 'ledgers'
+        and (column_name like '%latitude%' or column_name like '%longitude%'
+             or column_name like '%_lat' or column_name like '%_lng'
+             or column_name like 'location_coord%');`,
+  );
+  assert.equal(geo, "none", "a coordinate column would reverse the GDPR posture 151 and 062/071 established");
+  const checks = scalar(
+    `select string_agg(conname, '|' order by conname)
+       from pg_constraint
+      where conrelid = 'public.ledgers'::regclass and contype = 'c'
+        and conname in ('ledgers_parking_location_check', 'ledgers_key_location_check');`,
+  );
+  assert.equal(
+    checks,
+    "ledgers_key_location_check|ledgers_parking_location_check",
+    "the 200-char cap must live in the table as well as in the two RPCs",
+  );
+  assert.equal(
+    scalar(
+      `select conname || ':' || confdeltype::text from pg_constraint
+        where conrelid = 'public.ledgers'::regclass and contype = 'f'
+          and conname = 'ledgers_location_updated_by_member_id_fkey';`,
+    ),
+    "ledgers_location_updated_by_member_id_fkey:n",
+    "on delete SET NULL — losing an attribution must never take the car's location with it",
+  );
+});
+
+pin("a handover carrying both locations mirrors them onto the workspace, with its author and a stamp", () => {
+  raw(
+    `update public.ledgers set parking_location = null, key_location = null,
+        location_updated_by_member_id = null, location_updated_at = null where id = '${L}';`,
+  );
+  assert.equal(
+    saveHandover({
+      booking: BOOKING(8),
+      parking: "P-kælder niveau 2, plads 14",
+      keyLocation: "Nøgler i postkassen hos Lars",
+      actor: "bo@test.dk",
+    }),
+    "OK",
+  );
+  assert.equal(ledgerLocation(), "P-kælder niveau 2, plads 14 / Nøgler i postkassen hos Lars");
+  assert.equal(ledgerLocationAuthor(), BO, "the mirror stamps whoever authored the handover");
+  assert.notEqual(ledgerLocationStamp(), "NULL", "a mirrored location without a time is not believable");
+});
+
+pin("a handover that mentions NEITHER location leaves the workspace's location AND its stamp alone", () => {
+  raw(
+    `update public.ledgers set parking_location = 'Gaden foran nr. 14',
+        key_location = 'Nøgler hos Anna', location_updated_by_member_id = '${ANNA}',
+        location_updated_at = now() - interval '2 days' where id = '${L}';`,
+  );
+  const stampBefore = ledgerLocationStamp();
+
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), odometer: 82345, keysConfirmed: true, actor: "bo@test.dk" }),
+    "OK",
+  );
+  assert.equal(handoverCount(BOOKING(9)), 1, "the handover itself must still be saved");
+  assert.equal(readColumn(BOOKING(9), "parking_location"), "NULL", "and its OWN column is null, as it always was");
+
+  assert.equal(
+    ledgerLocation(),
+    "Gaden foran nr. 14 / Nøgler hos Anna",
+    "a skipped field on somebody's handover is not evidence that nobody knows where the car is",
+  );
+  assert.equal(ledgerLocationAuthor(), ANNA, "nothing mirrored, so the attribution must not move either");
+  assert.equal(ledgerLocationStamp(), stampBefore, "and a two-day-old spot must not look freshly confirmed");
+});
+
+pin("the mirror is PER FIELD: parking follows, the omitted key location stays", () => {
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), parking: "Flyttet til P-huset", actor: "bo@test.dk" }),
+    "OK",
+    "this is an EDIT of the handover written above — the mirror runs on edits too, unlike the feed event",
+  );
+  assert.equal(
+    ledgerLocation(),
+    "Flyttet til P-huset / Nøgler hos Anna",
+    "one field mirroring must not drag the other one along, in either direction",
+  );
+  assert.equal(ledgerLocationAuthor(), BO, "a mirror that DID write something re-stamps its author");
+});
+
+pin("clearing a parking spot on the handover does not clear the workspace's", () => {
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), keyLocation: "Nøgler hos Bo", actor: "bo@test.dk" }),
+    "OK",
+  );
+  assert.equal(readColumn(BOOKING(9), "parking_location"), "NULL", "the handover row IS a full replace");
+  assert.equal(
+    ledgerLocation(),
+    "Flyttet til P-huset / Nøgler hos Bo",
+    "but the workspace keeps the last spot anybody actually named — clearing it is set_vehicle_location's job",
+  );
+});
+
 removeContainer(CONTAINER);
 
 process.stdout.write(
@@ -881,5 +1022,6 @@ process.stdout.write(
     `column and both workspace FKs cascade; lengths and the 0..1 fuel fraction are enforced in the table AND ` +
     `answered in Danish by the RPC; a stale token raises ${CONFLICT} after the permission gates, leaving the row ` +
     `byte-identical and the feed silent, while microsecond-only drift is accepted; handover_created is written ` +
-    `once on create and never on an edit.\n`,
+    `once on create and never on an edit; and the GVM-520 mirror onto ledgers is NULL-PRESERVING per field, so a ` +
+    `handover that mentions no parking leaves the car's known spot, its author and its stamp exactly as they were.\n`,
 );
