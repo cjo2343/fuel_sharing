@@ -899,7 +899,7 @@ const ledgerLocationAuthor = () =>
 const ledgerLocationStamp = () =>
   scalar(`select coalesce(location_updated_at::text, 'NULL') from public.ledgers where id = '${L}';`);
 
-pin("the workspace's location columns are free text with a 200-char check and NO coordinate column", () => {
+pin("the workspace's location columns are free text with a 200-char check", () => {
   const columns = scalar(
     `select string_agg(column_name || ':' || data_type, '|' order by column_name)
        from information_schema.columns
@@ -911,15 +911,22 @@ pin("the workspace's location columns are free text with a 200-char check and NO
     "key_location:text|location_updated_at:timestamp with time zone|location_updated_by_member_id:uuid|parking_location:text",
     "all four GVM-520 columns must exist, and the two locations must be TEXT",
   );
+  // The coordinate columns this file used to forbid outright now exist, by name, and
+  // ONLY those two — see the GVM-536 section at the end for the reversal and its terms.
   const geo = scalar(
-    `select coalesce(string_agg(column_name, ','), 'none')
+    `select coalesce(string_agg(column_name, ',' order by column_name), 'none')
        from information_schema.columns
       where table_schema = 'public' and table_name = 'ledgers'
         and (column_name like '%latitude%' or column_name like '%longitude%'
              or column_name like '%_lat' or column_name like '%_lng'
              or column_name like 'location_coord%');`,
   );
-  assert.equal(geo, "none", "a coordinate column would reverse the GDPR posture 151 and 062/071 established");
+  assert.equal(
+    geo,
+    "parking_lat,parking_lng",
+    "the parking pin (GVM-536) is the ONE approved coordinate pair; a THIRD coordinate column " +
+      "would be a fresh reversal of the posture 151 and 062/071 established, and needs its own decision",
+  );
   const checks = scalar(
     `select string_agg(conname, '|' order by conname)
        from pg_constraint
@@ -1012,6 +1019,128 @@ pin("clearing a parking spot on the handover does not clear the workspace's", ()
   );
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9. THE PARKING PIN, AND WHY THE MIRROR KILLS IT (GVM-536, migration 168)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Migration 168 put ONE optional coordinate pair on the workspace row — the platform's
+// single, deliberate exception to its no-coordinates posture (owner decision
+// 2026-08-04). The rule that keeps it honest is that THE PIN BELONGS TO THE TEXT IT WAS
+// SET WITH, and this file owns half of it: a handover form has no way to drop a pin, so
+// when the mirror writes a NEW parking text the stored coordinates describe wherever the
+// car used to be. Leaving them would send the next driver confidently to the wrong
+// street with map-grade confidence — worse than the free-text staleness the whole
+// feature exists to prevent.
+//
+// The mutation this section kills is the smallest possible one: deleting two lines from
+// the mirror's UPDATE. Nothing else in this file would notice, and the pin would quietly
+// outlive every text it was ever attached to.
+
+const ledgerPin = () =>
+  scalar(
+    `select coalesce(parking_lat::text, 'NULL') || ' / ' || coalesce(parking_lng::text, 'NULL')
+       from public.ledgers where id = '${L}';`,
+  );
+const setLedgerPin = (lat, lng) =>
+  raw(`update public.ledgers set parking_lat = ${lat}, parking_lng = ${lng} where id = '${L}';`);
+
+pin("the pin is TWO nullable numeric columns, and nothing more", () => {
+  const columns = scalar(
+    `select string_agg(column_name || ':' || data_type || ':' || is_nullable, '|' order by column_name)
+       from information_schema.columns
+      where table_schema = 'public' and table_name = 'ledgers'
+        and column_name in ('parking_lat', 'parking_lng');`,
+  );
+  assert.equal(
+    columns,
+    "parking_lat:numeric:YES|parking_lng:numeric:YES",
+    "both columns must exist, be numeric, and stay NULLABLE — a workspace that never taps the " +
+      "button holds null/null forever, and that is the normal state",
+  );
+});
+
+pin("all three named check constraints exist, and they REJECT what they are named for", () => {
+  const names = scalar(
+    `select coalesce(string_agg(conname, '|' order by conname), 'none')
+       from pg_constraint
+      where conrelid = 'public.ledgers'::regclass and contype = 'c'
+        and conname in ('ledgers_parking_pin_pair_check', 'ledgers_parking_lat_range_check',
+                        'ledgers_parking_lng_range_check');`,
+  );
+  assert.equal(
+    names,
+    "ledgers_parking_lat_range_check|ledgers_parking_lng_range_check|ledgers_parking_pin_pair_check",
+    "all three must be present BY NAME, so a replay against an existing column reinstalls them",
+  );
+
+  // Asserted by behaviour rather than by pg_get_constraintdef's spelling: the RPC's
+  // English guard is the polite half, and this is the half a direct write cannot talk
+  // its way past. Written as the table owner, so nothing here is really RLS.
+  const write = (lat, lng) =>
+    sqlstateOf("bo@test.dk", `update public.ledgers set parking_lat = ${lat}, parking_lng = ${lng} where id = '${L}';`);
+
+  assert.equal(write("55.6761", "null"), "23514", "half a pin is a marker on the prime meridian — refuse it");
+  assert.equal(write("null", "12.5683"), "23514", "and the same in the other direction");
+  assert.equal(write("91", "12.5683"), "23514", "latitude beyond ±90 is not a place");
+  assert.equal(write("55.6761", "181"), "23514", "longitude beyond ±180 is not a place either");
+  assert.equal(write("55.6761", "12.5683"), "OK", "a real coordinate pair must still be storable");
+  assert.equal(write("null", "null"), "OK", "and null/null — no pin — is the normal state");
+});
+
+pin("the column comments state the GDPR reversal, not just the shape", () => {
+  for (const column of ["parking_lat", "parking_lng"]) {
+    const comment = scalar(
+      `select col_description('public.ledgers'::regclass,
+         (select attnum from pg_attribute where attrelid = 'public.ledgers'::regclass
+            and attname = '${column}'));`,
+    );
+    assert.match(comment, /exception/i, `${column}: the comment must say this is an EXCEPTION, in the catalog`);
+    assert.match(comment, /no-coordinates/i, `${column}: name the posture being reversed`);
+    assert.match(comment, /user-initiated/i, `${column}: no background collection, and the comment must say so`);
+    assert.match(comment, /overwritten in place/i, `${column}: one point, no history`);
+  }
+});
+
+pin("a handover carrying a NEW parking text CLEARS the pin it did not set", () => {
+  raw(
+    `update public.ledgers set parking_location = 'Gaden foran nr. 14', key_location = 'Nøgler hos Anna'
+      where id = '${L}';`,
+  );
+  setLedgerPin("55.6761", "12.5683");
+  assert.equal(ledgerPin(), "55.6761 / 12.5683", "fixture check: the pin is there before the handover");
+
+  assert.equal(saveHandover({ booking: BOOKING(9), parking: "Flyttet til Nørre Allé", actor: "bo@test.dk" }), "OK");
+  assert.equal(ledgerLocation(), "Flyttet til Nørre Allé / Nøgler hos Anna", "the text still mirrors");
+  assert.equal(
+    ledgerPin(),
+    "NULL / NULL",
+    "a handover form cannot drop a pin, so a pin surviving a NEW parking text points at where the " +
+      "car used to be — map-grade confidence in the wrong street is worse than no pin at all",
+  );
+});
+
+pin("a handover with NO parking leaves the pin exactly where it was", () => {
+  raw(`update public.ledgers set parking_location = 'Gaden foran nr. 14' where id = '${L}';`);
+  setLedgerPin("55.6761", "12.5683");
+
+  assert.equal(
+    saveHandover({ booking: BOOKING(9), keyLocation: "Nøgler hos Bo", actor: "bo@test.dk" }),
+    "OK",
+    "this handover states something about the KEYS and nothing about the parking",
+  );
+  assert.equal(ledgerLocation(), "Gaden foran nr. 14 / Nøgler hos Bo", "the parking text is preserved, as always");
+  assert.equal(
+    ledgerPin(),
+    "55.6761 / 12.5683",
+    "and the pin with it: nothing was asserted about where the car is parked, so nothing about it changed",
+  );
+});
+
+pin("a handover that mentions NEITHER location touches neither the text nor the pin", () => {
+  setLedgerPin("55.6761", "12.5683");
+  assert.equal(saveHandover({ booking: BOOKING(9), odometer: 82400, actor: "bo@test.dk" }), "OK");
+  assert.equal(ledgerPin(), "55.6761 / 12.5683", "the mirror did not run at all, so the pin cannot have moved");
+});
+
 removeContainer(CONTAINER);
 
 process.stdout.write(
@@ -1022,6 +1151,9 @@ process.stdout.write(
     `column and both workspace FKs cascade; lengths and the 0..1 fuel fraction are enforced in the table AND ` +
     `answered in Danish by the RPC; a stale token raises ${CONFLICT} after the permission gates, leaving the row ` +
     `byte-identical and the feed silent, while microsecond-only drift is accepted; handover_created is written ` +
-    `once on create and never on an edit; and the GVM-520 mirror onto ledgers is NULL-PRESERVING per field, so a ` +
-    `handover that mentions no parking leaves the car's known spot, its author and its stamp exactly as they were.\n`,
+    `once on create and never on an edit; the GVM-520 mirror onto ledgers is NULL-PRESERVING per field, so a ` +
+    `handover that mentions no parking leaves the car's known spot, its author and its stamp exactly as they were; ` +
+    `and the GVM-536 parking pin — the ONE approved coordinate pair, two nullable numerics behind three named ` +
+    `check constraints and a comment that states the reversal — is CLEARED whenever the mirror writes a new ` +
+    `parking text and preserved whenever it does not, because the pin belongs to the text it was set with.\n`,
 );

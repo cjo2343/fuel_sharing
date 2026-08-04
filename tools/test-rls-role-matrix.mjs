@@ -416,16 +416,41 @@ const SAVE_HANDOVER_B_NO_LOCATION = `perform public.upsert_booking_handover('${W
 // GVM-520 vehicle-location helpers (migration 167). The car's CURRENT parking and key
 // placement live on the ledgers row; set_vehicle_location is the standalone writer and
 // upsert_booking_handover mirrors into the same two columns.
-const SET_LOCATION_B = `perform public.set_vehicle_location('${WS1}',
-  'P-plads bag Netto, plads 12', 'Noegler hos Bo, 2. sal',
-  'Bo flyttede bilen', 'Den staar bag Netto nu');`;
-const SET_LOCATION_C = `perform public.set_vehicle_location('${WS1}',
-  'Gaden foran nr. 14', 'Noegler i postkassen hos Cille', null, null);`;
+//
+// NAMED arguments throughout, since migration 168 (GVM-536) inserted the two pin
+// parameters BEFORE the trailing event pair: a positional call would silently hand the
+// event title to parking_lat. Named notation is also what both clients post, so these
+// read like the real requests.
+const SET_LOCATION_B = `perform public.set_vehicle_location(
+  target_ledger_id => '${WS1}',
+  parking_location_value => 'P-plads bag Netto, plads 12',
+  key_location_value => 'Noegler hos Bo, 2. sal',
+  parking_lat_value => null, parking_lng_value => null,
+  event_title => 'Bo flyttede bilen', event_body => 'Den staar bag Netto nu');`;
+const SET_LOCATION_C = `perform public.set_vehicle_location(
+  target_ledger_id => '${WS1}',
+  parking_location_value => 'Gaden foran nr. 14',
+  key_location_value => 'Noegler i postkassen hos Cille',
+  parking_lat_value => null, parking_lng_value => null,
+  event_title => null, event_body => null);`;
+// GVM-536: the same save WITH a pin. Copenhagen, four decimals — the precision a phone
+// actually reports for a parked car. Cases that need an existing pin to be cleared use
+// this as their setup.
+const PIN_LAT = "55.6761";
+const PIN_LNG = "12.5683";
+const SET_LOCATION_B_WITH_PIN = `perform public.set_vehicle_location(
+  target_ledger_id => '${WS1}',
+  parking_location_value => 'P-plads bag Netto, plads 12',
+  key_location_value => 'Noegler hos Bo, 2. sal',
+  parking_lat_value => ${PIN_LAT}, parking_lng_value => ${PIN_LNG},
+  event_title => 'Bo satte en naal', event_body => 'Den staar bag Netto nu');`;
 // Reading the two columns and the two stamps back, as one string, so a CASEFAIL says
 // what the row actually holds instead of just "not what was expected".
 const WS1_LOCATION = `(select coalesce(l.parking_location, 'NULL') || ' / ' || coalesce(l.key_location, 'NULL')
   from public.ledgers l where l.id = '${WS1}')`;
 const WS1_LOCATION_AUTHOR = `(select coalesce(l.location_updated_by_member_id::text, 'NULL')
+  from public.ledgers l where l.id = '${WS1}')`;
+const WS1_PIN = `(select coalesce(l.parking_lat::text, 'NULL') || ' / ' || coalesce(l.parking_lng::text, 'NULL')
   from public.ledgers l where l.id = '${WS1}')`;
 
 // Push devices for the migration-150 target RPCs (GV-398). Deliberately shaped to
@@ -3929,13 +3954,22 @@ end`,
   }),
   rpcCase({
     name: "vehicle-location-foreign-member-denied",
-    desc: "E, a signed-in member of ANOTHER workspace, cannot state where ws1's car is",
+    desc: "E, a signed-in member of ANOTHER workspace, cannot state where ws1's car is — pin and all",
     setup: [step(B, SET_LOCATION_B)],
     actor: E,
-    op: `perform public.set_vehicle_location('${WS1}', 'Eriks fusk', 'Eriks noegler', null, null);`,
+    // Deliberately the NEW seven-argument signature carrying a pin (GVM-536): the
+    // workspace boundary must hold on the shape that stores coordinates, not only on
+    // the one that stores text.
+    op: `perform public.set_vehicle_location(
+      target_ledger_id => '${WS1}',
+      parking_location_value => 'Eriks fusk', key_location_value => 'Eriks noegler',
+      parking_lat_value => ${PIN_LAT}, parking_lng_value => ${PIN_LNG},
+      event_title => null, event_body => null);`,
     expect: "42501",
     post: `if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
-      then raise exception 'CASEFAIL vehicle-location-foreign-member-denied: a refused write landed anyway (%)', ${WS1_LOCATION}; end if;`,
+      then raise exception 'CASEFAIL vehicle-location-foreign-member-denied: a refused write landed anyway (%)', ${WS1_LOCATION}; end if;
+      if ${WS1_PIN} <> 'NULL / NULL'
+      then raise exception 'CASEFAIL vehicle-location-foreign-member-denied: a refused write left a coordinate behind (%)', ${WS1_PIN}; end if;`,
   }),
   rpcCase({
     name: "vehicle-location-inactive-member-denied",
@@ -3996,6 +4030,109 @@ end`,
       then raise exception 'CASEFAIL vehicle-location-without-a-title-is-silent: an event was written with no title'; end if;
       if ${WS1_LOCATION} <> 'Stille flytning / NULL'
       then raise exception 'CASEFAIL vehicle-location-without-a-title-is-silent: the write did not land (%)', ${WS1_LOCATION}; end if;`,
+  }),
+
+  // ── 16b. The parking pin (migration 168: GVM-536) ─────────────────────────
+  // ONE optional coordinate pair, and the deliberate REVERSAL of the platform's
+  // no-coordinates posture for exactly this field pair (owner decision 2026-08-04).
+  // Three properties are decisions rather than mechanics, so they are pinned as such:
+  //
+  //   • a pin is FULL SET like the two text columns — null/null CLEARS it — and the
+  //     consequence is that an OLD CLIENT, which posts only the five pre-168 named
+  //     keys, clears the pin on every save. That is CORRECT: it is saving a parking
+  //     text without a fresh pin, so the stored pin describes where the car used to
+  //     be. The old-signature case below is what stops that being "fixed" into a
+  //     coalesce.
+  //   • half a pin is refused, not stored. A lone latitude renders as a marker on the
+  //     prime meridian.
+  //   • the coordinates never reach the feed. The metadata carries the boolean
+  //     parking_pin_set and nothing else, and the case asserts on the fixture's own
+  //     digits rather than on a field name, so a rename cannot smuggle them in.
+  rpcCase({
+    name: "vehicle-location-pin-lands-on-the-workspace",
+    desc: "B drops a pin along with the text, and both coordinates land",
+    actor: B,
+    op: SET_LOCATION_B_WITH_PIN,
+    expect: "ok",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL vehicle-location-pin-lands-on-the-workspace: the pin holds %', ${WS1_PIN}; end if;
+      if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
+      then raise exception 'CASEFAIL vehicle-location-pin-lands-on-the-workspace: the text did not land (%)', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-pin-is-cleared-by-a-null-pair",
+    desc: "an explicit null/null removes the pin — the same full-set rule the text columns follow",
+    setup: [step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: C,
+    op: SET_LOCATION_C,
+    expect: "ok",
+    post: `if ${WS1_PIN} <> 'NULL / NULL'
+      then raise exception 'CASEFAIL vehicle-location-pin-is-cleared-by-a-null-pair: the pin survived (%)', ${WS1_PIN}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-lone-latitude-refused",
+    desc: "half a pin is 22023 and nothing is written — a lone latitude is a marker on the prime meridian",
+    setup: [step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: C,
+    op: `perform public.set_vehicle_location(
+      target_ledger_id => '${WS1}',
+      parking_location_value => 'Kun en halv naal', key_location_value => null,
+      parking_lat_value => ${PIN_LAT}, parking_lng_value => null,
+      event_title => null, event_body => null);`,
+    expect: "22023",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL vehicle-location-lone-latitude-refused: the refused write moved the pin (%)', ${WS1_PIN}; end if;
+      if ${WS1_LOCATION} <> 'P-plads bag Netto, plads 12 / Noegler hos Bo, 2. sal'
+      then raise exception 'CASEFAIL vehicle-location-lone-latitude-refused: the refused write moved the text (%)', ${WS1_LOCATION}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-pin-out-of-range-refused",
+    desc: "a latitude of 91 is 22023 — the RPC answers before the check constraint has to",
+    setup: [step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: C,
+    op: `perform public.set_vehicle_location(
+      target_ledger_id => '${WS1}',
+      parking_location_value => 'Nordpolen og forbi', key_location_value => null,
+      parking_lat_value => 91, parking_lng_value => 12.5,
+      event_title => null, event_body => null);`,
+    expect: "22023",
+    post: `if ${WS1_PIN} <> '${PIN_LAT} / ${PIN_LNG}'
+      then raise exception 'CASEFAIL vehicle-location-pin-out-of-range-refused: the refused write moved the pin (%)', ${WS1_PIN}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-old-client-call-clears-the-pin",
+    desc: "a pre-168 client posts only its five named keys — the save succeeds and the stale pin goes",
+    setup: [step(B, SET_LOCATION_B_WITH_PIN)],
+    actor: C,
+    // EXACTLY the body govehlo-mobile #561 sends: five named arguments, no mention of
+    // the pin. PostgREST resolves it against the seven-argument signature through the
+    // two defaults. The save must SUCCEED (an old client is not broken by this
+    // migration) and the pin must be GONE (it belonged to the text this call replaced).
+    op: `perform public.set_vehicle_location(
+      target_ledger_id => '${WS1}',
+      parking_location_value => 'Gammel klient flyttede bilen',
+      key_location_value => 'Noegler hos Cille',
+      event_title => 'Cille flyttede bilen', event_body => null);`,
+    expect: "ok",
+    post: `if ${WS1_LOCATION} <> 'Gammel klient flyttede bilen / Noegler hos Cille'
+      then raise exception 'CASEFAIL vehicle-location-old-client-call-clears-the-pin: the old-signature save did not land (%)', ${WS1_LOCATION}; end if;
+      if ${WS1_PIN} <> 'NULL / NULL'
+      then raise exception 'CASEFAIL vehicle-location-old-client-call-clears-the-pin: a pin from the PREVIOUS spot survived a text-only save (%)', ${WS1_PIN}; end if;`,
+  }),
+  rpcCase({
+    name: "vehicle-location-feed-says-a-pin-exists-and-never-where",
+    desc: "the event metadata carries parking_pin_set and NOT one digit of the coordinates",
+    actor: B,
+    op: SET_LOCATION_B_WITH_PIN,
+    expect: "ok",
+    post: `if (select count(*) from public.ledger_events
+        where ledger_id = '${WS1}' and event_type = 'vehicle_location_updated'
+          and (metadata->>'parking_pin_set') = 'true') <> 1
+      then raise exception 'CASEFAIL vehicle-location-feed-says-a-pin-exists-and-never-where: no event says a pin was set'; end if;
+      if exists (select 1 from public.ledger_events
+        where ledger_id = '${WS1}' and event_type = 'vehicle_location_updated'
+          and (title || ' ' || coalesce(body, '') || ' ' || metadata::text) like any (array['%${PIN_LAT}%', '%${PIN_LNG}%']))
+      then raise exception 'CASEFAIL vehicle-location-feed-says-a-pin-exists-and-never-where: a coordinate reached the feed'; end if;`,
   }),
   rpcCase({
     name: "handover-mirrors-its-locations-onto-the-workspace",
