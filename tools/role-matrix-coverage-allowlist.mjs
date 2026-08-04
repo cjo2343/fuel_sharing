@@ -61,6 +61,24 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
+  {
+    fn: 'set_vehicle_location',
+    reason:
+      'Migration 167 (GVM-520) is the PLATFORM half of a two-repo ticket and lands first, ' +
+      'because PostgREST answers PGRST202 for a function that does not exist yet — so the ' +
+      'SQL must be applied before govehlo-mobile can call it. Until the mobile half merges, ' +
+      'this guard is the only caller of the RPC anywhere, which is exactly the GV-379 shape ' +
+      'and exactly why it is written down here instead of being silently tolerated. The RPC ' +
+      'is NOT dead: it is the standalone writer behind "jeg har flyttet bilen" on the ' +
+      'workspace screen, and the columns it writes are already fed from the other direction ' +
+      'by upsert_booking_handover, which mobile has called since PR #555. What would change ' +
+      'this answer: govehlo-mobile shipping its GVM-520 half (src/lib/supabase-helpers.ts ' +
+      'gains the call), at which point findClientCallers sees it, this entry goes STALE and ' +
+      'must be DELETED rather than renewed — the same course upsert_booking_handover and ' +
+      'set_tank_state ran below. If instead the mobile half is abandoned, the honest fix is ' +
+      'to revoke the authenticated grant, not to push this date out again.',
+    reviewBy: '2026-11-04',
+  },
   // upsert_booking_handover's entry was deleted here exactly as the entry itself
   // prescribed: it covered only the migration-164-first window before the handover
   // sheet shipped, and govehlo-mobile has called the RPC since PR #555

@@ -61,6 +61,14 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   // Vehicle, insurance and inspection (migrations 052, 064, 074, 138).
   "vehicle_added",
   "vehicle_updated",
+  // vehicle_location_updated (migration 167, GVM-520) — written by set_vehicle_location
+  // when the caller supplies an event_title. Feed-visible on purpose and not a close
+  // call: the entire point of recording that the car moved is that the rest of the
+  // group finds out. The title comes from the client and the metadata carries only
+  // booleans saying whether each field now holds a value, so the free-text parking spot
+  // and key placement never reach the event row — the personal-adjacent text stays in
+  // the one column every member can already read.
+  "vehicle_location_updated",
   "insurance_updated",
   "inspection_due",
   "vehicle_inspection_booked",
