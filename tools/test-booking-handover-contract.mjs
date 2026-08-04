@@ -904,7 +904,7 @@ pin("the RPC returns handover_id, created and the row's new updated_at", () => {
   const created = scalar(
     `select set_config('request.jwt.claims', '{"email":"bo@test.dk","role":"authenticated"}', false);
      select public.upsert_booking_handover('${L}', '${BOOKING(6)}'::uuid, null, null, 'et sted',
-       null, null, null, null, false, null, null, null)::text;`,
+       null, null, null, null, false, null, null, null, null, null)::text;`,
   )
     .split("\n")
     .pop()
@@ -920,7 +920,7 @@ pin("the RPC returns handover_id, created and the row's new updated_at", () => {
   const edited = scalar(
     `select set_config('request.jwt.claims', '{"email":"bo@test.dk","role":"authenticated"}', false);
      select public.upsert_booking_handover('${L}', '${BOOKING(6)}'::uuid, null, null, 'et andet sted',
-       null, null, null, null, false, null, null, timestamptz '${updatedAt}')::text;`,
+       null, null, null, null, false, null, null, null, null, timestamptz '${updatedAt}')::text;`,
   )
     .split("\n")
     .pop()
