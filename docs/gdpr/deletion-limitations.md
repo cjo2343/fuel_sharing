@@ -62,6 +62,19 @@ Data-minimering frem for pseudonymisering, når intet formål består.
    personoplysninger. De beholdes som fælles køretøjshistorik efter kontosletning,
    så en registreret anmodning kræver konkret manuel vurdering og eventuel redigering
    eller fotosletning; anonymisering af medlemsrækken er ikke altid tilstrækkelig.
+6. **Forældreløse objekter i objektlageret** (GVM-537, migration 169): rækken i
+   `fuel_payment_receipts` — og `vehicle_incident_photos` siden migration 138 — er
+   databasens autoritet over, hvem der må vedhæfte og fjerne et billede, mens selve
+   filen slettes af **klienten** via Storage-API'et. Det daglige retention-sweep gør
+   begge dele for kvitteringer (det sletter også `storage.objects`-rækken, så filen
+   ikke længere kan hentes af nogen), men en **cascade** kan ikke: når et workspace
+   purges, eller når en fem år gammel soft-slettet tankning hård-slettes, forsvinder
+   billedrækkerne uden at nogen sletter objekterne. Ved workspace-purge er filen
+   derefter utilgængelig for alle (bucket-politikken kræver medlemskab af et
+   workspace, der ikke findes mere), men den ligger stadig i lageret; ved en
+   hård-slettet tankning i et levende workspace kan medlemmer fortsat hente objektet,
+   selvom rækken er væk. Rettelsen er et Storage-API-oprydningspas i retention-hook'en
+   (govehlo-web) — registreret som opfølgning, ikke løst i migration 169.
 
 ## End-to-end-verifikation (udestående evidens)
 

@@ -33,6 +33,14 @@ const scripts = [
   "node tools/test-booking-reminder-contract.mjs",
   "node tools/test-settlement-event-history-contract.mjs",
   "node tools/test-incident-photo-storage-contract.mjs",
+  // Anti-drift contract for opt-in fuel receipts and their settled-close retention
+  // (GVM-537, migration 169). Two OWNER DECISIONS live in SQL here and both are the
+  // kind a later tidy-up reverses silently: the table must stay RPC-only with ONE
+  // receipt per tankning, and the retention sweep must keep treating an unconfirmed
+  // paid_pending claim as NOT settled — the difference between the two predicates is
+  // one word and a destroyed photo. Static (dependency-free) on both the migration and
+  // the consolidated schema; the role matrix proves the behaviour against real Postgres.
+  "node tools/test-fuel-receipt-contract.mjs",
   "node tools/test-late-entry-carryover-contract.mjs",
   "node tools/test-deferred-fuel-close-contract.mjs",
   // Anti-drift contract for the pre-departure fuel-stop verdict (GV-405). The one guard

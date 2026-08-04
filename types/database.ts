@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 168 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 169 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -278,6 +278,55 @@ export type Database = {
           migration_id?: string
         }
         Relationships: []
+      }
+      fuel_payment_receipts: {
+        Row: {
+          created_at: string
+          fuel_payment_id: string
+          id: string
+          ledger_id: string
+          storage_path: string
+          uploader_member_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          fuel_payment_id: string
+          id?: string
+          ledger_id: string
+          storage_path: string
+          uploader_member_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          fuel_payment_id?: string
+          id?: string
+          ledger_id?: string
+          storage_path?: string
+          uploader_member_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fuel_payment_receipts_fuel_payment_id_fkey"
+            columns: ["fuel_payment_id"]
+            isOneToOne: true
+            referencedRelation: "fuel_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_payment_receipts_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fuel_payment_receipts_uploader_member_id_fkey"
+            columns: ["uploader_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fuel_payments: {
         Row: {
@@ -1892,6 +1941,10 @@ export type Database = {
         }
         Returns: Json
       }
+      attach_fuel_payment_receipt: {
+        Args: { p_fuel_payment_id: string; p_storage_path: string }
+        Returns: Json
+      }
       booked_days_in_open_period: {
         Args: {
           exclude_booking_id?: string
@@ -2125,6 +2178,10 @@ export type Database = {
       delete_incident_photo: { Args: { p_photo_id: string }; Returns: Json }
       delete_my_account: { Args: never; Returns: Json }
       delete_push_token: { Args: { token_value: string }; Returns: undefined }
+      detach_fuel_payment_receipt: {
+        Args: { p_receipt_id: string }
+        Returns: Json
+      }
       emit_inspection_due_event: {
         Args: { target_ledger_id: string }
         Returns: Json

@@ -377,6 +377,50 @@ const SOFT_DELETE_WS1 = `perform public.admin_soft_delete_workspace('${WS1}', tr
 const LOG_INCIDENT_B = `perform public.log_vehicle_incident('${WS1}', current_date, 'Ridse i lak', 'Ridse ved parkering', null, null, null, null, 'open', null, 'new_incident', 'Skade logget', 'Bo loggede en skade');`;
 const LATEST_WS1_INCIDENT = `(select id from public.vehicle_incidents where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
 
+// GVM-537 fuel-receipt helpers (migration 169). FP1 is the fixture's own 300 kr fuel
+// log in ws1's OPEN period; the paths follow the convention the RPC enforces,
+// <ledger_id>/<fuel_payment_id>/<file>.
+const FP1 = "22222222-3333-4444-5555-666666666666";
+const RECEIPT_PATH = `${WS1}/${FP1}/kvittering.jpg`;
+const RECEIPT_PATH_2 = `${WS1}/${FP1}/kvittering-2.jpg`;
+const ATTACH_RECEIPT_B = `perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH}');`;
+const WS1_RECEIPT_ID = `(select id from public.fuel_payment_receipts where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
+
+// A CLOSED period in ws1 carrying its own fuel log + receipt — the fixture the
+// retention cases below vary the payment state around. Seeded as postgres (setup
+// only, RLS bypassed); the closed-period entry lock stands aside for the fuel-log
+// insert through the same transaction-local govehlo.pii_scrub flag the retention
+// sweep itself uses, exactly as the repair row in the existing retention case does.
+const CLOSED_PERIOD = "16900000-0000-0000-0000-000000000001";
+const CLOSED_FUEL = "16900000-0000-0000-0000-000000000002";
+const CLOSED_REQUEST = "16900000-0000-0000-0000-000000000003";
+const CLOSED_RECEIPT_PATH = `${WS1}/${CLOSED_FUEL}/kvittering.jpg`;
+const SEED_CLOSED_PERIOD_RECEIPT = `
+  insert into public.settlement_periods (id, ledger_id, status, label, opened_at, closed_at)
+  values ('${CLOSED_PERIOD}', '${WS1}', 'closed', 'Kvitteringsperiode', now() - interval '40 days', now() - interval '10 days');
+  perform set_config('govehlo.pii_scrub', '1', true);
+  insert into public.fuel_payments (id, ledger_id, period_id, payer_member_id, payment_date, amount, created_by_member_id)
+  values ('${CLOSED_FUEL}', '${WS1}', '${CLOSED_PERIOD}', '${ID.B}', current_date - 20, 250.00, '${ID.B}');
+  perform set_config('govehlo.pii_scrub', '', true);
+  insert into public.fuel_payment_receipts (fuel_payment_id, ledger_id, storage_path, uploader_member_id)
+  values ('${CLOSED_FUEL}', '${WS1}', '${CLOSED_RECEIPT_PATH}', '${ID.B}');`;
+// A receipt on the fixture's OPEN-period fuel log, seeded alongside the closed one so
+// every retention case proves SELECTIVITY inside a single sweep, not just a count.
+const SEED_OPEN_PERIOD_RECEIPT = `
+  insert into public.fuel_payment_receipts (fuel_payment_id, ledger_id, storage_path, uploader_member_id)
+  values ('${FP1}', '${WS1}', '${RECEIPT_PATH}', '${ID.B}');`;
+// B->A obligation inside the closed period. Requests can only be INSERTed as
+// 'requested' (migration 090 refuses a fresh paid/paid_pending row), so anything
+// further is reached by transitioning it — the same path production takes.
+const seedClosedRequest = (status) => `
+  insert into public.settlement_requests (id, ledger_id, period_id, from_member_id, to_member_id, amount, currency, status, requested_by_member_id)
+  values ('${CLOSED_REQUEST}', '${WS1}', '${CLOSED_PERIOD}', '${ID.B}', '${ID.A}', 250.00, 'DKK', 'requested', '${ID.A}');${
+    status === "requested"
+      ? ""
+      : `
+  update public.settlement_requests set status = '${status}' where id = '${CLOSED_REQUEST}';`
+  }`;
+
 // GVM-529 vehicle-handover helpers (migration 164). Two bookings in ws1 — one held by
 // B (the normal writer) and one held by the INACTIVE member D — inserted as the
 // service role, because this suite's fixture has no bookings of its own and routing
@@ -3369,6 +3413,266 @@ end`,
     expect: "ok",
     post: `if exists (select 1 from public.vehicle_incident_photos where ledger_id = '${WS1}')
       then raise exception 'CASEFAIL incident-photo-delete-admin-ok: photo survived admin delete'; end if;`,
+  }),
+
+  // ── Fuel-receipt photos (migration 169, GVM-537) ──────────────────────────
+  // Two owner decisions are under test here, not just an authorization surface:
+  // storage is OPT-IN per tankning (so the ONLY writer is a member calling the RPC —
+  // the direct-write cases below are what makes that true), and a receipt is deleted
+  // by the retention sweep once its period is closed AND its payment cycle is
+  // finished (the retention cases below are the whole definition of "settled").
+  queryCase({
+    name: "fuel-receipt-attach-and-read",
+    desc: "a member attaches a correctly-prefixed receipt and it is readable in the workspace",
+    actor: B,
+    assert: `begin
+  perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH}');
+  if not exists (select 1 from public.fuel_payment_receipts
+    where ledger_id = '${WS1}' and fuel_payment_id = '${FP1}'
+      and uploader_member_id = '${ID.B}' and storage_path = '${RECEIPT_PATH}') then
+    raise exception 'CASEFAIL fuel-receipt-attach-and-read: receipt row not registered';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-wrong-prefix-rejected",
+    desc: "attach rejects a storage path outside the fuel log's workspace/payment prefix",
+    actor: B,
+    op: `perform public.attach_fuel_payment_receipt('${FP1}', '${WS2}/${FP1}/kvittering.jpg');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "fuel-receipt-attach-foreign-member-denied",
+    desc: "E (another workspace) cannot attach a receipt to ws1's fuel log",
+    actor: E,
+    op: `perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH}');`,
+    expect: "42501",
+    post: `if exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${FP1}')
+      then raise exception 'CASEFAIL fuel-receipt-attach-foreign-member-denied: a receipt was registered anyway'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-attach-deleted-fuel-log-rejected",
+    desc: "attach refuses a soft-deleted fuel log",
+    setup: [
+      step(SUPER, `perform set_config('govehlo.pii_scrub', '1', true);
+        update public.fuel_payments set deleted_at = now() where id = '${FP1}';
+        perform set_config('govehlo.pii_scrub', '', true);`),
+    ],
+    actor: B,
+    op: `perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH}');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "fuel-receipt-replace-keeps-exactly-one-row",
+    desc: "a second attach REPLACES the receipt and hands back the superseded path",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: B,
+    assert: `declare v_result jsonb;
+begin
+  v_result := public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH_2}');
+  if (select count(*) from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') <> 1 then
+    raise exception 'CASEFAIL fuel-receipt-replace-keeps-exactly-one-row: a tankning ended up with more than one receipt';
+  end if;
+  if (select storage_path from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') <> '${RECEIPT_PATH_2}' then
+    raise exception 'CASEFAIL fuel-receipt-replace-keeps-exactly-one-row: the replacement path did not win';
+  end if;
+  if (v_result->>'replaced') <> 'true' or (v_result->>'replaced_storage_path') <> '${RECEIPT_PATH}' then
+    raise exception 'CASEFAIL fuel-receipt-replace-keeps-exactly-one-row: the caller was not told which object to delete: %', v_result;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-replace-noncreator-denied",
+    desc: "bystander C cannot overwrite B's receipt (a replace destroys the other member's attachment)",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: C,
+    op: `perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH_2}');`,
+    expect: "42501",
+    post: `if (select storage_path from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') <> '${RECEIPT_PATH}'
+      then raise exception 'CASEFAIL fuel-receipt-replace-noncreator-denied: B''s receipt was overwritten after the rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-replace-admin-ok",
+    desc: "a workspace admin A may replace a receipt uploaded by B",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: A,
+    op: `perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH_2}');`,
+    expect: "ok",
+    post: `if (select count(*) from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') <> 1
+        or (select storage_path from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') <> '${RECEIPT_PATH_2}'
+      then raise exception 'CASEFAIL fuel-receipt-replace-admin-ok: the admin replace did not land as one row'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-detach-noncreator-denied",
+    desc: "bystander C (not admin, not uploader) cannot detach B's receipt",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: C,
+    op: `perform public.detach_fuel_payment_receipt(${WS1_RECEIPT_ID});`,
+    expect: "42501",
+    post: `if not exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${FP1}')
+      then raise exception 'CASEFAIL fuel-receipt-detach-noncreator-denied: receipt deleted after rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-detach-uploader-ok",
+    desc: "the uploader B may detach her own receipt and is told which object to delete",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: B,
+    op: `if (public.detach_fuel_payment_receipt(${WS1_RECEIPT_ID}) ->> 'storage_path') <> '${RECEIPT_PATH}' then
+           raise exception 'detach did not return the removed storage path' using errcode = '22023';
+         end if;`,
+    expect: "ok",
+    post: `if exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${FP1}')
+      then raise exception 'CASEFAIL fuel-receipt-detach-uploader-ok: receipt survived the uploader''s detach'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-detach-admin-ok",
+    desc: "a workspace admin A may detach a receipt uploaded by B",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: A,
+    op: `perform public.detach_fuel_payment_receipt(${WS1_RECEIPT_ID});`,
+    expect: "ok",
+    post: `if exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${FP1}')
+      then raise exception 'CASEFAIL fuel-receipt-detach-admin-ok: receipt survived the admin detach'; end if;`,
+  }),
+  rpcCase({
+    name: "fuel-receipt-direct-insert-denied",
+    desc: "a signed-in member cannot write the receipt table directly — the RPC is the only writer",
+    actor: B,
+    op: `insert into public.fuel_payment_receipts (fuel_payment_id, ledger_id, storage_path, uploader_member_id)
+         values ('${FP1}', '${WS1}', '${RECEIPT_PATH}', '${ID.B}');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "fuel-receipt-direct-delete-denied",
+    desc: "a signed-in member cannot delete a receipt row directly, bypassing the uploader/admin gate",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: C,
+    op: `delete from public.fuel_payment_receipts where fuel_payment_id = '${FP1}';`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "fuel-receipt-foreign-workspace-cannot-read",
+    desc: "E sees no receipt rows from ws1 (RLS denies silently rather than raising)",
+    setup: [step(B, ATTACH_RECEIPT_B)],
+    actor: E,
+    assert: `begin
+  if exists (select 1 from public.fuel_payment_receipts where ledger_id = '${WS1}') then
+    raise exception 'CASEFAIL fuel-receipt-foreign-workspace-cannot-read: another workspace''s receipt was visible';
+  end if;
+end`,
+  }),
+
+  // Retention (the owner's decision 2): a receipt dies with the settlement it
+  // documented — closed period AND nothing left in flight. Each case seeds ONE
+  // receipt in the OPEN period alongside the closed-period one, so a passing case
+  // proves the sweep is selective rather than merely destructive.
+  queryCase({
+    name: "fuel-receipt-retention-open-period-keeps",
+    desc: "the sweep never touches a receipt whose period is still open",
+    setup: [step(SUPER, SEED_OPEN_PERIOD_RECEIPT)],
+    actor: SERVICE,
+    assert: `declare v_result jsonb;
+begin
+  v_result := public.run_operational_retention(180, false);
+  if not exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-open-period-keeps: an open period lost its receipt';
+  end if;
+  if (v_result->>'purgedFuelReceipts')::integer <> 0 then
+    raise exception 'CASEFAIL fuel-receipt-retention-open-period-keeps: unexpected summary %', v_result;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fuel-receipt-retention-closed-unpaid-keeps",
+    desc: "a closed period with money still owed keeps its receipt",
+    setup: [step(SUPER, SEED_OPEN_PERIOD_RECEIPT + SEED_CLOSED_PERIOD_RECEIPT + seedClosedRequest("requested"))],
+    actor: SERVICE,
+    assert: `declare v_result jsonb;
+begin
+  v_result := public.run_operational_retention(180, false);
+  if not exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${CLOSED_FUEL}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-unpaid-keeps: a receipt was destroyed while a payment was still requested';
+  end if;
+  if (v_result->>'purgedFuelReceipts')::integer <> 0 then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-unpaid-keeps: unexpected summary %', v_result;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fuel-receipt-retention-paid-pending-keeps",
+    desc: "an unconfirmed paid_pending claim is NOT settled — the creditor can still dispute it",
+    setup: [step(SUPER, SEED_OPEN_PERIOD_RECEIPT + SEED_CLOSED_PERIOD_RECEIPT + seedClosedRequest("paid_pending"))],
+    actor: SERVICE,
+    assert: `declare v_result jsonb;
+begin
+  v_result := public.run_operational_retention(180, false);
+  if not exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${CLOSED_FUEL}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-paid-pending-keeps: the receipt a disputed claim would be argued with was deleted';
+  end if;
+  if (v_result->>'purgedFuelReceipts')::integer <> 0 then
+    raise exception 'CASEFAIL fuel-receipt-retention-paid-pending-keeps: unexpected summary %', v_result;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fuel-receipt-retention-closed-and-paid-purges",
+    desc: "closed AND confirmed paid: the receipt is deleted, and only that one",
+    setup: [step(SUPER, SEED_OPEN_PERIOD_RECEIPT + SEED_CLOSED_PERIOD_RECEIPT + seedClosedRequest("paid"))],
+    actor: SERVICE,
+    assert: `declare v_result jsonb;
+begin
+  v_result := public.run_operational_retention(180, false);
+  if exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${CLOSED_FUEL}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-and-paid-purges: a settled receipt survived the sweep';
+  end if;
+  if not exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${FP1}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-and-paid-purges: the open period''s receipt was swept too';
+  end if;
+  if (v_result->>'purgedFuelReceipts')::integer <> 1
+     or (v_result->>'fuelReceiptRetentionRule') <> 'closed_and_fully_paid' then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-and-paid-purges: unexpected summary %', v_result;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fuel-receipt-retention-closed-cancelled-only-purges",
+    desc: "a closed period whose only request was cancelled (nobody owed anybody) is settled",
+    setup: [step(SUPER, SEED_CLOSED_PERIOD_RECEIPT + seedClosedRequest("cancelled"))],
+    actor: SERVICE,
+    assert: `begin
+  perform public.run_operational_retention(180, false);
+  if exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${CLOSED_FUEL}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-cancelled-only-purges: a settled receipt survived the sweep';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fuel-receipt-retention-closed-no-requests-purges",
+    desc: "a closed period with no payment requests at all (\"I er kvit\") is settled",
+    setup: [step(SUPER, SEED_CLOSED_PERIOD_RECEIPT)],
+    actor: SERVICE,
+    assert: `begin
+  perform public.run_operational_retention(180, false);
+  if exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${CLOSED_FUEL}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-closed-no-requests-purges: a settled receipt survived the sweep';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "fuel-receipt-retention-dry-run-reports-without-deleting",
+    desc: "the dry run counts what tonight's cron would destroy and destroys nothing",
+    setup: [step(SUPER, SEED_CLOSED_PERIOD_RECEIPT + seedClosedRequest("paid"))],
+    actor: SERVICE,
+    assert: `declare v_result jsonb;
+begin
+  v_result := public.run_operational_retention(180, true);
+  if (v_result->>'purgedFuelReceipts')::integer <> 1 then
+    raise exception 'CASEFAIL fuel-receipt-retention-dry-run-reports-without-deleting: the dry run did not report the settled receipt: %', v_result;
+  end if;
+  if not exists (select 1 from public.fuel_payment_receipts where fuel_payment_id = '${CLOSED_FUEL}') then
+    raise exception 'CASEFAIL fuel-receipt-retention-dry-run-reports-without-deleting: the DRY RUN deleted a row';
+  end if;
+end`,
   }),
 
   // ── Push-target RPCs (migration 150, GV-398) ──────────────────────────────
