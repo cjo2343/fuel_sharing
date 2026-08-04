@@ -17,12 +17,14 @@ Et offentligt DPA-link er ikke i sig selv kontraktevidens.
 | **Mindee** | Kvitterings-OCR (planlagt, GVM-237-sporet) | Kvitteringsbilleder (kan indeholde betalingsdetaljer) | EU-behandling muligt | **Ikke godkendt til produktion endnu.** DPA, valgt region, modeltræning/fravalg og billed-TTL skal være skriftligt dokumenteret før feature-flag aktiveres. |
 | **GraphHopper GmbH** | Ruteberegning (Planlæg-fanen) | Koordinater og klientens netværksmetadata; ingen VehloShare-konto-id'er | Tyskland | EU-leverandør, men koordinater/IP kan stadig være persondata. **GAP: kontrakt/DPA-evidens mangler**; indhent ved produktionsaftale eller proxy/minimér og dokumentér legitim interesse. |
 | **Photon (Komoot)** | Geokodning af adresser | Søgestrenge og klientens netværksmetadata; ingen VehloShare-konto | EU | Offentlig nøglefri tjeneste er ikke et DPA. **GAP:** proxy/caching og leverandørvilkår skal afklares før bred produktion; undgå at sende konto-id'er. |
+| **MapTiler AG** | Korttiles og kortstil i appen: ruteoversigtens kort (GVM-407) og parkeringsnålens minikort (GVM-536) | Klienten henter selv style og tiles direkte fra `api.maptiler.com` med en offentlig API-nøgle; MapTiler ser derfor de omtrentlige koordinater for det viste kortudsnit samt klientens netværksmetadata (IP, user agent). **Ingen konto-id'er, e-mails eller workspace-id'er sendes**, og nålens præcise koordinat forlader aldrig Supabase — tile-forespørgsler er udsnit, ikke punktet. | **Schweiz (CH)** — tredjeland med EU-Kommissionens adequacy-afgørelse; EU-hosting/EU-endpoints tilbydes | **GAP: rækken burde have været oprettet sammen med GVM-407** (kortet har hentet MapTiler-tiles klientside siden da) og blev først dokumenteret her med GVM-536, som uddyber eksponeringen: tile-opslag omkring en *gemt* medlemskoordinat i stedet for kun omkring en ad hoc-rute. Indhent DPA/vilkårsevidens og bekræft valgt region før offentlig produktion; vurdér samtidig proxy/caching, som for GraphHopper. |
 | **Nummerplade Tjek / autotelli.dk** | Bilopslag ved oprettelse | Nummerplade (POST via Cloudflare-proxy) | Danmark | **GAP:** vilkår/DPA mangler i evidenspakken. Indhent skriftlig rolle-, formåls-, log- og TTL-afklaring; nummerplader må fortsat aldrig stå i URL/log. |
 
 ## Bevidste fravalg (projektpolitik)
 
 - Ingen Mapbox/Google Maps til geodata (US-processorer for adfærdsdata) — lokal
-  beregning og EU-tjenester foretrækkes.
+  beregning og EU-tjenester foretrækkes; korttiles hentes derfor hos MapTiler (CH/EU),
+  se rækken ovenfor.
 - Ingen betalingsformidler (Stripe m.fl.): afregninger er P2P via MobilePay-links;
   appen rører aldrig betalingsmiddeldata.
 - DAWA/DAR-flytningen (DAWA lukker 1/10-2026) holder adresseopslag på danske

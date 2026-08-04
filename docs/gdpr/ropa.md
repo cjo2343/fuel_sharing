@@ -38,6 +38,21 @@ Cloudflare Access + Supabase-login).
   bevidst som fritekst uden koordinater), bilens **aktuelle parkerings- og
   nøgleplacering** på selve workspacet (samme slags personhenførbare fritekst uden
   koordinater, med angivelse af hvilket medlem der sidst opdaterede den og hvornår),
+  hertil **ét valgfrit koordinatpar til bilens parkering** — "parkeringsnålen"
+  (GVM-536, migration 168). Det er den **bevidste og eneste undtagelse** fra
+  fritekst-uden-koordinater-holdningen ovenfor, truffet af den dataansvarlige
+  2026-08-04, og den er en undtagelse — ikke en opblødning: platformen fjernede
+  koordinater i migration 062/071 (GPS på tankninger) og 151 (tankstationer), og
+  fritekstvalget i 164/167 står ved magt for alle andre felter. Nålen er
+  **brugerudløst** (medlemmet trykker selv "brug min placering" — der indsamles
+  aldrig position i baggrunden), **ét enkelt punkt om en parkeret bil**, der
+  **overskrives på stedet** uden historik, og den **ryddes**, når parkeringsteksten
+  ændres uden en ny nål (en ældre klients gem, eller en overdragelse der spejler ny
+  parkeringstekst), så en forældet nål aldrig kan overleve den tekst, den hørte til.
+  Koordinaterne optræder aldrig i aktivitetsfeedet (hændelsens metadata bærer kun
+  boolean-feltet `parking_pin_set`), aldrig i URL'er, query-strenge eller logs. Vises
+  nålen på et minikort, hentes korttiles hos MapTiler (CH/EU) — se
+  subprocessors.md,
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
@@ -48,6 +63,10 @@ Cloudflare Access + Supabase-login).
   normaliserede rute (geometri, alternativer, krydsninger) gemmes i 10 minutter
   under en hashet koordinat-nøgle uden bruger-id eller adressetekst, så gentagne
   opslag ikke koster et nyt GraphHopper-kald. Se retention.md-rækken "Rute-cache".
+  Ved kortvisning (ruteoversigten siden GVM-407 og parkeringsnålens minikort siden
+  GVM-536): **MapTiler** (CH/EU) — klienten henter selv style og korttiles, så
+  MapTiler ser de omtrentlige koordinater i det viste udsnit plus API-nøglen, aldrig
+  konto-id'er. Se subprocessors.md.
 - **Sletning:** Regnskabs- og hændelsesdata består som fælles, pseudonymiseret
   køretøjshistorik efter kontosletning (øvrige medlemmers regnskab og dokumentation,
   art. 17(3)); fotoets forfatterkobling fjernes. Se deletion-limitations.md.
