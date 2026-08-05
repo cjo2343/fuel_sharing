@@ -4078,6 +4078,123 @@ end`,
     expect: "ok",
   }),
 
+  // ── Newsletter send (GV-430, migration 173) ────────────────────────────────
+  //
+  // mint_newsletter_send_tokens is the ONE function that reads addresses out of the
+  // list, so its containment is not the comment above it — it is these cases. Two
+  // halves: nothing browser-facing can call it or read what it wrote, and what it
+  // actually does to a real Postgres is a ROTATION (the previous send's unsubscribe
+  // link stops working) over CONFIRMED rows only, with a counts-only audit row.
+  rpcCase({
+    name: "newsletter-mint-anon-blocked",
+    desc: "anon cannot mint a send — that would be the whole address list over a public endpoint",
+    actor: ANON,
+    op: `perform public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-mint-authenticated-blocked",
+    desc: "a signed-in app user cannot mint a send either — this RPC is operator-only, through the server",
+    actor: A,
+    op: `perform public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-log-anon-blocked",
+    desc: "anon cannot read the send log",
+    actor: ANON,
+    op: `perform 1 from public.newsletter_send_log;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-log-authenticated-blocked",
+    desc: "a signed-in app user cannot read the send log",
+    actor: A,
+    op: `perform 1 from public.newsletter_send_log;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-log-service-role-blocked",
+    desc: "even the service role cannot read or rewrite the audit trail of the programme it runs",
+    actor: SERVICE,
+    op: `perform 1 from public.newsletter_send_log;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-mint-rotates-confirmed-only",
+    desc: "minting hands out confirmed addresses with FRESH tokens, kills the previous send's links, and skips pending rows",
+    actor: SERVICE,
+    op: `declare v_count integer; v_email text; v_token text; v_old jsonb; v_new jsonb;
+         begin
+           perform public.newsletter_request_subscription('sender@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));
+           perform public.newsletter_confirm_subscription(repeat('a', 64));
+           -- Never confirmed: an address somebody typed into the form and walked away
+           -- from. The double opt-in exists so that this person is not mailed, and the
+           -- send is the last place that promise can be broken.
+           perform public.newsletter_request_subscription('waiting@example.dk', '2026-08-01', repeat('c', 64), repeat('d', 64));
+
+           select count(*), min(ms.email), min(ms.unsubscribe_token)
+           into v_count, v_email, v_token
+           from public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev august') ms;
+
+           if v_count <> 1 or v_email <> 'sender@example.dk' then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: minted % row(s), first %', v_count, v_email;
+           end if;
+           if v_token !~ '^[0-9a-f]{64}$' then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the raw token is not 32 random bytes (%)', v_token;
+           end if;
+
+           -- The token the subscriber was given BEFORE this send must now be dead. That
+           -- is the rotation, and it is the property a stored raw token would not have.
+           v_old := public.newsletter_unsubscribe(repeat('b', 64));
+           if v_old ->> 'status' <> 'unknown' then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the pre-mint unsubscribe token still works (%)', v_old;
+           end if;
+
+           -- ...and the one just minted must work, hashed the way migration 161 stores
+           -- it. sha256() is the built-in, so this asserts the digest scheme too: a mint
+           -- that hashed differently would hand out links the unsubscribe RPC cannot match.
+           v_new := public.newsletter_unsubscribe(encode(sha256(v_token::bytea), 'hex'));
+           if v_new ->> 'status' <> 'unsubscribed' then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the freshly minted token does not unsubscribe (%)', v_new;
+           end if;
+         end;`,
+    expect: "ok",
+    // Read back as postgres — service_role has no grant on either table, which is the
+    // point of the deny cases above, so nothing inside the case body may look.
+    post: `if (select count(*) from public.newsletter_send_log) <> 1 then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: expected exactly one audit row, found %',
+               (select count(*) from public.newsletter_send_log);
+           end if;
+           if not exists (select 1 from public.newsletter_send_log
+                          where operator_email = 'cjo@govehlo.dk'
+                            and headline = 'Nyhedsbrev august'
+                            and recipient_count = 1) then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the audit row does not describe the send';
+           end if;
+           -- The pending row keeps the token it was created with: a send touches
+           -- confirmed rows and nothing else, so it cannot invalidate the confirmation
+           -- link somebody is still holding in their inbox.
+           if not exists (select 1 from public.newsletter_subscribers
+                          where email = 'waiting@example.dk' and unsubscribe_token_hash = repeat('d', 64)) then
+             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the unconfirmed row was rotated by the send';
+           end if;`,
+  }),
+  rpcCase({
+    name: "newsletter-mint-validates-its-audit-inputs",
+    desc: "an empty operator or headline is refused (22023) — an audit row nobody can match to a mail is not an audit row",
+    actor: SERVICE,
+    op: `perform public.mint_newsletter_send_tokens('cjo@govehlo.dk', '   ');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "newsletter-mint-refuses-a-non-address-operator",
+    desc: "the operator field must be an address — it is the accountability record of who sent marketing mail",
+    actor: SERVICE,
+    op: `perform public.mint_newsletter_send_tokens('operatoer', 'Nyhedsbrev');`,
+    expect: "22023",
+  }),
+
   // ── 15. Vehicle handover (migration 164: GVM-529) ─────────────────────────
   // The handover is the first table in the platform whose free text is
   // personal-adjacent LOCATION data — where a shared car is parked, where its keys

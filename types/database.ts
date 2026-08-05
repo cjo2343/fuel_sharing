@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 172 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 173 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -910,6 +910,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      newsletter_send_log: {
+        Row: {
+          created_at: string
+          headline: string
+          id: string
+          operator_email: string
+          recipient_count: number
+        }
+        Insert: {
+          created_at?: string
+          headline: string
+          id?: string
+          operator_email: string
+          recipient_count: number
+        }
+        Update: {
+          created_at?: string
+          headline?: string
+          id?: string
+          operator_email?: string
+          recipient_count?: number
+        }
+        Relationships: []
       }
       newsletter_subscribers: {
         Row: {
@@ -2314,6 +2338,13 @@ export type Database = {
       member_is_active_in_ledger: {
         Args: { p_ledger_id: string; p_member_id: string }
         Returns: boolean
+      }
+      mint_newsletter_send_tokens: {
+        Args: { p_headline: string; p_operator_email: string }
+        Returns: {
+          email: string
+          unsubscribe_token: string
+        }[]
       }
       newsletter_confirm_subscription: {
         Args: { confirm_hash: string; pending_ttl_hours?: number }
