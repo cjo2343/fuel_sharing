@@ -65,18 +65,26 @@ function pin(label, fn) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 0. GVM-542 — THE STALE-MIRROR GUARD, PINNED IN THE SQL TEXT ITSELF
+// 0. GVM-542 / GV-444 — THE STALE-MIRROR GUARD, PINNED IN THE SQL TEXT ITSELF
 // ═══════════════════════════════════════════════════════════════════════════════
 // These run BEFORE the Docker gate below, on purpose: they are dependency-free, and the
-// one property they certify is a NEGATIVE that a catalog cannot express — that the
-// handover row's own INSERT/UPDATE is NOT inside the stale condition. A replayed
-// database can show that a stale handover still saves; only the text can show that it
-// saves because the guard was never wrapped around it, rather than by luck of a fixture.
+// two properties they certify are ones a catalog cannot express. The first is a
+// NEGATIVE — that the handover row's own INSERT/UPDATE is NOT inside the guarded
+// statement. A replayed database can show that a stale handover still saves; only the
+// text can show that it saves because the guard was never wrapped around it, rather than
+// by luck of a fixture. The second is a RACE (GV-444): migration 172 wrote the rule as a
+// SELECT, a PL/pgSQL comparison and a separate UPDATE, so a location committed between
+// the read and the write was silently overwritten. No fixture can reproduce that
+// reliably; the shape of the SQL is the only honest place to pin it. What must hold is
+// that the mirror is ONE statement carrying the staleness test in its own where clause.
 //
-// Read from migration 172 and from the LAST definition in supabase-schema.sql, never
-// from 170: on replay the last definition wins, so pinning an earlier one would certify
-// a function the database will never run.
+// The FUNCTION is read from migration 174 and from the LAST definition in
+// supabase-schema.sql, never from 172 or 170: on replay the last definition wins, so
+// pinning an earlier one would certify a function the database will never run. The DROP
+// is read from 172, which is where it lives and must stay — 174 changes no parameter, so
+// it is create-or-replace and introduces no second candidate signature.
 const migration172 = readFileSync(path.join(ROOT, "supabase/migrations/172_handover_stale_location_guard.sql"), "utf8");
+const migration174 = readFileSync(path.join(ROOT, "supabase/migrations/174_handover_mirror_race_free.sql"), "utf8");
 const consolidated = readFileSync(path.join(ROOT, "supabase-schema.sql"), "utf8");
 
 const OLD_HANDOVER_SIGNATURE =
@@ -84,7 +92,7 @@ const OLD_HANDOVER_SIGNATURE =
 const NEW_HANDOVER_SIGNATURE =
   "text, uuid, integer, numeric, text, text, boolean, text, text, boolean, numeric, numeric, timestamptz, text, text, timestamptz";
 
-process.stdout.write("\nVehicle handover (SQL text — migration 172 and its consolidated mirror):\n");
+process.stdout.write("\nVehicle handover (SQL text — migration 174 and its consolidated mirror):\n");
 
 for (const [label, sql] of [
   ["migration 172", migration172],
@@ -101,7 +109,23 @@ for (const [label, sql] of [
         "EVERY handover call fails, including the old client this migration keeps working",
     );
   });
+}
 
+pin("migration 174 drops NOTHING — the parameter list is untouched, so it is create-or-replace", () => {
+  assert.doesNotMatch(
+    migration174,
+    /^drop function.*upsert_booking_handover/im,
+    "the sixteen arguments, their order and their defaults are all migration 172's, so there is no second " +
+      "candidate signature to remove; a gratuitous DROP would open a PGRST203 window between the two " +
+      "statements for no reason at all",
+  );
+});
+
+for (const [label, sql] of [
+  ["migration 174", migration174],
+  ["supabase-schema.sql", consolidated],
+]) {
+  const createAt = sql.lastIndexOf("create or replace function public.upsert_booking_handover");
   const fn = sql.slice(createAt, sql.indexOf("insert into public.fuel_ledger_schema_migrations", createAt));
 
   pin(`${label}: location_seen_at sits BEFORE the event pair, and defaults to null`, () => {
@@ -120,38 +144,75 @@ for (const [label, sql] of [
     }
   });
 
-  pin(`${label}: the mirror is skipped when the caller's view is older than the stored stamp`, () => {
+  // The mirror statement itself: from `update public.ledgers l` to the first semicolon.
+  const mirrorAt = fn.search(/update public\.ledgers l/i);
+  const mirrorStatement = mirrorAt < 0 ? "" : fn.slice(mirrorAt, fn.indexOf(";", mirrorAt) + 1);
+  // The same body with its `--` comments removed. The comments QUOTE the old shape in
+  // order to explain why it changed ("stamped location_updated_at = now()"), so counting
+  // or forbidding a fragment has to look at the code that runs and nothing else.
+  const code = fn.replace(/--[^\n]*/g, "");
+
+  pin(`${label}: the mirror is ONE statement whose OWN where clause carries the staleness test (GV-444)`, () => {
+    assert.ok(mirrorAt > 0, "there must still be exactly one ledgers mirror");
     assert.match(
-      fn,
-      /v_location_is_stale := location_seen_at is not null\s*and v_location_updated_at is not null\s*and date_trunc\('milliseconds', v_location_updated_at\)\s*> date_trunc\('milliseconds', location_seen_at\);/i,
-      "a Monday handover flushed on Wednesday must not overwrite Tuesday's spot and stamp it as confirmed now",
+      mirrorStatement,
+      /where l\.id = target_ledger_id\s*and \(location_seen_at is null\s*or l\.location_updated_at is null\s*or date_trunc\('milliseconds', l\.location_updated_at\)\s*<= date_trunc\('milliseconds', location_seen_at\)\);/i,
+      "the condition must be IN the UPDATE. A read, a comparison and then a write is what GV-444 fixes: a " +
+        "location committed in between was read as current and then overwritten, which is the guard's own " +
+        "failure case through a smaller window. As one statement the row is locked by the UPDATE and " +
+        "READ COMMITTED re-evaluates the where clause against the committed version, so it matches no row",
     );
-    assert.match(
-      fn,
-      /if not v_location_is_stale then\s*update public\.ledgers l/i,
-      "the guard must wrap the ledgers UPDATE itself, not merely compute a flag nothing reads",
+    assert.doesNotMatch(
+      code,
+      /v_location_is_stale|select l\.location_updated_at/i,
+      "no read-then-check remnant may survive: a leftover SELECT of location_updated_at is the race itself, " +
+        "and a leftover flag would be a second, silently divergent copy of the rule",
     );
     assert.match(fn, /'location_mirrored', v_location_mirrored/i, "the client has to be told which way it went");
   });
 
-  pin(`${label}: the handover row and its feed event are OUTSIDE the stale condition`, () => {
-    const guardAt = fn.search(/v_location_is_stale := location_seen_at is not null/i);
+  pin(`${label}: location_mirrored is the UPDATE's row_count, and BOTH false cases survive`, () => {
+    assert.match(
+      fn,
+      /get diagnostics v_mirror_rows = row_count;\s*v_location_mirrored := v_mirror_rows > 0;/i,
+      "true only when the statement actually touched the workspace row — that is the whole meaning of the key",
+    );
+    assert.match(
+      fn,
+      /if v_parking is not null or v_keys is not null then\s*update public\.ledgers l/i,
+      "the pre-existing 'this handover mentioned neither parking nor keys' case must still keep the statement " +
+        "from running at all, rather than running it and letting the where clause decide",
+    );
+    const stamps = code.match(/location_updated_at = now\(\)/gi) ?? [];
+    assert.equal(
+      stamps.length,
+      1,
+      "exactly one write of location_updated_at may exist in this function, and it is the guarded one",
+    );
+    assert.match(
+      mirrorStatement,
+      /location_updated_at = now\(\)/i,
+      "an unguarded second write would stamp a superseded spot as freshly confirmed — the exact harm",
+    );
+  });
+
+  pin(`${label}: the handover row and its feed event are OUTSIDE the guarded mirror`, () => {
     const insertAt = fn.search(/insert into public\.booking_handovers/i);
     const updateAt = fn.search(/update public\.booking_handovers bh/i);
-    assert.ok(insertAt > 0 && insertAt < guardAt, "the CREATE path must run before the guard is even computed");
-    assert.ok(updateAt > 0 && updateAt < guardAt, "and so must the full-replace UPDATE path");
+    assert.ok(insertAt > 0 && insertAt < mirrorAt, "the CREATE path must run before the mirror is attempted");
+    assert.ok(updateAt > 0 && updateAt < mirrorAt, "and so must the full-replace UPDATE path");
 
-    // Everything from the guard to the feed-event comment is the mirror and nothing else.
-    const staleBlock = fn.slice(guardAt, fn.search(/-- CREATE only\. An edit writes no event/i));
-    assert.ok(staleBlock.length > 0);
+    // Everything from the mirror to the feed-event comment is the mirror and nothing else.
+    const mirrorBlock = fn.slice(mirrorAt, fn.search(/-- CREATE only\. An edit writes no event/i));
+    assert.ok(mirrorBlock.length > 0);
     assert.doesNotMatch(
-      staleBlock,
+      mirrorBlock,
       /booking_handovers/i,
       "HISTORY IS HISTORY: a stale handover is the only account of that trip that will ever exist, and an " +
         "outbox entry the server refuses is an outbox entry that is gone. Only the ledgers mirror may be skipped",
     );
     assert.doesNotMatch(
-      staleBlock,
+      mirrorBlock,
       /ledger_events/i,
       "the feed event is written for the handover, not for the mirror — moving it inside the guard would " +
         "silence the next driver's notification whenever somebody else had touched the location first",
@@ -1568,6 +1629,73 @@ pin("a NULL location_seen_at is today's behaviour, byte for byte", () => {
   assert.equal(ledgerLocation(), "Gammel klient flyttede bilen / Nøgler hos Anna");
 });
 
+// ── GV-444: the same rule, now expressed as the UPDATE's own where clause ──────────
+// The race itself cannot be reproduced from a fixture — that is why it is pinned in the
+// SQL text at the top of this file. What CAN be checked here is that moving the condition
+// into the statement did not quietly change the rule at any of its edges, so each
+// disjunct gets a case of its own.
+
+pin("a stored stamp of NULL always mirrors, even against a caller who names a time", () => {
+  raw(
+    `update public.ledgers set parking_location = 'Ingen ved hvornår', key_location = 'Nøgler hos Anna',
+       location_updated_by_member_id = '${ANNA}', location_updated_at = null where id = '${L}';`,
+  );
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "Bo satte den her",
+    seen: "timestamptz '2020-01-01 00:00:00+00'",
+  });
+
+  assert.equal(
+    result.location_mirrored,
+    true,
+    "the second disjunct: with no stored stamp there is no current answer for a stale view to overwrite, " +
+      "which is migration 172's `v_location_updated_at is not null` conjunct read the other way round",
+  );
+  assert.equal(ledgerLocation(), "Bo satte den her / Nøgler hos Anna");
+});
+
+pin("'-infinity' means 'I saw NO location' — it blocks a mirror wherever one exists", () => {
+  const stamp = seedWorkspaceLocation("Nogen har flyttet den", "Nøgler hos Anna");
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "Jeg så ingen placering",
+    seen: "timestamptz '-infinity'",
+  });
+
+  assert.equal(
+    result.location_mirrored,
+    false,
+    "a client with no view at all can say so, and the where clause honours it without a special case: " +
+      "every real timestamp is greater than -infinity, so the third disjunct is simply false",
+  );
+  assert.equal(ledgerLocation(), "Nogen har flyttet den / Nøgler hos Anna");
+  assert.equal(ledgerLocationStamp(), stamp, "and the stamp stays where it was");
+});
+
+pin("'-infinity' against a workspace with NO stamp still mirrors", () => {
+  raw(
+    `update public.ledgers set parking_location = 'Ingen ved hvornår', key_location = 'Nøgler hos Anna',
+       location_updated_at = null where id = '${L}';`,
+  );
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "Så er der da et svar",
+    seen: "timestamptz '-infinity'",
+  });
+
+  assert.equal(
+    result.location_mirrored,
+    true,
+    "'I saw nothing' and 'there is nothing' agree: with no stored stamp the mirror overwrites no answer, " +
+      "so the second disjunct still lets the first handover through",
+  );
+  assert.equal(ledgerLocation(), "Så er der da et svar / Nøgler hos Anna");
+});
+
 pin("'nothing to mirror' also reports location_mirrored false", () => {
   seedWorkspaceLocation("Onsdagens plads", "Nøgler hos Anna");
 
@@ -1604,5 +1732,10 @@ process.stdout.write(
     `is also skipped when the caller's view is STALE — location_seen_at older than the stored ` +
     `location_updated_at, compared through milliseconds so a JS Date round trip is not read as stale — while ` +
     `the handover row and its feed event are saved in full either way, a null location_seen_at is ` +
-    `byte-identical to today, and 'location_mirrored' in the return says which way it went.\n`,
+    `byte-identical to today, and 'location_mirrored' in the return says which way it went. Since GV-444 that ` +
+    `rule is ONE conditional UPDATE rather than a read, a comparison and a write: the staleness test lives in ` +
+    `the statement's own where clause and location_mirrored is its row_count, so a location committed by ` +
+    `somebody else while the call was in flight makes the mirror match no row instead of being read as ` +
+    `current and then overwritten — with each disjunct pinned on its own edge, a null stored stamp and a ` +
+    `'-infinity' view included.\n`,
 );
