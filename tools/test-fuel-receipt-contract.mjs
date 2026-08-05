@@ -12,6 +12,13 @@
 //       PostgREST token, which is how a receipt could be attached to another
 //       workspace's tankning.
 //
+//   (3) THE PAYMENT ROW IS THE LOCK ROOT (GV-436, migration 171). Both write RPCs
+//       serialize on public.fuel_payments, and `for update` is one phrase that a
+//       "tidy-up" removes without changing a single visible behaviour — until two
+//       members attach at the same moment, both pass the first-attach gate, and the
+//       loser's photo is orphaned in the bucket with no row pointing at it, out of
+//       reach of both the client's delete and the settled-close sweep below.
+//
 //   (2) DELETED AT SETTLED CLOSE — and PAID_PENDING IS NOT SETTLED. The sweep's
 //       predicate is one line of SQL that reads almost identically whether or not it
 //       treats an unconfirmed claim as final, and the difference is a photo destroyed
@@ -142,6 +149,65 @@ for (const sql of [migration, schema]) {
   }
 }
 
+// ── (3) GV-436: the payment row is the LOCK ROOT for every receipt write ───────
+// Migration 171 re-declares BOTH RPCs off their 169 definitions to close a TOCTOU race.
+// The pins below deliberately read the LATEST definition of each function rather than
+// 169's: sliceFrom() takes the LAST match, which in supabase-schema.sql is 171's mirror
+// (appended at the end — last definition wins on replay), and the migration side is read
+// from migration 171's own file for the same reason. Pinning 169 here would certify the
+// version that has the bug.
+const locking = readFileSync('supabase/migrations/171_receipt_rpc_locking.sql', 'utf8');
+
+for (const [label, sql] of [['migration 171', locking], ['supabase-schema.sql', schema]]) {
+  const attach = sliceFrom(sql, 'create or replace function public.attach_fuel_payment_receipt', 'revoke all on function public.attach_fuel_payment_receipt');
+  assert.match(
+    attach,
+    /select \* into v_payment\s*from public\.fuel_payments fp\s*where fp\.id = p_fuel_payment_id\s*for update;/i,
+    `${label}: attach must take the payment row FOR UPDATE. Without it two members both read ` +
+      '"no receipt yet", both pass the first-attach gate, and the second upsert silently replaces the ' +
+      "first — orphaning a storage object that only 'replaced_storage_path' could have got deleted",
+  );
+
+  const detach = sliceFrom(sql, 'create or replace function public.detach_fuel_payment_receipt', 'revoke all on function public.detach_fuel_payment_receipt');
+  assert.match(
+    detach,
+    /perform 1\s*from public\.fuel_payments fp\s*where fp\.id = v_payment_id\s*for update;/i,
+    `${label}: detach must take the SAME lock root as attach — the fuel_payments row — or the two RPCs ` +
+      'exclude only their own twins',
+  );
+  // Lock-then-RE-READ ordering: the unlocked read exists ONLY to find the lock root, and
+  // every authorization decision is made against the copy read AFTER the lock.
+  const lockAt = detach.search(/perform 1\s*from public\.fuel_payments fp/i);
+  const rereadAt = detach.search(/select \* into v_receipt\s*from public\.fuel_payment_receipts fpr/i);
+  const gateAt = detach.search(/public\.is_ledger_admin\(v_receipt\.ledger_id\)/i);
+  const deleteAt = detach.search(/delete from public\.fuel_payment_receipts fpr/i);
+  assert.ok(lockAt > 0 && rereadAt > lockAt, `${label}: detach must RE-READ the receipt AFTER taking the lock`);
+  assert.ok(
+    gateAt > rereadAt && deleteAt > rereadAt,
+    `${label}: detach's uploader-or-admin gate and its delete must be decided against the RE-READ copy — ` +
+      'authorizing against a row a concurrent attach may already have replaced is the whole bug',
+  );
+  assert.match(
+    detach,
+    /select fpr\.fuel_payment_id into v_payment_id/i,
+    `${label}: the unlocked first read must take ONLY the fuel_payment_id (the receipt's UNIQUE key, which a ` +
+      'replace cannot change) — anything else read there is a decision made before the lock',
+  );
+}
+
+// Same signatures as 169, so 171 is create-or-replace and no client changes: a DROP here
+// would open a PGRST203/PGRST202 window for a shipped GVM-537 build.
+assert.doesNotMatch(
+  locking,
+  /drop function[^\n]*fuel_payment_receipt/i,
+  'migration 171 changes no signature — dropping either RPC would break shipped clients for no reason',
+);
+for (const fn of ['attach_fuel_payment_receipt(uuid, text)', 'detach_fuel_payment_receipt(uuid)']) {
+  assert.match(locking, new RegExp(`revoke all on function public\\.${fn.replace(/[()]/g, '\\$&')} from public;`, 'i'));
+  assert.match(locking, new RegExp(`revoke all on function public\\.${fn.replace(/[()]/g, '\\$&')} from anon;`, 'i'));
+  assert.match(locking, new RegExp(`grant execute on function public\\.${fn.replace(/[()]/g, '\\$&')} to authenticated;`, 'i'));
+}
+
 // No new event_type: attaching a receipt is not feed news (see the migration header).
 const migrationBody = migration.slice(0, migration.indexOf('insert into public.fuel_ledger_schema_migrations'));
 assert.doesNotMatch(
@@ -150,4 +216,4 @@ assert.doesNotMatch(
   'migration 169 deliberately writes no ledger_events row — adding one is a classification decision (GV-413), not a detail',
 );
 
-console.log('ok - fuel receipts stay opt-in, one per tankning, RPC-only, and die at settled close (paid_pending does not count)');
+console.log('ok - fuel receipts stay opt-in, one per tankning, RPC-only, serialized on the fuel_payments lock root, and die at settled close (paid_pending does not count)');

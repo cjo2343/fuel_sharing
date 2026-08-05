@@ -44,6 +44,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,6 +62,101 @@ function pin(label, fn) {
   fn();
   checked += 1;
   process.stdout.write(`  ok - ${label}\n`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 0. GVM-542 — THE STALE-MIRROR GUARD, PINNED IN THE SQL TEXT ITSELF
+// ═══════════════════════════════════════════════════════════════════════════════
+// These run BEFORE the Docker gate below, on purpose: they are dependency-free, and the
+// one property they certify is a NEGATIVE that a catalog cannot express — that the
+// handover row's own INSERT/UPDATE is NOT inside the stale condition. A replayed
+// database can show that a stale handover still saves; only the text can show that it
+// saves because the guard was never wrapped around it, rather than by luck of a fixture.
+//
+// Read from migration 172 and from the LAST definition in supabase-schema.sql, never
+// from 170: on replay the last definition wins, so pinning an earlier one would certify
+// a function the database will never run.
+const migration172 = readFileSync(path.join(ROOT, "supabase/migrations/172_handover_stale_location_guard.sql"), "utf8");
+const consolidated = readFileSync(path.join(ROOT, "supabase-schema.sql"), "utf8");
+
+const OLD_HANDOVER_SIGNATURE =
+  "text, uuid, integer, numeric, text, text, boolean, text, text, boolean, numeric, numeric, text, text, timestamptz";
+const NEW_HANDOVER_SIGNATURE =
+  "text, uuid, integer, numeric, text, text, boolean, text, text, boolean, numeric, numeric, timestamptz, text, text, timestamptz";
+
+process.stdout.write("\nVehicle handover (SQL text — migration 172 and its consolidated mirror):\n");
+
+for (const [label, sql] of [
+  ["migration 172", migration172],
+  ["supabase-schema.sql", consolidated],
+]) {
+  const createAt = sql.lastIndexOf("create or replace function public.upsert_booking_handover");
+  const dropAt = sql.lastIndexOf(`drop function if exists public.upsert_booking_handover(${OLD_HANDOVER_SIGNATURE});`);
+
+  pin(`${label}: the FIFTEEN-argument signature is DROPPED before the sixteen-argument create`, () => {
+    assert.ok(dropAt >= 0, "the drop must name the CURRENT signature explicitly, type for type");
+    assert.ok(
+      dropAt < createAt,
+      "two candidate signatures with defaulted parameters is PGRST203: PostgREST resolves neither and " +
+        "EVERY handover call fails, including the old client this migration keeps working",
+    );
+  });
+
+  const fn = sql.slice(createAt, sql.indexOf("insert into public.fuel_ledger_schema_migrations", createAt));
+
+  pin(`${label}: location_seen_at sits BEFORE the event pair, and defaults to null`, () => {
+    assert.match(
+      fn,
+      /parking_lng_value numeric default null,\s*location_seen_at timestamptz default null,\s*event_title text default null,\s*event_body text default null,\s*expected_updated_at timestamptz default null\s*\)/i,
+      "the 051 convention: the event pair stays last so the NEXT addition lands in the same place, and the " +
+        "default is what keeps every shipped client's body resolving unchanged",
+    );
+    for (const grant of [
+      `revoke all on function public.upsert_booking_handover(${NEW_HANDOVER_SIGNATURE}) from public;`,
+      `revoke all on function public.upsert_booking_handover(${NEW_HANDOVER_SIGNATURE}) from anon;`,
+      `grant execute on function public.upsert_booking_handover(${NEW_HANDOVER_SIGNATURE}) to authenticated;`,
+    ]) {
+      assert.ok(sql.includes(grant), `the ACL must be restated for the NEW signature (148's convention): ${grant}`);
+    }
+  });
+
+  pin(`${label}: the mirror is skipped when the caller's view is older than the stored stamp`, () => {
+    assert.match(
+      fn,
+      /v_location_is_stale := location_seen_at is not null\s*and v_location_updated_at is not null\s*and date_trunc\('milliseconds', v_location_updated_at\)\s*> date_trunc\('milliseconds', location_seen_at\);/i,
+      "a Monday handover flushed on Wednesday must not overwrite Tuesday's spot and stamp it as confirmed now",
+    );
+    assert.match(
+      fn,
+      /if not v_location_is_stale then\s*update public\.ledgers l/i,
+      "the guard must wrap the ledgers UPDATE itself, not merely compute a flag nothing reads",
+    );
+    assert.match(fn, /'location_mirrored', v_location_mirrored/i, "the client has to be told which way it went");
+  });
+
+  pin(`${label}: the handover row and its feed event are OUTSIDE the stale condition`, () => {
+    const guardAt = fn.search(/v_location_is_stale := location_seen_at is not null/i);
+    const insertAt = fn.search(/insert into public\.booking_handovers/i);
+    const updateAt = fn.search(/update public\.booking_handovers bh/i);
+    assert.ok(insertAt > 0 && insertAt < guardAt, "the CREATE path must run before the guard is even computed");
+    assert.ok(updateAt > 0 && updateAt < guardAt, "and so must the full-replace UPDATE path");
+
+    // Everything from the guard to the feed-event comment is the mirror and nothing else.
+    const staleBlock = fn.slice(guardAt, fn.search(/-- CREATE only\. An edit writes no event/i));
+    assert.ok(staleBlock.length > 0);
+    assert.doesNotMatch(
+      staleBlock,
+      /booking_handovers/i,
+      "HISTORY IS HISTORY: a stale handover is the only account of that trip that will ever exist, and an " +
+        "outbox entry the server refuses is an outbox entry that is gone. Only the ledgers mirror may be skipped",
+    );
+    assert.doesNotMatch(
+      staleBlock,
+      /ledger_events/i,
+      "the feed event is written for the handover, not for the mirror — moving it inside the guard would " +
+        "silence the next driver's notification whenever somebody else had touched the location first",
+    );
+  });
 }
 
 let dockerUp = false;
@@ -217,9 +313,12 @@ const sqlLit = (v) => (v === null || v === undefined ? "null" : `'${String(v).re
  *
  * `lat`/`lng` are the migration-170 pin parameters (GVM-540) and are SQL EXPRESSIONS
  * too, so a case can pass a number, `null`, or a deliberately malformed half-pair.
- * Positional, because these calls are the file's fixtures rather than a client's
- * request: the two parameters sit between keys_confirmed_value and event_title, and a
- * case that gets that wrong fails loudly on a type mismatch rather than quietly.
+ * `locationSeenAt` is migration 172's (GVM-542), an expression for the same reason — a
+ * case passes `null` for "an old client", or a timestamp for "this is what I had on
+ * screen". Positional, because these calls are the file's fixtures rather than a
+ * client's request: the three parameters sit between keys_confirmed_value and
+ * event_title, and a case that gets that wrong fails loudly on a type mismatch rather
+ * than quietly.
  */
 function saveHandover({
   ledger = L,
@@ -234,6 +333,7 @@ function saveHandover({
   keysConfirmed = false,
   lat = "null",
   lng = "null",
+  locationSeenAt = "null",
   eventTitle = null,
   eventBody = null,
   token = "null",
@@ -249,7 +349,7 @@ function saveHandover({
        ${conditionOk === null ? "null" : conditionOk},
        ${sqlLit(conditionNote)}, ${sqlLit(noteToNext)},
        ${keysConfirmed},
-       ${lat}, ${lng},
+       ${lat}, ${lng}, ${locationSeenAt},
        ${sqlLit(eventTitle)}, ${sqlLit(eventBody)},
        ${token});`,
   );
@@ -285,7 +385,7 @@ function saveMessage(opts) {
        ${opts.fuel === undefined || opts.fuel === null ? "null" : opts.fuel},
        ${sqlLit(opts.parking ?? null)}, ${sqlLit(opts.keyLocation ?? null)},
        null, ${sqlLit(opts.conditionNote ?? null)}, ${sqlLit(opts.noteToNext ?? null)},
-       false, ${opts.lat ?? "null"}, ${opts.lng ?? "null"},
+       false, ${opts.lat ?? "null"}, ${opts.lng ?? "null"}, ${opts.locationSeenAt ?? "null"},
        null, null, ${opts.token ?? "null"});`,
   );
 }
@@ -458,7 +558,7 @@ pin("expected_updated_at is the LAST parameter, after the event params", () => {
   );
 });
 
-pin("the pin parameters sit BEFORE the event pair, and both DEFAULT to null", () => {
+pin("the pin parameters and location_seen_at sit BEFORE the event pair, and all DEFAULT to null", () => {
   const args = scalar(
     `select pg_get_function_arguments(p.oid) from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
@@ -466,9 +566,9 @@ pin("the pin parameters sit BEFORE the event pair, and both DEFAULT to null", ()
   );
   assert.match(
     args,
-    /keys_confirmed_value boolean DEFAULT false, parking_lat_value numeric DEFAULT NULL::numeric, parking_lng_value numeric DEFAULT NULL::numeric, event_title text/,
-    "migration 170 (GVM-540) follows the 051 convention — the event pair stays last, so the NEXT " +
-      "addition lands in the same place — and the two defaults are what let a pre-170 client's " +
+    /keys_confirmed_value boolean DEFAULT false, parking_lat_value numeric DEFAULT NULL::numeric, parking_lng_value numeric DEFAULT NULL::numeric, location_seen_at timestamp with time zone DEFAULT NULL::timestamp with time zone, event_title text/,
+    "migrations 170 and 172 both follow the 051 convention — the event pair stays last, so the NEXT " +
+      "addition lands in the same place — and the defaults are what let a pre-170 client's " +
       "thirteen-key body resolve at all",
   );
 });
@@ -485,8 +585,7 @@ pin("exactly ONE overload of the RPC exists", () => {
 });
 
 pin("authenticated may EXECUTE the RPC; anon may not (migration 148 convention)", () => {
-  const fn =
-    "public.upsert_booking_handover(text, uuid, integer, numeric, text, text, boolean, text, text, boolean, numeric, numeric, text, text, timestamptz)";
+  const fn = `public.upsert_booking_handover(${NEW_HANDOVER_SIGNATURE})`;
   assert.equal(scalar(`select has_function_privilege('authenticated', '${fn}', 'EXECUTE');`), "t");
   assert.equal(scalar(`select has_function_privilege('anon', '${fn}', 'EXECUTE');`), "f");
 });
@@ -904,7 +1003,7 @@ pin("the RPC returns handover_id, created and the row's new updated_at", () => {
   const created = scalar(
     `select set_config('request.jwt.claims', '{"email":"bo@test.dk","role":"authenticated"}', false);
      select public.upsert_booking_handover('${L}', '${BOOKING(6)}'::uuid, null, null, 'et sted',
-       null, null, null, null, false, null, null, null, null, null)::text;`,
+       null, null, null, null, false, null, null, null, null, null, null)::text;`,
   )
     .split("\n")
     .pop()
@@ -920,7 +1019,7 @@ pin("the RPC returns handover_id, created and the row's new updated_at", () => {
   const edited = scalar(
     `select set_config('request.jwt.claims', '{"email":"bo@test.dk","role":"authenticated"}', false);
      select public.upsert_booking_handover('${L}', '${BOOKING(6)}'::uuid, null, null, 'et andet sted',
-       null, null, null, null, false, null, null, null, null, timestamptz '${updatedAt}')::text;`,
+       null, null, null, null, false, null, null, null, null, null, timestamptz '${updatedAt}')::text;`,
   )
     .split("\n")
     .pop()
@@ -1322,6 +1421,167 @@ pin("a pre-170 client's THIRTEEN-key body still resolves, and still clears the p
   );
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 11. A STALE HANDOVER DOES NOT MOVE THE CAR (GVM-542, migration 172)
+// ═══════════════════════════════════════════════════════════════════════════════
+// The sheet is filled in at the car, where there is no signal, so the mobile outbox can
+// flush a Monday handover on Wednesday. Until migration 172 the mirror ran anyway and
+// stamped location_updated_at = now(), so Tuesday's correct spot was replaced by
+// Monday's AND presented as freshly confirmed.
+//
+// The three properties below are the whole decision, and the second is the one a diff
+// could reverse while looking like a simplification: the ROW is always saved, and only
+// the mirror is skipped. A guard that also refused the handover would be losing the only
+// account of that trip that will ever exist, since an outbox entry the server rejects is
+// an outbox entry that is gone.
+
+/** Call the RPC positionally and return its parsed jsonb — 'location_mirrored' included. */
+function saveReturning({ booking, parking = null, keyLocation = null, seen = "null", eventTitle = null } = {}) {
+  const out = scalar(
+    `select set_config('request.jwt.claims', '{"email":"bo@test.dk","role":"authenticated"}', false);
+     select public.upsert_booking_handover('${L}', '${booking}'::uuid, null, null,
+       ${sqlLit(parking)}, ${sqlLit(keyLocation)}, null, null, null, false,
+       null, null, ${seen}, ${sqlLit(eventTitle)}, null, null)::text;`,
+  )
+    .split("\n")
+    .pop()
+    .trim();
+  return JSON.parse(out);
+}
+
+/** Put the workspace location in a known state and hand back its stamp. */
+function seedWorkspaceLocation(parking, keys) {
+  raw(
+    `update public.ledgers set parking_location = ${sqlLit(parking)}, key_location = ${sqlLit(keys)},
+       parking_lat = null, parking_lng = null,
+       location_updated_by_member_id = '${ANNA}', location_updated_at = now()
+     where id = '${L}';`,
+  );
+  return ledgerLocationStamp();
+}
+
+pin("a STALE view skips the mirror — the newer location and its stamp both survive", () => {
+  const stamp = seedWorkspaceLocation("Tirsdagens rigtige plads", "Nøgler hos Anna");
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "Mandagens plads",
+    seen: `timestamptz '${stamp}' - interval '1 day'`,
+  });
+
+  assert.equal(result.location_mirrored, false, "the RPC must say so rather than let the client assume");
+  assert.equal(
+    ledgerLocation(),
+    "Tirsdagens rigtige plads / Nøgler hos Anna",
+    "a Monday handover flushed on Wednesday must not overwrite Tuesday's spot",
+  );
+  assert.equal(
+    ledgerLocationStamp(),
+    stamp,
+    "and must not move the stamp either — a skipped mirror confirms nothing, and a fresh timestamp on an " +
+      "old spot is the exact failure this guard exists to prevent",
+  );
+  assert.equal(
+    readColumn(BOOKING(9), "parking_location"),
+    "Mandagens plads",
+    "THE ROW IS ALWAYS SAVED: history is history, and an outbox entry the server refuses is one that is gone",
+  );
+});
+
+pin("a stale CREATE still writes the row AND its feed event", () => {
+  raw(`delete from public.booking_handovers where booking_id = '${BOOKING(9)}';`);
+  const stamp = seedWorkspaceLocation("Tirsdagens rigtige plads", "Nøgler hos Anna");
+  const before = eventCount();
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "Mandagens plads",
+    seen: `timestamptz '${stamp}' - interval '1 day'`,
+    eventTitle: "Bo har afleveret bilen",
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(result.location_mirrored, false);
+  assert.equal(handoverCount(BOOKING(9)), 1, "a stale view is not a reason to refuse the handover");
+  assert.equal(
+    eventCount(),
+    before + 1,
+    "the feed event belongs to the handover, not to the mirror — the next driver still needs to hear that " +
+      "the car was handed over, even if somebody else had already updated where it stands",
+  );
+  assert.equal(ledgerLocation(), "Tirsdagens rigtige plads / Nøgler hos Anna");
+});
+
+pin("a CURRENT view mirrors exactly as it always did", () => {
+  const stamp = seedWorkspaceLocation("Onsdagens plads", "Nøgler hos Anna");
+
+  const result = saveReturning({ booking: BOOKING(9), parking: "Bo flyttede den", seen: `timestamptz '${stamp}'` });
+
+  assert.equal(result.location_mirrored, true);
+  assert.equal(ledgerLocation(), "Bo flyttede den / Nøgler hos Anna");
+  assert.notEqual(ledgerLocationStamp(), stamp, "a mirror that ran re-confirms the location");
+});
+
+pin("a view that lost its MICROseconds still mirrors (the JS Date round trip)", () => {
+  const stamp = seedWorkspaceLocation("Onsdagens plads", "Nøgler hos Anna");
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "Bo flyttede den igen",
+    seen: `date_trunc('milliseconds', timestamptz '${stamp}')`,
+  });
+
+  assert.equal(
+    result.location_mirrored,
+    true,
+    "migration 160's rule, applied here: a timestamp that has been through a JavaScript Date has lost its " +
+      "microseconds, and a microsecond-exact `>` would read an UNCHANGED location as newer and skip the " +
+      "mirror forever while blaming a member who did nothing",
+  );
+  assert.equal(ledgerLocation(), "Bo flyttede den igen / Nøgler hos Anna");
+});
+
+pin("one real MILLIsecond behind IS stale — the tolerance is not a free-for-all", () => {
+  const stamp = seedWorkspaceLocation("Onsdagens plads", "Nøgler hos Anna");
+
+  const result = saveReturning({
+    booking: BOOKING(9),
+    parking: "For sent",
+    seen: `date_trunc('milliseconds', timestamptz '${stamp}') - interval '1 millisecond'`,
+  });
+
+  assert.equal(result.location_mirrored, false);
+  assert.equal(ledgerLocation(), "Onsdagens plads / Nøgler hos Anna");
+});
+
+pin("a NULL location_seen_at is today's behaviour, byte for byte", () => {
+  seedWorkspaceLocation("Onsdagens plads", "Nøgler hos Anna");
+
+  const result = saveReturning({ booking: BOOKING(9), parking: "Gammel klient flyttede bilen" });
+
+  assert.equal(
+    result.location_mirrored,
+    true,
+    "every shipped client omits the parameter, so it arrives null, the guard cannot fire, and the mirror runs " +
+      "exactly as migration 170 left it — the skip is opt-in by a client that can say what it saw",
+  );
+  assert.equal(ledgerLocation(), "Gammel klient flyttede bilen / Nøgler hos Anna");
+});
+
+pin("'nothing to mirror' also reports location_mirrored false", () => {
+  seedWorkspaceLocation("Onsdagens plads", "Nøgler hos Anna");
+
+  const result = saveReturning({ booking: BOOKING(9), seen: "null" });
+
+  assert.equal(
+    result.location_mirrored,
+    false,
+    "the flag answers 'did the workspace location change?', so the pre-existing null-preserving case reports " +
+      "false too — one meaning, not two",
+  );
+  assert.equal(ledgerLocation(), "Onsdagens plads / Nøgler hos Anna");
+});
+
 removeContainer(CONTAINER);
 
 process.stdout.write(
@@ -1340,5 +1600,9 @@ process.stdout.write(
     `clears it, and a handover that says nothing about the parking preserves both — while a pin sent without a ` +
     `text is ignored, half a pin and an out-of-range pair are refused in Danish with nothing written, the ` +
     `handover ROW still has no coordinate column of its own, and a pre-170 client's thirteen-key body still ` +
-    `resolves through the two defaults and still produces the row it produces today.\n`,
+    `resolves through the two defaults and still produces the row it produces today. Since GVM-542 the mirror ` +
+    `is also skipped when the caller's view is STALE — location_seen_at older than the stored ` +
+    `location_updated_at, compared through milliseconds so a JS Date round trip is not read as stale — while ` +
+    `the handover row and its feed event are saved in full either way, a null location_seen_at is ` +
+    `byte-identical to today, and 'location_mirrored' in the return says which way it went.\n`,
 );
