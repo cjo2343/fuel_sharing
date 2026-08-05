@@ -227,7 +227,7 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
-          repository: cjo2343/govehlo-web
+          repository: cjo2343/vehloshare-web
           path: govehlo-web
           token: ${{ secrets.CROSS_REPO_TOKEN }}
 
@@ -235,7 +235,7 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         uses: actions/checkout@v4
         with:
-          repository: cjo2343/govehlo-mobile
+          repository: cjo2343/vehloshare-mobile
           path: govehlo-mobile
           token: ${{ secrets.CROSS_REPO_TOKEN }}
 
