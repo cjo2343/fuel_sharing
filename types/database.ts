@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 174 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 175 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -935,6 +935,35 @@ export type Database = {
         }
         Relationships: []
       }
+      newsletter_send_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          subscriber_id: string
+          token_digest: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          subscriber_id: string
+          token_digest: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          subscriber_id?: string
+          token_digest?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_send_tokens_subscriber_id_fkey"
+            columns: ["subscriber_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_subscribers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       newsletter_subscribers: {
         Row: {
           confirm_token_hash: string | null
@@ -943,7 +972,6 @@ export type Database = {
           email: string
           id: string
           requested_at: string
-          unsubscribe_token_hash: string
         }
         Insert: {
           confirm_token_hash?: string | null
@@ -952,7 +980,6 @@ export type Database = {
           email: string
           id?: string
           requested_at?: string
-          unsubscribe_token_hash: string
         }
         Update: {
           confirm_token_hash?: string | null
@@ -961,7 +988,6 @@ export type Database = {
           email?: string
           id?: string
           requested_at?: string
-          unsubscribe_token_hash?: string
         }
         Relationships: []
       }
