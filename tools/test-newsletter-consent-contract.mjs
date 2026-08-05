@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Consent contract for the newsletter list (GV-366).
+// Consent contract for the newsletter list (GV-366) and its send flow (GV-430).
 //
 // WHY A STATIC GUARD AND NOT ONLY THE ROLE MATRIX
 //
@@ -10,6 +10,7 @@
 //   * nothing seeds the list from the product's own users
 //   * no policy or grant opens the table to a browser role
 //   * no column keeps an address after the person asked us to stop
+//   * no raw unsubscribe token is stored, and no send log keeps a recipient (GV-430)
 //
 // A matrix case can only exercise a path that exists. "There is no path from
 // auth.users to this table" is not a path, so no case can fail when one appears — the
@@ -324,6 +325,16 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     // (confirmed_at is null, older than the promised 7 days) and counts them. It can
     // never read an address out, and confirmed subscribers are untouched.
     "public.run_operational_retention",
+    // GV-430 (migration 173): the send. This is the ONE function that reads addresses
+    // OUT of the list, and the allowlist is doing exactly the job it was written for by
+    // making that a line somebody had to add on purpose. It is admitted because a send
+    // is the only operation that genuinely needs them, and because the alternative is
+    // worse in law rather than merely in taste: markedsfoeringsloven paragraph 10 wants
+    // every marketing mail to carry an opt-out that actually stops the mail, and an
+    // exported address list is a copy nobody unsubscribes FROM. It is contained by the
+    // grants (service_role only — see section 7) and it mints a FRESH unsubscribe token
+    // per recipient rather than reading a stored one, because there is no stored one.
+    "public.mint_newsletter_send_tokens",
   ]);
 
   // Prose stripped like the block scan strips it, but WITHOUT schemaStatementsOnly:
@@ -427,4 +438,271 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
   );
 }
 
-console.log("✅ test-newsletter-consent-contract: newsletter list is standalone, deny-all and tombstone-free.");
+// ── 7. The send (GV-430, migration 173) ──────────────────────────────────────
+//
+// Sending is where a consent design usually springs a leak, because a send is the one
+// operation that needs the addresses and it is therefore the one place somebody reaches
+// for "just export the list". Migration 173 refuses that and mints instead: a fresh
+// unsubscribe token per recipient, the digest stored over the old one, the RAW token
+// returned and written nowhere.
+//
+// Four properties carry that, and all four are the ABSENT shape section 1's header
+// describes — a stored raw token, a browser-callable grant, an unconfirmed recipient, a
+// recipient address in the audit log. None of them can be caught by a matrix case,
+// because each would arrive as an addition. So they are read out of the file, here, in
+// the migration and in the consolidated mirror alike.
+{
+  const SEND_SOURCES = [
+    ["supabase/migrations/173_newsletter_send_tokens.sql", null],
+    [
+      "supabase-schema.sql",
+      "-- Migration 173: mint per-send unsubscribe tokens + a counts-only send log (GV-430)",
+    ],
+  ];
+  const SEND_LOG = "public.newsletter_send_log";
+  const MINT = "public.mint_newsletter_send_tokens";
+
+  // The signature govehlo-web's send endpoint is written against. Pinned verbatim
+  // because a rename or a reordered parameter is a PGRST202 the platform CI cannot see
+  // — only the umbrella can, and only after both halves have merged.
+  const MINT_SIGNATURE =
+    "create or replace function public.mint_newsletter_send_tokens(\n" +
+    "  p_operator_email text,\n" +
+    "  p_headline text\n" +
+    ")\n" +
+    "returns table(email text, unsubscribe_token text)";
+
+  // Top-level column names of a create-table block. Used to assert what the send log
+  // holds POSITIVELY — "no column called recipient_email" is a game of whack-a-mole,
+  // "these five and nothing else" is the property.
+  //
+  // Everything from the first `constraint` line onward is dropped rather than filtered
+  // line by line: a named check constraint wraps over several lines, and its
+  // continuations ("and operator_email ~ …") would otherwise read as columns called
+  // `and`. Columns before constraints is the ordering this schema already uses
+  // everywhere, and an added column that hides after a constraint fails this assertion
+  // rather than sneaking past it, which is the right way round.
+  function tableColumns(sql, table) {
+    const at = sql.indexOf(`create table if not exists ${table} (`);
+    assert.notEqual(at, -1, `${table} is not created here`);
+    const end = sql.indexOf("\n);", at);
+    assert.notEqual(end, -1, `${table}'s create-table block is unterminated`);
+    const lines = sql
+      .slice(sql.indexOf("(", at) + 1, end)
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("--"));
+    const firstConstraint = lines.findIndex((line) => line.startsWith("constraint"));
+    return (firstConstraint === -1 ? lines : lines.slice(0, firstConstraint)).map((line) => line.split(/\s+/)[0]);
+  }
+
+  let sendChecked = 0;
+  for (const source of SEND_SOURCES) {
+    const { file, sql: raw } = load(source);
+    const sql = schemaStatementsOnly(raw);
+    const where = (what) => `${file}: ${what}`;
+
+    // (a) The grants. service_role only — this is the containment for admitting a
+    // function that reads addresses out at all, and restating anon explicitly is the
+    // migration 148 pattern: Supabase's default privileges grant EXECUTE on new
+    // functions to anon AND authenticated, so a missing revoke is a public endpoint.
+    assert.ok(sql.includes(MINT_SIGNATURE), where(`${MINT}'s signature has changed — govehlo-web's send endpoint is written against it verbatim`));
+    assert.match(
+      sql,
+      new RegExp(`create or replace function ${MINT}\\([\\s\\S]*?security\\s+definer[\\s\\S]*?set\\s+search_path\\s*=\\s*public`, "i"),
+      where(`${MINT} must be security definer with a pinned search_path — both tables deny its callers`),
+    );
+    for (const role of ["public", "anon", "authenticated"]) {
+      assert.match(
+        sql,
+        new RegExp(`revoke all on function ${MINT}\\([^)]*\\) from ${role}\\s*;`, "i"),
+        where(`${MINT} is still executable by ${role}. It hands out every confirmed address on the list`),
+      );
+    }
+    assert.match(
+      sql,
+      new RegExp(`grant execute on function ${MINT}\\([^)]*\\) to service_role\\s*;`, "i"),
+      where(`${MINT} must be granted to service_role — the operator endpoint's identity`),
+    );
+    assert.ok(
+      !new RegExp(`grant execute on function ${MINT}\\([^)]*\\) to (anon|authenticated)\\s*;`, "i").test(sql),
+      where(
+        `${MINT} is granted to a browser role. Only the server may mint a send — and keeping ` +
+          "it off authenticated is also what keeps it outside the GV-379 role-matrix coverage " +
+          "scope, which tracks authenticated-executable functions",
+      ),
+    );
+
+    // (b) Minting ROTATES. The stored digest is overwritten by a digest of freshly
+    // generated bytes, so the previous send's links stop working — and, the half that
+    // matters for a dump, the raw token is never what gets stored.
+    assert.match(
+      sql,
+      /encode\(extensions\.gen_random_bytes\(32\), 'hex'\) as raw_token/,
+      where("the mint no longer generates a fresh token — a send that reuses the stored digest cannot, since the raw token it came from was never kept"),
+    );
+    assert.match(
+      sql,
+      /as materialized \(/,
+      where(
+        "the token CTE is no longer MATERIALIZED. An inlined CTE evaluates the random " +
+          "expression twice, storing the digest of a token the caller never receives — a " +
+          "subscriber whose unsubscribe link does not work",
+      ),
+    );
+    const assignments = [...sql.matchAll(/unsubscribe_token_hash\s*=\s*([^\n]*)/g)].map((m) => m[1].trim());
+    assert.notEqual(assignments.length, 0, where("nothing writes unsubscribe_token_hash — the mint is not rotating anything"));
+    for (const value of assignments) {
+      assert.ok(
+        value.startsWith("encode(extensions.digest("),
+        where(
+          `unsubscribe_token_hash is assigned '${value}'. It may only ever hold a digest: the ` +
+            "raw token exists in the result set and nowhere else, which is what keeps a database " +
+            "dump unable to unsubscribe anybody (migration 161)",
+        ),
+      );
+    }
+    assert.ok(
+      !/insert\s+into\s+(?:public\.)?newsletter_subscribers/i.test(sql),
+      where("the send writes rows INTO the subscriber list. A send may only rotate a digest; it may never add an address"),
+    );
+
+    // (c) Only confirmed rows are handed out. An unconfirmed row is somebody who never
+    // clicked the link — quite possibly an address a third party typed — and mailing
+    // them anything but that one confirmation is what the double opt-in exists to stop.
+    // There is no unsubscribed state to exclude: migration 161 hard-deletes.
+    assert.match(
+      sql,
+      /from public\.newsletter_subscribers ns\s+where ns\.confirmed_at is not null/,
+      where("the mint no longer restricts itself to CONFIRMED subscribers — that is the double opt-in undone at the last step"),
+    );
+    assert.ok(
+      !/confirmed_at is null/i.test(sql),
+      where("the send block reasons about UNCONFIRMED rows. Nothing in a send may touch them"),
+    );
+
+    // (d) Deny-all, on the audit table as much as on the list it audits.
+    assert.match(
+      sql,
+      new RegExp(`alter\\s+table\\s+${SEND_LOG}\\s+enable\\s+row\\s+level\\s+security`, "i"),
+      where("RLS must be enabled on the send log"),
+    );
+    assert.ok(
+      !/create\s+policy[\s\S]{0,400}newsletter_send_log/i.test(sql),
+      where("a policy on newsletter_send_log — the audit trail of a marketing programme is not client-facing"),
+    );
+    for (const role of ["public", "anon", "authenticated", "service_role"]) {
+      assert.match(
+        sql,
+        new RegExp(`revoke\\s+all\\s+on\\s+${SEND_LOG}\\s+from\\s+${role}\\s*;`, "i"),
+        where(
+          `revoke all on ${SEND_LOG} from ${role} is missing` +
+            (role === "service_role"
+              ? " — service_role runs the marketing programme, and the code that runs it must not be able to rewrite its own audit trail"
+              : ""),
+        ),
+      );
+    }
+    for (const table of [TABLE, SEND_LOG]) {
+      const grants = [...sql.matchAll(new RegExp(`grant\\s+[\\s\\S]{0,80}?\\s+on\\s+(?:table\\s+)?${table}\\s+to\\s+(\\w+)`, "gi"))];
+      assert.deepEqual(grants.map((m) => m[1]), [], where(`a GRANT on ${table}. Both tables are deny-all, service_role included`));
+    }
+
+    // (e) The audit row is COUNTS ONLY. A per-recipient send log would rebuild the
+    // mailing history migration 161 declined to keep, and — worse — it would survive the
+    // unsubscribe DELETE, which is the one thing that must never happen to the address
+    // of somebody who asked us to stop.
+    assert.deepEqual(
+      tableColumns(sql, SEND_LOG),
+      ["id", "operator_email", "headline", "recipient_count", "created_at"],
+      where(
+        "newsletter_send_log's columns have changed. It records who sent, what it was " +
+          "called, HOW MANY and when — and nothing else. No recipient address, no foreign " +
+          "key to the list, no token",
+      ),
+    );
+    const logInserts = [...sql.matchAll(/insert into public\.newsletter_send_log \(([^)]*)\)/g)].map((m) =>
+      m[1].split(",").map((c) => c.trim()),
+    );
+    assert.deepEqual(
+      logInserts,
+      [["operator_email", "headline", "recipient_count"]],
+      where("the send log is written with a different column list than the counts-only three"),
+    );
+
+    sendChecked++;
+  }
+  assert.equal(sendChecked, SEND_SOURCES.length, "the send flow must be checked in the migration AND the consolidated mirror");
+
+  // The send log's deny-all posture, GLOBALLY — same reasoning as section 6. The block
+  // scan protects 173 from being edited; a `grant select on newsletter_send_log to
+  // service_role` appended by migration 180 lands outside it.
+  {
+    const files = [
+      ...readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).map((f) => `supabase/migrations/${f}`),
+      "supabase-schema.sql",
+    ];
+    for (const file of files) {
+      const sql = readFileSync(file, "utf8")
+        .replace(/insert into public\.fuel_ledger_schema_migrations[\s\S]*?applied_at = now\(\);/g, "")
+        .replace(/\bcomment on [\s\S]*?\bis\s*'(?:[^']|'')*'\s*;/g, "")
+        .split("\n")
+        .map((line) => (line.indexOf("--") === -1 ? line : line.slice(0, line.indexOf("--"))))
+        .join("\n");
+      if (!/newsletter_send_log/i.test(sql)) continue;
+      const grants = [...sql.matchAll(/grant\s+[\s\S]{0,80}?\s+on\s+(?:table\s+)?(?:public\.)?newsletter_send_log\s+to\s+(\w+)/gi)];
+      assert.deepEqual(grants.map((m) => m[1]), [], `${file}: a GRANT on newsletter_send_log (deny-all is the design, service_role included)`);
+      assert.ok(
+        !/create\s+policy[\s\S]{0,400}newsletter_send_log/i.test(sql),
+        `${file}: a policy on newsletter_send_log — it is not client-facing`,
+      );
+      // The block scan pins the column list where the table is created; the way a
+      // recipient column arrives LATER is an ALTER in migration 180.
+      assert.ok(
+        !/alter\s+table\s+(?:public\.)?newsletter_send_log\s+add\s+column/i.test(sql),
+        `${file}: a column is added to newsletter_send_log. The audit row is counts only — a per-recipient column here would outlive the unsubscribe DELETE, which is the one thing that must never happen to the address of somebody who asked us to stop`,
+      );
+      assert.ok(
+        !/grant execute on function (?:public\.)?mint_newsletter_send_tokens\([^)]*\) to (anon|authenticated)\s*;/i.test(sql),
+        `${file}: the send RPC is granted to a browser role — only service_role may mint a send`,
+      );
+    }
+  }
+
+  // Self-test, same contract as the one above section 6: every assertion passes on a
+  // clean tree, which is also what a typo in a regex produces. So plant the three
+  // mutations that would actually hurt and require the scanners to see them.
+  {
+    const clean = schemaStatementsOnly(readFileSync("supabase/migrations/173_newsletter_send_tokens.sql", "utf8"));
+
+    const stored = clean.replace(
+      "set unsubscribe_token_hash = encode(extensions.digest(f.raw_token, 'sha256'), 'hex')",
+      "set unsubscribe_token_hash = f.raw_token",
+    );
+    assert.ok(
+      [...stored.matchAll(/unsubscribe_token_hash\s*=\s*([^\n]*)/g)].some((m) => !m[1].trim().startsWith("encode(extensions.digest(")),
+      "self-test: storing the RAW token must be visible to the assignment scan",
+    );
+
+    const widened = clean.replace("where ns.confirmed_at is not null", "where true");
+    assert.ok(
+      !/from public\.newsletter_subscribers ns\s+where ns\.confirmed_at is not null/.test(widened),
+      "self-test: dropping the confirmed-only predicate must fail the recipient scan",
+    );
+
+    const leaky = clean.replace(
+      "  recipient_count integer not null,",
+      "  recipient_count integer not null,\n  recipient_email text,",
+    );
+    assert.notDeepEqual(
+      tableColumns(leaky, "public.newsletter_send_log"),
+      ["id", "operator_email", "headline", "recipient_count", "created_at"],
+      "self-test: a recipient address added to the send log must fail the column-list assertion",
+    );
+  }
+}
+
+console.log(
+  "✅ test-newsletter-consent-contract: newsletter list is standalone, deny-all and tombstone-free; " +
+    "the send mints rotating tokens, hands out confirmed addresses only, and logs counts.",
+);
