@@ -73,8 +73,17 @@ Data-minimering frem for pseudonymisering, når intet formål består.
    derefter utilgængelig for alle (bucket-politikken kræver medlemskab af et
    workspace, der ikke findes mere), men den ligger stadig i lageret; ved en
    hård-slettet tankning i et levende workspace kan medlemmer fortsat hente objektet,
-   selvom rækken er væk. Rettelsen er et Storage-API-oprydningspas i retention-hook'en
-   (govehlo-web) — registreret som opfølgning, ikke løst i migration 169.
+   selvom rækken er væk. **Lukket i GV-435** (govehlo-web PR #270, deployet
+   2026-08-05): det daglige scheduler-endpoint `/api/hooks/storage-orphan-cleanup`
+   (03:30 UTC, service role) lister begge buckets og sletter objekter, hvis fulde
+   sti ikke matcher nogen række — hvilket også dækker **uregistrerede uploads**
+   (objekter et medlem lagde op uden nogensinde at registrere en række, eksternt
+   review 2026-08-04). Værn: 24 timers frist (en igangværende vedhæftning uploader
+   objektet før rækken), alt-eller-intet-læsning af de registrerede stier (en
+   trunkeret række-liste afbryder bucketen frem for at fejlklassificere levende
+   fotos), maks. 500 sletninger pr. bucket pr. kørsel, og kun antal — aldrig
+   stier — i logs og svar. Restrisikoen er dermed et vindue på op til ét døgn
+   (plus rotationens dækningstakt ved meget store lagre), ikke ubegrænset levetid.
 
 ## End-to-end-verifikation (udestående evidens)
 
