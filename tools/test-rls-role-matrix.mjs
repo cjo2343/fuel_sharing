@@ -3963,8 +3963,8 @@ end`,
     name: "newsletter-table-service-role-insert-blocked",
     desc: "the service role cannot write a subscriber row directly either — only the RPCs",
     actor: SERVICE,
-    op: `insert into public.newsletter_subscribers (email, consent_text_version, confirm_token_hash, unsubscribe_token_hash)
-         values ('direct@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));`,
+    op: `insert into public.newsletter_subscribers (email, consent_text_version, confirm_token_hash)
+         values ('direct@example.dk', '2026-08-01', repeat('a', 64));`,
     expect: "42501",
   }),
   rpcCase({
@@ -4078,13 +4078,27 @@ end`,
     expect: "ok",
   }),
 
-  // ── Newsletter send (GV-430, migration 173) ────────────────────────────────
+  // ── Newsletter send (GV-430/173) and its tokens (GV-441/175) ──────────────
   //
   // mint_newsletter_send_tokens is the ONE function that reads addresses out of the
   // list, so its containment is not the comment above it — it is these cases. Two
   // halves: nothing browser-facing can call it or read what it wrote, and what it
-  // actually does to a real Postgres is a ROTATION (the previous send's unsubscribe
-  // link stops working) over CONFIRMED rows only, with a counts-only audit row.
+  // actually does to a real Postgres is hand out CONFIRMED rows only, with a
+  // counts-only audit row.
+  //
+  // Migration 173 stored each fresh digest OVER the previous one, so only the newest
+  // mail carried a working link — and because the web endpoint deliberately renders one
+  // goodbye page for every outcome (telling a wrong token from an already-deleted row
+  // would make the URL an oracle), a subscriber clicking an older newsletter's link was
+  // told their address had been deleted while they stayed subscribed and kept getting
+  // mail. Migration 175 accumulates the digests in public.newsletter_send_tokens instead.
+  //
+  // That fix is a claim about a REAL Postgres over two sends, which is exactly what the
+  // static contract test cannot make: it can pin that the SQL says INSERT, not that an
+  // August token still unsubscribes in September. So the cases below are the half of
+  // GV-441 that only this file can carry — old links work, the newest one works, the
+  // confirmation mail's own link survives a send, and the whole set dies with the
+  // subscriber through the cascade rather than lingering as a tombstone.
   rpcCase({
     name: "newsletter-mint-anon-blocked",
     desc: "anon cannot mint a send — that would be the whole address list over a public endpoint",
@@ -4120,11 +4134,35 @@ end`,
     op: `perform 1 from public.newsletter_send_log;`,
     expect: "42501",
   }),
+  // The token table inherits the list's posture exactly. A readable table of live
+  // unsubscribe digests would be a table of working links to every subscriber's removal
+  // — and, joined to nothing else, still a headcount of the list.
   rpcCase({
-    name: "newsletter-mint-rotates-confirmed-only",
-    desc: "minting hands out confirmed addresses with FRESH tokens, kills the previous send's links, and skips pending rows",
+    name: "newsletter-send-tokens-anon-blocked",
+    desc: "anon cannot read the unsubscribe-token table",
+    actor: ANON,
+    op: `perform 1 from public.newsletter_send_tokens;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-tokens-authenticated-blocked",
+    desc: "a signed-in app user cannot read the unsubscribe-token table",
+    actor: A,
+    op: `perform 1 from public.newsletter_send_tokens;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-tokens-service-role-blocked",
+    desc: "even the service role — the key the Pages Functions hold — cannot query live unsubscribe digests",
     actor: SERVICE,
-    op: `declare v_count integer; v_email text; v_token text; v_old jsonb; v_new jsonb;
+    op: `perform 1 from public.newsletter_send_tokens;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-mint-accumulates-confirmed-only",
+    desc: "minting hands out confirmed addresses with FRESH tokens, ADDS them alongside the older ones, and skips pending rows",
+    actor: SERVICE,
+    op: `declare v_count integer; v_email text; v_token text;
          begin
            perform public.newsletter_request_subscription('sender@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));
            perform public.newsletter_confirm_subscription(repeat('a', 64));
@@ -4138,46 +4176,160 @@ end`,
            from public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev august') ms;
 
            if v_count <> 1 or v_email <> 'sender@example.dk' then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: minted % row(s), first %', v_count, v_email;
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: minted % row(s), first %', v_count, v_email;
            end if;
            if v_token !~ '^[0-9a-f]{64}$' then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the raw token is not 32 random bytes (%)', v_token;
-           end if;
-
-           -- The token the subscriber was given BEFORE this send must now be dead. That
-           -- is the rotation, and it is the property a stored raw token would not have.
-           v_old := public.newsletter_unsubscribe(repeat('b', 64));
-           if v_old ->> 'status' <> 'unknown' then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the pre-mint unsubscribe token still works (%)', v_old;
-           end if;
-
-           -- ...and the one just minted must work, hashed the way migration 161 stores
-           -- it. sha256() is the built-in, so this asserts the digest scheme too: a mint
-           -- that hashed differently would hand out links the unsubscribe RPC cannot match.
-           v_new := public.newsletter_unsubscribe(encode(sha256(v_token::bytea), 'hex'));
-           if v_new ->> 'status' <> 'unsubscribed' then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the freshly minted token does not unsubscribe (%)', v_new;
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: the raw token is not 32 random bytes (%)', v_token;
            end if;
          end;`,
     expect: "ok",
-    // Read back as postgres — service_role has no grant on either table, which is the
-    // point of the deny cases above, so nothing inside the case body may look.
+    // Read back as postgres — service_role has no grant on any of the three tables,
+    // which is the point of the deny cases above, so nothing inside the case body may
+    // look.
     post: `if (select count(*) from public.newsletter_send_log) <> 1 then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: expected exactly one audit row, found %',
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: expected exactly one audit row, found %',
                (select count(*) from public.newsletter_send_log);
            end if;
            if not exists (select 1 from public.newsletter_send_log
                           where operator_email = 'cjo@govehlo.dk'
                             and headline = 'Nyhedsbrev august'
                             and recipient_count = 1) then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the audit row does not describe the send';
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: the audit row does not describe the send';
            end if;
-           -- The pending row keeps the token it was created with: a send touches
-           -- confirmed rows and nothing else, so it cannot invalidate the confirmation
-           -- link somebody is still holding in their inbox.
-           if not exists (select 1 from public.newsletter_subscribers
-                          where email = 'waiting@example.dk' and unsubscribe_token_hash = repeat('d', 64)) then
-             raise exception 'CASEFAIL newsletter-mint-rotates-confirmed-only: the unconfirmed row was rotated by the send';
+           -- THE GV-441 PROPERTY, read straight off the table: the confirmed subscriber
+           -- now holds TWO digests — the one from their confirmation mail and the one
+           -- this send just minted — where migration 173 would have left exactly one.
+           -- Both are links somebody may still be holding, so both must exist.
+           if (select count(*) from public.newsletter_send_tokens st
+               join public.newsletter_subscribers ns on ns.id = st.subscriber_id
+               where ns.email = 'sender@example.dk') <> 2 then
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: the sender holds % token(s), expected 2 (the send rotated instead of accumulating)',
+               (select count(*) from public.newsletter_send_tokens st
+                join public.newsletter_subscribers ns on ns.id = st.subscriber_id
+                where ns.email = 'sender@example.dk');
+           end if;
+           if not exists (select 1 from public.newsletter_send_tokens st
+                          join public.newsletter_subscribers ns on ns.id = st.subscriber_id
+                          where ns.email = 'sender@example.dk' and st.token_digest = repeat('b', 64)) then
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: the pre-send token was destroyed by the send';
+           end if;
+           -- The pending row keeps the one token it was created with, untouched: a send
+           -- covers confirmed rows and nothing else, so it can neither mail nor disturb
+           -- somebody who never clicked the link.
+           if (select count(*) from public.newsletter_send_tokens st
+               join public.newsletter_subscribers ns on ns.id = st.subscriber_id
+               where ns.email = 'waiting@example.dk' and st.token_digest = repeat('d', 64)) <> 1 then
+             raise exception 'CASEFAIL newsletter-mint-accumulates-confirmed-only: the unconfirmed row was touched by the send';
+           end if;`,
+  }),
+  rpcCase({
+    name: "newsletter-every-past-send-can-unsubscribe",
+    desc: "GV-441: an OLD newsletter's unsubscribe link still works after a later send, and so does the newest one",
+    actor: SERVICE,
+    op: `declare v_aug_lars text; v_aug_bo text; v_sep_lars text; v_sep_bo text; v_old jsonb; v_new jsonb;
+         begin
+           perform public.newsletter_request_subscription('lars@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));
+           perform public.newsletter_confirm_subscription(repeat('a', 64));
+           perform public.newsletter_request_subscription('bo@example.dk', '2026-08-01', repeat('c', 64), repeat('d', 64));
+           perform public.newsletter_confirm_subscription(repeat('c', 64));
+
+           select max(ms.unsubscribe_token) filter (where ms.email = 'lars@example.dk'),
+                  max(ms.unsubscribe_token) filter (where ms.email = 'bo@example.dk')
+           into v_aug_lars, v_aug_bo
+           from public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev august') ms;
+
+           select max(ms.unsubscribe_token) filter (where ms.email = 'lars@example.dk'),
+                  max(ms.unsubscribe_token) filter (where ms.email = 'bo@example.dk')
+           into v_sep_lars, v_sep_bo
+           from public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev september') ms;
+
+           if v_aug_lars is null or v_sep_lars is null or v_aug_lars = v_sep_lars then
+             raise exception 'CASEFAIL newsletter-every-past-send-can-unsubscribe: the two sends did not mint distinct tokens (% / %)', v_aug_lars, v_sep_lars;
+           end if;
+
+           -- THE BUG THIS TICKET EXISTS FOR. Lars scrolls back to the AUGUST mail in
+           -- October and clicks afmeld. Before migration 175 his August digest had been
+           -- overwritten in September, this returned 'unknown', and the endpoint — which
+           -- renders one goodbye page for every outcome, because distinguishing them
+           -- would make the URL a token oracle — told him his address was deleted while
+           -- he stayed on the list and kept receiving mail.
+           v_old := public.newsletter_unsubscribe(encode(sha256(v_aug_lars::bytea), 'hex'));
+           if v_old ->> 'status' <> 'unsubscribed' then
+             raise exception 'CASEFAIL newsletter-every-past-send-can-unsubscribe: the AUGUST link no longer unsubscribes after the september send (%)', v_old;
+           end if;
+
+           -- ...and the newest send's link still works too, hashed the way migration 161
+           -- stores it. sha256() is the built-in, so this asserts the digest scheme as
+           -- well: a mint that hashed differently would hand out links the unsubscribe
+           -- RPC cannot match.
+           v_new := public.newsletter_unsubscribe(encode(sha256(v_sep_bo::bytea), 'hex'));
+           if v_new ->> 'status' <> 'unsubscribed' then
+             raise exception 'CASEFAIL newsletter-every-past-send-can-unsubscribe: the newest link does not unsubscribe (%)', v_new;
+           end if;
+         end;`,
+    expect: "ok",
+    post: `if exists (select 1 from public.newsletter_subscribers where email in ('lars@example.dk', 'bo@example.dk')) then
+             raise exception 'CASEFAIL newsletter-every-past-send-can-unsubscribe: a subscriber survived their own unsubscribe';
+           end if;
+           -- The cascade, which is the whole retention argument for this table: both
+           -- people held THREE digests each (confirmation mail, august, september) and
+           -- every one of them has to go with the address. A token left behind would be
+           -- both a working link to nothing and the tombstone migration 161 refused.
+           if (select count(*) from public.newsletter_send_tokens) <> 0 then
+             raise exception 'CASEFAIL newsletter-every-past-send-can-unsubscribe: % token row(s) outlived their subscribers — the ON DELETE CASCADE did not fire',
+               (select count(*) from public.newsletter_send_tokens);
+           end if;`,
+  }),
+  rpcCase({
+    name: "newsletter-confirmation-link-survives-a-send",
+    desc: "the unsubscribe link in the CONFIRMATION mail still works after a newsletter has gone out",
+    actor: SERVICE,
+    op: `declare v_result jsonb;
+         begin
+           perform public.newsletter_request_subscription('ny@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));
+           perform public.newsletter_confirm_subscription(repeat('a', 64));
+           perform public.mint_newsletter_send_tokens('cjo@govehlo.dk', 'Nyhedsbrev august');
+
+           -- This is the link at the foot of the confirmation mail, and it is why the
+           -- old column could not simply be left behind when the lookup moved: migration
+           -- 161's signup path is what issues this token, so it has to land in the same
+           -- table the unsubscribe RPC reads. A send must not kill it.
+           v_result := public.newsletter_unsubscribe(repeat('b', 64));
+           if v_result ->> 'status' <> 'unsubscribed' then
+             raise exception 'CASEFAIL newsletter-confirmation-link-survives-a-send: the confirmation mail''s unsubscribe link is dead after one send (%)', v_result;
+           end if;
+         end;`,
+    expect: "ok",
+    post: `if exists (select 1 from public.newsletter_subscribers where email = 'ny@example.dk') then
+             raise exception 'CASEFAIL newsletter-confirmation-link-survives-a-send: the row survived';
+           end if;`,
+  }),
+  rpcCase({
+    name: "newsletter-unknown-token-deletes-nothing",
+    desc: "a digest that belongs to nobody removes nothing and still answers the silent 'unknown'",
+    actor: SERVICE,
+    op: `declare v_result jsonb;
+         begin
+           perform public.newsletter_request_subscription('bliver@example.dk', '2026-08-01', repeat('a', 64), repeat('b', 64));
+           perform public.newsletter_confirm_subscription(repeat('a', 64));
+
+           -- The answer has to stay 'unknown' rather than becoming an error or a
+           -- distinguishable status: the endpoint renders ONE goodbye page for every
+           -- outcome, and it can only do that while the RPC refuses to tell a wrong
+           -- token from an already-deleted row. GV-441 fixed the false success by making
+           -- old links WORK, not by making this louder.
+           v_result := public.newsletter_unsubscribe(repeat('f', 64));
+           if v_result ->> 'status' <> 'unknown' then
+             raise exception 'CASEFAIL newsletter-unknown-token-deletes-nothing: an unknown digest answered % instead of unknown', v_result;
+           end if;
+         end;`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.newsletter_subscribers where email = 'bliver@example.dk') then
+             raise exception 'CASEFAIL newsletter-unknown-token-deletes-nothing: an unknown digest deleted a subscriber';
+           end if;
+           if (select count(*) from public.newsletter_send_tokens) <> 1 then
+             raise exception 'CASEFAIL newsletter-unknown-token-deletes-nothing: an unknown digest changed the token table (% rows)',
+               (select count(*) from public.newsletter_send_tokens);
            end if;`,
   }),
   rpcCase({
