@@ -79,13 +79,13 @@ a migration "live".**
 The umbrella "Cross-repo consistency" job goes **red at the moment the platform
 PR merges** — that is the drift alarm working, not a failure to fix in place.
 
-- [ ] govehlo-web PR: bump `EXPECTED_LATEST_MIGRATION` in
+- [ ] vehloshare-web PR: bump `EXPECTED_LATEST_MIGRATION` in
       `functions/api/owner/migrations.js` + byte-copy `types/database.ts` from
       this repo. Verify with `npx wrangler pages functions build` (`node --check`
       misses esbuild-level errors). Watch for `APP_VERSION`/`version.json`
       collisions if other web PRs are in flight — assign explicit versions or
       sequence.
-- [ ] govehlo-mobile PR: byte-copy to `src/types/database.generated.ts`; tsc +
+- [ ] vehloshare-mobile PR: byte-copy to `src/types/database.generated.ts`; tsc +
       suite green (the two known local `PUSH_ENABLED` failures are expected on
       the owner machine only).
 - [ ] Both merged; a **fresh** umbrella run (created after the last merge —
@@ -114,8 +114,10 @@ present, so "are we ready?" is a command rather than a re-read. It is not part o
 `npm run validate` — it judges the product, not the commit — and the umbrella
 workflow runs it `--strict`.
 
-- [ ] `npm run check:release-gates` with **govehlo-web checked out alongside**
-      (without the sibling, gate 1 reports `UNAVAILABLE` and certifies nothing).
+- [ ] `npm run check:release-gates` with **vehloshare-web checked out alongside**
+      (the sibling **directory** is still `../govehlo-web` — the GV-230 rename changed
+      the GitHub repo name, not the local checkout path). Without the sibling, gate 1
+      reports `UNAVAILABLE` and certifies nothing.
 - [ ] Every `BLOCKED` line cleared: privacy-page placeholder (GV-177), Supabase
       plan off Free (GV-313), restore drill within 15 migrations of HEAD.
 - [ ] `docs/release-attestations.json` signed and dated for the two items no repo
