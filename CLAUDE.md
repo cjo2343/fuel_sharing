@@ -1,15 +1,24 @@
-# GoVehlo — platform repo (shared schema + design source of truth)
+# VehloShare — platform repo (shared schema + design source of truth)
 
 Shared-car fuel tracking and cost splitting for small groups in Denmark.
 
 ## Repo status: platform repo
 
 This repo is **not a deployed application**. It is the platform backbone the two
-live GoVehlo products share — both run on **one shared Supabase database**, and this
+live VehloShare products share — both run on **one shared Supabase database**, and this
 repo is the single source of truth for its schema and for the canonical design system.
 
-- **govehlo-mobile** — the React Native app (App Store target)
-- **govehlo-web** — Cloudflare Pages: landing page, admin console (admin.vehloshare.app), `/api/*` Functions
+- **vehloshare-mobile** — the React Native app (App Store target)
+- **vehloshare-web** — Cloudflare Pages: landing page, admin console (admin.vehloshare.app), `/api/*` Functions
+
+> **Repo names vs directory names (GV-230, 2026-08-06).** The GitHub repos were renamed
+> `govehlo-web` → **`vehloshare-web`** and `govehlo-mobile` → **`vehloshare-mobile`**
+> (GitHub redirects the old names; `fuel_sharing` was not renamed). The **local sibling
+> directories are still `../govehlo-web` and `../govehlo-mobile`** and were deliberately
+> left that way — every cross-repo tool resolves them by that path
+> (`tools/vendor-db-types.mjs`, `check-hotpath-mirror.mjs`,
+> `check-ledger-event-classification.mjs`). Filesystem paths below therefore keep the
+> old names on purpose; do not "fix" them.
 
 What this repo is **load-bearing** for:
 
@@ -20,7 +29,7 @@ What this repo is **load-bearing** for:
 | `types/database.ts` | Canonical generated DB/RPC types (GV-223) — vendored byte-identically by both client repos; regenerate with `npm run gen:db-types` |
 | `tools/` | ~28 CI guards. The load-bearing ones: `test-migrations.mjs`, `test-sql-ambiguity-guard.mjs`, `check-schema-equivalence.mjs`, `check-token-drift.mjs`, `generate-db-types.mjs`, `test-rls-role-matrix.mjs` (own CI job), `check-hotpath-mirror.mjs`, plus six functional `*.sh` suites. `tools/run-validations.mjs`'s `scripts` array is the authoritative list — read it rather than this row |
 | `design_handoff_govehlo_v1/` | **The** design-system source of truth — the one referenced by both live repos |
-| `design_handoff_fuel_bar/` | Referenced by govehlo-mobile |
+| `design_handoff_fuel_bar/` | Referenced by vehloshare-mobile |
 | other `design_handoff_*/`, `design_briefs_*/` | Historical handoffs, nine of them with zero inbound references from any repo. Kept as design history; do NOT treat them as current spec |
 | `Design/` | Brand source assets (icon SVG, brand guidelines) |
 | `RENAME-VEHLOSHARE-RUNBOOK.md` | Active GoVehlo → VehloShare rename runbook |
@@ -45,9 +54,11 @@ Checklist for a new migration `NNN_name.sql` in `supabase/migrations/`:
 5. Regenerate the shared DB types: `npm run gen:db-types` (Docker) and commit the
    refreshed `types/database.ts` — CI's `check:db-types` fails when it is stale.
 6. **Fan those types out to both clients: `npm run vendor:db-types`** (needs the
-   sibling repos checked out). It writes `govehlo-web/types/database.ts` and
-   `govehlo-mobile/src/types/database.generated.ts` — each is a separate repo and a
-   separate PR. Skipping this is what put govehlo-web three migrations behind and the
+   sibling repos checked out). It writes `../govehlo-web/types/database.ts` and
+   `../govehlo-mobile/src/types/database.generated.ts` — **local directory names, which
+   the rename deliberately left alone** (see the note at the top) — each is a separate
+   repo (`vehloshare-web` / `vehloshare-mobile` on GitHub) and a
+   separate PR. Skipping this is what put vehloshare-web three migrations behind and the
    umbrella workflow red for 18 runs (GV-391); the umbrella is the only CI that can
    see these copies at all.
 7. Run `npm run validate` — it enforces 1, 2, 3 and the *tracker* half of 4 (that the
@@ -151,7 +162,7 @@ Source of truth: `design_handoff_govehlo_v1/design-system/`
 - Friendly, transparent about money
 - Never clinical or corporate
 
-## GDPR (applies to all GoVehlo repos)
+## GDPR (applies to all VehloShare repos)
 
 - Data minimisation; processing stays in the EU (Supabase EU project, Sentry EU region).
 - No PII in logs or URL query strings (number plates are personal data — POST bodies only).
@@ -160,7 +171,7 @@ Source of truth: `design_handoff_govehlo_v1/design-system/`
 ## Workflow
 
 - One ticket at a time. Branch → PR (the user merges) → sync main → move the Jira ticket.
-- Jira: govehlo.atlassian.net — **GV** (web/infra, this repo + govehlo-web) and
+- Jira: govehlo.atlassian.net (host unchanged) — **GV** (web/infra, this repo + vehloshare-web) and
   **GVM** (mobile). Use the `/ship` skill for the PR + Jira mechanics.
 - `gh` must run as `env -u GH_TOKEN -u GITHUB_TOKEN gh …`.
 
