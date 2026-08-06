@@ -44083,6 +44083,9 @@ begin
     -- Uploads must land under an EXISTING fuel log in the caller's own workspace, so
     -- the bucket cannot be used as free storage below a ledger prefix (GV-348's
     -- lesson, applied here from day one instead of in a follow-up migration).
+    -- Per-payment object count capped at 3 (GV-446): the mobile replace flow creates a
+    -- new object before deleting the old one (2 simultaneously); cap at 3 gives margin
+    -- for one failed cleanup. 3 * 5 MiB = 15 MiB per fuel_payment maximum.
     drop policy if exists "Fuel receipts are writable by workspace members" on storage.objects;
     create policy "Fuel receipts are writable by workspace members"
       on storage.objects for insert to authenticated
@@ -44096,6 +44099,12 @@ begin
           where fp.ledger_id = (storage.foldername(name))[1]
             and fp.id::text = (storage.foldername(name))[2]
         )
+        and (
+          select count(*)
+          from storage.objects so2
+          where so2.bucket_id = 'fuel-receipts'
+            and so2.name like (storage.foldername(name))[1] || '/' || (storage.foldername(name))[2] || '/%'
+        ) < 3
       );
 
     -- Uploader-or-admin delete, matching detach_fuel_payment_receipt's own gate. The
@@ -46836,6 +46845,16 @@ insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values (
   '176_send_log_retention',
   'GV-445: newsletter_send_log 24-month retention. The send log (migration 173) stores operator_email, headline, recipient_count and timestamp as a counts-only audit trail of marketing sends. It contains the operator''s email address (staff, not subscriber), which is personal data with a finite purpose — "who triggered a marketing send, when, and to how many" — and no address, name or link to the subscriber list. 24-month TTL aligns with owner_activity_log, the other operator-audit table, so the two answer the same question at the same altitude for the same window. run_operational_retention is re-declared off its newest prior definition, migration 169 (chain 130 → 131 → 132 → 141 → 147 → 149 → 165 → 169 — the GV-202 rule), byte-identical apart from one sweep added to BOTH halves of the dry-run split (delete from newsletter_send_log where created_at < v_audit_cutoff, the same 24-month cutoff variable owner_activity_log already uses), one counter (v_purged_send_log) and two returned jsonb keys (purgedNewsletterSendLog for the count, newsletterSendLogRetentionMonths = 24 alongside the other retention constants). Signature unchanged, so create-or-replace suffices. No new event_type, no RPC signature change, no new table, no grant change. Documented in docs/gdpr/retention.md and docs/gdpr/ropa.md (A5).'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
+
+-- ── Register migration ──────────────────────────────────────────────────────────
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '177_receipt_upload_quota',
+  'GV-446: per-payment object count cap on fuel-receipts Storage INSERT policy. The existing policy (migration 169) checks workspace membership and fuel_payment existence but imposes no limit on how many objects a caller can upload under a given <ledger_id>/<fuel_payment_id>/ prefix. A malicious workspace member could upload unlimited 5 MiB objects via the Storage API directly. The fix adds a count check: fewer than 3 objects must exist under the same prefix before a new INSERT is allowed. Cap of 3 accommodates the mobile replace flow (new object created before old one deleted = 2 simultaneously) plus one failed cleanup. 3 * 5 MiB = 15 MiB per fuel_payment maximum. Only the INSERT policy is changed; SELECT, UPDATE, and DELETE policies are untouched. No new table, no new RPC, no new event_type, no grant change.'
 )
 on conflict (migration_id) do update
 set description = excluded.description,
