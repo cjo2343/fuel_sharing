@@ -188,6 +188,7 @@ const expected = [
   "175_per_send_unsubscribe_tokens.sql",
   "176_send_log_retention.sql",
   "177_receipt_upload_quota.sql",
+  "178_incident_photo_upload_quota.sql",
   "179_batched_newsletter_send.sql",
 ];
 
