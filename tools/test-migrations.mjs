@@ -187,6 +187,7 @@ const expected = [
   "174_handover_mirror_race_free.sql",
   "175_per_send_unsubscribe_tokens.sql",
   "176_send_log_retention.sql",
+  "177_receipt_upload_quota.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
