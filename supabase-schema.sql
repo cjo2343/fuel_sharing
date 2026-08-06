@@ -44117,13 +44117,11 @@ end
 $$;
 
 -- ── 4. Retention: the sweep that makes decision (2) real ──────────────────────
--- run_operational_retention re-declared off migration 165 (its newest prior
--- definition — the GV-202 rule), byte-identical apart from the receipt sweep in both
--- halves of the dry-run split, its counter, and the purgedFuelReceipts key. The daily
--- retention cron (migration 130's /api/hooks/retention-cleanup, RETENTION_CLEANUP_KEY,
--- 03:30 UTC) is what runs it, so "auto-deleted at settled close" means "deleted on the
--- first nightly sweep after the settlement finished" — which is the same enforcement
--- promise every other automatic class on this platform makes.
+-- run_operational_retention re-declared off migration 169 (its newest prior
+-- definition — the GV-202 rule), byte-identical apart from the send-log sweep in both
+-- halves of the dry-run split, its counter, and two jsonb keys (purgedNewsletterSendLog
+-- + newsletterSendLogRetentionMonths). The daily retention cron (migration 130's
+-- /api/hooks/retention-cleanup, RETENTION_CLEANUP_KEY, 03:30 UTC) is what runs it.
 create or replace function public.run_operational_retention(
   p_stale_push_days integer default 180,
   p_dry_run boolean default false
@@ -44149,6 +44147,7 @@ declare
   v_purged_newsletter_pending integer := 0;
   v_purged_fuel_receipts integer := 0;
   v_purged_receipt_paths text[] := '{}';
+  v_purged_send_log integer := 0;
   v_short_cutoff timestamptz := now() - interval '90 days';
   v_financial_cutoff timestamptz := date_trunc('year', now()) - interval '5 years';
   v_audit_cutoff timestamptz := now() - interval '24 months';
@@ -44201,6 +44200,10 @@ begin
             and sr.status not in ('paid', 'cancelled')
         )
     );
+    -- GV-445: newsletter send log — 24-month retention, same window as owner_activity_log.
+    select count(*) into v_purged_send_log
+    from public.newsletter_send_log
+    where created_at < v_audit_cutoff;
     select count(*) into v_purged_workspaces from public.ledgers where deleted_at < v_workspace_cutoff;
   else
     with purged as (delete from public.expo_push_tokens where updated_at < now() - make_interval(days => p_stale_push_days) returning 1)
@@ -44295,6 +44298,13 @@ begin
     with purged as (delete from public.newsletter_subscribers
       where confirmed_at is null and requested_at < v_newsletter_pending_cutoff returning 1)
       select count(*) into v_purged_newsletter_pending from purged;
+    -- GV-445: newsletter send log — 24-month retention, same window as owner_activity_log.
+    -- The table holds operator_email (staff PII, not subscriber), headline, recipient
+    -- count and timestamp. No subscriber address, no link to the list — but the operator
+    -- email is still personal data with a finite audit purpose.
+    with purged as (delete from public.newsletter_send_log
+      where created_at < v_audit_cutoff returning 1)
+      select count(*) into v_purged_send_log from purged;
   end if;
 
   return jsonb_build_object(
@@ -44312,6 +44322,7 @@ begin
     'deletedRateLimitCounters', v_deleted_rate_limit_counters,
     'purgedNewsletterPending', v_purged_newsletter_pending,
     'purgedFuelReceipts', v_purged_fuel_receipts,
+    'purgedNewsletterSendLog', v_purged_send_log,
     'dryRun', p_dry_run,
     'staleDays', p_stale_push_days,
     'shortRetentionDays', 90,
@@ -44321,6 +44332,7 @@ begin
     'rateLimitRetentionDays', 30,
     'newsletterPendingTtlHours', 168,
     'fuelReceiptRetentionRule', 'closed_and_fully_paid',
+    'newsletterSendLogRetentionMonths', 24,
     'ranAt', now()
   );
 end;
@@ -46814,6 +46826,16 @@ insert into public.fuel_ledger_schema_migrations (migration_id, description)
 values (
   '175_per_send_unsubscribe_tokens',
   'GV-441: unsubscribe links from EVERY newsletter we ever sent keep working, not only the newest one. THE BUG: migration 173 mints a fresh unsubscribe token per recipient at each send and stores its digest OVER the previous one in a single column on the subscriber row (161 keeps the digest only, never the raw token, so that column can hold exactly one live link), while govehlo-web''s unsubscribe endpoint deliberately renders the same goodbye page whether or not the RPC matched anything -- an already-deleted row and a wrong token are the same fact from the reader''s side, and distinguishing them would make the URL a token oracle. Combined, an active subscriber who clicks the unsubscribe link in an OLDER newsletter is told "Din adresse er vaek" while remaining fully subscribed, and keeps receiving mail. That is not a dead link, which would merely be a nuisance; it is an opt-out that reports success and does nothing, i.e. markedsfoeringsloven paragraph 10 inverted and article 17 answered with a lie. The endpoint''s silence is load-bearing, so the fix has to be in the database and it has to be "the old token still works" rather than "the old token fails honestly". THE FIX: public.newsletter_send_tokens (id, subscriber_id uuid not null references newsletter_subscribers(id) ON DELETE CASCADE, token_digest text not null unique with 161''s ^[0-9a-f]{64}$ shape check, created_at), one row per issued token instead of one column per subscriber. A send INSERTS a row per recipient rather than overwriting theirs, so every historical link stays live; unsubscribing deletes the subscriber and the cascade takes every token with it, so the whole set dies at once. 173''S ROTATION RATIONALE SURVIVES INTACT rather than being reversed: it was never "old links should stop working" as a goal, it was that a token which never rotates is one that leaks once and works forever -- and under this design a leaked mint result set still dies with the subscriber row, since the first click on any of its tokens deletes the subscriber and cascades away the rest, buying the attacker one unsubscribe of somebody who wanted to leave anyway. Raw tokens are STILL never stored, only sha256 digests under the same check constraint, so 161''s promise that a database dump cannot unsubscribe anybody is unchanged. THE OLD COLUMN newsletter_subscribers.unsubscribe_token_hash IS DROPPED, and it was not dead code: 161''s newsletter_request_subscription writes it from the hash the signup endpoint computes, and that token backs the unsubscribe link at the foot of the CONFIRMATION mail -- the link that lets somebody whose address a stranger typed into the form remove it at once instead of waiting out the 7-day expiry. Moving the lookup while leaving the column would have broken precisely that link for every new signup, written to a column nothing consults any more. So newsletter_request_subscription is re-declared to register its digest in the token table instead, every existing non-null digest is copied across by a seed guarded on the column''s existence and executed dynamically (re-running a hand-applied migration must be safe, and a statement naming a dropped column fails at PARSE time even inside a false branch), and only then is the column dropped with its not-null, its shape constraint and its unique index. ONE place now holds unsubscribe digests, which makes this class of bug impossible rather than fixed once. NO RPC SIGNATURE CHANGES: mint_newsletter_send_tokens(p_operator_email text, p_headline text) returns table(email text, unsubscribe_token text), newsletter_unsubscribe(unsubscribe_hash text) and newsletter_request_subscription(subscriber_email text, consent_version text, confirm_hash text, unsubscribe_hash text, pending_ttl_hours integer default 168) all keep their exact argument lists, so govehlo-web''s three newsletter endpoints are untouched, there is no PGRST202/203 hazard and no merge-order constraint against the web repo; unsubscribe_hash remains a PARAMETER name, only the column it used to land in is gone. 173''S ATOMICITY PROPERTY IS PRESERVED IN THE NEW SHAPE: the mint is still ONE statement, the token is still generated in an explicitly MATERIALIZED CTE (gen_random_bytes is volatile and would already block inlining, but an inlined CTE would evaluate the random expression twice and store the digest of a token the caller never receives), the INSERT returns the rows it actually wrote and the final select JOINS them back to that CTE -- so an address is handed out only when its digest is on disk and a digest is written only for an address being handed out with its raw token in the same result set -- and the counts-only audit row is still written by a data-modifying CTE the final select does not read, which Postgres executes exactly once regardless. A separate, later statement prunes tokens older than 24 months, opportunistically and globally for 161''s reason (a sweep that only tidies the row in front of it depends on that person coming back); it is separate on purpose, since retention is not correctness and a DELETE does not belong in the statement whose atomicity the above is about, and it runs AFTER the mint so every confirmed subscriber ends a send holding a token minted seconds ago. newsletter_unsubscribe now deletes the subscriber whose id appears in newsletter_send_tokens for the given digest and still RETURNS unknown rather than raising when nothing matches. ONE FURTHER BEHAVIOURAL CHANGE: re-submitting a live pending address now ADDS an unsubscribe token instead of replacing one, so the older confirmation mail''s unsubscribe link keeps working too -- the same rule applied to the same kind of link; the CONFIRM token is still replaced, so the older confirm link still stops working, because single-use means single-use and only unsubscribe links are promised to be forever. DELIBERATELY NOT TOUCHED: the double opt-in confirmation token (confirm_token_hash, its single-use check constraint and its clearing on confirmation are a different token solving a different problem, and it SHOULD stop working when used); newsletter_send_log, still counts only, no recipient column, deny-all including service_role; the list''s deny-all posture, the confirmed-only send predicate and the hard delete with no tombstone. GDPR: the token rows are pseudonymous digests but linkable through subscriber_id, so they are treated as personal data and given a lifetime rather than left to accumulate -- that lifetime IS the subscriber''s, by ON DELETE CASCADE, so no token can outlive the address it belonged to and the table cannot become the tombstone 161 refused to keep; capped at 24 months on top of that (article 5(1)(e), aligned with owner_activity_log''s window, since a three-year-old newsletter''s link is not an opt-out anybody relies on); no address, no name and no send history, so the table can answer "is this digest one of ours" and not "who did we mail" (5(1)(c), unchanged from 173); deny-all with RLS on and no policy, every grant revoked including service_role, so no code path can enumerate tokens any more than it can enumerate addresses. Documented in docs/gdpr/retention.md. No ledger_events are written (a send has no ledger, member or feed), so no event_type is introduced and the GV-413 classification guard does not apply. Pinned statically by tools/test-newsletter-consent-contract.mjs (the mint''s new insert-into-table shape with MATERIALIZED kept and no write to any subscriber digest column, the cascade FK, the digest shape check, the token table''s deny-all posture in the block and in a global sweep, and the unsubscribe RPC''s new lookup -- in the migration and the consolidated mirror alike) and behaviourally by tools/test-rls-role-matrix.mjs (anon/authenticated/service_role denied on the token table, two successive mints leaving BOTH tokens able to unsubscribe, the unsubscribe removing the subscriber and every token row by cascade, an unknown digest deleting nothing and returning the silent answer, and the confirmation mail''s own token still working after a send).'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
+
+-- ── Register migration ──────────────────────────────────────────────────────────
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '176_send_log_retention',
+  'GV-445: newsletter_send_log 24-month retention. The send log (migration 173) stores operator_email, headline, recipient_count and timestamp as a counts-only audit trail of marketing sends. It contains the operator''s email address (staff, not subscriber), which is personal data with a finite purpose — "who triggered a marketing send, when, and to how many" — and no address, name or link to the subscriber list. 24-month TTL aligns with owner_activity_log, the other operator-audit table, so the two answer the same question at the same altitude for the same window. run_operational_retention is re-declared off its newest prior definition, migration 169 (chain 130 → 131 → 132 → 141 → 147 → 149 → 165 → 169 — the GV-202 rule), byte-identical apart from one sweep added to BOTH halves of the dry-run split (delete from newsletter_send_log where created_at < v_audit_cutoff, the same 24-month cutoff variable owner_activity_log already uses), one counter (v_purged_send_log) and two returned jsonb keys (purgedNewsletterSendLog for the count, newsletterSendLogRetentionMonths = 24 alongside the other retention constants). Signature unchanged, so create-or-replace suffices. No new event_type, no RPC signature change, no new table, no grant change. Documented in docs/gdpr/retention.md and docs/gdpr/ropa.md (A5).'
 )
 on conflict (migration_id) do update
 set description = excluded.description,
