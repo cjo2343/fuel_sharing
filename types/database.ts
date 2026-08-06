@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 178 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 179 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -910,6 +910,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      newsletter_send_jobs: {
+        Row: {
+          ceiling_at: string
+          claimed_at: string | null
+          created_at: string
+          cursor_confirmed_at: string | null
+          cursor_id: string | null
+          failed_count: number
+          features: Json
+          headline: string
+          id: string
+          intro: string
+          last_status_code: number | null
+          operator_email: string
+          sent_count: number
+          status: string
+          total_recipients: number
+          updated_at: string
+        }
+        Insert: {
+          ceiling_at: string
+          claimed_at?: string | null
+          created_at?: string
+          cursor_confirmed_at?: string | null
+          cursor_id?: string | null
+          failed_count?: number
+          features?: Json
+          headline: string
+          id?: string
+          intro: string
+          last_status_code?: number | null
+          operator_email: string
+          sent_count?: number
+          status?: string
+          total_recipients?: number
+          updated_at?: string
+        }
+        Update: {
+          ceiling_at?: string
+          claimed_at?: string | null
+          created_at?: string
+          cursor_confirmed_at?: string | null
+          cursor_id?: string | null
+          failed_count?: number
+          features?: Json
+          headline?: string
+          id?: string
+          intro?: string
+          last_status_code?: number | null
+          operator_email?: string
+          sent_count?: number
+          status?: string
+          total_recipients?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       newsletter_send_log: {
         Row: {
@@ -1991,6 +2048,18 @@ export type Database = {
         }
         Returns: Json
       }
+      advance_newsletter_send_job: {
+        Args: {
+          p_campaign_id: string
+          p_done: boolean
+          p_failed_delta: number
+          p_last_confirmed_at: string
+          p_last_id: string
+          p_sent_delta: number
+          p_status_code?: number
+        }
+        Returns: undefined
+      }
       attach_fuel_payment_receipt: {
         Args: { p_fuel_payment_id: string; p_storage_path: string }
         Returns: Json
@@ -2082,6 +2151,33 @@ export type Database = {
           paid_note: string
           request_id: string
         }[]
+      }
+      claim_due_newsletter_send_job: {
+        Args: { p_lease_seconds?: number }
+        Returns: {
+          ceiling_at: string
+          claimed_at: string | null
+          created_at: string
+          cursor_confirmed_at: string | null
+          cursor_id: string | null
+          failed_count: number
+          features: Json
+          headline: string
+          id: string
+          intro: string
+          last_status_code: number | null
+          operator_email: string
+          sent_count: number
+          status: string
+          total_recipients: number
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "newsletter_send_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       claim_due_payment_reminders: {
         Args: { batch_limit?: number }
@@ -2211,6 +2307,15 @@ export type Database = {
         Returns: number
       }
       confirm_weekly_digests: { Args: { confirmations: Json }; Returns: number }
+      create_newsletter_send_job: {
+        Args: {
+          p_features: Json
+          p_headline: string
+          p_intro: string
+          p_operator_email: string
+        }
+        Returns: string
+      }
       create_private_ledger_workspace: {
         Args: { workspace_name: string; workspace_slug?: string }
         Returns: {
@@ -2364,6 +2469,21 @@ export type Database = {
       member_is_active_in_ledger: {
         Args: { p_ledger_id: string; p_member_id: string }
         Returns: boolean
+      }
+      mint_newsletter_send_batch: {
+        Args: {
+          p_after_confirmed_at: string
+          p_after_id: string
+          p_campaign_id: string
+          p_ceiling_at: string
+          p_limit: number
+        }
+        Returns: {
+          email: string
+          subscriber_confirmed_at: string
+          subscriber_id: string
+          unsubscribe_token: string
+        }[]
       }
       mint_newsletter_send_tokens: {
         Args: { p_headline: string; p_operator_email: string }

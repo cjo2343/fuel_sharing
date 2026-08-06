@@ -337,6 +337,17 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     // grants (service_role only — see section 7) and it mints a FRESH unsubscribe token
     // per recipient rather than reading a stored one, because there is no stored one.
     "public.mint_newsletter_send_tokens",
+    // GV-442 (migration 179): the batched-send job model. Two functions touch the list.
+    // create_newsletter_send_job only COUNTS confirmed subscribers to snapshot a job's
+    // total_recipients — it never reads an address out, the same shape as the counts RPC
+    // above. mint_newsletter_send_batch is mint_newsletter_send_tokens done one keyset
+    // page at a time: it is the ONE new function that reads addresses OUT, admitted for
+    // exactly mint's reason (a send is the one operation that needs them) and contained
+    // the same way (service_role only, and it mints a FRESH token per recipient into
+    // newsletter_send_tokens rather than reading a stored one). claim_ and advance_ do
+    // NOT touch newsletter_subscribers, so they are not — and must not be — listed here.
+    "public.create_newsletter_send_job",
+    "public.mint_newsletter_send_batch",
   ]);
 
   // Prose stripped like the block scan strips it, but WITHOUT schemaStatementsOnly:

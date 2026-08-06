@@ -4158,6 +4158,30 @@ end`,
     op: `perform 1 from public.newsletter_send_tokens;`,
     expect: "42501",
   }),
+  // The batched-send job table (GV-442, migration 179) takes the same posture as the
+  // three tables above. It carries the marketing copy and the keyset cursor into the
+  // address list; readable, it would let the code that runs the send bypass the RPCs.
+  rpcCase({
+    name: "newsletter-send-jobs-anon-blocked",
+    desc: "anon cannot read the send-job table",
+    actor: ANON,
+    op: `perform 1 from public.newsletter_send_jobs;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-jobs-authenticated-blocked",
+    desc: "a signed-in app user cannot read the send-job table",
+    actor: A,
+    op: `perform 1 from public.newsletter_send_jobs;`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-send-jobs-service-role-blocked",
+    desc: "even the service role — the key the scheduler holds — reaches jobs only through the RPCs, never the table",
+    actor: SERVICE,
+    op: `perform 1 from public.newsletter_send_jobs;`,
+    expect: "42501",
+  }),
   rpcCase({
     name: "newsletter-mint-accumulates-confirmed-only",
     desc: "minting hands out confirmed addresses with FRESH tokens, ADDS them alongside the older ones, and skips pending rows",
