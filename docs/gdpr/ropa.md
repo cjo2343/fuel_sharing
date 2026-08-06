@@ -117,10 +117,13 @@ Cloudflare Access + Supabase-login).
 - **Formål:** Fejlsøgning, misbrugsbeskyttelse, operatørtilsyn.
 - **Datakategorier:** Fejltelemetri (Sentry, EU-region — uden PII i beskeder),
   operatør-audit-log (`owner_activity_log`: handling, aktør-e-mail, tidspunkt),
+  udsendelseslog for nyhedsbrevet (`newsletter_send_log`: operatør-e-mail, overskrift,
+  antal modtagere, tidspunkt — ingen modtageradresser, GV-445),
   rate-limit-registre (e-mail-nøgler), oppetidsmålinger (Better Stack — rammer kun
   /api/health, ingen persondata).
 - **Retsgrundlag:** Legitim interesse (art. 6(1)(f)) — drift og sikkerhed.
-- **Sletning:** Se retention.md (`owner_activity_log`: 24 måneder, automatisk).
+- **Sletning:** Se retention.md (`owner_activity_log`: 24 måneder, automatisk;
+  `newsletter_send_log`: 24 måneder, automatisk fra migration 176).
 
 ## A6 — Opslag ved oprettelse af bil
 
