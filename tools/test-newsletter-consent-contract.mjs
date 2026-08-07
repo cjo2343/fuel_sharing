@@ -968,6 +968,86 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
   }
 }
 
+// ── 8. The send-job table holds no subscriber PII (GV-442/179, GV-451) ────────
+//
+// Migration 179 added public.newsletter_send_jobs: durable state that survives between
+// scheduler ticks for as long as a send takes. Its whole GDPR case rests on holding NO
+// address and NO per-recipient status — only counts, an internal keyset cursor, the
+// marketing copy and the operator's own email — because a job that recorded who had been
+// mailed would rebuild the mailing history migration 161 declined to keep, in a second
+// table that outlives the unsubscribe DELETE.
+//
+// 179's tracker claimed that posture was "asserted globally" in this file. It was not:
+// newsletter_send_jobs appeared here 0 times, and only the role matrix guarded it. The
+// role matrix proves what the RPCs DO, but the mutation that would matter here is an
+// ADDED column — `add column last_recipient_email` — and that is a new NAME, not a path a
+// matrix case can exercise, exactly the absence-shaped property section 6/7 exist to
+// catch. GV-451 closes the gap and corrects the record: the column list is read out of
+// the consolidated schema and any name that reads like subscriber PII is refused.
+{
+  const JOBS_TABLE = "public.newsletter_send_jobs";
+  const schema = readFileSync("supabase-schema.sql", "utf8");
+
+  // The same create-table parser section 7 uses: a column is a line before the first named
+  // constraint, and its name is the line's first token. A field that hides after a
+  // constraint fails to parse as a column, which is the right way round.
+  function jobsColumns(sql, table) {
+    const at = sql.indexOf(`create table if not exists ${table} (`);
+    assert.notEqual(at, -1, `${table} is not created in supabase-schema.sql`);
+    const end = sql.indexOf("\n);", at);
+    assert.notEqual(end, -1, `${table}'s create-table block is unterminated`);
+    const lines = sql
+      .slice(sql.indexOf("(", at) + 1, end)
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("--"));
+    const firstConstraint = lines.findIndex((line) => line.startsWith("constraint"));
+    return (firstConstraint === -1 ? lines : lines.slice(0, firstConstraint)).map((line) => line.split(/\s+/)[0]);
+  }
+
+  // total_recipients is a COUNT (it enumerates nobody) and operator_email is ours, not a
+  // subscriber's — those are the only two names that legitimately match the patterns below,
+  // and they are the only exceptions. Any OTHER column whose name reads like a subscriber
+  // identity — an address, a name, a recipient, a token, a subscriber reference — is refused.
+  const JOBS_SAFE_COLUMNS = new Set(["operator_email", "total_recipients"]);
+  const SUBSCRIBER_PII_NAME = /email|name|recipient|address|token|subscriber/i;
+  const assertNoPiiColumns = (columns, label) => {
+    for (const column of columns) {
+      if (JOBS_SAFE_COLUMNS.has(column)) continue;
+      assert.ok(
+        !SUBSCRIBER_PII_NAME.test(column),
+        `${label}: newsletter_send_jobs has a column '${column}' whose name looks like subscriber PII. ` +
+          "This job outlives the unsubscribe DELETE, so it may hold ONLY counts, the internal keyset " +
+          "cursor, the marketing copy and the operator email — never a recipient address, name or token. " +
+          "A genuinely new field is an owner decision and a new ticket; widen JOBS_SAFE_COLUMNS here on purpose",
+      );
+    }
+  };
+
+  const columns = jobsColumns(schema, JOBS_TABLE);
+  assert.ok(columns.length >= 5, "supabase-schema.sql: newsletter_send_jobs parsed too few columns — the parser missed the block");
+  assert.ok(columns.includes("operator_email"), "supabase-schema.sql: newsletter_send_jobs is missing operator_email — the parser is off");
+  assertNoPiiColumns(columns, "supabase-schema.sql");
+
+  // Self-test: every assertion passes on a clean tree, which is also what a broken regex
+  // produces. Plant the column 179's tracker promised this would catch — a per-recipient
+  // address on the job — inside the jobs block (after ceiling_at, a name unique to this
+  // table) and require the guard to fire.
+  const planted = jobsColumns(
+    schema.replace(
+      "  ceiling_at timestamptz not null,",
+      "  ceiling_at timestamptz not null,\n  last_recipient_email text,",
+    ),
+    JOBS_TABLE,
+  );
+  assert.ok(planted.includes("last_recipient_email"), "self-test: the planted PII column must parse as a column");
+  assert.throws(
+    () => assertNoPiiColumns(planted, "self-test"),
+    /looks like subscriber PII/,
+    "self-test: a subscriber-PII column added to newsletter_send_jobs must fail the guard",
+  );
+}
+
 console.log(
   "✅ test-newsletter-consent-contract: newsletter list is standalone, deny-all and tombstone-free; " +
     "the send hands out confirmed addresses only and logs counts; every unsubscribe token is a " +
