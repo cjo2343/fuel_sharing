@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 182 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 183 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -682,6 +682,7 @@ export type Database = {
           tank_baseline_fraction: number | null
           tank_baseline_odometer: number | null
           tank_baseline_recorded_at: string | null
+          tank_baseline_source: string | null
           tank_model_revision: number
           tank_state_as_of: string | null
           tank_state_capacity: number | null
@@ -747,6 +748,7 @@ export type Database = {
           tank_baseline_fraction?: number | null
           tank_baseline_odometer?: number | null
           tank_baseline_recorded_at?: string | null
+          tank_baseline_source?: string | null
           tank_model_revision?: number
           tank_state_as_of?: string | null
           tank_state_capacity?: number | null
@@ -812,6 +814,7 @@ export type Database = {
           tank_baseline_fraction?: number | null
           tank_baseline_odometer?: number | null
           tank_baseline_recorded_at?: string | null
+          tank_baseline_source?: string | null
           tank_model_revision?: number
           tank_state_as_of?: string | null
           tank_state_capacity?: number | null
