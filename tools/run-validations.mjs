@@ -173,6 +173,18 @@ const scripts = [
   // greenness is never observed in practice, and a logic bug that made it pass
   // everything would look exactly like progress.
   "node tools/test-release-gates.mjs",
+  // Heuristic lint for the concurrency/idempotency class that slipped past every
+  // structural guard three times and reached prod (GV-454): 169→171 (unlocked
+  // read-decide-write), 172→174 (stale-read mirror), 179→181 (check-then-insert with no
+  // backing unique key + a non-idempotent additive UPDATE). The structural guards cannot
+  // see a race, so this flags the two clearest static shapes — an `if exists(… from T …)
+  // then raise` followed by `insert into T` with no unique key that makes it safe, and an
+  // `update T set c = c + …` keyed only on `id = …` with no status/cursor/case-when guard.
+  // Scans only the LATEST live definition of each function (last-def-wins, drops applied),
+  // so a function buggy in 179 and fixed in 181 is judged by 181 — the tree is clean.
+  // Dependency-free; embeds its own self-test. One reviewed exception (redeem_ledger_invite,
+  // safe via a FOR UPDATE lock the scanner cannot see).
+  "node tools/check-concurrency-hazards.mjs",
   "node tools/check-token-drift.mjs",
   // Cross-repo: does the load rehearsal still replay what the mobile client actually
   // sends? Warns and exits 0 when govehlo-mobile is absent (fuel_sharing CI); the
