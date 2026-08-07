@@ -197,6 +197,7 @@ const expected = [
   "184_upload_quota_atomic.sql",
   "185_newsletter_send_job_lifetime_and_retry.sql",
   "186_reanchor_only_from_latest_handover.sql",
+  "187_reanchor_downward_only.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
