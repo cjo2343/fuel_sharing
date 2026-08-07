@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 187 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 188 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -334,6 +334,7 @@ export type Database = {
       fuel_payments: {
         Row: {
           amount: number
+          booking_id: string | null
           created_at: string
           created_by_member_id: string | null
           currency: string
@@ -354,6 +355,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          booking_id?: string | null
           created_at?: string
           created_by_member_id?: string | null
           currency?: string
@@ -374,6 +376,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          booking_id?: string | null
           created_at?: string
           created_by_member_id?: string | null
           currency?: string
@@ -393,6 +396,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fuel_payments_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "car_bookings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fuel_payments_created_by_member_id_fkey"
             columns: ["created_by_member_id"]
@@ -2899,6 +2909,7 @@ export type Database = {
       upsert_fuel_payment: {
         Args: {
           amount_value: number
+          booking_id_value?: string
           currency_value: string
           event_body?: string
           event_title?: string
