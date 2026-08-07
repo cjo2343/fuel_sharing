@@ -193,6 +193,7 @@ const expected = [
   "180_newsletter_send_job_status.sql",
   "181_harden_newsletter_send_job.sql",
   "182_handover_observed_at.sql",
+  "185_newsletter_send_job_lifetime_and_retry.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

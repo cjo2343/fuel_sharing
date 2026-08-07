@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 182 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 185 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -916,6 +916,7 @@ export type Database = {
       }
       newsletter_send_jobs: {
         Row: {
+          attempt_count: number
           ceiling_at: string
           claimed_at: string | null
           created_at: string
@@ -927,6 +928,7 @@ export type Database = {
           id: string
           intro: string
           last_status_code: number | null
+          next_attempt_at: string | null
           operator_email: string
           sent_count: number
           status: string
@@ -934,6 +936,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          attempt_count?: number
           ceiling_at: string
           claimed_at?: string | null
           created_at?: string
@@ -945,6 +948,7 @@ export type Database = {
           id?: string
           intro: string
           last_status_code?: number | null
+          next_attempt_at?: string | null
           operator_email: string
           sent_count?: number
           status?: string
@@ -952,6 +956,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          attempt_count?: number
           ceiling_at?: string
           claimed_at?: string | null
           created_at?: string
@@ -963,6 +968,7 @@ export type Database = {
           id?: string
           intro?: string
           last_status_code?: number | null
+          next_attempt_at?: string | null
           operator_email?: string
           sent_count?: number
           status?: string
@@ -2094,6 +2100,10 @@ export type Database = {
         Returns: boolean
       }
       can_manage_trip: { Args: { p_trip_id: string }; Returns: boolean }
+      cancel_newsletter_send_job: {
+        Args: { p_campaign_id: string }
+        Returns: Json
+      }
       check_owner_rate_limit: {
         Args: {
           actor_email: string
@@ -2158,6 +2168,7 @@ export type Database = {
       claim_due_newsletter_send_job: {
         Args: { p_lease_seconds?: number }
         Returns: {
+          attempt_count: number
           ceiling_at: string
           claimed_at: string | null
           created_at: string
@@ -2169,6 +2180,7 @@ export type Database = {
           id: string
           intro: string
           last_status_code: number | null
+          next_attempt_at: string | null
           operator_email: string
           sent_count: number
           status: string
@@ -2576,6 +2588,10 @@ export type Database = {
           token: string
           user_id: string
         }[]
+      }
+      retry_newsletter_send_job: {
+        Args: { p_campaign_id: string }
+        Returns: Json
       }
       rotate_workspace_join_code: {
         Args: { target_ledger_id?: string }
