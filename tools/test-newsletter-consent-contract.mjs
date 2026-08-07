@@ -346,6 +346,10 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     // the same way (service_role only, and it mints a FRESH token per recipient into
     // newsletter_send_tokens rather than reading a stored one). claim_ and advance_ do
     // NOT touch newsletter_subscribers, so they are not — and must not be — listed here.
+    // GV-442 (migration 180): get_newsletter_send_job reads newsletter_send_jobs ONLY —
+    // a progress snapshot (status, headline, counts) for the admin console, never the
+    // subscriber list. Like claim_ and advance_ it does not touch newsletter_subscribers,
+    // so it too is deliberately NOT listed: this allowlist gates that table alone.
     "public.create_newsletter_send_job",
     "public.mint_newsletter_send_batch",
   ]);

@@ -190,6 +190,7 @@ const expected = [
   "177_receipt_upload_quota.sql",
   "178_incident_photo_upload_quota.sql",
   "179_batched_newsletter_send.sql",
+  "180_newsletter_send_job_status.sql",
   "181_harden_newsletter_send_job.sql",
 ];
 
