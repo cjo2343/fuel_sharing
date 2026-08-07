@@ -25,12 +25,18 @@
 //              (migration 181).
 //
 // A full concurrency analysis is beyond a static scan. This guard deliberately flags
-// only the TWO clearest, highest-signal shapes from that history — the ones a regex can
-// recognise with few false positives — and is calibrated so the current tree (through
-// migration 181) is CLEAN.
+// only the clearest, highest-signal shapes from that history — the ones a regex can
+// recognise with few false positives — and is calibrated so the current tree is CLEAN.
+//
+//   • 177/178  the fuel-receipts / incident-photos upload quotas were enforced as a
+//              `(select count(*) …) < <limit>` sub-select inside the Storage INSERT RLS
+//              policy's WITH CHECK — a check-then-insert TOCTOU in a POLICY rather than a
+//              function body, so the original scan (which only ever read function bodies)
+//              never saw it. Fixed by a BEFORE INSERT trigger that serialises the racing
+//              inserts on an advisory lock and re-counts under it (migration 184, GV-458).
 //
 // ---------------------------------------------------------------------------
-// THE TWO PATTERNS
+// THE PATTERNS
 // ---------------------------------------------------------------------------
 // PATTERN A — check-then-insert without a backing unique key. A function body with
 //   `if exists (select ... from T where ...) then ... raise|return ... end if;`
@@ -52,6 +58,19 @@
 //   `*_sent_at is null` one-shots and cursor guards all carry an extra WHERE predicate,
 //   so they pass too.
 //
+// PATTERN C — check-then-insert quota inside an RLS policy. A `create policy … with
+//   check (…)` (or `using (…)`) whose predicate contains a `(select count(*) … ) <
+//   <limit>` sub-select. That is a per-row cap enforced by counting sibling rows at
+//   INSERT time, and it has the SAME race as Pattern A: N concurrent inserts each
+//   evaluate the count against the same pre-insert state, all read a value below the
+//   limit, and all pass, so the cap is bypassable. This is 177/178's storage upload
+//   quota. Patterns A and B scan FUNCTION bodies; a policy predicate is neither, which is
+//   exactly why the original guard missed this class (GV-458). What makes it safe is
+//   serialising the racing inserts and re-counting under a lock — 184's BEFORE INSERT
+//   trigger on storage.objects (advisory lock + re-count) — after which the policy's own
+//   count(*) is retained only as best-effort defence-in-depth and goes in
+//   REVIEWED_EXCEPTIONS with the trigger as justification.
+//
 // ---------------------------------------------------------------------------
 // SCANNING NOTES — deliberate limits, biased toward FEW false positives
 // ---------------------------------------------------------------------------
@@ -67,11 +86,14 @@
 //     rather than parsing it. When in doubt it does NOT flag — a noisy guard gets
 //     disabled, and it is better to catch the two proven shapes reliably than to reach.
 //   • A legitimate case a structural scan cannot distinguish goes in REVIEWED_EXCEPTIONS
-//     with a justification, NOT by weakening a pattern. The array is empty today.
+//     with a justification, NOT by weakening a pattern. It holds redeem_ledger_invite
+//     (Pattern B, a genuine per-join increment under a row lock) and the two 177/178
+//     upload-quota policies (Pattern C, made race-free by migration 184's trigger).
 //
 // The scan is dependency-free and needs no Docker, so it runs in `npm run validate`. It
-// embeds its own self-test (synthetic fixtures + the real 181 functions) which runs
-// first; a broken scanner reports as a broken scanner, not as a clean tree.
+// embeds its own self-test (synthetic fixtures + the real 181 functions + the 177/178
+// policies) which runs first; a broken scanner reports as a broken scanner, not as a
+// clean tree.
 //
 //   node tools/check-concurrency-hazards.mjs              # self-test, then scan the tree
 //   node tools/check-concurrency-hazards.mjs --self-test  # self-test only
@@ -98,6 +120,29 @@ export const REVIEWED_EXCEPTIONS = [
       "statements before the `uses_count = uses_count + 1` increment, so concurrent redemptions " +
       "serialise on that row lock and cannot over-consume a one-time invite. Each +1 is a distinct " +
       "member joining, not an at-least-once retry of one logical write — the 179 hazard does not apply.",
+  },
+  {
+    policy: "Fuel receipts are writable by workspace members",
+    table: "storage.objects",
+    pattern: "C",
+    why:
+      "The `(select count(*) …) < 3` quota in this INSERT policy (migration 177) is no longer the " +
+      "authoritative cap: migration 184 adds a BEFORE INSERT trigger on storage.objects " +
+      "(enforce_storage_upload_quota) that takes pg_advisory_xact_lock on the (bucket, <ledger>/" +
+      "<entity>) prefix and re-counts under it, so racing uploads serialise and the cap is race-free. " +
+      "The policy's count(*) is kept only as best-effort defence-in-depth (a cheap early rejection); " +
+      "the trigger is what makes it a hard limit.",
+  },
+  {
+    policy: "Incident photos are writable by workspace members",
+    table: "storage.objects",
+    pattern: "C",
+    why:
+      "The `(select count(*) …) < 10` quota in this INSERT policy (migration 178) is no longer the " +
+      "authoritative cap: migration 184's BEFORE INSERT trigger on storage.objects " +
+      "(enforce_storage_upload_quota) serialises racing uploads for the same (bucket, <ledger>/" +
+      "<entity>) prefix on an advisory lock and re-counts under it, closing the check-then-insert " +
+      "window. The policy's count(*) is retained only as best-effort defence-in-depth.",
   },
 ];
 
@@ -528,12 +573,71 @@ export function findPatternB(fn) {
   return hits;
 }
 
+// ── Pattern C: check-then-insert quota inside an RLS policy ────────────────────
+
+// Every `create policy "<name>" on <table> …;` in a (comment-stripped) SQL string, with
+// the full statement text up to its terminating top-level `;`. Patterns A/B read function
+// bodies; a policy predicate lives in neither, so it needs its own extractor (GV-458).
+export function extractPolicies(cleanSql, label = "<sql>") {
+  const out = [];
+  const re = /create\s+policy\s+"([^"]+)"\s+on\s+(?:public\.)?([a-z_][\w.]*)/gi;
+  let m;
+  while ((m = re.exec(cleanSql))) {
+    const name = m[1];
+    const table = m[2].toLowerCase();
+    // The statement runs to the next top-level `;` (paren- and string-aware).
+    let depth = 0;
+    let inString = false;
+    let end = cleanSql.length;
+    for (let i = m.index + m[0].length; i < cleanSql.length; i++) {
+      const c = cleanSql[i];
+      if (inString) {
+        if (c === "'") {
+          if (cleanSql[i + 1] === "'") i++;
+          else inString = false;
+        }
+        continue;
+      }
+      if (c === "'") {
+        inString = true;
+        continue;
+      }
+      if (c === "(") depth++;
+      else if (c === ")") depth--;
+      else if (c === ";" && depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    out.push({ name, table, stmt: cleanSql.slice(m.index, end), label, index: m.index });
+  }
+  return out;
+}
+
+// A policy whose predicate counts sibling rows and compares to a numeric limit —
+// `(select count(*) … ) < <int>` (or `<=`) — inside a WITH CHECK / USING expression.
+// That is the storage upload quota's TOCTOU: every racing insert reads the same
+// pre-insert count and passes. Kept deliberately narrow (count(*) AND a `) < <int>`
+// comparison AND a policy predicate keyword) so an ordinary policy never trips it.
+export function findPatternC(policies) {
+  const hits = [];
+  for (const p of policies) {
+    const s = norm(p.stmt);
+    if (!/\bcount\s*\(\s*\*\s*\)/i.test(s)) continue;
+    if (!/\)\s*<\s*=?\s*\d+/.test(s)) continue;
+    if (!/\b(?:with\s+check|using)\b/i.test(s)) continue;
+    hits.push({ policy: p.name, table: p.table, label: p.label });
+  }
+  return hits;
+}
+
 // ── Scan a whole tree ─────────────────────────────────────────────────────────
 
 export function scanSources(sources) {
   const cleanSources = sources.map(({ label, sql }) => ({ label, cleanSql: stripSqlComments(sql) }));
   const protectedTables = harvestProtectedTables(cleanSources.map((s) => s.cleanSql));
   const fns = latestFunctions(cleanSources);
+  const policies = cleanSources.flatMap((s) => extractPolicies(s.cleanSql, s.label));
 
   const findings = [];
   for (const fn of fns) {
@@ -543,6 +647,10 @@ export function scanSources(sources) {
     for (const b of findPatternB(fn)) {
       findings.push({ pattern: "B", fn: fn.name, label: fn.label, table: b.table, column: b.column });
     }
+  }
+  for (const c of findPatternC(policies)) {
+    if (REVIEWED_EXCEPTIONS.some((e) => e.pattern === "C" && e.policy === c.policy && e.table === c.table)) continue;
+    findings.push({ pattern: "C", policy: c.policy, label: c.label, table: c.table });
   }
   return findings;
 }
@@ -567,6 +675,18 @@ function describe(f) {
       `      unique index on the tested condition, e.g. \`create unique index … on ${f.table} ((true))\n` +
       `      where <the exists condition>\` — and wrap the INSERT to catch unique_violation and\n` +
       `      re-raise the same error the check does.`
+    );
+  }
+  if (f.pattern === "C") {
+    return (
+      `PATTERN C (check-then-insert quota inside an RLS policy) in policy "${f.policy}" on ${f.table} [${f.label}]:\n` +
+      `      the policy predicate caps rows with a \`(select count(*) … ) < <limit>\` sub-select, so N\n` +
+      `      concurrent inserts each read the same pre-insert count and all pass — the quota is\n` +
+      `      bypassable. A policy is neither a function body nor lock-serialisable, so the count cannot\n` +
+      `      be made atomic in the policy itself. FIX (see migration 184, enforce_storage_upload_quota):\n` +
+      `      add a BEFORE INSERT trigger that takes pg_advisory_xact_lock on the counted prefix and\n` +
+      `      re-counts under it, then register this policy in REVIEWED_EXCEPTIONS (pattern "C") with the\n` +
+      `      trigger as justification — keeping the policy count only as best-effort defence-in-depth.`
     );
   }
   return (
@@ -716,6 +836,63 @@ export function selfTest() {
     assert(
       only179.some((f) => f.pattern === "B" && f.fn === "advance_newsletter_send_job"),
       "179 alone should flag Pattern B on advance_newsletter_send_job",
+    );
+  }
+
+  // Pattern C: a check-then-insert quota inside an RLS policy. A synthetic policy whose
+  // predicate counts sibling rows and compares to a limit must FLAG (it is not in the
+  // exceptions), while an ordinary policy with no count(*) cap must NOT.
+  const policyQuota = {
+    label: "fixture:policy-quota",
+    sql: `
+      create policy "widgets are capped" on public.widgets for insert to authenticated
+      with check (
+        bucket_id = 'x'
+        and (
+          select count(*) from public.widgets w2 where w2.bucket_id = 'x'
+        ) < 5
+      );`,
+  };
+  const c1 = scanSources([policyQuota]);
+  assert(
+    c1.some((f) => f.pattern === "C" && f.policy === "widgets are capped"),
+    "fixture C (count(*) quota in a policy) should flag Pattern C",
+  );
+
+  const plainPolicy = {
+    label: "fixture:plain-policy",
+    sql: `
+      create policy "widgets are readable" on public.widgets for select to authenticated
+      using (public.is_member(ledger_id));`,
+  };
+  assert(!scanSources([plainPolicy]).some((f) => f.pattern === "C"), "a policy with no count(*) cap should NOT flag Pattern C");
+
+  // The real 177/178 upload-quota policies: the raw Pattern C shape IS present (findPatternC
+  // sees it, proving the guard would have caught the pre-184 pattern), and migration 184's
+  // REVIEWED_EXCEPTIONS entries clear it, so the tree scan does NOT flag them (proving the
+  // exception mechanism, not a weakened pattern, is what makes the tree clean).
+  const m177 = join(MIGRATIONS_DIR, "177_receipt_upload_quota.sql");
+  const m178 = join(MIGRATIONS_DIR, "178_incident_photo_upload_quota.sql");
+  if (existsSync(m177)) {
+    const raw177 = findPatternC(extractPolicies(stripSqlComments(readFileSync(m177, "utf8")), "177"));
+    assert(
+      raw177.some((h) => h.policy === "Fuel receipts are writable by workspace members"),
+      "177's quota policy must match the raw Pattern C shape (the pre-184 pattern the guard now catches)",
+    );
+    assert(
+      !scanSources([{ label: "177", sql: readFileSync(m177, "utf8") }]).some((f) => f.pattern === "C"),
+      "177's quota policy must be CLEARED by migration 184's REVIEWED_EXCEPTIONS entry",
+    );
+  }
+  if (existsSync(m178)) {
+    const raw178 = findPatternC(extractPolicies(stripSqlComments(readFileSync(m178, "utf8")), "178"));
+    assert(
+      raw178.some((h) => h.policy === "Incident photos are writable by workspace members"),
+      "178's quota policy must match the raw Pattern C shape (the pre-184 pattern the guard now catches)",
+    );
+    assert(
+      !scanSources([{ label: "178", sql: readFileSync(m178, "utf8") }]).some((f) => f.pattern === "C"),
+      "178's quota policy must be CLEARED by migration 184's REVIEWED_EXCEPTIONS entry",
     );
   }
 
