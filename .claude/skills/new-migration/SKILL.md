@@ -1,7 +1,7 @@
 ---
 name: new-migration
 description: >
-  Scaffold a new Supabase migration for the GoVehlo shared database with every
+  Scaffold a new Supabase migration for the VehloShare shared database with every
   guard satisfied (header, tracker insert, test-migrations expected array,
   supabase-schema.sql mirror). Use when the user asks for a schema change, a new
   RPC, a new column/table, or runs /new-migration.

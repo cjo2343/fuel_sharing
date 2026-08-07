@@ -1,7 +1,7 @@
 ---
 name: ship
 description: >
-  Ship the current change the GoVehlo way: branch, PR for the user to merge, then
+  Ship the current change the VehloShare way: branch, PR for the user to merge, then
   post-merge sync and Jira transition. Use when work is ready for review, when the
   user says "open a PR", "ship it", or "merged", or runs /ship.
 user-invocable: true
