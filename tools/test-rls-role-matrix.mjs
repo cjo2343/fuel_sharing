@@ -435,15 +435,18 @@ const HANDOVER_BOOKING_D = "55555555-0000-0000-0000-000000000002";
 // length of that one INSERT and deactivated again — which models the real history
 // (you book while you are in the group, then you leave) rather than a state the
 // product cannot reach. The whole setup rolls back with the case.
+// PAST days since migration 191 (GVM-561): a handover on a booking that has not
+// started is refused with 22023, so a fixture booking that goes through the RPC
+// must already have begun.
 const SEED_HANDOVER_BOOKINGS = `insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
   ('${HANDOVER_BOOKING_B}', '${WS1}', '${ID.B}',
-   date_trunc('day', now()) + interval '1 day' + interval '9 hour',
-   date_trunc('day', now()) + interval '1 day' + interval '13 hour', '${ID.B}');
+   date_trunc('day', now()) - interval '1 day' + interval '9 hour',
+   date_trunc('day', now()) - interval '1 day' + interval '13 hour', '${ID.B}');
 update public.ledger_members set is_active = true where id = '${ID.D}';
 insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
   ('${HANDOVER_BOOKING_D}', '${WS1}', '${ID.D}',
-   date_trunc('day', now()) + interval '2 day' + interval '9 hour',
-   date_trunc('day', now()) + interval '2 day' + interval '13 hour', '${ID.B}');
+   date_trunc('day', now()) - interval '2 day' + interval '9 hour',
+   date_trunc('day', now()) - interval '2 day' + interval '13 hour', '${ID.B}');
 update public.ledger_members set is_active = false where id = '${ID.D}';`;
 // B hands the car over. The event_title arg makes the CREATE write a feed event.
 //
