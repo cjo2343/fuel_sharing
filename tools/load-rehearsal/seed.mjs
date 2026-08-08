@@ -1,7 +1,7 @@
 // GV-317 load rehearsal — step 2: seed the fixture.
 //
 //   npm run load:seed -- --env /path/to/rehearsal.env [--seed 42] [--workspaces 20]
-//                        [--concurrency 4] [--dry-run]
+//                        [--concurrency 4] [--aged] [--dry-run]
 //
 // Creates ~100 auth users and ~20 workspaces (2–8 members each) of synthetic
 // Danish fixture data on the THROWAWAY project, then fills each workspace with
@@ -22,7 +22,11 @@
 //     messages               — PRODUCTION flow: the acting member calls the same
 //                             transactional RPCs the mobile app uses.
 //   • closed periods         — PRODUCTION flow: calculate_period_settlement (server)
-//                             → build the matching snapshot → close_settlement_period.
+//                             → build the matching snapshot → REQUEST every outstanding
+//                             pair at its current amount (upsert_settlement_request_status)
+//                             → close_settlement_period. The request step is not optional:
+//                             the close gate raises 42501 without it (GV-438; it is why the
+//                             GVM-533 rehearsal reported `periods closed: 0`).
 //
 // Every object is created through the real RPCs a client would call — no
 // service-role table inserts were needed, so RLS + business rules are exercised
@@ -32,6 +36,14 @@
 // and recovers existing workspaces/memberships via list_my_ledgers, so a run
 // interrupted by a rate-limit can be resumed. Concurrency is modest and every
 // request backs off on 429 to stay under free-tier limits.
+//
+// --aged (GV-438) appends ONE aged workspace to the run: ~2 years of history,
+// thousands of trips and messages, and a closed period per month, so the reads
+// that grow over TIME rather than with workspace size can be measured. Knobs:
+// --aged-members / --aged-periods / --aged-trips / --aged-fuel / --aged-messages.
+// Budget the sign-in cost: Supabase Auth allows ~30 sign-ins per 5 min per IP
+// whatever the dashboard says (GVM-533 finding T4), and the aged workspace costs
+// exactly `members` sign-ins — its volume rides on tokens already held.
 //
 // --dry-run builds the plan and prints real request payloads WITHOUT any network,
 // so the request shapes can be reviewed before a live run.
@@ -49,7 +61,9 @@ import {
 } from "./lib/common.mjs";
 import {
   buildFixturePlan,
+  buildCloseProgram,
   buildCloseSnapshot,
+  AGED_DEFAULTS,
   tripArgs,
   fuelArgs,
   bookingArgs,
@@ -58,14 +72,27 @@ import {
   messageArgs,
 } from "./lib/fixtures.mjs";
 
-const args = parseArgs(process.argv.slice(2), { flags: ["dry-run"] });
+const args = parseArgs(process.argv.slice(2), { flags: ["dry-run", "aged"] });
 const seed = Number(args.seed ?? 42);
 const workspaces = Number(args.workspaces ?? 20);
 const concurrency = Number(args.concurrency ?? 4);
 const emailDomain = args["email-domain"] ?? DEFAULT_EMAIL_DOMAIN;
 const dryRun = Boolean(args["dry-run"]);
 
-const plan = buildFixturePlan({ seed, workspaces, emailDomain });
+// GV-438: --aged appends ONE aged workspace (years of history, thousands of
+// trips/messages, a closed period per month) after the small ones. The knobs let
+// an operator shrink it for a smoke pass; the defaults are what exercise 2 ran.
+const aged = args.aged
+  ? {
+      members: Number(args["aged-members"] ?? AGED_DEFAULTS.members),
+      periods: Number(args["aged-periods"] ?? AGED_DEFAULTS.periods),
+      tripsPerPeriod: Number(args["aged-trips"] ?? AGED_DEFAULTS.tripsPerPeriod),
+      fuelPerPeriod: Number(args["aged-fuel"] ?? AGED_DEFAULTS.fuelPerPeriod),
+      messagesPerPeriod: Number(args["aged-messages"] ?? AGED_DEFAULTS.messagesPerPeriod),
+    }
+  : null;
+
+const plan = buildFixturePlan({ seed, workspaces, emailDomain, aged });
 
 if (dryRun) {
   runDryRun(plan);
@@ -100,6 +127,7 @@ async function main() {
     recurring: 0,
     bookings: 0,
     messages: 0,
+    settlementsRequested: 0,
     periodsClosed: 0,
     warnings: [],
   };
@@ -260,8 +288,14 @@ async function seedWorkspace(ws, counters) {
       else counters.warnings.push(`expense ${ws.name}: ${describeError(res)}`);
     }
 
+    for (const message of period.messages ?? []) {
+      const res = await rpcCall(supa, tokenFor(message.senderSlot), "post_message", messageArgs({ ledgerId, message }));
+      if (res.ok) counters.messages++;
+      else counters.warnings.push(`message ${ws.name}: ${describeError(res)}`);
+    }
+
     if (period.closeAfter) {
-      const closed = await closePeriod(ownerToken, ledgerId, openPeriodId);
+      const closed = await closePeriod(ownerToken, ledgerId, openPeriodId, counters);
       if (closed.ok) {
         counters.periodsClosed++;
         const next = await fetchOpenPeriodId(ownerToken, ledgerId);
@@ -304,22 +338,42 @@ async function fetchOpenPeriodId(token, ledgerId) {
   return null;
 }
 
-// Close the open period: ask the server for the canonical settlement, build the
-// snapshot it validates against, and call the real close RPC.
-async function closePeriod(token, ledgerId, periodId) {
+// Close the open period the way a client must (GV-438):
+//
+//   1. ask the server for the canonical settlement,
+//   2. build the snapshot the close RPC validates against,
+//   3. REQUEST every outstanding pair at its current amount, and only then
+//   4. call the real close RPC.
+//
+// Step 3 is the fix. Without it the close RPC raises 42501 ("All settlements must
+// be requested at their current amounts before this period can be closed"), which
+// is why the GVM-533 rehearsal reported `periods closed: 0`. The owner is the
+// ledger admin, so they may drive each pair's request; the amounts come from
+// buildCloseProgram, which derives them from the server's own nets with the same
+// pairing the request trigger recomputes, so they match to the cent.
+async function closePeriod(token, ledgerId, periodId, counters) {
   const calc = await rpcCall(supa, token, "calculate_period_settlement", {
     target_ledger_id: ledgerId,
     target_period_id: periodId,
   });
   if (!calc.ok || !calc.json) return { ok: false, reason: `calc: ${describeError(calc)}` };
-  const snapshot = buildCloseSnapshot(calc.json);
-  const res = await rpcCall(supa, token, "close_settlement_period", {
-    target_ledger_id: ledgerId,
-    target_period_id: periodId,
-    period_snapshot: snapshot,
-  });
+
+  const program = buildCloseProgram(calc.json, { ledgerId, periodId });
+
+  for (const request of program.requests) {
+    const res = await rpcCall(supa, token, request.rpc, request.args);
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: `request settlement ${request.settlement.amount} kr: ${describeError(res)}`,
+      };
+    }
+    if (counters) counters.settlementsRequested++;
+  }
+
+  const res = await rpcCall(supa, token, program.close.rpc, program.close.args);
   if (!res.ok) return { ok: false, reason: describeError(res) };
-  return { ok: true };
+  return { ok: true, requested: program.requests.length };
 }
 
 function describeError(res) {
@@ -342,6 +396,7 @@ function printSummary(c) {
   console.log(`  recurring:         ${c.recurring}`);
   console.log(`  bookings:          ${c.bookings}`);
   console.log(`  messages:          ${c.messages}`);
+  console.log(`  settlements req.:  ${c.settlementsRequested} (requested at current amounts before each close)`);
   console.log(`  periods closed:    ${c.periodsClosed}`);
   if (c.warnings.length > 0) {
     console.log(`  warnings:          ${c.warnings.length}`);
@@ -361,6 +416,7 @@ function runDryRun(plan) {
         acc.expenses += p.expenses.length;
         if (p.closeAfter) acc.closed++;
       }
+      for (const p of ws.periods) acc.messages += (p.messages ?? []).length;
       acc.recurring += ws.recurring.length;
       acc.bookings += ws.bookings.length;
       acc.messages += ws.messages.length;
@@ -374,7 +430,13 @@ function runDryRun(plan) {
   const sizes = plan.workspaces.map((w) => w.memberCount);
   console.log(`  workspace sizes:   [${sizes.join(", ")}]  (min ${Math.min(...sizes)}, max ${Math.max(...sizes)})`);
   console.log(`  planned entries:   ${totals.trips} trips, ${totals.fuel} fuel, ${totals.expenses} expenses, ${totals.recurring} recurring, ${totals.bookings} bookings, ${totals.messages} messages`);
-  console.log(`  closed periods:    ${totals.closed} (settlement history via close_settlement_period)`);
+  console.log(`  closed periods:    ${totals.closed} (each: request every outstanding settlement, then close_settlement_period)`);
+  if (plan.aged) {
+    const agedWs = plan.workspaces.find((w) => w.aged);
+    const agedTrips = agedWs.periods.reduce((n, p) => n + p.trips.length, 0);
+    const agedMsgs = agedWs.periods.reduce((n, p) => n + (p.messages ?? []).length, 0);
+    console.log(`  aged workspace:    "${agedWs.name}" — ${agedWs.memberCount} members, ${agedWs.periods.length} periods (${agedWs.periods.filter((p) => p.closeAfter).length} closed), ${agedTrips} trips, ${agedMsgs} messages`);
+  }
   console.log("");
   console.log("  deterministic identities (first 3 users; load.mjs derives the same):");
   for (const u of plan.users.slice(0, 3)) {
@@ -398,7 +460,8 @@ function runDryRun(plan) {
       JSON.stringify(fuelArgs({ ledgerId: "<slug>", openPeriodId: "<period-uuid>", legacyId: "s..-w0-p0-f0", payerMemberId: "<member-uuid>", fuel })));
   }
 
-  // Exercise the close-snapshot builder against a MOCK server result so its logic
+  // Exercise the close PROGRAM against a MOCK server result so the required
+  // sequence — request every outstanding pair at its current amount, THEN close —
   // is visible without a live calculate_period_settlement call.
   const mockComputed = {
     totalKm: 420,
@@ -408,8 +471,12 @@ function runDryRun(plan) {
       { id: "bbbb", name: "Emma", km: 120, fuelPaid: 0, net: -257.5 },
     ],
   };
-  console.log("   6) close_settlement_period snapshot (built from a mock calculate_period_settlement result):");
-  console.log("      ", JSON.stringify(buildCloseSnapshot(mockComputed)));
+  const mockProgram = buildCloseProgram(mockComputed, { ledgerId: "<slug>", periodId: "<period-uuid>" });
+  console.log(`   6) close sequence (built from a mock calculate_period_settlement result) — ${mockProgram.requests.length} request(s) FIRST, then the close:`);
+  for (const r of mockProgram.requests) {
+    console.log(`      · ${r.rpc}  `, JSON.stringify(r.args));
+  }
+  console.log(`      · ${mockProgram.close.rpc}  `, JSON.stringify(mockProgram.close.args));
   console.log("────────────────────────────────────────────────────────────");
   console.log("Dry run only — no users, workspaces, or rows were created.");
 }
