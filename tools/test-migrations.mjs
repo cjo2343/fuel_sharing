@@ -199,6 +199,7 @@ const expected = [
   "186_reanchor_only_from_latest_handover.sql",
   "187_reanchor_downward_only.sql",
   "188_fuel_payment_booking_link.sql",
+  "189_handover_observed_at_clamp.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
