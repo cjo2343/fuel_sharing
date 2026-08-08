@@ -402,7 +402,7 @@ test("postgrestToSql translates each hot-path read faithfully", () => {
   const sql = Object.fromEntries(reads.map((r) => [r.label, postgrestToSql(r)]));
   assert.equal(sql["read:ledger"], "select * from public.ledgers where id = 'delebil-aarhus-01' limit 1");
   assert.ok(sql["read:trips"].includes("deleted_at is null"));
-  assert.ok(sql["read:trips"].endsWith(`order by trip_date DESC limit ${SETTLE_ROW_CAP + 1}`));
+  assert.ok(sql["read:trips"].endsWith(`order by trip_date DESC, id DESC limit ${SETTLE_ROW_CAP + 1}`));
   assert.ok(sql["read:members"].includes("is_active = true"));
   // The feed's exclusion list must survive the translation, in order.
   assert.ok(
@@ -451,9 +451,11 @@ test("trips and fuel reads carry the +1 truncation sentinel and soft-delete filt
   const fuel = reqs.find((r) => r.label === "read:fuel");
   assert.ok(trips.query.includes(`limit=${SETTLE_ROW_CAP + 1}`));
   assert.ok(trips.query.includes("deleted_at=is.null"));
-  assert.ok(trips.query.includes("order=trip_date.desc"));
+  // GVM-559: id tiebreak makes the ordering total, so Historik's keyset paging
+  // can resume below the window without repeating or skipping same-date rows.
+  assert.ok(trips.query.includes("order=trip_date.desc,id.desc"));
   assert.ok(fuel.query.includes(`limit=${SETTLE_ROW_CAP + 1}`));
-  assert.ok(fuel.query.includes("order=payment_date.desc"));
+  assert.ok(fuel.query.includes("order=payment_date.desc,id.desc"));
 });
 test("events read excludes every reminder-audit event type", () => {
   assert.deepEqual(EVENT_TYPE_EXCLUDE, [

@@ -65,15 +65,26 @@ export function ledgerReadRequests(ledgerId) {
       table: "settlement_periods",
       query: `select=${SETTLEMENT_PERIOD_COLUMNS}&ledger_id=eq.${lid}&order=opened_at.desc`,
     },
+    // GVM-559: the real client additionally applies a DYNAMIC window filter to
+    // both of these reads — `or=(<date>.gte.<since>,period_id.in.(<live period
+    // ids>))` where <since> is the earliest of a live period's start, the tank
+    // baseline's date and the twelve-month aggregate floor (govehlo-mobile
+    // src/lib/ledger-window.ts) — and omits it entirely on a first-ever load or a
+    // dateless baseline. The rehearsal deliberately does NOT replay it: the
+    // window depends on per-workspace state the harness would have to re-derive,
+    // and measuring the UNBOUNDED read keeps the rehearsal an upper bound on what
+    // any client state can cost. The `id.desc` tiebreak IS mirrored — it is
+    // unconditional in the gateway, and Historik's keyset paging depends on the
+    // total order it creates.
     {
       label: "read:trips",
       table: "trips",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=trip_date.desc&limit=${SETTLE_ROW_CAP + 1}`,
+      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=trip_date.desc,id.desc&limit=${SETTLE_ROW_CAP + 1}`,
     },
     {
       label: "read:fuel",
       table: "fuel_payments",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=payment_date.desc&limit=${SETTLE_ROW_CAP + 1}`,
+      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=payment_date.desc,id.desc&limit=${SETTLE_ROW_CAP + 1}`,
     },
     {
       label: "read:settlements",
