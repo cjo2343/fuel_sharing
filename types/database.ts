@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 192 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 193 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -675,9 +675,12 @@ export type Database = {
           join_code: string | null
           join_code_rotated_at: string | null
           key_location: string | null
+          latest_handover_fraction: number | null
+          latest_handover_observed_at: string | null
           location_updated_at: string | null
           location_updated_by_member_id: string | null
           low_fuel_threshold_percent: number
+          max_handover_odometer: number | null
           name: string
           next_service_date: string | null
           next_service_km: number | null
@@ -741,9 +744,12 @@ export type Database = {
           join_code?: string | null
           join_code_rotated_at?: string | null
           key_location?: string | null
+          latest_handover_fraction?: number | null
+          latest_handover_observed_at?: string | null
           location_updated_at?: string | null
           location_updated_by_member_id?: string | null
           low_fuel_threshold_percent?: number
+          max_handover_odometer?: number | null
           name?: string
           next_service_date?: string | null
           next_service_km?: number | null
@@ -807,9 +813,12 @@ export type Database = {
           join_code?: string | null
           join_code_rotated_at?: string | null
           key_location?: string | null
+          latest_handover_fraction?: number | null
+          latest_handover_observed_at?: string | null
           location_updated_at?: string | null
           location_updated_by_member_id?: string | null
           low_fuel_threshold_percent?: number
+          max_handover_odometer?: number | null
           name?: string
           next_service_date?: string | null
           next_service_km?: number | null
