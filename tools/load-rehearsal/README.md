@@ -170,8 +170,8 @@ Each VU iteration mirrors `LedgerContext` + `ledger-data-gateway.ts`:
 2. The **12-query read fan-out** LedgerContext runs on every workspace load:
    `ledgers`, `ledger_members`, `settlement_periods`, `trips` (+1 truncation
    sentinel, `limit=501`), `fuel_payments` (`limit=501`), `settlement_requests`,
-   `car_bookings`, `ledger_events` (reminder-audit types excluded, `limit=100`),
-   `vehicle_repairs`, `messages` (`limit=200`), `workspace_expenses`,
+   `car_bookings`, `ledger_events` (reminder-audit types excluded, `limit=50`, GVM-535 feed cap),
+   `vehicle_repairs`, `messages` (`limit=50`, GVM-535), `workspace_expenses`,
    `recurring_expenses` — plus the dependent `trip_participants` read.
 3. `rpc calculate_period_settlement` — the settlement-balance computation path.
 4. **Write mix** (mixed only, ~1 in 5 iterations): `upsert_trip_with_participants`,
