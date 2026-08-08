@@ -103,14 +103,9 @@ const CANDIDATE_INDEXES = [
           where event_type not in (${EVENT_TYPE_EXCLUDE.map((t) => `'${t}'`).join(", ")});`,
     targets: ["read:events"],
   },
-  {
-    name: "trips_ledger_trip_date_idx",
-    // trips is reached through trips_ledger_id_legacy_id_key (an equality index on
-    // the wrong second column), so every non-deleted trip is fetched and sorted.
-    ddl: `create index trips_ledger_trip_date_idx on public.trips (ledger_id, trip_date desc)
-          where deleted_at is null;`,
-    targets: ["read:trips"],
-  },
+  // trips_ledger_trip_date_idx graduated from candidate to schema (migration 190,
+  // GV-438 → PR #265): it now arrives with supabase-schema.sql, so the baseline
+  // numbers already include it and re-creating it here would collide.
   {
     name: "fuel_payments_ledger_payment_date_idx",
     ddl: `create index fuel_payments_ledger_payment_date_idx on public.fuel_payments (ledger_id, payment_date desc)

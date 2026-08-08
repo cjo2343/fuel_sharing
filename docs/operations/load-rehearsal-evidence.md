@@ -231,6 +231,12 @@ untouched by GV-438.
    the index probe and a halved id list, because its RLS subplan scans all trips
    platform-wide. Worth its own ticket; it will be the top cost on the workspace load
    once (2) and (3) land.
+   *Shipped as GV-465 / migration 192*: `ledger_id` denormalized onto the table (the
+   138/169 pattern) so the policy is `is_ledger_member(trip_participants.ledger_id)`.
+   Re-measured on this harness: p95 **58.49 → 8.81 ms** (703 rows; the 353-id probe
+   61.04 → 4.68 ms), buffers 72,594 → 11,087, and cost now tracks the workspace's own
+   rows. A `can_read_trip(trip_id)` helper shape was measured first and rejected — it
+   killed the platform scan but kept ~80 µs/row of function overhead (58 ms).
 5. **`settlement_periods` and `fuel_payments` ledger-scoped indexes are not warranted
    by measurement today.** Both plans are cheap at current row counts. Revisit
    `settlement_periods` when the platform passes a few thousand periods — its Seq Scan
