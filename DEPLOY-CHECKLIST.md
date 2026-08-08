@@ -40,6 +40,16 @@ a migration "live".**
 - [ ] Dropping/renaming RLS policies: pair by-name drops with a dynamic
       `pg_policies` sweep — prod policy names can differ from the files (the
       103/PR #117 lesson).
+- [ ] Migrations that UPDATE existing rows in a guarded table (`trips`,
+      `fuel_payments`, `trip_participants`, `workspace_expenses`, `repairs`):
+      the settlement triggers veto ANY change to rows in locked/closed periods,
+      and every CI replay runs against an EMPTY database, so the failure only
+      appears on the production apply (192 lesson — 22023 on first apply). For a
+      metadata-only backfill, wrap it in `alter table … disable trigger user` /
+      `enable trigger user` (FK triggers stay active), and rehearse the apply on
+      a POPULATED database: replay migrations through N−1, seed closed-period
+      rows under `session_replication_role = replica`, then apply migration N
+      with triggers live.
 - [ ] `npm run validate` green (migration guard + ambiguity guard + token drift).
 - [ ] Docker checks green: `npm run check:schema-equivalence`, and
       `npm run gen:db-types` with the refreshed `types/database.ts` committed

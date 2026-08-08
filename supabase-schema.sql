@@ -49982,11 +49982,25 @@ set description = excluded.description,
 alter table public.trip_participants
   add column if not exists ledger_id text references public.ledgers(id) on delete cascade;
 
+-- The settlement guards (enforce_settlement_entry_lock_participants, 046/072, and
+-- assert_settlement_period_boundary_participants, 121) veto ANY update to a
+-- participant row whose trip sits in a locked/closed period — which on a real
+-- database is most rows, so the backfill below dies with 22023 the moment it
+-- touches history (observed on the first production apply, 2026-08-08). The
+-- backfill changes no settlement input — it copies the trip's own ledger_id onto
+-- the row — so the guards are suspended for exactly this statement. DISABLE
+-- TRIGGER USER leaves FK constraint triggers active, and the re-enable happens in
+-- the same transaction, so no unguarded window exists for other writers (they
+-- block on the ACCESS EXCLUSIVE lock until commit).
+alter table public.trip_participants disable trigger user;
+
 update public.trip_participants
    set ledger_id = t.ledger_id
   from public.trips t
  where t.id = trip_participants.trip_id
    and trip_participants.ledger_id is distinct from t.ledger_id;
+
+alter table public.trip_participants enable trigger user;
 
 alter table public.trip_participants
   alter column ledger_id set not null;
