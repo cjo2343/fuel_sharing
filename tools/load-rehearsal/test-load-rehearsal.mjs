@@ -409,7 +409,7 @@ test("postgrestToSql translates each hot-path read faithfully", () => {
     sql["read:events"].includes(`event_type not in (${EVENT_TYPE_EXCLUDE.map((t) => `'${t}'`).join(", ")})`),
     sql["read:events"],
   );
-  assert.ok(sql["read:events"].endsWith("order by created_at DESC limit 100"));
+  assert.ok(sql["read:events"].endsWith("order by created_at DESC, id DESC limit 50"));
   assert.equal(
     postgrestToSql(tripParticipantsRequest(["t1", "t2"])),
     "select * from public.trip_participants where trip_id in ('t1', 't2')",
@@ -426,7 +426,7 @@ test("withLimit replaces the limit and labels the variant, leaving the mirror un
   const capped = withLimit(events, 30);
   assert.equal(capped.label, "read:events@30");
   assert.ok(postgrestToSql(capped).endsWith("limit 30"));
-  assert.ok(postgrestToSql(events).endsWith("limit 100"), "the original request must not be mutated");
+  assert.ok(postgrestToSql(events).endsWith("limit 50"), "the original request must not be mutated");
 });
 
 // ── Hot-path SHAPE (internal consistency only) ───────────────────────────────
@@ -466,7 +466,7 @@ test("events read excludes every reminder-audit event type", () => {
   ]);
   const events = ledgerReadRequests("x").find((r) => r.label === "read:events");
   assert.ok(events.query.includes(`event_type=not.in.(${EVENT_TYPE_EXCLUDE.join(",")})`));
-  assert.ok(events.query.includes("limit=100"));
+  assert.ok(events.query.includes("limit=50"));
 });
 test("ledger id is URL-encoded in read queries", () => {
   const reqs = ledgerReadRequests("a b/c");

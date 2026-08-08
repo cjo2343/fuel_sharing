@@ -95,7 +95,7 @@ export function ledgerReadRequests(ledgerId) {
       query:
         `select=*&ledger_id=eq.${lid}` +
         `&event_type=not.in.(${EVENT_TYPE_EXCLUDE.join(",")})` +
-        `&order=created_at.desc&limit=100`,
+        `&order=created_at.desc,id.desc&limit=50`,
     },
     {
       label: "read:repairs",
@@ -105,7 +105,7 @@ export function ledgerReadRequests(ledgerId) {
     {
       label: "read:messages",
       table: "messages",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=created_at.desc&limit=200`,
+      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=created_at.desc,id.desc&limit=50`,
     },
     {
       label: "read:expenses",
