@@ -1727,6 +1727,80 @@ pin("'nothing to mirror' also reports location_mirrored false", () => {
   assert.equal(ledgerLocation(), "Onsdagens plads / Nøgler hos Anna");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// GVM-546 / migration 193 — THE OBSERVATION MIRROR ONTO LEDGERS
+// ═══════════════════════════════════════════════════════════════════════════════
+// Three derived columns, one recompute trigger. The properties that must not rot:
+// the odometer half is MONOTONE (an edited-down or deleted handover does not
+// retract a counter reading that was made), the fraction half follows observed_at
+// (so migration 189's restamp moves it), and a never-observed ledger stays NULL
+// rather than acquiring a fake 0 km reading.
+
+const mirrorOdometer = (ledger = L) =>
+  scalar(`select coalesce(max_handover_odometer::text, 'NULL') from public.ledgers where id = '${ledger}'`);
+const mirrorFraction = (ledger = L) =>
+  scalar(`select coalesce(latest_handover_fraction::text, 'NULL') from public.ledgers where id = '${ledger}'`);
+const mirrorObservedAt = (ledger = L) =>
+  scalar(`select coalesce(latest_handover_observed_at::text, 'NULL') from public.ledgers where id = '${ledger}'`);
+
+// Two fresh PAST bookings for Bo, outside the single-digit id template and on days
+// the nine fixture bookings (days -9..-1, 09:00Z-13:00Z) never touch — the overlap
+// trigger rejects anything that crosses them.
+raw(`
+  insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
+    ('31000000-0000-0000-0000-000000000101', '${L}', '${BO}',
+     date_trunc('day', now()) - interval '20 day' + interval '14 hour',
+     date_trunc('day', now()) - interval '20 day' + interval '17 hour', '${BO}'),
+    ('31000000-0000-0000-0000-000000000102', '${L}', '${BO}',
+     date_trunc('day', now()) - interval '19 day' + interval '14 hour',
+     date_trunc('day', now()) - interval '19 day' + interval '17 hour', '${BO}');
+`);
+
+pin("a never-observed ledger's mirror is NULL, not 0 (GVM-546)", () => {
+  assert.equal(mirrorOdometer(L2), "NULL");
+  assert.equal(mirrorFraction(L2), "NULL");
+});
+
+pin("a handover's odometer and fuel reach the ledgers mirror (GVM-546)", () => {
+  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000101", odometer: 500000, fuel: 0.25 }), "OK");
+  assert.equal(mirrorOdometer(), "500000");
+  assert.equal(mirrorFraction(), "0.25");
+});
+
+pin("the odometer mirror is monotone: a newer, LOWER reading advances 'latest' but never the max (GVM-546)", () => {
+  // The day-newer booking carries a lower km entry (a typo, or a different gauge
+  // read) — the fraction pair follows observed_at, the max does not move.
+  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000102", odometer: 499000, fuel: 0.75 }), "OK");
+  assert.equal(mirrorOdometer(), "500000");
+  assert.equal(mirrorFraction(), "0.75");
+});
+
+pin("an edited-down handover does not retract the max either (GVM-546)", () => {
+  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000101", odometer: 480000, fuel: 0.25 }), "OK");
+  assert.equal(mirrorOdometer(), "500000");
+});
+
+pin("migration 189's restamp propagates through to the mirror's observed_at (GVM-546)", () => {
+  // Shrink the LATEST booking's end by an hour: 189's restamp trigger rewrites its
+  // handover's observed_at, which is an UPDATE of booking_handovers, which fires
+  // the mirror recompute. (An order FLIP cannot be staged without overlapping
+  // bookings — the lower-reading pin above already covers the ordering rule.)
+  const before = mirrorObservedAt();
+  raw(`update public.car_bookings
+          set end_at = date_trunc('day', now()) - interval '19 day' + interval '16 hour'
+        where id = '31000000-0000-0000-0000-000000000102';`);
+  const after = mirrorObservedAt();
+  assert.notEqual(after, "NULL");
+  assert.notEqual(after, before, "the mirror's observed_at must follow the restamp");
+  assert.equal(mirrorFraction(), "0.75");
+});
+
+pin("deleting a handover recomputes the fraction pair but never lowers the odometer (GVM-546)", () => {
+  raw(`delete from public.booking_handovers where booking_id = '31000000-0000-0000-0000-000000000102';`);
+  assert.equal(mirrorFraction(), "0.25");
+  assert.equal(mirrorOdometer(), "500000");
+});
+
 removeContainer(CONTAINER);
 
 process.stdout.write(
