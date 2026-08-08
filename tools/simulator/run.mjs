@@ -122,7 +122,13 @@ const KNOWN_FINDINGS = [
     // holds fuel logs and no live trips credits the payer the full amount and debits
     // no one, and the period stops netting to zero by exactly totalPaid. Reachable in
     // production the moment a group logs a fill before its first trip of a new period,
-    // or deletes the only trip in one. Surfaced by seed 42 at tick 300 (768,59 kr).
+    // or deletes the only trip in one. Reproduce with
+    //   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 400 --seed 11 \
+    //     --oracle-every 25 --epoch 2026-06-07 --headless
+    // which hits it three times: w1/tick 25 (637,36 kr, open period), w3/tick 100
+    // (938,20 kr, QUEUED period — the carry-over path from migration 140 is affected
+    // too) and w0/tick 150 (262,66 kr). In every case the residue equals totalPaid to
+    // the øre, which is the signature.
     match: (v) => v.invariant === "zero_sum"
       && Array.isArray(v.detail?.failed)
       && v.detail.failed.length > 0
@@ -321,6 +327,16 @@ async function seed() {
     if (!created.ok) throw new Error(`seed workspace ${w}: ${created.message}`);
     const ledgerId = created.result.ledger_id;
     owner.memberId = created.result.admin_member_id;
+
+    // create_private_ledger_workspace derives the admin's display name from their
+    // email local part ("sim-0"), which is right for a real signup and wrong for a
+    // fixture nobody can read. Give the owner the same kind of name the joiners get.
+    await callAs(owner, `select to_jsonb(sim_named) from public.set_member_name(
+        target_ledger_id => ${lit(ledgerId)},
+        target_member_id => ${uuidLit(owner.memberId)},
+        new_name => ${lit(owner.name)},
+        event_title => ${lit("Navn opdateret")},
+        event_body => ${lit(owner.name)}) sim_named limit 1`);
 
     const code = await callAs(owner, `select to_jsonb(public.get_workspace_join_code(${lit(ledgerId)}))`);
     if (!code.ok) throw new Error(`seed join code ${w}: ${code.message}`);
@@ -635,7 +651,10 @@ function recordViolation(violation) {
     known: known ? { id: known.id, title: known.title } : null,
   };
   violations.push(record);
-  journal.write({ kind: "violation", ...record });
+  // The journal line's own `kind` must stay "violation" — spreading the record after it
+  // would overwrite it with the record's kind ("invariant" / "unclassified-rejection")
+  // and the dashboard's stream would never see a violation at all.
+  journal.write({ ...record, kind: "violation", violationKind: violation.kind });
   const badge = known ? `📓 known finding ${known.id}` : "🚨";
   console.error(`\n${badge} ${violation.kind}: ${violation.invariant ?? violation.action} (workspace ${violation.ws}, tick ${violation.tick})`);
   if (known) console.error(`   ${known.title}`);
