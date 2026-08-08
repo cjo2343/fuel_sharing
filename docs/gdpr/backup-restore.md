@@ -75,6 +75,15 @@ for at antage det. Kadence: **mindst kvartalsvis** og efter større skemaændrin
 Fejler drillen: behandl det som en hændelse (incident-response.md) — en backup der
 ikke kan genskabes, er ingen backup.
 
+**Efter en RIGTIG genskabelse (eller enhver bulk-import) i prod: kør `analyze;` som
+sidste skridt (GV-466).** Friske, ustatistik-belagte tabeller får planlæggeren til
+at vælge forkerte planer — målt i GV-438: feed-læsningen flipper til en Bitmap-scan
+over ALLE events og går fra ~1 ms til 25–75 ms, voksende lineært, indtil autovacuum
+tilfældigvis når tabellen. Én `analyze;` i SQL-editoren lukker vinduet med det
+samme. (En planlagt ANALYZE-cron og et forsikrings-indeks blev begge målt og
+fravalgt — cronen løser et problem autovacuum allerede løser i drift, og indekset
+gav 0 ms i dag mod evig vedligehold af dets prædikat.)
+
 > **Næste drill kræver et FRISKT dump (GV-393).** Drillen udleder sit
 > aktualitetskrav fra `tools/test-migrations.mjs`' `expected`-liste og fejler hårdt
 > på et dump, der er ældre end den nyeste forventede migration. Seneste drill
