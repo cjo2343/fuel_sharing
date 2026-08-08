@@ -136,6 +136,22 @@ function memberOf(ws, slot) {
   return ws.members.find((m) => m.slot === slot) ?? null;
 }
 
+/**
+ * Pick from `list`, preferring rows the acting member is actually allowed to touch.
+ *
+ * Without this bias two thirds of every run is the permission gate saying no, which
+ * exercises one rule very thoroughly and everything downstream of a successful edit
+ * not at all. With it, most edits LAND — and the ones that do not still produce a
+ * permission guard, because a third of the picks ignore ownership on purpose.
+ */
+function preferOwn(ctx, list, ownerSlotOf) {
+  if (list.length === 0) return null;
+  const isAdmin = ctx.actorSlot === 0;
+  const mine = isAdmin ? list : list.filter((row) => ownerSlotOf(row) === ctx.actorSlot);
+  if (mine.length > 0 && ctx.rng.bool(0.65)) return ctx.rng.pick(mine);
+  return ctx.rng.pick(list);
+}
+
 /** A void-returning RPC still has to hand sim_exec one jsonb row. */
 function selectVoid(call) {
   return `select jsonb_build_object('ok', true) from (select ${call}) sim_void`;
@@ -170,7 +186,7 @@ export const ACTIONS = {
 
   edit_trip: {
     build: (ctx) => {
-      const trip = ctx.rng.pick(liveTrips(ctx.ws));
+      const trip = preferOwn(ctx, liveTrips(ctx.ws), (t) => t.driverSlot);
       if (!trip) return null;
       return tripWrite(ctx, { existing: trip, stale: ctx.rng.bool(0.2) });
     },
@@ -189,7 +205,7 @@ export const ACTIONS = {
 
   delete_trip: {
     build: (ctx) => {
-      const trip = ctx.rng.pick(liveTrips(ctx.ws));
+      const trip = preferOwn(ctx, liveTrips(ctx.ws), (t) => t.driverSlot);
       if (!trip || !trip.id) return null;
       return {
         detail: { legacyId: trip.legacyId },
@@ -212,7 +228,7 @@ export const ACTIONS = {
   log_fuel_backdated: { build: (ctx) => fuelWrite(ctx, { backdateDays: ctx.rng.int(2, 9) }) },
   edit_fuel: {
     build: (ctx) => {
-      const fuel = ctx.rng.pick(liveFuel(ctx.ws));
+      const fuel = preferOwn(ctx, liveFuel(ctx.ws), (f) => f.payerSlot);
       if (!fuel) return null;
       return fuelWrite(ctx, { existing: fuel, stale: ctx.rng.bool(0.2) });
     },
@@ -221,7 +237,7 @@ export const ACTIONS = {
     // Hostile on purpose when a settlement has already been requested: the entry lock
     // must refuse, and the refusal must be the LOCK's, not a stray 42501.
     build: (ctx) => {
-      const fuel = ctx.rng.pick(liveFuel(ctx.ws));
+      const fuel = preferOwn(ctx, liveFuel(ctx.ws), (f) => f.payerSlot);
       if (!fuel || !fuel.id) return null;
       return {
         detail: { legacyId: fuel.legacyId },
@@ -255,7 +271,7 @@ export const ACTIONS = {
     // Moving a booking's end after a handover exists is what fires migration 189's
     // restamp trigger, which re-derives observed_at and therefore the 193 mirror.
     build: (ctx) => {
-      const booking = ctx.rng.pick(liveBookings(ctx.ws));
+      const booking = preferOwn(ctx, liveBookings(ctx.ws), (b) => b.memberSlot);
       if (!booking) return null;
       return bookingWrite(ctx, { existing: booking, stale: ctx.rng.bool(0.15) });
     },
@@ -277,7 +293,7 @@ export const ACTIONS = {
 
   save_handover: {
     build: (ctx) => {
-      const booking = ctx.rng.pick(liveBookings(ctx.ws).filter((b) => b.id));
+      const booking = preferOwn(ctx, liveBookings(ctx.ws).filter((b) => b.id), (b) => b.memberSlot);
       if (!booking) return null;
       const odo = ctx.ws.odometer + ctx.rng.int(0, 40);
       const fraction = Math.round(ctx.rng.float() * 100) / 100;
@@ -677,7 +693,14 @@ function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, s
   // the only thing that can fire enforce_identity_reassignment (GV-253) — the rule
   // that only the creator or an admin may move an entry to someone else.
   const reassign = Boolean(existing) && ctx.rng.bool(0.25);
-  const driver = existing && !reassign ? memberOf(ctx.ws, existing.driverSlot) : ctx.rng.pick(members);
+  // On a CREATE the driver is normally the person logging it — that is what the client
+  // does, and it is what the insert policy allows. One create in five names someone
+  // else, which an admin may do and nobody else may, so the gate still gets exercised.
+  const someoneElse = ctx.rng.bool(0.2);
+  const self = memberOf(ctx.ws, ctx.actorSlot);
+  const driver = existing && !reassign
+    ? memberOf(ctx.ws, existing.driverSlot)
+    : (!existing && !someoneElse && self?.active ? self : ctx.rng.pick(members));
   if (!driver) return null;
   const participants = ctx.rng.subset(members, 1, Math.min(3, members.length));
   const ids = [...new Set([driver.memberId, ...participants.map((m) => m.memberId)])];
@@ -730,7 +753,11 @@ function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, s
 }
 
 function fuelWrite(ctx, { existing = null, backdateDays = 0, stale = false }) {
-  const payer = existing ? memberOf(ctx.ws, existing.payerSlot) : ctx.rng.pick(active(ctx.ws));
+  // Same rule as trips: you normally log the fill YOU paid for (see tripWrite).
+  const self = memberOf(ctx.ws, ctx.actorSlot);
+  const payer = existing
+    ? memberOf(ctx.ws, existing.payerSlot)
+    : (!ctx.rng.bool(0.2) && self?.active ? self : ctx.rng.pick(active(ctx.ws)));
   if (!payer) return null;
   const legacyId = existing ? existing.legacyId : nextId(ctx.ws, "fuel");
   const amount = ctx.rng.money(150, 780);

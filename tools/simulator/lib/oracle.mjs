@@ -49,8 +49,17 @@ async function zeroSum(db, ws) {
     `select coalesce(jsonb_agg(jsonb_build_object(
               'period', sp.id, 'status', sp.status,
               'people', coalesce(jsonb_array_length(calc.payload -> 'people'), 0),
+              'total_km', calc.payload -> 'totalKm',
+              'total_paid', calc.payload -> 'totalPaid',
+              'total_expenses', calc.payload -> 'totalExpenses',
+              'total_repairs', calc.payload -> 'totalRepairs',
+              'total_crossings', calc.payload -> 'totalCrossings',
               'net_sum', coalesce((select sum((p ->> 'net')::numeric)
-                                     from jsonb_array_elements(calc.payload -> 'people') p), 0))), '[]'::jsonb)
+                                     from jsonb_array_elements(calc.payload -> 'people') p), 0),
+              -- Carried for the dashboard's workspace grid: the live per-member net of
+              -- the OPEN period. Piggybacked here rather than fetched separately so a
+              -- sweep stays one round trip per workspace per invariant.
+              'people_json', coalesce(calc.payload -> 'people', '[]'::jsonb))), '[]'::jsonb)
        from public.settlement_periods sp
        cross join lateral (select public.calculate_period_settlement(sp.ledger_id, sp.id) as payload) calc
       where sp.ledger_id = ${lit(ws.ledgerId)}
@@ -64,11 +73,30 @@ async function zeroSum(db, ws) {
     const tolerance = Number(row.people) * 0.005;
     maxDust = Math.max(maxDust, Math.abs(netSum));
     if (Math.abs(netSum) > tolerance + 1e-9) {
-      bad.push({ period: row.period, status: row.status, netSum, tolerance, people: row.people });
+      bad.push({
+        period: row.period,
+        status: row.status,
+        netSum,
+        tolerance,
+        people: row.people,
+        totalKm: Number(row.total_km),
+        totalPaid: Number(row.total_paid),
+        totalExpenses: Number(row.total_expenses),
+        totalRepairs: Number(row.total_repairs),
+        totalCrossings: Number(row.total_crossings),
+      });
     }
   }
+  const open = payload.find((row) => row.status === "open");
+  const balances = (open?.people_json ?? []).map((person) => ({
+    id: person.id,
+    name: person.name,
+    net: Number(person.net),
+    km: Number(person.km),
+  }));
   return {
     ok: bad.length === 0,
+    balances,
     detail: bad.length > 0
       ? { failed: bad }
       : { periods: payload.length, maxResidueKr: Math.round(maxDust * 100) / 100 },
@@ -286,6 +314,7 @@ export async function runOracle(db, workspaces) {
     for (const [invariant, run] of checks) {
       try {
         const outcome = await run();
+        if (outcome.balances) ws.balances = outcome.balances;
         results.push({ invariant, ws: ws.index, ok: outcome.ok, detail: outcome.detail });
       } catch (err) {
         results.push({ invariant, ws: ws.index, ok: false, detail: { threw: String(err.message).slice(0, 800) } });

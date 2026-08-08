@@ -36,7 +36,7 @@ import {
 import { LOCAL_PRELUDE } from "../load-rehearsal/lib/pg-local.mjs";
 import { buildCloseSnapshot, computeSettlementsFromNets } from "../load-rehearsal/lib/fixtures.mjs";
 
-import { Prng, SimClock, defaultEpoch, hashSeed } from "./lib/prng.mjs";
+import { Prng, SimClock, defaultEpoch } from "./lib/prng.mjs";
 import { PERSONAS, assignPersonas } from "./lib/personas.mjs";
 import { ACTIONS, classifyRejection } from "./lib/actions.mjs";
 import { runOracle, INVARIANTS } from "./lib/oracle.mjs";
@@ -100,6 +100,36 @@ const REPRO = [
   config.chaos ? "--chaos" : "",
   "--headless",
 ].filter(Boolean).join(" ");
+
+// ── Reviewed findings (the repo's GVM-437 pattern, applied to a fuzzer) ──────
+//
+// A finding this tool has ALREADY surfaced, that a person has read, and that is not
+// this PR's job to fix. It is still detected, still printed loudly, still written to
+// violations.json — it just does not fail the run, so `npm run test:simulator` keeps
+// meaning "the harness works and nothing NEW appeared".
+//
+// Each entry needs a narrow `match`. A broad one (any zero_sum failure) would quietly
+// swallow the next real settlement bug, which is the whole reason the invariant exists.
+const KNOWN_FINDINGS = [
+  {
+    id: "GV-471-F1",
+    title: "Fuel paid in a period with zero kilometres is credited to nobody's debit",
+    // calculate_period_settlement's `net` expression:
+    //     case when totalKm > 0 then fuelPaid + … - tripCost - shares
+    //                           else fuelPaid + … - shares  end
+    // The else branch omits tripCost — correct, since a per-km rate is undefined at
+    // zero km — but it also omits any other way of charging the fuel. So a period that
+    // holds fuel logs and no live trips credits the payer the full amount and debits
+    // no one, and the period stops netting to zero by exactly totalPaid. Reachable in
+    // production the moment a group logs a fill before its first trip of a new period,
+    // or deletes the only trip in one. Surfaced by seed 42 at tick 300 (768,59 kr).
+    match: (v) => v.invariant === "zero_sum"
+      && Array.isArray(v.detail?.failed)
+      && v.detail.failed.length > 0
+      && v.detail.failed.every((row) => Number(row.totalKm) === 0
+        && Math.abs(Number(row.netSum) - Number(row.totalPaid)) < 0.02),
+  },
+];
 
 // ── Fixture vocabulary (synthetic, Danish) ───────────────────────────────────
 const FIRST_NAMES = [
@@ -200,11 +230,17 @@ async function main() {
   await sweep(config.ticks, { final: true });
   const wallSeconds = (Date.now() - started) / 1000;
 
-  journal.write({ kind: "end", counters: { ...counters }, violations: violations.length, wallSeconds });
+  journal.write({
+    kind: "end",
+    counters: { ...counters },
+    violations: violations.length,
+    newViolations: newViolations().length,
+    wallSeconds,
+  });
   writeViolations();
   report(wallSeconds, schemaSeconds);
 
-  if (violations.length > 0) exitCode = 1;
+  if (newViolations().length > 0) exitCode = 1;
 }
 
 function banner() {
@@ -313,6 +349,7 @@ async function seed() {
       recurring: [],
       repairs: [],
       requests: [],
+      balances: [],
       odometer: 40000 + w * 1500,
       counters: {},
       rng,
@@ -590,12 +627,25 @@ async function injectChaos() {
 function recordViolation(violation) {
   if (violationKeys.has(violation.key)) return;
   violationKeys.add(violation.key);
-  const record = { ...violation, seed: config.seed, repro: REPRO };
+  const known = KNOWN_FINDINGS.find((finding) => finding.match(violation)) ?? null;
+  const record = {
+    ...violation,
+    seed: config.seed,
+    repro: REPRO,
+    known: known ? { id: known.id, title: known.title } : null,
+  };
   violations.push(record);
   journal.write({ kind: "violation", ...record });
-  console.error(`\n🚨 ${violation.kind}: ${violation.invariant ?? violation.action} (workspace ${violation.ws}, tick ${violation.tick})`);
+  const badge = known ? `📓 known finding ${known.id}` : "🚨";
+  console.error(`\n${badge} ${violation.kind}: ${violation.invariant ?? violation.action} (workspace ${violation.ws}, tick ${violation.tick})`);
+  if (known) console.error(`   ${known.title}`);
   if (violation.message) console.error(`   ${violation.message.split("\n")[0]}`);
   console.error(`   repro: ${REPRO}`);
+}
+
+/** Violations nobody has reviewed yet — the only ones that fail a run. */
+function newViolations() {
+  return violations.filter((v) => !v.known);
 }
 
 function writeViolations() {
@@ -605,6 +655,8 @@ function writeViolations() {
     config: { ...config },
     repro: REPRO,
     violationCount: violations.length,
+    newViolationCount: newViolations().length,
+    knownFindingCount: violations.length - newViolations().length,
     violations,
     // The tail is the context a reader needs and cannot reconstruct: what the fifty
     // moves before the failure actually were.
@@ -663,6 +715,8 @@ function snapshot() {
         personaLabel: PERSONAS[m.persona]?.danish ?? m.persona,
       })),
       requests: ws.requests.map((r) => ({ amount: r.amount, status: r.status })),
+      // Per-member nets from the most recent oracle sweep (see lib/oracle.mjs).
+      balances: (ws.balances ?? []).map((b) => ({ name: b.name, net: b.net, km: b.km })),
     })),
   };
 }
@@ -697,8 +751,13 @@ function report(wallSeconds, schemaSeconds) {
   console.log("");
   console.log(`  determinism digest (actions only): ${digestOf(journal.lines)}`);
   console.log(`  journal:    tools/simulator/out/journal.jsonl (${journal.lines.length} lines)`);
+  const fresh = newViolations();
+  const known = violations.length - fresh.length;
   if (violations.length > 0) {
-    console.log(`  violations: ${violations.length} → tools/simulator/out/violations.json`);
+    console.log(`  violations: ${fresh.length} new, ${known} known → tools/simulator/out/violations.json`);
+    for (const v of violations) {
+      console.log(`     ${v.known ? `known ${v.known.id}` : "NEW"}  ${v.invariant ?? v.action} (workspace ${v.ws}, tick ${v.tick})`);
+    }
     console.log(`  repro:      ${REPRO}`);
   } else {
     console.log("  violations: none");
