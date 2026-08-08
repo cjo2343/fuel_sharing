@@ -22,9 +22,12 @@
 // tooling itself needs a live throwaway project and is never run in CI.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 import {
   parseEnvFile,
@@ -40,8 +43,14 @@ import {
 } from "./lib/common.mjs";
 import {
   buildFixturePlan,
+  buildAgedWorkspacePlan,
   computeSettlementsFromNets,
   buildCloseSnapshot,
+  buildCloseProgram,
+  settlementRequestArgs,
+  AGED_DEFAULTS,
+  SETTLEMENT_REQUEST_RPC,
+  CLOSE_PERIOD_RPC,
 } from "./lib/fixtures.mjs";
 import {
   ledgerReadRequests,
@@ -49,6 +58,7 @@ import {
   EVENT_TYPE_EXCLUDE,
   SETTLE_ROW_CAP,
 } from "./lib/hotpaths.mjs";
+import { postgrestToSql, withLimit } from "./lib/hotpaths-sql.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -237,6 +247,186 @@ test("buildCloseSnapshot copies server figures and satisfies the close gate tole
   assert.ok(Math.abs(flow - 257.5) < 0.02);
   // entryFingerprint deliberately omitted so the RPC null-skips that gate.
   assert.equal("entryFingerprint" in snap, false);
+});
+
+// ── Close sequence: request every settlement, THEN close (GV-438) ────────────
+// The GVM-533 rehearsal closed ZERO periods: close_settlement_period raises 42501
+// ("All settlements must be requested at their current amounts before this period
+// can be closed") unless every pair that moves money already has a
+// settlement_requests row for the period at exactly that amount. These pin the
+// sequence the seeder must follow, which is the whole fix.
+const CLOSE_COMPUTED = {
+  totalKm: 900,
+  totalPaid: 1800,
+  people: [
+    { id: "aaaa", name: "F", km: 200, fuelPaid: 1800, net: 1200 },
+    { id: "bbbb", name: "E", km: 400, fuelPaid: 0, net: -800 },
+    { id: "cccc", name: "I", km: 300, fuelPaid: 0, net: -400 },
+  ],
+};
+
+test("buildCloseProgram requests EVERY money-moving pair before the close", () => {
+  const program = buildCloseProgram(CLOSE_COMPUTED, { ledgerId: "delebil-x", periodId: "period-1" });
+  const paying = program.snapshot.settlements.filter((s) => s.amount > 0);
+  assert.ok(paying.length >= 2, "expected at least two outstanding pairs in this fixture");
+  assert.equal(program.requests.length, paying.length);
+  for (const settlement of paying) {
+    const match = program.requests.find(
+      (r) => r.args.payer_member_id === settlement.fromId && r.args.recipient_member_id === settlement.toId,
+    );
+    assert.ok(match, `no request built for ${settlement.fromId}->${settlement.toId}`);
+    // The amount must be the CURRENT one, to the cent: the close gate compares
+    // settlement_requests.amount = round(snapshot amount, 2), and migration 117's
+    // trigger independently recomputes it server-side.
+    assert.equal(match.args.amount_value, settlement.amount);
+    assert.equal(match.args.next_status, "requested");
+    assert.equal(match.args.currency_value, "DKK");
+    assert.equal(match.rpc, SETTLEMENT_REQUEST_RPC);
+  }
+  assert.equal(program.close.rpc, CLOSE_PERIOD_RPC);
+  assert.equal(program.close.args.target_period_id, "period-1");
+  assert.deepEqual(program.close.args.period_snapshot, program.snapshot);
+});
+
+test("buildCloseProgram carries the SAME snapshot it requested against (no re-derivation)", () => {
+  const program = buildCloseProgram(CLOSE_COMPUTED, { ledgerId: "l", periodId: "p" });
+  const requested = new Map(program.requests.map((r) => [`${r.args.payer_member_id}->${r.args.recipient_member_id}`, r.args.amount_value]));
+  for (const s of program.close.args.period_snapshot.settlements) {
+    if (s.amount <= 0) continue;
+    assert.equal(requested.get(`${s.fromId}->${s.toId}`), s.amount, "a snapshot pair was closed without being requested at that amount");
+  }
+});
+
+test("buildCloseProgram emits no request for a settled workspace (nothing to request, close proceeds)", () => {
+  const program = buildCloseProgram(
+    { totalKm: 100, totalPaid: 100, people: [{ id: "a", net: 0 }, { id: "b", net: 0 }] },
+    { ledgerId: "l", periodId: "p" },
+  );
+  assert.equal(program.requests.length, 0);
+  assert.equal(program.close.args.period_snapshot.settlements.length, 0);
+});
+
+test("settlementRequestArgs sends the 9-arg RPC shape the client sends", () => {
+  const args = settlementRequestArgs({
+    ledgerId: "l",
+    periodId: "p",
+    settlement: { fromId: "debtor", toId: "creditor", amount: 52, currency: "DKK" },
+  });
+  assert.deepEqual(Object.keys(args).sort(), [
+    "amount_value", "currency_value", "current_pair_keys", "next_status", "p_note",
+    "payer_member_id", "recipient_member_id", "target_ledger_id", "target_open_period_id",
+  ]);
+  assert.deepEqual(args.current_pair_keys, []);
+  assert.equal(args.p_note, null);
+});
+
+// Both drivers must WALK that program rather than reinvent the sequence. This is a
+// source scan on purpose: the bug it guards against is not wrong arithmetic, it is
+// a close call that reaches the database with no requests in front of it — which is
+// exactly what shipped in GVM-533 and read as perfectly reasonable code.
+test("seed.mjs closes a period only after looping the program's requests", () => {
+  const src = readFileSync(path.join(HERE, "seed.mjs"), "utf8");
+  assert.ok(src.includes("buildCloseProgram"), "seed.mjs must build the close program");
+  const body = src.slice(src.indexOf("async function closePeriod"));
+  const requestLoop = body.indexOf("for (const request of program.requests)");
+  const closeCall = body.indexOf("program.close.rpc");
+  assert.ok(requestLoop > -1, "seed.mjs must send every settlement request");
+  assert.ok(closeCall > -1, "seed.mjs must call the close RPC from the program");
+  assert.ok(requestLoop < closeCall, "the requests must be sent BEFORE the close");
+  assert.ok(
+    /return \{\s*ok: false/.test(body.slice(requestLoop, closeCall)),
+    "a failed settlement request must abort the close, not fall through to it",
+  );
+});
+
+test("aged-local.mjs closes a period only after looping the program's requests", () => {
+  const src = readFileSync(path.join(HERE, "aged-local.mjs"), "utf8");
+  assert.ok(src.includes("buildCloseProgram"), "aged-local.mjs must build the close program");
+  const sqlBody = src.slice(src.indexOf("function closeSql"));
+  const requestCall = sqlBody.indexOf(SETTLEMENT_REQUEST_RPC);
+  const closeCall = sqlBody.indexOf(CLOSE_PERIOD_RPC);
+  assert.ok(requestCall > -1 && closeCall > -1);
+  assert.ok(requestCall < closeCall, "the requests must run BEFORE the close in the SQL program");
+});
+
+// ── Aged workspace profile (GV-438) ──────────────────────────────────────────
+test("aged profile appends ONE aged workspace and leaves the small ones byte-identical", () => {
+  const plain = buildFixturePlan({ seed: 42, workspaces: 5 });
+  const withAged = buildFixturePlan({ seed: 42, workspaces: 5, aged: true });
+  assert.equal(withAged.workspaces.length, 6);
+  assert.equal(JSON.stringify(withAged.workspaces.slice(0, 5)), JSON.stringify(plain.workspaces));
+  assert.equal(JSON.stringify(withAged.users.slice(0, plain.users.length)), JSON.stringify(plain.users));
+  assert.equal(withAged.workspaces[5].aged, true);
+  assert.equal(withAged.totalUsers, plain.totalUsers + AGED_DEFAULTS.members);
+});
+
+test("aged profile is deterministic and produces thousands of trips/messages and SEVERAL closed periods", () => {
+  const a = buildFixturePlan({ seed: 42, workspaces: 2, aged: true });
+  const b = buildFixturePlan({ seed: 42, workspaces: 2, aged: true });
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+  const aged = a.workspaces.find((w) => w.aged);
+  const trips = aged.periods.reduce((n, p) => n + p.trips.length, 0);
+  const messages = aged.periods.reduce((n, p) => n + p.messages.length, 0);
+  const closed = aged.periods.filter((p) => p.closeAfter).length;
+  assert.ok(trips >= 2000, `expected thousands of trips, got ${trips}`);
+  assert.ok(messages >= 1000, `expected thousands of messages, got ${messages}`);
+  assert.ok(closed >= 5, `expected several closed periods, got ${closed}`);
+  assert.equal(aged.periods[aged.periods.length - 1].closeAfter, false, "the newest period must stay open");
+});
+
+test("aged odometer chain is monotonic ACROSS periods (a single logbook, not a reset per month)", () => {
+  const aged = buildAgedWorkspacePlan({ seed: 42, periods: 4, tripsPerPeriod: 10 }).workspace;
+  let last = null;
+  for (const period of aged.periods) {
+    for (const trip of period.trips) {
+      assert.ok(trip.endKm > trip.startKm);
+      if (last !== null) assert.equal(trip.startKm, last, "odometer chain broke between trips/periods");
+      last = trip.endKm;
+    }
+  }
+});
+
+test("booking days within a workspace are distinct (prevent_overlapping_car_bookings)", () => {
+  for (const seedValue of [42, 43, 7]) {
+    const plan = buildFixturePlan({ seed: seedValue, workspaces: 8, aged: true });
+    for (const ws of plan.workspaces) {
+      const days = ws.bookings.map((b) => b.startAt.slice(0, 10));
+      assert.equal(new Set(days).size, days.length, `${ws.name} books the same day twice`);
+    }
+  }
+});
+
+// ── PostgREST → SQL (the local leg measures the mirror, not a copy) ──────────
+test("postgrestToSql translates each hot-path read faithfully", () => {
+  const reads = ledgerReadRequests("delebil-aarhus-01");
+  const sql = Object.fromEntries(reads.map((r) => [r.label, postgrestToSql(r)]));
+  assert.equal(sql["read:ledger"], "select * from public.ledgers where id = 'delebil-aarhus-01' limit 1");
+  assert.ok(sql["read:trips"].includes("deleted_at is null"));
+  assert.ok(sql["read:trips"].endsWith(`order by trip_date DESC limit ${SETTLE_ROW_CAP + 1}`));
+  assert.ok(sql["read:members"].includes("is_active = true"));
+  // The feed's exclusion list must survive the translation, in order.
+  assert.ok(
+    sql["read:events"].includes(`event_type not in (${EVENT_TYPE_EXCLUDE.map((t) => `'${t}'`).join(", ")})`),
+    sql["read:events"],
+  );
+  assert.ok(sql["read:events"].endsWith("order by created_at DESC limit 100"));
+  assert.equal(
+    postgrestToSql(tripParticipantsRequest(["t1", "t2"])),
+    "select * from public.trip_participants where trip_id in ('t1', 't2')",
+  );
+});
+
+test("postgrestToSql refuses a filter shape it does not understand (fails loud, never measures the wrong query)", () => {
+  assert.throws(() => postgrestToSql({ table: "trips", query: "amount=gte.5" }), /Unsupported PostgREST operator/);
+  assert.throws(() => postgrestToSql({ table: "trips", query: "select=*&offset=10" }), /Unsupported PostgREST offset/);
+});
+
+test("withLimit replaces the limit and labels the variant, leaving the mirror untouched", () => {
+  const events = ledgerReadRequests("x").find((r) => r.label === "read:events");
+  const capped = withLimit(events, 30);
+  assert.equal(capped.label, "read:events@30");
+  assert.ok(postgrestToSql(capped).endsWith("limit 30"));
+  assert.ok(postgrestToSql(events).endsWith("limit 100"), "the original request must not be mutated");
 });
 
 // ── Hot-path SHAPE (internal consistency only) ───────────────────────────────

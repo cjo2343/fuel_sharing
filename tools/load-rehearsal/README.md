@@ -4,17 +4,20 @@ A controlled, ~100-user load rehearsal for GoVehlo/VehloShare, run **before
 TestFlight** against a **dedicated throwaway Supabase project** the operator
 creates in the EU — **never against production**.
 
-Three plain-Node scripts (no npm packages, no k6):
+Four plain-Node scripts (no npm packages, no k6):
 
 | Step | Script | npm script | What it does |
 |---|---|---|---|
 | 1 | `schema-apply.mjs` | `npm run load:schema` | Applies `supabase-schema.sql` to the throwaway project (also validates the fresh install). Run **once** per project. |
-| 2 | `seed.mjs` | `npm run load:seed` | Creates ~100 auth users + ~20 workspaces of synthetic Danish fixture data through the real production RPCs. |
+| 2 | `seed.mjs` | `npm run load:seed` | Creates ~100 auth users + ~20 workspaces of synthetic Danish fixture data through the real production RPCs. `--aged` adds one aged workspace. |
 | 3 | `load.mjs` | `npm run load:run` | Drives concurrent virtual users against the app's authenticated hot paths; also has an RLS tenant-isolation probe. |
+| — | `aged-local.mjs` | `npm run load:aged` | **Local, no Supabase project** (GV-438): seeds ONE aged workspace on a disposable Postgres 17 and measures how the unbounded reads scale with history. See [Aged-workspace scaling](#aged-workspace-scaling-gv-438). |
 
-These are **manual tooling** — they need a live project and are deliberately
+Steps 1–3 are **manual tooling** — they need a live project and are deliberately
 **not** wired into `npm run validate` or CI. Live execution is done **with the
-operator** once the throwaway project exists.
+operator** once the throwaway project exists. `load:aged` needs only Docker, but
+it is not in `validate` either: it takes ~90 s and it is an investigation tool,
+not a per-commit gate.
 
 ---
 
@@ -100,7 +103,16 @@ npm run load:seed -- --env ~/govehlo-rehearsal.env --seed 42 --workspaces 20
 
 Flags: `--seed N` (default 42, deterministic), `--workspaces N` (default 20),
 `--concurrency N` (default 4), `--email-domain <domain>` (default
-`rehearsal.vehloshare.test`), `--dry-run` (build + print without any network).
+`rehearsal.vehloshare.test`), `--dry-run` (build + print without any network),
+`--aged` (append one aged workspace; knobs `--aged-members`, `--aged-periods`,
+`--aged-trips`, `--aged-fuel`, `--aged-messages`).
+
+**Sign-in budget.** Supabase Auth allows ~30 sign-ins per 5 minutes per IP
+regardless of the dashboard setting (GVM-533 finding T4 — raising it to 300 and
+restarting the project changed nothing). Each workspace costs one sign-in per
+member; the aged workspace costs `--aged-members` sign-ins in total, because its
+thousands of entries ride on tokens already held. Plan the run around ~30 sign-ins
+per five minutes and resume rather than fight the limit.
 
 **Seeding strategy — which write path per object:**
 
@@ -110,7 +122,18 @@ Flags: `--seed N` (default 42, deterministic), `--workspaces N` (default 20),
 | Workspace creation | **Production flow** — owner signs in (password grant) and calls `create_private_ledger_workspace`. |
 | Memberships | **Production flow** — each member signs in and calls `redeem_ledger_invite` with the owner's join code (exactly like onboarding). |
 | Trips, fuel, bookings, expenses, recurring, messages | **Production flow** — the acting member calls the same transactional RPCs the app uses. |
-| Closed periods | **Production flow** — `calculate_period_settlement` (server) → build the matching snapshot → `close_settlement_period`. |
+| Closed periods | **Production flow** — `calculate_period_settlement` (server) → build the matching snapshot → **request every outstanding pair at its current amount** (`upsert_settlement_request_status`) → `close_settlement_period`. |
+
+**The request step is not optional (GV-438).** `close_settlement_period` raises
+42501 — *"All settlements must be requested at their current amounts before this
+period can be closed"* — unless every pair that moves money already has a
+`settlement_requests` row for the period, in a requested-or-later status, at
+exactly the snapshot amount. Migration 117's trigger independently recomputes that
+amount server-side, so it must match to the cent. `buildCloseProgram()`
+(`lib/fixtures.mjs`) is the single description of the sequence and both the hosted
+seeder and the local harness walk it; the unit tests pin the ordering in both.
+Before this fix the seeder reported `periods closed: 0` on every run — the GVM-533
+rehearsal's T2 finding.
 
 No service-role table inserts were needed for domain data — everything except
 auth users goes through the real RPCs, so RLS + business rules are exercised end
@@ -172,6 +195,42 @@ lock the mirror (labels, filters, limits, the event-type exclusion).
 
 ---
 
+## Aged-workspace scaling (GV-438)
+
+```sh
+npm run load:aged                      # ~90 s: boot, seed, measure, probe indexes
+npm run load:aged -- --dry-run         # the fixture + the exact SQL, no Docker
+npm run load:aged -- --aged-periods 24 --aged-trips 300 --iters 40 --out /tmp/ex3.json
+```
+
+Exercise 1 (GVM-533) proved throughput but only ever held ~10 trips and zero closed
+periods per workspace, so it could not answer GVM-535's question: the gateway's
+workspace load is a fan-out of unbounded selects, and the feed and history reads
+grow with **time**. `aged-local.mjs` answers it locally:
+
+1. boots the canonical disposable Postgres 17 and applies `supabase-schema.sql`
+   (a fresh-install validation in passing);
+2. seeds a few small workspaces plus ONE aged workspace — 2,400 trips, ~3,000
+   `ledger_events`, 1,800 messages, 11 closed periods — through the same RPCs,
+   impersonating members with `request.jwt.claims` the way
+   `tools/test-functional-smoke.sh` does;
+3. measures the gateway's reads **as role `authenticated`, so RLS is included**, at
+   a checkpoint per closed period, and again at the end with capped variants;
+4. EXPLAINs the interesting plans and then creates **candidate indexes inside the
+   container only** and re-measures, so "would an index help?" is answered with a
+   number instead of an opinion.
+
+It never touches `supabase/migrations/` or `supabase-schema.sql`; any index it
+likes is a PROPOSAL in `docs/operations/load-rehearsal-evidence.md`. The reads it
+runs are translated from `lib/hotpaths.mjs` by `lib/hotpaths-sql.mjs`, so they stay
+the mirror of the mobile gateway rather than a second copy of it — the translator
+throws on any filter shape it does not recognise rather than measuring something
+subtly different.
+
+Numbers are **server-side execution time**: no PostgREST, no network, so they are
+not comparable with the hosted run's end-to-end latency. The scaling curve is the
+evidence. Results: `docs/operations/load-rehearsal-evidence.md`.
+
 ## Dry runs (no network)
 
 Both `seed` and `load` support `--dry-run`, which builds the fixture plan and
@@ -180,16 +239,20 @@ reviewing the request shapes and the deterministic identities before a live run.
 
 ```sh
 npm run load:seed -- --dry-run --seed 42 --workspaces 20
+npm run load:seed -- --dry-run --aged
 npm run load:run  -- --dry-run --vus 20 --mix mixed
 npm run load:run  -- --dry-run --rls-probe
+npm run load:aged -- --dry-run
 ```
 
 ---
 
 ## Tests
 
-Pure-logic unit tests (env parsing, prod-ref guard, deterministic fixtures,
-settlement-close math, hot-path mirror) — dependency-free, no Docker, no network:
+Pure-logic unit tests (env parsing, prod-ref guard, deterministic fixtures, the
+aged profile, the settlement-close math AND its request-then-close ordering, the
+PostgREST→SQL translation, hot-path shape) — dependency-free, no Docker, no
+network. Wired into `npm run validate`:
 
 ```sh
 npm run test:load-rehearsal
