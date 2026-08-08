@@ -124,7 +124,15 @@ function buildPeriodEntries(rng, memberCount, startOdo, dayBase) {
 }
 
 // Build the full deterministic plan.
-export function buildFixturePlan({ seed = 42, workspaces = 20, emailDomain = DEFAULT_EMAIL_DOMAIN } = {}) {
+//
+// `aged` (GV-438) appends ONE aged workspace after the small ones: years of
+// history, thousands of trips/messages and SEVERAL closed periods, so the reads
+// that grow over time (activity feed, trips, history) can be measured against
+// something a launch-day workspace will only look like in a year. It is APPENDED
+// with its own PRNG stream and its users are appended after the flat pool, so
+// turning it on leaves every small workspace and every existing user index
+// byte-identical (the determinism tests pin this).
+export function buildFixturePlan({ seed = 42, workspaces = 20, emailDomain = DEFAULT_EMAIL_DOMAIN, aged = null } = {}) {
   const rng = makeRng(seed);
 
   // Workspace sizes 2–8 (a small shared-car group).
@@ -182,10 +190,13 @@ export function buildFixturePlan({ seed = 42, workspaces = 20, emailDomain = DEF
       nextDueDate: isoDateMinusDays(ANCHOR_ISO, -rng.int(1, 25)), // future due date
     }));
 
-    // A few bookings + chat messages for feed/realtime realism.
-    const bookings = Array.from({ length: rng.int(1, 4) }, () => {
+    // A few bookings + chat messages for feed/realtime realism. Booking days are
+    // DISTINCT: prevent_overlapping_car_bookings rejects a second booking on a day
+    // already taken, and two draws landing on the same day is exactly the kind of
+    // fixture defect that shows up as an unexplained seeding warning.
+    const bookingDays = rng.sample(Array.from({ length: 20 }, (_, i) => i + 1), rng.int(1, 4));
+    const bookings = bookingDays.map((dayOffset) => {
       const memberSlot = rng.int(0, size - 1);
-      const dayOffset = rng.int(1, 20);
       return {
         memberSlot,
         startAt: isoTsPlus(ANCHOR_ISO, dayOffset, 9),
@@ -218,7 +229,193 @@ export function buildFixturePlan({ seed = 42, workspaces = 20, emailDomain = DEF
     });
   }
 
-  return { seed, emailDomain, totalUsers, workspaceCount: workspaces, users, workspaces: workspacePlans };
+  if (aged) {
+    const agedWs = buildAgedWorkspacePlan({
+      seed,
+      emailDomain,
+      workspaceIndex: workspaces,
+      userIndexOffset: users.length,
+      ...(aged === true ? {} : aged),
+    });
+    users.push(...agedWs.users);
+    workspacePlans.push(agedWs.workspace);
+  }
+
+  return {
+    seed,
+    emailDomain,
+    totalUsers: users.length,
+    workspaceCount: workspacePlans.length,
+    users,
+    workspaces: workspacePlans,
+    aged: aged ? workspacePlans[workspacePlans.length - 1].name : null,
+  };
+}
+
+// ── Aged workspace (GV-438) ──────────────────────────────────────────────────
+// The GVM-533 rehearsal only ever held ~10 trips and ZERO closed periods per
+// workspace, so it could not answer GVM-535's question: at what history size do
+// the unbounded reads start to hurt? These defaults produce roughly two years of
+// a busy shared car — thousands of trips, thousands of messages, and a closed
+// period per month — which is what the exercise-2 measurements run against.
+export const AGED_DEFAULTS = {
+  members: 6,
+  periods: 12, // 11 closed + 1 still open
+  tripsPerPeriod: 200,
+  fuelPerPeriod: 30,
+  expensesPerPeriod: 4,
+  messagesPerPeriod: 150,
+  bookingsPerPeriod: 6,
+};
+
+// One aged workspace plan, shaped exactly like a small-workspace plan (so seed.mjs
+// walks it with the same loop) plus `aged: true` and per-period `messages`.
+export function buildAgedWorkspacePlan({
+  seed = 42,
+  emailDomain = DEFAULT_EMAIL_DOMAIN,
+  workspaceIndex = 0,
+  userIndexOffset = 0,
+  ...knobs
+} = {}) {
+  const cfg = { ...AGED_DEFAULTS, ...knobs };
+  // A separate stream (seed ^ a constant) so the aged workspace never perturbs
+  // the small-workspace plans built off the main stream.
+  const rng = makeRng((seed ^ 0x9e3779b9) >>> 0);
+
+  const users = [];
+  for (let k = 0; k < cfg.members; k++) {
+    const index = userIndexOffset + k;
+    users.push({
+      index,
+      name: `${rng.pick(FIRST_NAMES)} ${rng.pick(LAST_NAMES)}`,
+      email: userEmail(index, emailDomain),
+      password: userPassword(index, seed),
+    });
+  }
+  const members = users.map((u, slot) => ({
+    slot,
+    userIndex: u.index,
+    name: u.name,
+    email: u.email,
+    password: u.password,
+  }));
+
+  const periods = [];
+  let odo = 120000 + rng.int(0, 40000);
+  for (let p = 0; p < cfg.periods; p++) {
+    // Oldest period first; each period is one ~30-day month further back.
+    const dayBase = (cfg.periods - p) * 30;
+    const entries = buildAgedPeriodEntries(rng, cfg, odo, dayBase);
+    odo = entries.endOdo;
+    periods.push({
+      // Every period but the last is closed through the real close sequence
+      // (request every outstanding settlement at its current amount, then close).
+      closeAfter: p < cfg.periods - 1,
+      ...entries,
+    });
+  }
+
+  const recurring = RECURRING.map((r) => ({
+    ...r,
+    nextDueDate: isoDateMinusDays(ANCHOR_ISO, -rng.int(1, 25)),
+  }));
+
+  // One booking every few days going back through the history, never two on the
+  // same day (prevent_overlapping_car_bookings).
+  const bookings = Array.from({ length: cfg.bookingsPerPeriod * cfg.periods }, (_, b) => {
+    const memberSlot = rng.int(0, cfg.members - 1);
+    const dayOffset = 20 - b * 4;
+    return {
+      memberSlot,
+      startAt: isoTsPlus(ANCHOR_ISO, dayOffset, 9),
+      endAt: isoTsPlus(ANCHOR_ISO, dayOffset, 17),
+      purpose: rng.pick(BOOKING_PURPOSES),
+    };
+  });
+
+  return {
+    users,
+    workspace: {
+      workspaceIndex,
+      aged: true,
+      name: `Delebil Aldret ${String(workspaceIndex + 1).padStart(2, "0")}`,
+      city: "Aarhus",
+      memberCount: cfg.members,
+      members,
+      periods,
+      recurring,
+      bookings,
+      messages: [], // aged chat is per-period so it interleaves with the history
+    },
+  };
+}
+
+// Like buildPeriodEntries but with explicit counts (not rng 4–12) and its own
+// chat, because the aged workspace's whole point is volume.
+function buildAgedPeriodEntries(rng, cfg, startOdo, dayBase) {
+  const slots = Array.from({ length: cfg.members }, (_, i) => i);
+  const trips = [];
+  let odo = startOdo;
+  for (let t = 0; t < cfg.tripsPerPeriod; t++) {
+    const distance = rng.int(6, 140);
+    const startKm = odo;
+    const endKm = odo + distance;
+    odo = endKm;
+    const driverSlot = rng.pick(slots);
+    const others = rng.sample(
+      slots.filter((s) => s !== driverSlot),
+      rng.int(0, cfg.members - 1),
+    );
+    trips.push({
+      driverSlot,
+      participantSlots: [driverSlot, ...others],
+      startKm,
+      endKm,
+      tripDate: isoDateMinusDays(ANCHOR_ISO, dayBase + rng.int(0, 29)),
+      note: rng.pick(TRIP_NOTES),
+    });
+  }
+
+  const fuel = [];
+  let fuelOdo = startOdo;
+  const fuelStep = Math.max(1, Math.floor((odo - startOdo) / (cfg.fuelPerPeriod + 1)));
+  for (let f = 0; f < cfg.fuelPerPeriod; f++) {
+    fuelOdo += fuelStep;
+    const liters = rng.int(20, 55) + rng.int(0, 9) / 10;
+    const pricePerLiter = 12 + rng.int(0, 40) / 10;
+    fuel.push({
+      payerSlot: rng.pick(slots),
+      amount: Math.round(liters * pricePerLiter * 100) / 100,
+      liters: Math.round(liters * 100) / 100,
+      pricePerLiter: Math.round(pricePerLiter * 100) / 100,
+      odometer: Math.min(fuelOdo, odo),
+      stationBrand: rng.pick(STATION_BRANDS),
+      fullTank: rng.rand() < 0.6,
+      paymentDate: isoDateMinusDays(ANCHOR_ISO, dayBase + rng.int(0, 29)),
+    });
+  }
+
+  const expenses = Array.from({ length: cfg.expensesPerPeriod }, () => ({
+    category: rng.pick(EXPENSE_CATEGORIES),
+    description: "Delt udgift",
+    amountDkk: rng.int(50, 600),
+    expenseDate: isoDateMinusDays(ANCHOR_ISO, dayBase + rng.int(0, 29)),
+    paidBySlot: rng.pick(slots),
+  }));
+
+  const messages = Array.from({ length: cfg.messagesPerPeriod }, () => ({
+    senderSlot: rng.int(0, cfg.members - 1),
+    body: rng.pick([
+      "Husk at tanke op inden weekenden",
+      "Jeg har booket bilen på lørdag",
+      "Tak for turen!",
+      "Hvem kører til mødet i morgen?",
+      "Bilen står ladt op",
+      "Jeg har lagt kvitteringen ind",
+    ]),
+  }));
+
+  return { trips, fuel, expenses, messages, endOdo: odo };
 }
 
 // ── Settlement close support ─────────────────────────────────────────────────
@@ -277,6 +474,72 @@ export function buildCloseSnapshot(computed) {
     totalPaid: computed.totalPaid ?? 0,
     people,
     settlements: computeSettlementsFromNets(people),
+  };
+}
+
+// ── Close program: request every settlement, THEN close (GV-438) ─────────────
+//
+// The GVM-533 rehearsal's close step always failed with 42501 — "All settlements
+// must be requested at their current amounts before this period can be closed."
+// That gate (migration 141's close_settlement_period_unlocked, off the 117/098
+// lineage) walks the snapshot's settlements and, unless the workspace has
+// rule_require_requests_before_close explicitly false, demands for EACH pair that
+// moves money a settlement_requests row for the period with
+//
+//   status not in ('open','cancelled')  AND  amount = round(<snapshot amount>, 2)
+//
+// so a fixture cannot fake period history by skipping the request step. The
+// amount must be exact in both directions: enforce_settlement_request_exact_amount
+// (migration 117) recomputes the pair amount server-side with the same greedy
+// largest-debtor/largest-creditor pairing computeSettlementsFromNets uses and
+// rejects any request that disagrees, so the snapshot amount and the requested
+// amount are necessarily the same number.
+//
+// buildCloseProgram is that sequence as data: the snapshot to close with, and the
+// request payloads to send FIRST, in order. Both the HTTP seeder and the local
+// aged harness consume it, so there is exactly one description of the sequence.
+export const SETTLEMENT_REQUEST_RPC = "upsert_settlement_request_status";
+export const CLOSE_PERIOD_RPC = "close_settlement_period";
+
+export function settlementRequestArgs({ ledgerId, periodId, settlement }) {
+  return {
+    target_ledger_id: ledgerId,
+    target_open_period_id: periodId,
+    payer_member_id: settlement.fromId,
+    recipient_member_id: settlement.toId,
+    amount_value: settlement.amount,
+    currency_value: settlement.currency ?? "DKK",
+    next_status: "requested",
+    // Server-side ignored since GV-259 (the RPC derives the valid pairs itself);
+    // sent as the client sends it.
+    current_pair_keys: [],
+    p_note: null,
+  };
+}
+
+export function closePeriodArgs({ ledgerId, periodId, snapshot }) {
+  return {
+    target_ledger_id: ledgerId,
+    target_period_id: periodId,
+    period_snapshot: snapshot,
+  };
+}
+
+// { snapshot, requests[], close } — requests MUST all be sent (and succeed)
+// before `close`, which is the whole point of this helper.
+export function buildCloseProgram(computed, { ledgerId, periodId }) {
+  const snapshot = buildCloseSnapshot(computed);
+  const requests = snapshot.settlements
+    .filter((s) => Number(s.amount) > 0)
+    .map((settlement) => ({
+      rpc: SETTLEMENT_REQUEST_RPC,
+      settlement,
+      args: settlementRequestArgs({ ledgerId, periodId, settlement }),
+    }));
+  return {
+    snapshot,
+    requests,
+    close: { rpc: CLOSE_PERIOD_RPC, args: closePeriodArgs({ ledgerId, periodId, snapshot }) },
   };
 }
 

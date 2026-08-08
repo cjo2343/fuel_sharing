@@ -35,6 +35,7 @@
     "load:schema": "node tools/load-rehearsal/schema-apply.mjs",
     "load:seed": "node tools/load-rehearsal/seed.mjs",
     "load:run": "node tools/load-rehearsal/load.mjs",
+    "load:aged": "node tools/load-rehearsal/aged-local.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
