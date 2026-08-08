@@ -296,16 +296,17 @@ insert into public.ledger_members (id, ledger_id, name, email, role, is_active) 
 insert into public.settlement_periods (id, ledger_id, status, label, opened_at)
 values ('${PERIOD}', '${L}', 'open', 'Open', now() - interval '60 days');
 
--- Nine bookings for Bo, one per behavioural case, each on its own day so nothing in
--- the fixture depends on booking-window rules. Day N at 09:00Z–13:00Z. (The last two
--- belong to the GVM-520 mirroring section; the id template is single-digit, so a
--- tenth needs a wider one rather than another row here.)
+-- Nine bookings for Bo, one per behavioural case, each on its own PAST day (migration
+-- 191 refuses a handover on a booking that has not started, so the fixture must sit
+-- in the past; day order is preserved — booking 1 is the oldest). N days ago at
+-- 09:00Z–13:00Z. (The last two belong to the GVM-520 mirroring section; the id
+-- template is single-digit, so a tenth needs a wider one rather than another row here.)
 insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id)
 select
   ('30000000-0000-0000-0000-00000000000' || n)::uuid,
   '${L}', '${BO}',
-  date_trunc('day', now()) + (n || ' day')::interval + interval '9 hour',
-  date_trunc('day', now()) + (n || ' day')::interval + interval '13 hour',
+  date_trunc('day', now()) - ((10 - n) || ' day')::interval + interval '9 hour',
+  date_trunc('day', now()) - ((10 - n) || ' day')::interval + interval '13 hour',
   '${BO}'
 from generate_series(1, 9) as n;
 
@@ -719,6 +720,22 @@ pin("a booking from another workspace cannot be handed over through this ledger 
     "22023",
   );
   assert.equal(handoverCount("40000000-0000-0000-0000-000000000001"), 0);
+});
+
+pin("a booking that has not STARTED takes no handover — even from its own member (GVM-561)", () => {
+  // Migration 191: nothing has been driven, so there is nothing to hand over — and with
+  // 189's clamp a premature handover would carry observed_at = now(), the workspace's
+  // LATEST, able to re-anchor the fuel model. The client has hidden the affordance since
+  // GVM-557; this pins that the server refuses it too, so a modified client cannot
+  // manufacture the workspace's newest observation from a booking still in the future.
+  raw(`insert into public.car_bookings (id, ledger_id, member_id, start_at, end_at, created_by_member_id)
+       values ('31000000-0000-0000-0000-000000000001', '${L}', '${BO}',
+         now() + interval '2 day', now() + interval '2 day' + interval '4 hour', '${BO}');`);
+  assert.equal(
+    saveHandover({ booking: "31000000-0000-0000-0000-000000000001", parking: "x", actor: "bo@test.dk" }),
+    "22023",
+  );
+  assert.equal(handoverCount("31000000-0000-0000-0000-000000000001"), 0);
 });
 
 pin("the trip-driver branch: after the booking is REASSIGNED, the person who drove can still write", () => {
