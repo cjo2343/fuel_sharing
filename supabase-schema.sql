@@ -49972,3 +49972,92 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+
+-- ── Migration 192: trip_participants read policy answers from the row itself (GV-465) ─────
+-- ledger_id denormalized onto trip_participants (the migration 138/169 pattern) so
+-- the read policy is is_ledger_member(trip_participants.ledger_id) — per-row column
+-- check, no join, no platform-wide trips scan. Stamped by a BEFORE trigger from the
+-- trip row; writers unchanged.
+alter table public.trip_participants
+  add column if not exists ledger_id text references public.ledgers(id) on delete cascade;
+
+update public.trip_participants
+   set ledger_id = t.ledger_id
+  from public.trips t
+ where t.id = trip_participants.trip_id
+   and trip_participants.ledger_id is distinct from t.ledger_id;
+
+alter table public.trip_participants
+  alter column ledger_id set not null;
+
+create or replace function public.set_trip_participant_ledger_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  select t.ledger_id into new.ledger_id
+    from public.trips t
+   where t.id = new.trip_id;
+  if new.ledger_id is null then
+    raise exception 'Trip not found for participant row' using errcode = '23503';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.set_trip_participant_ledger_id() from public;
+revoke execute on function public.set_trip_participant_ledger_id() from anon;
+
+drop trigger if exists set_trip_participant_ledger_id_trg on public.trip_participants;
+create trigger set_trip_participant_ledger_id_trg
+  before insert or update on public.trip_participants
+  for each row
+  execute function public.set_trip_participant_ledger_id();
+
+do $$
+declare
+  v_policy record;
+begin
+  for v_policy in
+    select pol.policyname
+      from pg_policies pol
+     where pol.schemaname = 'public'
+       and pol.tablename = 'trip_participants'
+       and pol.cmd = 'SELECT'
+  loop
+    execute format('drop policy %I on public.trip_participants', v_policy.policyname);
+  end loop;
+end;
+$$;
+
+drop policy if exists "Ledger members can read trip participants" on public.trip_participants;
+create policy "Ledger members can read trip participants" on public.trip_participants
+  for select to authenticated
+  using (public.is_ledger_member(trip_participants.ledger_id));
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+    from pg_policies pol
+   where pol.schemaname = 'public'
+     and pol.tablename = 'trip_participants'
+     and pol.cmd = 'SELECT';
+  if v_count <> 1 then
+    raise exception 'expected exactly 1 SELECT policy on trip_participants, found %', v_count;
+  end if;
+end;
+$$;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '192_trip_participants_read_policy_indexable',
+  'trip_participants read policy answers from the row itself (GV-465, measured in GV-438''s load exercise 2). The old policy''s EXISTS over trips was de-correlated by the planner into a hashed SubPlan that Seq Scanned the WHOLE trips table evaluating is_ledger_member per row — ~60 ms p95 at 2,425 platform trips, scaling with the PLATFORM''s trips rather than the workspace''s, unaffected by indexes or shorter id lists. Fix = the migration 138/169 pattern: ledger_id denormalized onto trip_participants so the policy is is_ledger_member(trip_participants.ledger_id) — the same per-row cost the trips read pays, no join, no platform coupling. A helper-function shape (can_manage_trip style) was measured first and rejected: it killed the platform scan but kept ~80 us/row of function overhead, leaving the 703-row read at 58 ms. The column is stamped by BEFORE INSERT OR UPDATE trigger set_trip_participant_ledger_id() (SECURITY DEFINER, execute revoked from public/anon) that re-derives ledger_id from trips on every write — writers unchanged (upsert_trip_with_participants still inserts (trip_id, member_id)), direct UPDATEs cannot point a row at a foreign ledger, and existing rows are backfilled before NOT NULL. WHO SEES WHAT IS UNCHANGED: a trip''s ledger never changes, so the new predicate is pointwise identical to the old EXISTS; same policy name (pinned by the schema-drift healthcheck), same to-authenticated scope; write policies keep can_manage_trip. SELECT policies dropped via a dynamic pg_policies sweep (migration 103 lesson) before the canonical recreate, then the migration asserts exactly one SELECT policy remains. Measured with the GV-438 aged harness: read:participants p95 58.49 ms before; after in the PR. No new event_type (nothing for GV-413); no client-callable RPC; GDPR-neutral (ledger_id is a workspace identifier already present on every sibling table).'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();

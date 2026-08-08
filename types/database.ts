@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 191 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 192 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1591,20 +1591,30 @@ export type Database = {
       trip_participants: {
         Row: {
           created_at: string
+          ledger_id: string
           member_id: string
           trip_id: string
         }
         Insert: {
           created_at?: string
+          ledger_id: string
           member_id: string
           trip_id: string
         }
         Update: {
           created_at?: string
+          ledger_id?: string
           member_id?: string
           trip_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trip_participants_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trip_participants_member_id_fkey"
             columns: ["member_id"]
