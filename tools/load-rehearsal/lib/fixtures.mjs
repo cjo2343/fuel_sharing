@@ -190,10 +190,13 @@ export function buildFixturePlan({ seed = 42, workspaces = 20, emailDomain = DEF
       nextDueDate: isoDateMinusDays(ANCHOR_ISO, -rng.int(1, 25)), // future due date
     }));
 
-    // A few bookings + chat messages for feed/realtime realism.
-    const bookings = Array.from({ length: rng.int(1, 4) }, () => {
+    // A few bookings + chat messages for feed/realtime realism. Booking days are
+    // DISTINCT: prevent_overlapping_car_bookings rejects a second booking on a day
+    // already taken, and two draws landing on the same day is exactly the kind of
+    // fixture defect that shows up as an unexplained seeding warning.
+    const bookingDays = rng.sample(Array.from({ length: 20 }, (_, i) => i + 1), rng.int(1, 4));
+    const bookings = bookingDays.map((dayOffset) => {
       const memberSlot = rng.int(0, size - 1);
-      const dayOffset = rng.int(1, 20);
       return {
         memberSlot,
         startAt: isoTsPlus(ANCHOR_ISO, dayOffset, 9),
@@ -317,9 +320,11 @@ export function buildAgedWorkspacePlan({
     nextDueDate: isoDateMinusDays(ANCHOR_ISO, -rng.int(1, 25)),
   }));
 
-  const bookings = Array.from({ length: cfg.bookingsPerPeriod * cfg.periods }, () => {
+  // One booking every few days going back through the history, never two on the
+  // same day (prevent_overlapping_car_bookings).
+  const bookings = Array.from({ length: cfg.bookingsPerPeriod * cfg.periods }, (_, b) => {
     const memberSlot = rng.int(0, cfg.members - 1);
-    const dayOffset = rng.int(-600, 20);
+    const dayOffset = 20 - b * 4;
     return {
       memberSlot,
       startAt: isoTsPlus(ANCHOR_ISO, dayOffset, 9),
