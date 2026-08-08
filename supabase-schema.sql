@@ -49536,3 +49536,18 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+
+-- ── Migration 190: trips (ledger_id, trip_date desc) partial index (GV-438) ──
+create index if not exists trips_ledger_trip_date_idx
+  on public.trips (ledger_id, trip_date desc)
+  where deleted_at is null;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '190_trips_ledger_trip_date_idx',
+  'Index trips by (ledger_id, trip_date desc) where deleted_at is null (GV-438). Load exercise 2 aged a workspace to 2.400 trips and showed the trips read degrading linearly (2,66 -> 34,14 ms, Seq Scan + top-N sort; a LIMIT does not help because the sort happens first) while the feed stayed index-served and flat. This partial index makes the workspace trips fetch an index range scan in client order: measured 27,93 -> 6,08 ms on the full aged fetch and 1,66 ms with a fetch cap (GVM-535). Partial because every hot path filters deleted_at is null (trips_deleted_at_idx precedent). No RPC/table/column/RLS change, header-stamp-only for types; no ledger_event, nothing for GV-413; GDPR: an index stores no new data. Evidence: docs/operations/load-rehearsal-evidence.md, load exercise 2.'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
