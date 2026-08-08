@@ -62,7 +62,6 @@ import {
 import {
   buildFixturePlan,
   buildCloseProgram,
-  buildCloseSnapshot,
   AGED_DEFAULTS,
   tripArgs,
   fuelArgs,

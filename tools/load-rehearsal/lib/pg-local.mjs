@@ -22,13 +22,12 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  IMAGE,
   startPostgres,
   removeContainer,
   createDbWithPrelude,
 } from "../../lib/replay-container.mjs";
 
-export { IMAGE, removeContainer };
+export { removeContainer };
 
 // createDbWithPrelude() already applies the shared replay PRELUDE (roles,
 // auth.jwt()/auth.uid(), pgcrypto, the realtime publication). Two things it does
@@ -66,7 +65,7 @@ create table if not exists public.load_rehearsal_members (
 );
 `;
 
-export function psqlRun(container, db, sql, { timeoutMs = 15 * 60 * 1000 } = {}) {
+function psqlRun(container, db, sql, { timeoutMs = 15 * 60 * 1000 } = {}) {
   return spawnSync(
     "docker",
     ["exec", "-i", container, "psql", "-v", "ON_ERROR_STOP=1", "-q", "-U", "postgres", "-d", db, "-f", "-"],
@@ -109,18 +108,11 @@ export function queryJson(container, db, sql, what = "query") {
 }
 
 // ── SQL literal helpers ──────────────────────────────────────────────────────
-// Fixture values only (synthetic Danish names, generated ids) — but everything
-// crossing into SQL still goes through these two.
 
 // Dollar-quote a JSON payload. JSON can never contain the tag, so this is safe and
 // keeps multi-KB plan documents readable in a failure dump.
 export function jsonLiteral(value) {
   return `$loadjson$${JSON.stringify(value)}$loadjson$`;
-}
-
-export function textLiteral(value) {
-  if (value === null || value === undefined) return "null";
-  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 // The claims a member's requests carry. Mirrors a real Supabase JWT closely enough
