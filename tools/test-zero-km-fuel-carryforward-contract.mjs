@@ -51,7 +51,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -288,10 +288,7 @@ if (!dockerUp) {
   // The pre-194 database: migrations 001–193 replayed in order. This is the ONLY way to
   // say "the totalKm > 0 answer did not change" as a measurement rather than a belief.
   {
-    const files = readFileSync(join(ROOT, "tools", "test-migrations.mjs"), "utf8");
-    void files;
-    const list = execFileSync("ls", [join(ROOT, "supabase", "migrations")], { encoding: "utf8" })
-      .split("\n")
+    const list = readdirSync(join(ROOT, "supabase", "migrations"))
       .filter((f) => f.endsWith(".sql"))
       .sort()
       .filter((f) => Number(f.slice(0, 3)) <= 193);
