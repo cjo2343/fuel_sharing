@@ -109,6 +109,22 @@ const scripts = [
   // semantics with the row byte-identical after a refusal, and that handover_created is
   // written once on create and never on an edit. Warns and exits 0 without Docker.
   "node tools/test-booking-handover-contract.mjs",
+  // Anti-drift contract for the handover odometer plausibility guard and the audited admin
+  // recompute (GV-475, migration 195). Docker for the same reason as the lines above, plus
+  // two specific to this pair. First, the guard's central promise is a NEGATIVE — that a
+  // TRUE reading is never refused — and the two cases where that is easy to break are
+  // exactly the ones a regex cannot see: a workspace with no odometer history at all (no
+  // relative ceiling applies) and one whose only anchor is migration 092's tank baseline
+  // (greatest() over BOTH ledger columns, with Postgres' null-skipping semantics doing the
+  // work), so both are exercised against a real Postgres at their boundaries. Second, the
+  // recompute is the ONE place migration 193's monotone mirror is deliberately dropped, and
+  // the property that keeps that honest — an edit-down through the RPC still does NOT lower
+  // the mirror — can only be shown by writing the rows and reading the column back. Also
+  // pins the ordering against GV42O and the membership gate (a rejection boundary must not
+  // double as a mileage oracle), the admin gate from three sides, the unconditional feed
+  // event, and the low-anchor lockout with its documented delete-then-recompute way out.
+  // Warns and exits 0 without Docker; CI's functional-smoke job runs it --strict.
+  "node tools/test-handover-odometer-guard-contract.mjs",
   // Anti-drift contract for the damage log's repair link (GVM-521, migration 166). Docker
   // for the same reason as the five above, plus the one specific to this column:
   // vehicle_repairs.id is unique across every workspace, so the foreign key is satisfied
