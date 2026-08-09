@@ -83,6 +83,7 @@ export const PERSONAS = {
       edit_fuel: 6,
       edit_booking_window: 6,
       delete_trip: 3,
+      save_handover_fat_finger: 1,
       delete_fuel: 3,
       cancel_booking: 2,
       edit_expense: 3,
@@ -101,6 +102,11 @@ export const PERSONAS = {
     weights: {
       create_booking: 10,
       create_overlapping_booking: 3,
+      // Migration 195 (GV-475) made the ten-times odometer a guard, so it belongs in
+      // the default mix like every other hostile action. Until then it was flag-gated
+      // out, because the write succeeded and a default run must not be red for a bug
+      // nobody has fixed. See ACTIONS.save_handover_fat_finger.
+      save_handover_fat_finger: 3,
       complete_booking: 6,
       save_handover: 6,
       edit_booking_window: 3,
@@ -110,6 +116,60 @@ export const PERSONAS = {
       post_message: 2,
     },
   },
+
+  // ── GV-478 Phase B: the sixth persona ──────────────────────────────────────
+  //
+  // Drives the same commute every day and spends part of it underground, in a car
+  // park, or somewhere with one bar of signal. The app keeps working — that is the
+  // point of an offline-first client — so they keep logging, and the writes sit in a
+  // local queue until the phone reconnects and sends the lot.
+  //
+  // WHY THIS IS A PERSONA AND NOT A FLAG. Everything about a queued write is normal
+  // except WHEN it arrives: it carries the timestamp of the moment it was decided, it
+  // arrives after every write the rest of the workspace made in between, and it may
+  // carry a precondition token for a version of the row that no longer exists. Those
+  // three properties together are the bug generator — a late edit landing on a period
+  // that was closed while the phone was in a tunnel — and no scripted test writes
+  // them, because writing them means modelling a queue.
+  //
+  // The mechanics (drawing the offline stretch, holding the queue, flushing it in one
+  // burst, and reading the decision-time `expected_updated_at`) live in run.mjs and
+  // lib/actions.mjs; this object only says WHO does it and HOW OFTEN.
+  offline_commuter: {
+    label: "Offline commuter",
+    danish: "Offline-pendleren",
+    offline: {
+      // Drawn once per PICK — that is, once every time this member is the tick's actor
+      // and is not already offline.
+      chance: 0.22,
+      // THE STRETCH IS COUNTED IN THIS MEMBER'S OWN PICKS, NOT IN TICKS, and the first
+      // version of this got it wrong in a way worth writing down. A member of a
+      // four-workspace, four-member run is the actor roughly once every sixteen ticks,
+      // so a window of "3 to 9 ticks" expired before they were picked again: the
+      // persona went offline, queued nothing, and reconnected to an empty queue. Every
+      // burst was one statement long and the whole feature was decorative. Counted in
+      // picks, a burst is 2–6 DECISIONS by construction, which is what a burst is.
+      minPicks: 2,
+      maxPicks: 6,
+      // A real queue is bounded by the user's patience, not by disk.
+      maxQueued: 8,
+    },
+    weights: {
+      log_trip: 9,
+      log_fuel: 5,
+      log_trip_backdated: 3,
+      // Edits are weighted UP relative to a plain commuter's habits, on purpose: an
+      // edit is the only action that carries a precondition token, and a token read
+      // before the tunnel and sent after it is the whole reason this persona exists.
+      edit_trip: 5,
+      edit_fuel: 4,
+      complete_booking: 2,
+      create_booking: 2,
+      save_handover: 1,
+      post_message: 2,
+      mark_settlement_paid: 1,
+    },
+  },
 };
 
 export const PERSONA_NAMES = Object.keys(PERSONAS);
@@ -117,17 +177,26 @@ export const PERSONA_NAMES = Object.keys(PERSONAS);
 /** Non-admin personas, in a fixed order so a seed picks the same one every replay. */
 export const JOINER_PERSONAS = ["heavy_driver", "forgetful_logger", "serial_editor", "booker"];
 
+/** GV-478: the same list plus the offline commuter, which is the default. `--no-offline`
+ *  falls back to JOINER_PERSONAS, which is also what reproduces a Phase A action stream:
+ *  a sixth name in the pool moves every persona draw after it. */
+export const JOINER_PERSONAS_WITH_OFFLINE = [...JOINER_PERSONAS, "offline_commuter"];
+
 /**
  * Assign personas to a workspace's slots. Slot 0 is always the admin (they created
- * the workspace); the rest are drawn from JOINER_PERSONAS, round-robin-shuffled so a
+ * the workspace); the rest are drawn from `pool`, round-robin-shuffled so a
  * four-member workspace gets four different ones.
+ *
+ * With more personas in the pool than joiner slots, some personas simply do not appear
+ * in a small workspace — the offline commuter included. That is the same rule the other
+ * five have always lived under, and it is why a two-member run is not a coverage claim.
  */
-export function assignPersonas(memberCount, rng) {
+export function assignPersonas(memberCount, rng, { pool: source = JOINER_PERSONAS } = {}) {
   const out = ["admin"];
   const pool = [];
-  while (pool.length < memberCount - 1) pool.push(...JOINER_PERSONAS);
+  while (pool.length < memberCount - 1) pool.push(...source);
   for (let slot = 1; slot < memberCount; slot += 1) {
-    const index = rng.int(0, Math.min(JOINER_PERSONAS.length, pool.length) - 1);
+    const index = rng.int(0, Math.min(source.length, pool.length) - 1);
     out.push(pool.splice(index, 1)[0]);
   }
   return out;

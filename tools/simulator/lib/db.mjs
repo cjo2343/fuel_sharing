@@ -62,9 +62,15 @@ export function sqlBlock(sql) {
 }
 
 export class PsqlSession {
-  constructor(container, database) {
+  constructor(container, database, index = 0) {
     this.container = container;
     this.database = database;
+    /** Which of the run's sessions this is. 0 is the primary — every ordinary action
+     *  and every oracle sweep runs there — and 1..n-1 exist only so a contention
+     *  scenario can hold a lock in one connection while another connection walks into
+     *  it. It is journalled on every line, because "which connection did this" is the
+     *  first question anybody asks about an interleaved run. */
+    this.index = index;
     this.child = null;
     this.counter = 0;
     this.stdoutBuffer = "";
@@ -183,6 +189,70 @@ export class PsqlSession {
   }
 }
 
+/**
+ * N persistent psql sessions against the SAME container (GV-478 Phase B, feature 4).
+ *
+ * WHY MORE THAN ONE. Phase A held exactly one connection, which meant every write the
+ * fuzzer made was serialised by construction — and the whole class of bug that only
+ * exists because two people press a button at the same moment was structurally out of
+ * reach. Two connections make it reachable.
+ *
+ * WHY THEY ARE DRIVEN IN LOCKSTEP AND NEVER CONCURRENTLY. A genuine race is scheduled
+ * by the OS, which means it is not reproducible, which means a finding could not be
+ * handed back as a repro command — and determinism is this tool's product. So the
+ * scenarios in lib/interleave.mjs step the sessions one statement at a time, in an
+ * order the PRNG chose: session B takes a lock and stays in its transaction, session A
+ * walks into it, B resolves. Same collision, deterministic ordering.
+ *
+ * THE HANG THIS WOULD OTHERWISE BE. A single-threaded driver that sends A's blocking
+ * statement and waits has deadlocked itself: B cannot commit, because the driver is
+ * blocked waiting for A. lib/interleave.mjs answers that by running A under
+ * `SET LOCAL lock_timeout`, so a lock conflict resolves as SQLSTATE 55P03 within a few
+ * hundred milliseconds and becomes a classifiable outcome instead of a stall.
+ *
+ * SAFETY is unchanged: every session is another `docker exec` into the container this
+ * process started, addressed by container name. There is still no URL anywhere.
+ */
+export class SessionPool {
+  constructor(container, database, count = 1) {
+    this.sessions = [];
+    for (let i = 0; i < Math.max(1, count); i += 1) {
+      this.sessions.push(new PsqlSession(container, database, i));
+    }
+  }
+
+  /** The session every ordinary action and every oracle sweep uses. */
+  get primary() {
+    return this.sessions[0];
+  }
+
+  get size() {
+    return this.sessions.length;
+  }
+
+  at(index) {
+    return this.sessions[index % this.sessions.length];
+  }
+
+  startAll() {
+    for (const session of this.sessions) session.start();
+  }
+
+  stopAll() {
+    for (const session of this.sessions) session.stop();
+  }
+
+  /** Roll back anything a scenario left open. Called defensively after every scenario
+   *  and once before each oracle sweep: an open transaction on a secondary session
+   *  would hold locks the sweep's own reads could sit behind. */
+  async rollbackSecondaries() {
+    for (const session of this.sessions.slice(1)) {
+      if (session.closed) continue;
+      try { await session.send("rollback;"); } catch { /* nothing was open */ }
+    }
+  }
+}
+
 // ── The scratch surface the harness owns (never part of the product schema) ──
 //
 // sim_exec is the whole reason a fuzzer can run against real RPCs at all: it turns a
@@ -200,6 +270,13 @@ create table if not exists public.sim_members (
   sub uuid,
   email text,
   primary key (ws, slot)
+);
+
+-- GV-478: the mapping stampDeterministicMemberIds() rewrites ledger_members.id through.
+-- Harness scratch, like everything else in this block; never part of the product schema.
+create table if not exists public.sim_member_remap (
+  old_id uuid primary key,
+  new_id uuid not null
 );
 
 create or replace function public.sim_exec(p_claims text, p_sqls text[])
@@ -240,15 +317,25 @@ grant execute on function public.sim_exec(text, text[]) to authenticated;
  * COMMIT still happens when the RPC raised, because sim_exec swallowed the exception
  * and the outer transaction never entered the aborted state.
  */
-export function actionSql(claimsJson, innerStatements) {
+export function actionSql(claimsJson, innerStatements, { lockTimeoutMs = null, leaveOpen = false } = {}) {
   const statements = Array.isArray(innerStatements) ? innerStatements : [innerStatements];
   const array = `array[${statements.map((sql) => sqlBlock(sql)).join(", ")}]::text[]`;
   return [
     "begin;",
     "set local role authenticated;",
+    // GV-478. `lock_timeout` is USERSET and applies to heavyweight locks of every kind,
+    // advisory locks included — which matters, because the RPCs this tool drives
+    // serialise themselves with pg_advisory_xact_lock far more often than with row
+    // locks. Without it the harness's single thread would sit on a lock its own other
+    // session is holding, forever. With it, a collision comes back as 55P03 in a few
+    // hundred milliseconds and lib/actions.mjs classifies it as `contention`.
+    lockTimeoutMs === null ? "" : `set local lock_timeout = '${Number(lockTimeoutMs)}ms';`,
     `select public.sim_exec(${lit(claimsJson)}, ${array});`,
-    "commit;",
-  ].join("\n");
+    // `leaveOpen` is the lock HOLDER's half of a contention scenario: the transaction
+    // stays open, and therefore so do its locks, until the scenario sends commit or
+    // rollback on the same session. Nothing else in the tool leaves a transaction open.
+    leaveOpen ? "" : "commit;",
+  ].filter(Boolean).join("\n");
 }
 
 /** The claims a member's requests carry — the shape a real Supabase JWT presents. */

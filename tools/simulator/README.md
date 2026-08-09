@@ -1,17 +1,25 @@
-# The workspace simulator (GV-471)
+# The workspace simulator (GV-471 · GV-478)
 
 A deterministic, multi-user, multi-workspace fuzzer for the shared VehloShare schema,
 with a live mission-control dashboard.
 
 ```sh
 npm run sim:run -- --workspaces 4 --members 4 --ticks 400 --seed 42 --serve
-npm run test:simulator          # short self-test (clean, determinism, chaos, chaos-parity)
+npm run test:simulator          # short self-test (clean, rhythm, offline, duplicates,
+                                #  contention, determinism, chaos, chaos-parity)
+node tools/simulator/run.mjs --help
 ```
 
 Needs Docker. Nothing else — no npm dependency was added, and none will be.
 
-Since GV-471 Phase A it also **runs govehlo-mobile's own settlement code** against every
-sweep, when the sibling repo is checked out. See [Client parity](#client-parity-phase-a).
+Since GV-471 **Phase A** it also **runs govehlo-mobile's own settlement code** against
+every sweep, when the sibling repo is checked out — see
+[Client parity](#client-parity-phase-a).
+
+Since GV-478 **Phase B** the traffic it generates has a shape: a day and week rhythm, a
+member who goes offline and syncs in a burst, double-tapped requests, and two psql
+sessions colliding on the same lock in deterministic lockstep — see
+[Behavioural realism](#behavioural-realism-phase-b).
 
 ---
 
@@ -41,20 +49,76 @@ A fuzzer that cannot hand back a reproduction is a rumour generator. So:
 
 - Every decision comes from a seeded PRNG (`lib/prng.mjs`, mulberry32). There is no
   `Math.random()` and no `Date.now()` anywhere in a decision path.
-- Domain time comes from a **simulated clock** that advances 1–6 simulated hours per tick,
-  drawn from the same PRNG. Trip dates, booking windows, expense dates and observed_at
-  stamps all derive from it.
+- Domain time comes from a **simulated clock**, drawn from the same PRNG. Since GV-478 it
+  advances on an hour-of-week rhythm rather than a uniform 1–6 hours
+  ([below](#1-day-and-week-rhythm)); `--flat-clock` restores the uniform walk. Trip dates,
+  booking windows, expense dates and observed_at stamps all derive from it.
 - Wall-clock time is used in exactly two places, both outside the decision path and both
   excluded from the determinism digest: the measured RPC latency (`ms`) and the journal
   line's display timestamp (`ts`).
 
 Two runs of the same seed and configuration produce byte-identical action journals. The
-proof is a digest over `(tick, simOffsetMin, workspace, actor, persona, action, outcome,
-guardKind)` printed at the end of every run:
+proof is a digest printed at the end of every run:
 
 ```
-determinism digest (actions only): 9bdd243b7212878a79c235bb9cb73edddd069a8fcc6ea5b371387be5112dbbfc
+determinism digest (actions only): 9a003e41ffd8fbe639d00d44f1e25afbf511116ae422162d7ce8c5a608081292
 ```
+
+**GV-478 changed the tuple**, because a tick stopped being one statement. It is now
+
+```
+(tick, simOffsetMin, workspace, actor, persona, action, outcome, guardKind,
+ dup, session, step)
+```
+
+- `dup` — a duplicate send is a separate journal line with the same tick and action as
+  the first send. Without this field the two would hash identically and a run that
+  double-sent could not be told from one that did not.
+- `session` — which psql session the statement went to. A contention scenario's three
+  sub-steps differ only in `session` and `step`.
+- `step` — the sub-step: `holder` / `contender` / `holder_commit`, `dup:idempotent`,
+  `offline-queue:2`, `offline-flush@188`. The offline ones carry the **decision** tick,
+  so two runs of one seed must agree not merely on what was flushed but on how long each
+  statement had been waiting.
+
+Deliberately **not** in the digest: the simulated weekday and clock label. Both derive
+from `--epoch`, which moves with the day a default run happens; `simOffsetMin` is the
+epoch-independent half and is already in there.
+
+**`--epoch` became load-bearing.** In Phase A the action stream did not depend on it at
+all — every draw was epoch-independent, and the epoch only decided what dates got
+written. The day/week rhythm keys off the simulated **weekday**, so two runs of one seed
+under different epochs now diverge. Every repro command this tool prints has always
+included `--epoch`; since GV-478 a repro without it is not a repro.
+
+### Member ids are deterministic too, and that is not cosmetic
+
+`ledger_members.id` is a `gen_random_uuid()` minted by `redeem_ledger_invite`, so it is
+different on every run of the same seed. That would be harmless if nothing ever ORDERED
+by it — but the settlement greedy does. `computeSettlementsFromNets` breaks an amount tie
+with `a.id.localeCompare(b.id)`, and migration 117's
+`enforce_settlement_request_exact_amount` recomputes the same greedy server-side and
+refuses a request whose amount disagrees. Two members with **equal nets** — which an equal
+split produces constantly — therefore paired up in a different *direction* from one run to
+the next, and every choice downstream followed: which pair `request_settlement` picked,
+whether `mark_settlement_paid` found one belonging to the actor, which member was the
+contender in `settlement_pair_race`.
+
+In Phase A this was a rare flake nobody had hit. Phase B journals an `actorSlot` derived
+from the payer's identity, and `npm run test:simulator` started disagreeing with itself
+about one run in three.
+
+**The fix has to be the ids, not the ordering.** Changing the tie-break on this side would
+simply disagree with the server's copy of the greedy on every tie. So right after seeding
+— workspaces created, every member joined, no domain rows written yet —
+`stampDeterministicMemberIds()` rewrites every `ledger_members.id` to
+`…-9001-<ws><slot>`, derived from the configuration alone. It runs once, in operator
+context, inside one transaction with `session_replication_role = replica`, and discovers
+the referencing columns from `pg_constraint` rather than listing them, so a migration that
+adds a new FK to `ledger_members` cannot silently leave a dangling reference behind.
+
+The side benefit is worth as much as the determinism: a member id in a violation report is
+now the same string on a replay, so two runs can be diffed line by line.
 
 ### The epoch, and the one thing determinism costs
 
@@ -77,6 +141,12 @@ A second consequence: runs longer than roughly 600 ticks push the epoch more tha
 back, at which point `upsert_recurring_expense` starts rejecting next-due dates as out of
 range. Those show up as `validation` guards, not as findings.
 
+GV-478's rhythm clock keeps the same property by construction rather than by luck: it
+computes a **span budget** from the run's length and clamps at it, and the epoch is chosen
+from that same number, so `epoch + budget + the 40-hour booking lead` still lands before
+the real present however a seed drifts. If the clamp ever bites, the tail of the run
+happens at a standstill — odd, but harmless, and far better than crossing the real clock.
+
 ---
 
 ## What a run does
@@ -90,8 +160,10 @@ range. Those show up as `validation` guards, not as findings.
    `create_private_ledger_workspace` → `get_workspace_join_code` → `redeem_ledger_invite`
    per member → `set_tank_baseline` → `update_ledger_settings`.
 4. Runs the tick loop. Each tick: advance the simulated clock, pick a workspace (weighted
-   by member count), pick an actor, draw an action from that actor's persona weights, build
-   one statement, send it, classify the answer, journal it.
+   by member count), pick an actor, then do ONE of three things — flush that actor's
+   offline queue in a burst, run a lockstep contention scenario across two sessions, or
+   draw an action from the actor's rhythm-modulated persona weights, build one statement,
+   send it (possibly twice), classify the answer and journal it.
 5. Every `--oracle-every` ticks (and once at the end), runs the invariant sweep.
 6. Writes `out/journal.jsonl`, `out/violations.json`, and a console report.
 
@@ -101,6 +173,9 @@ range. Those show up as `validation` guards, not as findings.
 |---|---|
 | `ok` | the RPC succeeded |
 | `guard` | the database refused, and refusing was the right answer |
+| `contention` | (Phase B) two sessions collided on a lock and the database serialised them — SQLSTATE 55P03. A success signal, like `guard` |
+| `dup-tolerated` | (Phase B) a re-sent action legitimately created a second row, because that RPC has no idempotency key. A note, never a finding |
+| `queued` | (Phase B) the offline persona decided on this write and has not sent it yet |
 | `error` | the database refused and nothing in the catalogue says it should have |
 
 `guard` is a **success signal**. A run with no guards is a run whose fuzz never reached an
@@ -125,6 +200,14 @@ own admin gates.
 | Glemsom logger | backdated entries, and entries that land after a period was prepared |
 | Serieredigerer | edits and deletes recent entries, and moves booking windows |
 | Bookinggal | bookings, handovers with odometer + fuel readings, completions |
+| Offline-pendleren | (Phase B) decides on writes while out of range and sends the lot on reconnect |
+
+The joiner personas are drawn without replacement, so a four-member workspace gets three
+of the five and **some personas simply do not appear** in a given workspace. That has
+always been true; it matters more now that one of them is a headline feature. A run whose
+report says `offline bursts 0` drew the other four — `--members 5`, more workspaces, or
+another seed fixes it. `npm run test:simulator` pins a seed that draws it in both
+workspaces, precisely so the feature cannot rot unnoticed.
 
 ### Actions
 
@@ -136,10 +219,10 @@ repairs, settlement request / mark-paid / confirm, the full period-close choreog
 baseline, settings, member rename, messages.
 
 Several actions are **hostile on purpose** — `edit_trip_in_closed_period`,
-`create_overlapping_booking`, deleting a fuel log after a settlement was requested, editing
-a booking's end after its handover exists, and passing a stale `expected_updated_at` on one
-edit in five. For those the expected outcome is a specific guard; anything else is a
-finding.
+`create_overlapping_booking`, `save_handover_fat_finger`, deleting a fuel log after a
+settlement was requested, editing a booking's end after its handover exists, and passing a
+stale `expected_updated_at` on one edit in five. For those the expected outcome is a
+specific guard; anything else is a finding.
 
 ---
 
@@ -257,22 +340,46 @@ the database. The run must then report exactly one violation, and it must be
 `client_parity`. Re-applied to that same workspace on every later sweep, so the invariant
 wall does not end green on a run that reported a finding.
 
-### `--fat-finger`
+### The fat finger, and migration 195
 
-Adds `save_handover_fat_finger` to the booker and serial-editor mixes: a handover odometer
-with one extra digit, ten times the plausible reading. It is the commonest odometer mistake
-there is, and it matters here because migration 193 makes `ledgers.max_handover_odometer`
-**monotone** — one fat finger does not merely record a wrong reading, it ratchets the
-workspace's odometer floor and no later correction brings it down.
+`save_handover_fat_finger` is in the booker's and the serial editor's **default** mixes: a
+handover odometer with one extra digit, ten times the plausible reading. It is the
+commonest odometer mistake there is, and it matters here rather than in a form-validation
+test because migration 193 makes `ledgers.max_handover_odometer` **monotone** — one fat
+finger does not merely record a wrong reading, it ratchets the workspace's odometer floor
+and no later correction brings it down.
 
-**Today this write succeeds.** There is no plausibility guard on
-`upsert_booking_handover`, so the outcome is `ok`, the mirror is poisoned by design, and
-parity stays green because the client faithfully reports the poisoned floor — both engines
-are wrong together, which is precisely why a parity check alone cannot catch this class.
-That is why it is behind a flag and out of the default mix: a default run must not be red
-for a bug nobody has fixed. When migration 195's plausibility guard lands the action flips
-to expecting a `guard` outcome and joins the default mix; the exact four-step change is
-written down beside the action in `lib/actions.mjs`.
+Until GV-475 this write **succeeded**, so the action lived behind a `--fat-finger` flag: a
+default run must not be red for a bug nobody has fixed. Migration 195 added the
+plausibility guard — an absolute 2.000.000 km cap and an `anchor + 50.000 km` ceiling,
+where the anchor is `greatest(max_handover_odometer, tank_baseline_odometer)`, both
+raising the same Danish sentence under errcode `GV475` — so the action is now an ordinary
+hostile one, the flag is retired, and `odometer_plausibility` joined the
+expected-rejection catalogue (matched on the **message**, per this tool's rule, not on the
+SQLSTATE alone).
+
+Two details that are easy to get wrong and cost a debugging session each:
+
+- **The fat finger is always typed by the booking's own member.** The plausibility check
+  sits *after* the write gate ("Kun den, der havde bilen, eller en administrator kan gemme
+  overdragelsen"), so a fat finger from anybody else is refused for the wrong reason and
+  the guard this action exists to reach is never exercised. It is also simply what
+  happens: the driver standing at the car types their own reading.
+- **`--chaos` no longer sets `max_handover_odometer = 999999`.** That value was only ever
+  an illustration of the paragraph in `injectChaos` about monotonicity — the oracle never
+  flagged it, by design — and since migration 195 it lifts the workspace's plausibility
+  ceiling past a million, which makes the ten-times odometer a *legitimate* reading. The
+  chaos run started reporting a `guard-missing` finding for a guard that was working
+  perfectly. A self-test must corrupt exactly the thing it claims to corrupt.
+
+The assertion is `mustNotSucceed`, not "expect exactly this guardKind", and the difference
+matters: the plausibility check is the *last* thing `upsert_booking_handover` does, so on a
+given tick the write can legitimately be refused earlier by the membership gate or by the
+GV-421 stale token. What it may never be is **accepted**. A success is reported as a
+`guard-missing` violation rather than left to the oracle, because nothing downstream of a
+poisoned monotone floor is observably wrong: the client faithfully reports the poisoned
+value, both engines agree, and client parity stays green. That is exactly the class a
+parity check cannot catch.
 
 ---
 
@@ -366,6 +473,246 @@ hit it three times: 637,36 kr (open period), 938,20 kr (a **queued** period, so 
 
 ---
 
+## Behavioural realism (Phase B)
+
+Phase A produced *correct* traffic: real RPCs, real personas, real invariants. It did not
+produce *plausible* traffic. The clock ticked a uniform one to six hours, so Tuesday at
+07:40 and Sunday at 03:00 were the same workspace; every write arrived in the order it was
+decided, from one connection, exactly once. Three whole classes of production bug live
+outside that model, and GV-478 is four features that put them inside it.
+
+All four are **on by default**, each has an off switch, and the four together restore
+Phase A's *shape* for an A/B. They do not restore Phase A's digests — migration 195 also
+moved the fat finger into the default mix, and a weight is a weight.
+
+| Flag | Turns off |
+|---|---|
+| `--flat-clock` | the day/week rhythm: back to a uniform 1–6 h tick and unmodulated persona weights |
+| `--no-offline` | the sixth persona and its queue |
+| `--no-dup` | the duplicate send |
+| `--no-interleave` | the contention scenarios |
+| `--sessions N` | how many psql sessions to hold (default 2; `1` turns interleaving off, since one session cannot contend with itself) |
+
+### 1. Day and week rhythm
+
+`lib/rhythm.mjs`, two halves.
+
+**When a tick happens.** `RhythmClock` advances by rejection sampling against an
+hour-of-week intensity curve: draw a step of 20–150 minutes, and keep stepping (30–120
+more) while the hour it lands in is quiet. Nights are crossed in a few large strides (the
+curve is ~0,02 there, so nearly every draw rejects), peaks are entered and lingered in
+(~0,95, so the first draw nearly always accepts). Measured over 60 000 ticks: **34 % of
+actions land in the four peak hours** against 17 % for a uniform walk, and **1 % in
+01–04** against 17 %. The occasional 2 a.m. action survives, because it should — somebody
+does log yesterday's trip from bed.
+
+The mean advance is tuned to **3,7 h**, right next to Phase A's 3,5 h, so a rhythm run
+covers about the same number of calendar days as the flat run it replaces. The clustering
+comes from the rejection, not from the step size. The clock also **clamps** at a span
+budget (`ticks × 3,7 h × 1,15 + one day`) and the epoch is chosen from the same number, so
+the run provably finishes before the real present no matter how a seed drifts — see
+[the epoch section](#the-epoch-and-the-one-thing-determinism-costs) for why that matters.
+
+**What the actor does at that moment.** `modulateWeights` multiplies the persona's own
+weights by a table of eight rules — `commute`, `evening`, `end_of_day`, `night`,
+`weekend`, `month_edge`, `mid_month`, `thirsty`. Every rule carries a `why` in the source.
+Three are worth naming here:
+
+- **`month_edge` and `mid_month` are a pair.** Boosting settlement work in the last and
+  first three days of the simulated month means nothing unless the middle of the month is
+  damped; otherwise a "boosted" edge is just a louder constant.
+- **`thirsty` is not a clock rule at all.** It reads `ws.kmSinceFuel`, which trips
+  accumulate and a fill resets, so a tankning follows the driving rather than a die roll.
+- **There is no "quiet hours" multiplier**, and there cannot be one: scaling every weight
+  equally is a no-op, because `weighted()` normalises. Quiet hours are modelled by the
+  clock skipping them. Night instead *shifts the mix* — backdated logging and chat go up,
+  trips and handovers go down, which is what a 2 a.m. action actually is.
+
+A modulated weight is floored at 0,05 rather than allowed to reach zero. A rule is a bias,
+not a ban, and an action that can never be drawn at 03:00 is an action whose 03:00 bugs
+are unreachable.
+
+Every action line now carries `simClock` ("tir 16:28"), `simPhase` and the list of rules
+that fired, so the journal and the dashboard show the rhythm rather than asserting it.
+
+### 2. Offline-pendleren
+
+A sixth persona who drives the same commute and spends part of it underground. The app
+keeps working — that is what offline-first means — so they keep logging, and the writes
+sit in a local queue until the phone reconnects and sends the lot.
+
+What makes it worth simulating is not the queue but **what the queue does to time**:
+
+- the statement carries the **simulated timestamps of the moment it was decided**, so it
+  arrives backdated relative to everything the workspace wrote in between;
+- the whole burst lands **inside one tick**, out of order relative to the rest of the
+  workspace, one journal line per flushed statement so the digest covers all of it;
+- an **edit carries the row version the phone could see when it was decided**. Actions
+  built for an offline actor read `updated_at` at decision time (`ctx.readUpdatedAt`) and
+  put it in `expected_updated_at`, so if anybody touched that row in the meantime,
+  migration 160's GV-421 guard refuses the late write instead of silently overwriting it.
+  That is the entire point, and it is why the persona's edit weights are higher than a
+  plain commuter's: an edit is the only action that carries a token.
+
+**The offline stretch is counted in the member's own picks, not in ticks**, and the first
+version got that wrong in a way worth recording. A member of a four-workspace, four-member
+run is the actor about once every sixteen ticks, so a window of "3 to 9 ticks" expired
+before they were next picked: the persona went offline, queued nothing, and reconnected to
+an empty queue. Every burst was one statement long and the feature was decorative. Counted
+in picks, a burst is 2–6 decisions by construction.
+
+A real burst from
+`--workspaces 4 --members 4 --ticks 400 --seed 478 --epoch 2026-05-26`:
+
+```
+ 34 queued log_fuel                                    98 queued log_trip
+ 68 queued edit_trip        tok                       127 queued edit_fuel        tok
+ 84 queued edit_trip        tok
+132 flush  log_fuel    guard not_found    waited 98   <- "Open settlement period was not
+132 flush  edit_trip   guard not_found    waited 64       found or was already closed"
+132 flush  edit_trip   guard not_found    waited 48
+132 flush  log_trip    guard not_found    waited 34
+132 flush  edit_fuel   guard permission   waited 5
+```
+
+Five writes decided between tick 34 and tick 127, sent in one burst at tick 132, and four
+of them refused because **the admin closed the period while the phone was in a tunnel**:
+each carried the `target_open_period_id` it could see when it was decided, and that period
+no longer exists. The fifth was refused because the row's payer had changed underneath it.
+Nothing else in this repo writes that sequence, and the guard messages are the product's
+own.
+
+A phone that never comes back into range before the run ends keeps its queue; the run
+prints a note saying how many statements never made it, because an unflushed queue is a
+silently missing chunk of a workspace's history.
+
+### 3. Duplicate and retry chaos
+
+Roughly **1 action in 12** is sent a second time, immediately, byte-identically — the
+double-tap, and the retry of a request whose response never arrived. The decision comes
+from the PRNG at action-draw time and is in the digest.
+
+The second send is judged against an **expected-duplicate catalogue** in `lib/actions.mjs`,
+next to the expected-rejection catalogue and built the same way: every entry was read out
+of `supabase-schema.sql`.
+
+| Expectation | Meaning | Actions |
+|---|---|---|
+| `idempotent` | the schema guarantees no second row. **Verified, not trusted**: a probe counts the rows after the first send and after the duplicate, and any increase is a `duplicate_hazard` finding that fails the run | trips, fuel, bookings, handovers, booking completion, settlement transitions, period close, recurring generation |
+| `tolerated` | a plain INSERT with no idempotency key, so a second send legitimately creates a second row **today**. Real double-tap exposure, journalled as `dup-tolerated` — a note, never a finding, never counted as a guard | one-off expenses, repairs, new recurring templates, chat messages |
+
+An action **absent** from the catalogue is never duplicated: duplicating an action whose
+expectation nobody has worked out produces a result nobody can interpret.
+
+The three mechanisms the idempotent half rests on:
+
+- `trips` / `fuel_payments` / `car_bookings` carry a UNIQUE `(ledger_id, legacy_id)` and
+  the upsert RPCs resolve with `on conflict … do update`, behind a per-legacy-id
+  `pg_advisory_xact_lock(hashtext(ledger || ':trip:' || legacy_id))`;
+- `booking_handovers.booking_id` is UNIQUE — migration GVM-529 says outright that "a
+  second save EDITS the handover rather than stacking a duplicate";
+- `upsert_settlement_request_status` looks the pair's row up `for update` and UPDATEs it,
+  inserting only when there is none (the GVM-241 shape), and
+  `generate_due_recurring_expenses` inserts `on conflict (recurring_expense_id,
+  occurrence_date) do nothing` under `workspace_expenses_recurrence_uq`.
+
+Two deliberate choices:
+
+- **The probe runs after the first send and after the duplicate**, not before and after
+  the pair. The question is "did the *second* send create a row", and a successful first
+  close legitimately changes the count.
+- **The duplicate's `apply` is never run.** For an idempotent action there is nothing new
+  to record; for a tolerated one the second row is left *untracked by the harness on
+  purpose*, which is exactly what a double-tap leaves behind in production. The oracle
+  reads the database, not the harness's model.
+
+Not covered, and named so the gap is not mistaken for a claim: `redeem_ledger_invite` runs
+only during seeding, before the tick loop exists.
+
+### 4. Parallel sessions and lockstep contention
+
+`lib/db.mjs` now holds **N sessions** (`--sessions`, default 2) against the same
+container, each with its own `set_config` auth context, so two different members really do
+act as two different `authenticated` users. `lib/interleave.mjs` uses the second one.
+
+**Why lockstep and not a real race.** A race is scheduled by the operating system, so it
+is not reproducible, so a finding could not be handed back as a repro command — and
+determinism is this tool's product. Roughly 1 tick in 12 becomes a scenario instead of an
+action, and the scenario steps the sessions one statement at a time in a PRNG-chosen
+order:
+
+1. the **holder** opens a transaction on a secondary session and runs one real RPC. Its
+   locks are held, because the transaction is deliberately left open;
+2. the **contender** runs a conflicting real RPC on the primary session;
+3. the holder **commits or rolls back** — PRNG-drawn, because the two leave the workspace
+   in different states and a fuzzer should visit both;
+4. the contender's outcome is read against the scenario's expectation.
+
+**`SET LOCAL lock_timeout` is the design, not a detail.** Step 2 blocks — that is the
+point — and a single-threaded driver that waits for it has deadlocked itself, because only
+the driver can send the holder's commit. `lock_timeout = 400 ms` on the contender turns the
+block into an *answer*: SQLSTATE **55P03**, caught by `sim_exec` like any other exception
+and returned as data. It applies to advisory locks as well as row locks, which matters
+because these RPCs serialise themselves with `pg_advisory_xact_lock` far more often than
+with row locks. 400 ms is chosen so a merely slow statement on a loaded CI machine still
+finishes (these RPCs run in single-digit milliseconds) while thirty scenarios cost about
+twelve seconds. The holder gets a 4 s timeout too — it should never fire, and exists only
+so a harness bug cannot become a run that hangs until CI kills it.
+
+55P03 gets its own outcome class, `contention`, because it is neither a guard (nothing was
+refused on the merits) nor an error (nothing is wrong): it is the database proving it
+serialises the two writers.
+
+| Scenario | Holder | Contender | The lock the schema names |
+|---|---|---|---|
+| `same_trip_edit` | the driver edits their trip | an admin edits the same trip | `upsert_trip_with_participants`' `hashtext(ledger \|\| ':trip:' \|\| legacy_id)` |
+| `fuel_during_close` | a member logs a fill | the admin runs the **real** period close | `close_settlement_period`'s `for update of sp` against the writers' `for share of sp` |
+| `settlement_pair_race` | the admin re-requests a pair | the payer marks the same pair paid | `hashtext(ledger \|\| ':settlement:' \|\| period_id)` |
+| `handover_race` | the booking's member saves a handover | an admin saves the same handover | `hashtext(ledger \|\| ':handover:' \|\| booking_id)` |
+
+Every scenario is built out of the **same** RPC calls the tick loop uses (`tripWrite`,
+`fuelWrite`, the close program) rather than a hand-written copy, which would stop testing
+the real call the moment either drifted.
+
+`fuel_during_close` has the roles the "wrong" way round on purpose. The close takes the
+exclusive lock, so it has to be the *contender*: a close held open as the holder would
+usually fail its own precondition first, release everything at the subtransaction abort,
+and leave the scenario testing nothing. A fuel write almost always succeeds, so as the
+holder it reliably parks a `for share` on the period row — and the close then blocks at
+the very first thing it does, which is what migration 141's wrapper promises ("writers
+already take FOR SHARE on this row; writers that start later block here until the close
+commits"). It runs the **real** close, snapshot and all, because a stub close would be
+refused on its own malformed snapshot in the hazard case, and a hazard that reports as
+`guard` is a hazard nobody sees.
+
+**What counts as a finding** is narrow, and its first clause does most of the work:
+
+| Contender | Verdict |
+|---|---|
+| holder's statement failed | **judge nothing.** No lock was held (a failed statement inside `sim_exec` rolls back to its subtransaction and releases what it took), so the contender met no contention and its outcome says nothing |
+| `contention` | expected — the lock did its job |
+| `guard` | expected — refused on the merits *before* it reached the lock; every one of those gates sits ahead of the lock in these functions |
+| `ok` | **`interleave_hazard`.** Two writers got through the same named lock at once, which is precisely what the lock is in the schema to prevent |
+| `error` | already a violation by the ordinary path |
+
+That first clause is not a loophole, it is the honest reading, and it fires. In a 400-tick
+seed-478 run, **four of thirty** scenarios had their holder refused by the fuel payer gate
+("Only the fuel payer or a ledger admin can create this fuel payment" — `fuelWrite` names
+somebody else as payer one time in five), so no `for share` was ever taken, the contender's
+close succeeded legitimately, and nothing was reported. Of the remaining twenty-six,
+**nineteen ended in `contention`** and seven in a `guard`. Making the holder always pay for
+their own fill would raise the engagement rate; it is left alone because a scenario skipped
+for a stated reason costs less than one more special case in the builders.
+
+**Two members completing the same booking** is the one collision from the brief that is
+*not* a scenario here. With the same idempotency key it is identical to the duplicate
+catalogue's `complete_booking` entry, minus a session; with two different keys the expected
+outcome is genuinely unsettled (nothing in the schema obviously forbids two trips against
+one booking), and a scenario whose expectation nobody has decided produces noise rather
+than findings. It is written up in the handover notes as an open question instead.
+
+---
+
 ## The violation report and the repro workflow
 
 Any oracle failure or `error` outcome writes `out/violations.json` with the seed, the tick,
@@ -395,6 +742,13 @@ routes:
 That single SSE choice is what makes the live view and the report view the same page:
 opening the dashboard after a run replays the whole run and then has nothing more to
 follow. The server stays up after the run ends so the report can be read.
+
+The run header shows the simulated **weekday and clock** ("tir 16:28"), not just the date,
+because a Tuesday at 07:40 and a Sunday at 23:10 are different workspaces; and a
+`Sessioner N` chip, since two sessions is what makes a `låsekonflikt` possible at all. The
+three Phase B outcome classes appear in the ticker as muted badges told apart by their
+border — `låsekonflikt` solid, `dublet` dotted, `i kø` dashed. None of them is money, so
+none of them is amber; none of them is a failure, so none of them is the error red.
 
 Panels: run header with seed, configuration, simulated clock and tick progress; a workspace
 grid with live per-member balances, open-period status and last action; a scrolling action
@@ -432,9 +786,20 @@ SVG icons.
 every push. The simulator hosts a Postgres container and takes tens of seconds. It belongs
 with the other Docker-backed checks, as its own npm script.
 
-`npm run test:simulator` is the short self-test, four 60-tick runs of one fixed seed:
+`npm run test:simulator` is the short self-test, six 60-tick runs of one fixed seed.
 
-1. **clean** — must finish, must produce guards, must report no new violation;
+**The seed is chosen, not arbitrary.** GV-478 moved it from 4711 to **101**: at 4711
+neither workspace draws the Offline-pendleren, and a self-test that never exercises the
+offline queue would let that whole feature rot. 101 draws it in both workspaces and still
+produces duplicates, contention, a period close and a spread of guards inside 60 ticks.
+The `--epoch` is pinned for the same class of reason: the rhythm keys off the simulated
+weekday.
+
+1. **clean** — must finish, must produce guards, must report no new violation. Note that
+   "one action line per tick" stopped being true in Phase B (a duplicate is its own line,
+   a scenario is three, a burst is one per flushed statement); what is asserted is that
+   every tick produced at least one, which is what keeps a tick number in a violation
+   report meaningful;
 2. **client parity** — read off the clean run's journal. With `../govehlo-mobile` present:
    the mobile modules imported, at least one period was actually compared (a parity check
    over zero periods is vacuously green, which is the one way this could pass while proving
@@ -443,7 +808,24 @@ with the other Docker-backed checks, as its own npm script.
 3. **determinism** — the same seed with `--no-parity` must produce the byte-identical
    action digest. Parity is oracle-side and draws no PRNG, and every `repro:` line in this
    repo depends on that staying true;
-4. **`--chaos`** and, when the sibling is present, **`--chaos-parity`** — each must report
+4. **the four Phase B features actually fired** — read off the clean run's journal, no
+   extra container. A flag that is on and never fires is a feature nobody is testing, so
+   this half asserts that every line carries a weekday and clock and that several phases
+   of the day were visited; that at least one write was queued offline, flushed in a
+   burst, and had genuinely waited; that at least one duplicate was sent, carried its
+   expectation, and created no unguarded second row; that at least one contention scenario
+   ran, used a second session, and had its contender serialised by the lock; and that
+   every fat-finger odometer was refused, at least one of them by migration 195's
+   plausibility guard;
+5. **determinism with everything on** — the identical command, twice. The `--no-parity`
+   half above proves parity draws no PRNG; this proves the thing two sessions put at risk,
+   because an OS-scheduled race would land here as a flake. It is what says the lockstep
+   really is lockstep;
+6. **Phase A's shape is still reachable** — `--flat-clock --no-dup --no-interleave
+   --sessions 1` must run clean, produce exactly 60 action lines, use one session, and
+   apply no rhythm. It is what an A/B uses, and what a bisect falls back to when a Phase B
+   feature is the suspect;
+7. **`--chaos`** and, when the sibling is present, **`--chaos-parity`** — each must report
    exactly one new violation, and it must be the injected one.
 
 It warns and exits 0 without Docker, like every other Docker-backed guard here, and fails
@@ -456,13 +838,15 @@ under `--strict`.
 | File | Role |
 |---|---|
 | `run.mjs` | CLI, container boot, seeding, tick loop, reporting, reviewed findings |
-| `lib/prng.mjs` | seeded PRNG and the simulated clock |
-| `lib/personas.mjs` | five personas and their action weights |
-| `lib/actions.mjs` | the action catalogue and the expected-rejection catalogue |
+| `lib/prng.mjs` | seeded PRNG and the flat simulated clock |
+| `lib/rhythm.mjs` | Phase B: the hour-of-week clock and the weight rules |
+| `lib/personas.mjs` | six personas and their action weights |
+| `lib/actions.mjs` | the action catalogue, the expected-rejection catalogue and the expected-duplicate catalogue |
+| `lib/interleave.mjs` | Phase B: the lockstep contention scenarios |
 | `lib/oracle.mjs` | the seven invariants |
 | `lib/client-parity.mjs` | Phase A: imports govehlo-mobile's calculation modules, reads the rows its gateway would read, and diffs |
 | `lib/journal.mjs` | the append-only JSONL stream and the determinism digest |
-| `lib/db.mjs` | the persistent `psql` session, SQL literal helpers, `sim_exec` |
+| `lib/db.mjs` | the persistent `psql` sessions (a pool since Phase B), SQL literal helpers, `sim_exec` |
 | `lib/server.mjs` | the `--serve` web server |
 | `dashboard.html` | mission control, single file, zero external requests |
 
