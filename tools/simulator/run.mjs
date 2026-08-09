@@ -1,9 +1,12 @@
-// GV-471 — the VehloShare workspace simulator.
+// GV-471 / GV-478 — the VehloShare workspace simulator.
 //
 //   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 400 --seed 42
 //                                [--serve [port]] [--headless] [--oracle-every 25]
-//                                [--chaos] [--chaos-parity] [--no-parity]
-//                                [--fat-finger] [--keep]
+//                                [--chaos] [--chaos-parity] [--no-parity] [--keep]
+//                                [--sessions 2] [--flat-clock] [--no-dup]
+//                                [--no-interleave] [--no-offline]
+//
+//   node tools/simulator/run.mjs --help
 //
 // WHAT THIS IS FOR. Every other guard in tools/ asserts a SCRIPTED sequence: this RPC,
 // then that one, then this assertion. They are excellent at the bug you already thought
@@ -38,13 +41,17 @@ import { LOCAL_PRELUDE } from "../load-rehearsal/lib/pg-local.mjs";
 import { buildCloseSnapshot, computeSettlementsFromNets } from "../load-rehearsal/lib/fixtures.mjs";
 
 import { Prng, SimClock, defaultEpoch } from "./lib/prng.mjs";
-import { PERSONAS, assignPersonas } from "./lib/personas.mjs";
-import { ACTIONS, classifyRejection } from "./lib/actions.mjs";
+import { PERSONAS, assignPersonas, JOINER_PERSONAS, JOINER_PERSONAS_WITH_OFFLINE } from "./lib/personas.mjs";
+import { ACTIONS, classifyRejection, isLockTimeout, duplicateExpectation } from "./lib/actions.mjs";
 import { runOracle, INVARIANTS } from "./lib/oracle.mjs";
 import { Journal, digestOf } from "./lib/journal.mjs";
 import { startServer } from "./lib/server.mjs";
-import { PsqlSession, SIM_SCRATCH_DDL, actionSql, claimsFor, lit, uuidLit } from "./lib/db.mjs";
+import { SessionPool, SIM_SCRATCH_DDL, actionSql, claimsFor, lit, uuidLit } from "./lib/db.mjs";
 import { loadClientModules, MOBILE_ROOT } from "./lib/client-parity.mjs";
+import {
+  RhythmClock, rhythmEpoch, rhythmBudgetMinutes, modulateWeights, firedRules, clockLabel,
+} from "./lib/rhythm.mjs";
+import { buildScenario, runScenario, LOCK_TIMEOUT_MS } from "./lib/interleave.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUT_DIR = path.join(REPO, "tools", "simulator", "out");
@@ -73,6 +80,11 @@ const args = parseArgs(process.argv.slice(2));
 const num = (key, fallback) => (args.values[key] !== undefined ? Number(args.values[key]) : fallback);
 const has = (key) => args.flags.has(key) || args.values[key] !== undefined;
 
+if (args.flags.has("help") || args.values.help !== undefined) {
+  printHelp();
+  process.exit(0);
+}
+
 const config = {
   workspaces: num("workspaces", 3),
   members: num("members", 4),
@@ -84,20 +96,45 @@ const config = {
   // turns it off, which is how the determinism proof compares the two action streams.
   parity: !has("no-parity"),
   chaosParity: has("chaos-parity"),
-  // Off by default ON PURPOSE. See ACTIONS.save_handover_fat_finger: today this action
-  // SUCCEEDS, and a default run must not be red for a bug nobody has fixed yet.
-  fatFinger: has("fat-finger"),
+  // ── GV-478 Phase B, all four ON by default ───────────────────────────────────
+  // Each has an off switch, and the four of them together restore Phase A's shape for
+  // an A/B comparison. They do NOT restore Phase A's digests: migration 195's odometer
+  // plausibility guard also moved save_handover_fat_finger into the default persona
+  // mixes, and a weight is a weight.
+  rhythm: !has("flat-clock"),
+  dup: !has("no-dup"),
+  interleave: !has("no-interleave"),
+  offline: !has("no-offline"),
+  sessions: Math.max(1, num("sessions", 2)),
   headless: has("headless"),
   keep: has("keep"),
   serve: has("serve") && !has("headless"),
   port: num("serve", 8471),
 };
 if (Number.isNaN(config.port)) config.port = 8471;
+// One session cannot contend with itself, and pretending otherwise would report a
+// feature as active while it silently did nothing.
+if (config.sessions < 2 && config.interleave) {
+  config.interleave = false;
+  console.warn("⚠  --sessions 1: contention scenarios need a second session, so interleaving is off for this run.");
+}
 
-const EPOCH = args.values.epoch ? new Date(`${args.values.epoch}T00:00:00Z`) : defaultEpoch(config.ticks);
+const EPOCH = args.values.epoch
+  ? new Date(`${args.values.epoch}T00:00:00Z`)
+  : (config.rhythm ? rhythmEpoch(config.ticks) : defaultEpoch(config.ticks));
 const CONTAINER = `govehlo-sim-${process.pid}`;
 
+// How often an ordinary action is sent TWICE (feature 3) and how often a tick becomes a
+// lockstep contention scenario instead of an action (feature 4). Both are drawn from the
+// workspace's own PRNG stream, so both are part of the digest and of the repro.
+const DUP_CHANCE = 1 / 12;
+const INTERLEAVE_CHANCE = 0.08;
+
 // The one-line reproduction, printed with every violation and stored in violations.json.
+//
+// --epoch was always here; since GV-478 it is LOAD-BEARING rather than cosmetic. The
+// rhythm keys off the simulated weekday and hour, so the action stream now depends on
+// where the epoch falls in the week. A repro without it is not a repro.
 const REPRO = [
   "node tools/simulator/run.mjs",
   `--workspaces ${config.workspaces}`,
@@ -106,12 +143,55 @@ const REPRO = [
   `--seed ${config.seed}`,
   `--oracle-every ${config.oracleEvery}`,
   `--epoch ${EPOCH.toISOString().slice(0, 10)}`,
+  `--sessions ${config.sessions}`,
   config.chaos ? "--chaos" : "",
   config.chaosParity ? "--chaos-parity" : "",
   config.parity ? "" : "--no-parity",
-  config.fatFinger ? "--fat-finger" : "",
+  config.rhythm ? "" : "--flat-clock",
+  config.dup ? "" : "--no-dup",
+  config.interleave ? "" : "--no-interleave",
+  config.offline ? "" : "--no-offline",
   "--headless",
 ].filter(Boolean).join(" ");
+
+function printHelp() {
+  console.log(`
+The VehloShare workspace simulator (GV-471 · GV-478)
+
+  node tools/simulator/run.mjs [options]
+
+Shape of the run
+  --workspaces N       how many workspaces to seed            (default 3)
+  --members N          members per workspace                  (default 4)
+  --ticks N            actions to attempt                     (default 200)
+  --seed N             the seed everything is drawn from      (default 42)
+  --oracle-every N     invariant sweep interval, 0 = never    (default 25)
+  --epoch YYYY-MM-DD   first tick's simulated date. Defaults to far enough in the
+                       past that the run finishes before the real present. PIN IT in
+                       any repro: the day/week rhythm keys off the simulated weekday.
+
+Behavioural realism (GV-478 Phase B — all four ON by default)
+  --flat-clock         restore Phase A's uniform 1-6 h tick and drop the time-of-day
+                       weighting, for an A/B against the rhythm
+  --no-dup             stop re-sending ~1 action in 12 as a duplicate
+  --no-interleave      stop running lockstep contention scenarios
+  --no-offline         drop the sixth persona (Offline-pendleren) from the pool
+  --sessions N         psql sessions held against the container (default 2). 1 turns
+                       interleaving off, since one session cannot contend with itself.
+
+Self-tests and output
+  --chaos              inject one known corruption; the oracle must flag exactly it
+  --chaos-parity       drop one row from the CLIENT's copy; parity must flag exactly it
+  --no-parity          skip the client-parity oracle entirely
+  --serve [port]       live mission control on 127.0.0.1 (default 8471)
+  --headless           no dashboard, and exit non-zero on a NEW violation
+  --keep               leave the Postgres container running for inspection
+  --help               this text
+
+Safety: the only database this tool can address is a disposable container it starts
+itself. There is no env file, no connection string and no URL anywhere in it.
+`);
+}
 
 // ── Reviewed findings (the repo's GVM-437 pattern, applied to a fuzzer) ──────
 //
@@ -176,15 +256,34 @@ const WORKSPACE_NAMES = [
 const journal = new Journal(path.join(OUT_DIR, "journal.jsonl"));
 const violations = [];
 const violationKeys = new Set();
-const counters = { ok: 0, guard: 0, error: 0 };
+/** Every outcome class, listed once so a run always reports all of them — a counter
+ *  that only appears when it is non-zero is a counter nobody notices is missing. */
+const OUTCOMES = ["ok", "guard", "contention", "dup-tolerated", "queued", "error"];
+const counters = Object.fromEntries(OUTCOMES.map((name) => [name, 0]));
 const guardCounts = new Map();
 const actionCounts = new Map();
 const rpcStats = new Map();
 const invariantState = new Map();
+// GV-478 tallies, reported at the end and shown on the dashboard: they are how a reader
+// knows the three behavioural features actually fired rather than merely being enabled.
+const phaseB = {
+  duplicatesSent: 0,
+  duplicatesAbsorbed: 0,
+  duplicatesTolerated: 0,
+  scenariosRun: 0,
+  scenariosByOutcome: {},
+  offlineBursts: 0,
+  offlineQueued: 0,
+  offlineFlushed: 0,
+  offlineStale: 0,
+};
 
-const db = new PsqlSession(CONTAINER, DB);
+const sessions = new SessionPool(CONTAINER, DB, config.sessions);
+const db = sessions.primary;
 const rootRng = new Prng(config.seed);
-const clock = new SimClock(EPOCH, rootRng.fork("clock"));
+const clock = config.rhythm
+  ? new RhythmClock(EPOCH, rootRng.fork("clock"), { budgetMinutes: rhythmBudgetMinutes(config.ticks) })
+  : new SimClock(EPOCH, rootRng.fork("clock"));
 const workspaces = [];
 let currentTick = 0;
 let server = null;
@@ -201,7 +300,7 @@ try {
   console.error(`\n❌ Simulator failed: ${err.stack || err.message}`);
   exitCode = 1;
 } finally {
-  db.stop();
+  sessions.stopAll();
   if (config.keep) {
     console.log(`ℹ️  --keep: container ${CONTAINER} left running (psql: docker exec -it ${CONTAINER} psql -U postgres -d ${DB}).`);
   } else {
@@ -235,7 +334,12 @@ async function main() {
       chaos: config.chaos,
       chaosParity: config.chaosParity,
       parity: config.parity,
-      fatFinger: config.fatFinger,
+      rhythm: config.rhythm,
+      dup: config.dup,
+      interleave: config.interleave,
+      offline: config.offline,
+      sessions: config.sessions,
+      lockTimeoutMs: LOCK_TIMEOUT_MS,
     },
     epoch: EPOCH.toISOString(),
     repro: REPRO,
@@ -243,12 +347,11 @@ async function main() {
   });
 
   await prepareParity();
-  if (config.fatFinger) armFatFinger();
 
   console.log("⏳ Booting disposable Postgres 17 and applying supabase-schema.sql…");
   const schemaSeconds = bootDatabase();
   console.log(`   schema applied in ${schemaSeconds.toFixed(1)}s.`);
-  db.start();
+  sessions.startAll();
   await db.exec(SIM_SCRATCH_DDL, "simulator scratch DDL");
 
   await seed();
@@ -295,9 +398,9 @@ function banner() {
   console.log("── VehloShare workspace simulator (GV-471) ─────────────────");
   console.log(`  seed=${config.seed}  workspaces=${config.workspaces}  members=${config.members}  ticks=${config.ticks}`);
   console.log(`  oracle every ${config.oracleEvery} ticks  ·  simulated epoch ${EPOCH.toISOString().slice(0, 10)}`);
+  console.log(`  rhythm ${config.rhythm ? "on" : "OFF (--flat-clock)"}  ·  duplicates ${config.dup ? "on" : "OFF"}  ·  interleave ${config.interleave ? `on (${config.sessions} sessions)` : "OFF"}  ·  offline persona ${config.offline ? "on" : "OFF"}`);
   if (config.chaos) console.log("  --chaos: one known corruption will be injected to prove the oracle detects it.");
   if (config.chaosParity) console.log("  --chaos-parity: one row will be dropped from the CLIENT's copy to prove the parity oracle detects it.");
-  if (config.fatFinger) console.log("  --fat-finger: the ten-times-odometer handover is in the action mix.");
   console.log("────────────────────────────────────────────────────────────");
 }
 
@@ -336,14 +439,6 @@ async function prepareParity() {
   if (config.chaosParity && !parity.available) {
     throw new Error("--chaos-parity was requested but the parity oracle is unavailable — the self-test would prove nothing.");
   }
-}
-
-// --fat-finger: put the ten-times-odometer handover into the mix. Done by mutating the
-// persona weights rather than by shipping the weight, so the default action stream — and
-// therefore the determinism digest of every existing repro command — is untouched.
-function armFatFinger() {
-  PERSONAS.booker.weights.save_handover_fat_finger = 3;
-  PERSONAS.serial_editor.weights.save_handover_fat_finger = 1;
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -393,7 +488,9 @@ async function seed() {
 
   for (let w = 0; w < config.workspaces; w += 1) {
     const rng = rootRng.fork(`ws-${w}`);
-    const personas = assignPersonas(config.members, rng);
+    const personas = assignPersonas(config.members, rng, {
+      pool: config.offline ? JOINER_PERSONAS_WITH_OFFLINE : JOINER_PERSONAS,
+    });
     const members = [];
     for (let slot = 0; slot < config.members; slot += 1) {
       const user = users[w * config.members + slot];
@@ -455,6 +552,9 @@ async function seed() {
       requests: [],
       balances: [],
       odometer: 40000 + w * 1500,
+      // Kilometres driven since the last logged fill. The rhythm's `thirsty` rule reads
+      // it (lib/rhythm.mjs) so a tankning follows the driving instead of a die roll.
+      kmSinceFuel: 0,
       counters: {},
       rng,
       lastAction: null,
@@ -493,26 +593,62 @@ async function refreshOpenPeriod(ws) {
 }
 
 // ── The tick loop ────────────────────────────────────────────────────────────
+//
+// One tick is ONE of three things, decided in this order and every branch drawn from
+// the workspace's PRNG stream:
+//
+//   1. an OFFLINE FLUSH, when the actor is the offline commuter and their queue has
+//      come back into range (GV-478 feature 2);
+//   2. a CONTENTION SCENARIO, at INTERLEAVE_CHANCE (feature 4);
+//   3. an ordinary action — possibly sent twice (feature 3), possibly queued instead of
+//      sent (feature 2 again).
+//
+// Every branch journals at least one `action` line, so the digest covers all of it and
+// tick numbers stay meaningful even though a tick is no longer one statement.
 
 async function runTick(tick) {
   const ws = pickWorkspace();
   const actor = ws.rng.pick(ws.members.filter((m) => m.active)) ?? ws.members[0];
   const persona = PERSONAS[actor.persona];
+  const ctx = makeContext(ws, actor.slot);
 
-  const ctx = {
-    rng: ws.rng,
-    ws,
-    sim: clock,
-    actorSlot: actor.slot,
-    settlementPairs,
-    buildCloseProgram,
-    refreshOpenPeriod,
-  };
+  // ── 1. The offline commuter ────────────────────────────────────────────────
+  const offlinePolicy = config.offline ? persona.offline : null;
+  let queueing = false;
+  let offlineState = null;
+  if (offlinePolicy) {
+    offlineState = actor.offlineState ?? (actor.offlineState = { until: 0, queue: [] });
+    if (offlineState.queue.length > 0 && tick > offlineState.until) {
+      await flushOfflineQueue(tick, ws, actor, offlineState);
+      return;
+    }
+    if (offlineState.queue.length === 0 && ws.rng.bool(offlinePolicy.chance)) {
+      offlineState.until = tick + ws.rng.int(offlinePolicy.minTicks, offlinePolicy.maxTicks);
+      phaseB.offlineBursts += 1;
+    }
+    queueing = tick <= offlineState.until && offlineState.queue.length < offlinePolicy.maxQueued;
+    ctx.offline = queueing;
+  }
 
+  // ── 2. A lockstep contention scenario, instead of an action ────────────────
+  if (config.interleave && !queueing && ws.rng.bool(INTERLEAVE_CHANCE)) {
+    const ran = await runContention(tick, ws, ctx);
+    if (ran) return;
+  }
+
+  // ── 3. An ordinary action ──────────────────────────────────────────────────
+  //
   // Weighted choice with fallback: an action whose preconditions are not met is
   // discarded and the remaining weights are re-rolled. post_message always builds, so
-  // every tick produces exactly one journal line and tick numbers stay meaningful.
-  const pool = Object.entries(persona.weights).filter(([name]) => ACTIONS[name]);
+  // a tick always produces at least one journal line.
+  //
+  // The rhythm multiplies those weights by the time of day, the weekday and the
+  // month's edge before the draw (lib/rhythm.mjs). It never touches the persona's own
+  // map — a modulated pool is a new array — so `--flat-clock` really is Phase A's mix.
+  const baseline = Object.entries(persona.weights).filter(([name]) => ACTIONS[name]);
+  const rhythm = config.rhythm ? clock.context({ kmSinceFuel: ws.kmSinceFuel ?? 0 }) : null;
+  const pool = rhythm ? modulateWeights(baseline, rhythm) : baseline;
+
   let chosen = null;
   let built = null;
   for (let attempt = 0; attempt < 6 && pool.length > 0; attempt += 1) {
@@ -531,88 +667,382 @@ async function runTick(tick) {
   const effectiveActor = built.actorOverride !== undefined && built.actorOverride !== null
     ? ws.members.find((m) => m.slot === built.actorOverride) ?? actor
     : actor;
-
   const sql = actionSql(claimsFor(effectiveActor), built.inner);
-  const res = await db.send(sql);
 
-  let outcome = "ok";
-  let guardKind = null;
-  let message = null;
-  let sqlstate = null;
-  let payload = null;
-
-  if (res.stderr) {
-    // psql itself complained: a malformed statement or a transaction that could not
-    // commit. Never an expected rejection — sim_exec turns those into data.
-    outcome = "error";
-    message = res.stderr.slice(0, 1200);
-  } else {
-    try {
-      payload = JSON.parse(res.lines[0]);
-    } catch {
-      outcome = "error";
-      message = `unparseable reply: ${(res.lines[0] ?? "").slice(0, 400)}`;
-    }
+  // ── The offline queue: decided now, sent much later ────────────────────────
+  //
+  // The SQL is frozen here, with the simulated timestamps of THIS moment and — for an
+  // edit — the row version the phone could see at THIS moment (lib/actions.mjs's
+  // offlineToken). That is the whole point: when the burst lands, the entry is
+  // backdated relative to everything the workspace did in between, and its precondition
+  // token may describe a version of the row that no longer exists.
+  if (queueing) {
+    offlineState.queue.push({
+      action: chosen,
+      sql,
+      built,
+      actor: effectiveActor,
+      decidedTick: tick,
+      decidedSim: clock.now().toISOString(),
+      decidedOffset: clock.offsetMinutes(),
+      staleToken: Boolean(built.detail?.offlineToken),
+    });
+    phaseB.offlineQueued += 1;
+    journalAction({
+      tick,
+      ws,
+      actor: effectiveActor,
+      action: chosen,
+      outcome: "queued",
+      offline: "queued",
+      step: `offline-queue@${offlineState.until}`,
+      detail: built.detail ?? null,
+      ms: 0,
+      rhythm,
+    });
+    return;
   }
 
-  if (outcome !== "error" && payload) {
-    if (payload.ok) {
-      await built.apply?.(payload.result ?? null);
-    } else {
-      sqlstate = payload.sqlstate;
-      message = payload.message;
-      guardKind = classifyRejection(payload.sqlstate, payload.message);
-      outcome = guardKind ? "guard" : "error";
-    }
-  }
-
-  counters[outcome] += 1;
-  actionCounts.set(chosen, (actionCounts.get(chosen) ?? 0) + 1);
-  if (guardKind) guardCounts.set(guardKind, (guardCounts.get(guardKind) ?? 0) + 1);
-  const stat = rpcStats.get(chosen) ?? { count: 0, totalMs: 0, maxMs: 0, samples: [] };
-  stat.count += 1;
-  stat.totalMs += res.ms;
-  stat.maxMs = Math.max(stat.maxMs, res.ms);
-  stat.samples.push(res.ms);
-  if (stat.samples.length > 40) stat.samples.shift();
-  rpcStats.set(chosen, stat);
-
-  ws.lastAction = chosen;
-  ws.lastOutcome = outcome;
-
-  journal.write({
-    kind: "action",
-    tick,
-    simTime: clock.now().toISOString(),
-    simOffsetMin: clock.offsetMinutes(),
-    ws: ws.index,
-    wsName: ws.name,
-    actorSlot: effectiveActor.slot,
-    actor: effectiveActor.name,
-    persona: effectiveActor.persona,
-    action: chosen,
-    outcome,
-    guardKind,
-    sqlstate,
-    ms: res.ms,
-    detail: built.detail ?? null,
-    message: message ? String(message).slice(0, 400) : null,
+  const first = await sendAction(sql);
+  await applyIfOk(built, first);
+  journalAction({
+    tick, ws, actor: effectiveActor, action: chosen, rhythm,
+    outcome: first.outcome, guardKind: first.guardKind, sqlstate: first.sqlstate,
+    message: first.message, ms: first.ms, detail: built.detail ?? null,
   });
+  recordActionViolation(tick, ws, effectiveActor, chosen, first, built);
 
-  if (outcome === "error") {
+  // A hostile action whose whole point is that the database must refuse it. Today the
+  // only one is the fat-finger odometer, which migration 195 turned into a guard: if it
+  // ever SUCCEEDS again the mirror is being poisoned and the run must say so, whatever
+  // the invariants think (they cannot see it — both engines faithfully report the
+  // poisoned floor, which is exactly why this check is here and not in the oracle).
+  if (built.mustNotSucceed && first.outcome === "ok") {
     recordViolation({
-      key: `action:${chosen}:${sqlstate ?? "harness"}`,
-      kind: "unclassified-rejection",
+      key: `guard-missing:${chosen}`,
+      kind: "guard-missing",
       tick,
       ws: ws.index,
       action: chosen,
       actor: effectiveActor.name,
       persona: effectiveActor.persona,
-      sqlstate,
-      message: message ? String(message).slice(0, 1200) : null,
+      message: `${chosen} succeeded, but the schema is supposed to refuse it (${built.mustNotSucceed}).`,
       detail: built.detail ?? null,
     });
   }
+
+  // ── The duplicate send ─────────────────────────────────────────────────────
+  if (config.dup) await maybeDuplicate({ tick, ws, actor: effectiveActor, action: chosen, sql, built, rhythm });
+}
+
+/** The per-tick context every action builder receives. */
+function makeContext(ws, actorSlot) {
+  return {
+    rng: ws.rng,
+    ws,
+    sim: clock,
+    actorSlot,
+    offline: false,
+    settlementPairs,
+    buildCloseProgram,
+    refreshOpenPeriod,
+    readUpdatedAt,
+  };
+}
+
+/**
+ * The row version a member's phone could see right now — the offline queue's
+ * precondition token (GV-478 feature 2).
+ *
+ * A read in the decision path, which is fine and already the norm here: the database's
+ * state at a given tick is itself a function of the seed, so a replay reads the same
+ * value. The table list is a hard allow-list rather than an interpolation, because
+ * `public.${table}` with a caller-supplied name is how a helper like this becomes an
+ * injection point the next time somebody extends it.
+ */
+const PRECONDITION_TABLES = new Set(["trips", "fuel_payments", "car_bookings"]);
+async function readUpdatedAt(table, id) {
+  if (!id || !PRECONDITION_TABLES.has(table)) return null;
+  try {
+    return await db.value(`select updated_at from public.${table} where id = ${uuidLit(id)};`, "read updated_at");
+  } catch {
+    return null;
+  }
+}
+
+/** Send one prepared statement and classify the reply. The single place that knows how
+ *  a sim_exec answer becomes an outcome. */
+async function sendAction(sql) {
+  const res = await db.send(sql);
+  if (res.stderr) {
+    // psql itself complained: a malformed statement or a transaction that could not
+    // commit. Never an expected rejection — sim_exec turns those into data.
+    return { outcome: "error", message: res.stderr.slice(0, 1200), ms: res.ms, sqlstate: null, guardKind: null, payload: null };
+  }
+  let payload = null;
+  try {
+    payload = JSON.parse(res.lines[0]);
+  } catch {
+    return { outcome: "error", message: `unparseable reply: ${(res.lines[0] ?? "").slice(0, 400)}`, ms: res.ms, sqlstate: null, guardKind: null, payload: null };
+  }
+  if (payload.ok) return { outcome: "ok", ms: res.ms, sqlstate: null, guardKind: null, message: null, payload };
+  if (isLockTimeout(payload.sqlstate, payload.message)) {
+    return { outcome: "contention", ms: res.ms, sqlstate: payload.sqlstate, guardKind: null, message: payload.message, payload };
+  }
+  const guardKind = classifyRejection(payload.sqlstate, payload.message);
+  return { outcome: guardKind ? "guard" : "error", guardKind, sqlstate: payload.sqlstate, message: payload.message, ms: res.ms, payload };
+}
+
+async function applyIfOk(built, result) {
+  if (result.outcome === "ok") await built.apply?.(result.payload?.result ?? null);
+}
+
+/** Counters, per-action stats, the journal line, and the workspace's "last action". */
+function journalAction({
+  tick, ws, actor, action, outcome, guardKind = null, sqlstate = null, message = null,
+  ms = 0, detail = null, dup = false, session = 0, step = null, scenario = null,
+  offline = null, rhythm = null, extra = null,
+}) {
+  counters[outcome] = (counters[outcome] ?? 0) + 1;
+  actionCounts.set(action, (actionCounts.get(action) ?? 0) + 1);
+  if (guardKind) guardCounts.set(guardKind, (guardCounts.get(guardKind) ?? 0) + 1);
+  const stat = rpcStats.get(action) ?? { count: 0, totalMs: 0, maxMs: 0, samples: [] };
+  stat.count += 1;
+  stat.totalMs += ms;
+  stat.maxMs = Math.max(stat.maxMs, ms);
+  stat.samples.push(ms);
+  if (stat.samples.length > 40) stat.samples.shift();
+  rpcStats.set(action, stat);
+
+  ws.lastAction = action;
+  ws.lastOutcome = outcome;
+
+  const now = clock.now();
+  journal.write({
+    kind: "action",
+    tick,
+    simTime: now.toISOString(),
+    simOffsetMin: clock.offsetMinutes(),
+    // GV-478: the rhythm, in the journal and therefore on the dashboard. Derived from
+    // the epoch, so it is NOT in the determinism digest — simOffsetMin is the
+    // epoch-independent half, and it already is.
+    simClock: clockLabel(now),
+    simPhase: rhythm?.phase ?? null,
+    rhythmRules: rhythm ? firedRules(rhythm) : null,
+    ws: ws.index,
+    wsName: ws.name,
+    actorSlot: actor.slot,
+    actor: actor.name,
+    persona: actor.persona,
+    session,
+    action,
+    step,
+    scenario,
+    dup,
+    offline,
+    outcome,
+    guardKind,
+    sqlstate,
+    ms,
+    detail,
+    message: message ? String(message).slice(0, 400) : null,
+    ...(extra ?? {}),
+  });
+}
+
+function recordActionViolation(tick, ws, actor, action, result, built, extra = {}) {
+  if (result.outcome !== "error") return;
+  recordViolation({
+    key: `action:${action}:${result.sqlstate ?? "harness"}`,
+    kind: "unclassified-rejection",
+    tick,
+    ws: ws.index,
+    action,
+    actor: actor.name,
+    persona: actor.persona,
+    sqlstate: result.sqlstate,
+    message: result.message ? String(result.message).slice(0, 1200) : null,
+    detail: built?.detail ?? null,
+    ...extra,
+  });
+}
+
+// ── Feature 2: the offline burst ─────────────────────────────────────────────
+//
+// Everything the phone decided while it was out of range, sent in one go, in decision
+// order, in a single tick. The entries arrive backdated relative to everything the
+// workspace wrote in between, which is the shape real offline sync has and the shape
+// nothing else in this repo produces.
+async function flushOfflineQueue(tick, ws, actor, state) {
+  const entries = state.queue.splice(0, state.queue.length);
+  state.until = 0;
+  for (const entry of entries) {
+    // eslint-disable-next-line no-await-in-loop -- the burst is ordered on purpose
+    const result = await sendAction(entry.sql);
+    // eslint-disable-next-line no-await-in-loop
+    await applyIfOk(entry.built, result);
+    phaseB.offlineFlushed += 1;
+    if (entry.staleToken && result.guardKind === "stale_precondition") phaseB.offlineStale += 1;
+    journalAction({
+      tick,
+      ws,
+      actor: entry.actor,
+      action: entry.action,
+      outcome: result.outcome,
+      guardKind: result.guardKind,
+      sqlstate: result.sqlstate,
+      message: result.message,
+      ms: result.ms,
+      detail: entry.built.detail ?? null,
+      offline: "flush",
+      // The decision tick is in the digest through `step`: two runs of one seed must
+      // agree not only on what was flushed but on how long it had been waiting.
+      step: `offline-flush@${entry.decidedTick}`,
+      extra: { decidedTick: entry.decidedTick, decidedSim: entry.decidedSim, queuedTicks: tick - entry.decidedTick },
+    });
+    recordActionViolation(tick, ws, entry.actor, entry.action, result, entry.built, { offline: "flush", decidedTick: entry.decidedTick });
+  }
+}
+
+// ── Feature 3: the duplicate send ────────────────────────────────────────────
+//
+// Sends the IDENTICAL statement a second time, immediately, and asks the database
+// whether that made a second row. See DUPLICATE_CATALOGUE in lib/actions.mjs for what
+// each action is expected to do and why — every entry there was read out of
+// supabase-schema.sql.
+//
+// The duplicate's own `apply` is deliberately NOT run. For an idempotent action there is
+// nothing new to record, and for a tolerated one the second row is left UNTRACKED by the
+// harness on purpose: it is exactly what a double-tap leaves behind in production, the
+// oracle reads the database rather than the harness's model, and a phantom entry in the
+// model would make later edits address a row the member never created.
+async function maybeDuplicate({ tick, ws, actor, action, sql, built, rhythm }) {
+  const plan = duplicateExpectation(action);
+  if (!plan) return;
+  if (!ws.rng.bool(DUP_CHANCE)) return;
+
+  const before = await probeRows(plan, ws, built.detail);
+  const result = await sendAction(sql);
+  const after = await probeRows(plan, ws, built.detail);
+  const delta = before === null || after === null ? null : after - before;
+
+  let outcome = result.outcome;
+  if (plan.expect === "tolerated" && outcome === "ok" && delta !== null && delta > 0) {
+    outcome = "dup-tolerated";
+    phaseB.duplicatesTolerated += 1;
+  } else if (outcome === "ok" || outcome === "guard") {
+    phaseB.duplicatesAbsorbed += 1;
+  }
+  phaseB.duplicatesSent += 1;
+
+  journalAction({
+    tick, ws, actor, action, rhythm,
+    outcome,
+    guardKind: result.guardKind,
+    sqlstate: result.sqlstate,
+    message: result.message,
+    ms: result.ms,
+    detail: built.detail ?? null,
+    dup: true,
+    step: `dup:${plan.expect}`,
+    extra: { dupExpect: plan.expect, dupRowDelta: delta },
+  });
+  recordActionViolation(tick, ws, actor, action, result, built, { dup: true });
+
+  // The finding this feature exists to produce: the schema promised the second send
+  // could not create a row, and it did.
+  if (plan.expect === "idempotent" && delta !== null && delta > 0) {
+    recordViolation({
+      key: `duplicate:${action}`,
+      kind: "duplicate_hazard",
+      tick,
+      ws: ws.index,
+      action,
+      actor: actor.name,
+      persona: actor.persona,
+      message: `re-sending ${action} created ${delta} extra row(s), but ${plan.why}`,
+      detail: { expect: plan.expect, why: plan.why, rowsBefore: before, rowsAfter: after, action: built.detail ?? null },
+    });
+  }
+}
+
+/** Count the rows the action creates. Null when the probe could not be answered, which
+ *  makes the duplicate un-judged rather than falsely clean. */
+async function probeRows(plan, ws, detail) {
+  try {
+    const value = await db.value(`${plan.probe(ws, detail ?? {})};`, `duplicate probe ${plan.action}`);
+    const count = Number(value);
+    return Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Feature 4: the lockstep contention scenario ──────────────────────────────
+//
+// Three sub-steps, three journal lines, one PRNG-chosen resolution. See
+// lib/interleave.mjs for the templates and for why the contender runs under
+// SET LOCAL lock_timeout.
+async function runContention(tick, ws, ctx) {
+  const scenario = await buildScenario(ctx);
+  if (!scenario) return false;
+  const holderSessionIndex = sessions.size > 2 ? ws.rng.int(1, sessions.size - 1) : 1;
+
+  const outcome = await runScenario({
+    scenario,
+    ws,
+    sessions,
+    rng: ws.rng,
+    holderSessionIndex,
+    onStep: async (step, sessionIndex, actorSlot, result, label) => {
+      const actor = ws.members.find((m) => m.slot === actorSlot) ?? ws.members[0];
+      journalAction({
+        tick, ws, actor,
+        action: `interleave_${scenario.id}`,
+        outcome: result.outcome,
+        guardKind: result.guardKind ?? null,
+        sqlstate: result.sqlstate ?? null,
+        message: result.message ?? null,
+        ms: result.ms ?? 0,
+        detail: { ...(scenario.detail ?? {}), label },
+        session: sessionIndex,
+        step,
+        scenario: scenario.id,
+      });
+      if (result.outcome === "error") {
+        recordActionViolation(tick, ws, actor, `interleave_${scenario.id}`, result, null, { step, session: sessionIndex });
+      }
+    },
+  });
+
+  phaseB.scenariosRun += 1;
+  const key = outcome.steps.contender.outcome;
+  phaseB.scenariosByOutcome[key] = (phaseB.scenariosByOutcome[key] ?? 0) + 1;
+
+  if (outcome.hazard) {
+    recordViolation({
+      key: `interleave:${scenario.id}`,
+      kind: "interleave_hazard",
+      tick,
+      ws: ws.index,
+      action: `interleave_${scenario.id}`,
+      message: outcome.hazard,
+      detail: {
+        scenario: scenario.id,
+        danish: scenario.danish,
+        lock: scenario.lock,
+        holder: { slot: scenario.holder.slot, outcome: outcome.steps.holder.outcome },
+        contender: { slot: scenario.contender.slot, outcome: outcome.steps.contender.outcome },
+        resolution: outcome.steps.resolution,
+        ...(scenario.detail ?? {}),
+      },
+    });
+  }
+
+  // Belt and braces: a scenario that threw between the holder's statement and its
+  // resolution would leave a transaction — and its locks — open for the oracle sweep.
+  await sessions.rollbackSecondaries();
+  return true;
 }
 
 // Workspaces are visited in proportion to their size, so a run with unequal member
@@ -674,6 +1104,9 @@ async function callAs(member, innerSql) {
 // ── Oracle sweeps ────────────────────────────────────────────────────────────
 
 async function sweep(tick, { final = false } = {}) {
+  // An open transaction on a secondary session holds locks the sweep's own reads would
+  // sit behind. Scenarios always resolve their own, so this is belt and braces.
+  await sessions.rollbackSecondaries();
   const results = await runOracle(db, workspaces, { parity });
   // Parity gets its own journal line as well as its cell on the wall: the wall says
   // green/red/muted, this says WHAT was compared — which periods, how many members,
@@ -809,6 +1242,15 @@ function snapshot() {
     ticks: config.ticks,
     simTime: clock.now().toISOString(),
     counters: { ...counters },
+    simClock: clockLabel(clock.now()),
+    phaseB: {
+      ...phaseB,
+      rhythm: config.rhythm,
+      dup: config.dup,
+      interleave: config.interleave,
+      offline: config.offline,
+      sessions: config.sessions,
+    },
     guardCounts: Object.fromEntries(guardCounts),
     actionCounts: Object.fromEntries(actionCounts),
     rpc: [...rpcStats.entries()].map(([action, stat]) => ({
@@ -868,7 +1310,13 @@ function report(wallSeconds, schemaSeconds) {
   console.log(`  schema apply ${schemaSeconds.toFixed(1)}s · run ${wallSeconds.toFixed(1)}s · ${(total / Math.max(wallSeconds, 0.001)).toFixed(1)} actions/s`);
   console.log(`  simulated span ${EPOCH.toISOString().slice(0, 10)} → ${clock.now().toISOString().slice(0, 10)} (${Math.round(clock.offsetMinutes() / 60)} h)`);
   console.log("");
-  console.log(`  outcomes:   ok ${counters.ok}   guard ${counters.guard}   error ${counters.error}`);
+  console.log(`  outcomes:   ${OUTCOMES.map((name) => `${name} ${counters[name] ?? 0}`).join("   ")}`);
+  console.log("");
+  console.log("  behavioural realism (GV-478 Phase B):");
+  console.log(`     rhythm                   ${config.rhythm ? `on · ${clock.now().toISOString().slice(0, 10)} ${clockLabel(clock.now())} at the last tick` : "off (--flat-clock)"}`);
+  console.log(`     duplicates sent          ${phaseB.duplicatesSent} (${phaseB.duplicatesAbsorbed} absorbed by the schema, ${phaseB.duplicatesTolerated} created a second row)`);
+  console.log(`     contention scenarios     ${phaseB.scenariosRun}${phaseB.scenariosRun > 0 ? ` · contender ${Object.entries(phaseB.scenariosByOutcome).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}`);
+  console.log(`     offline bursts           ${phaseB.offlineBursts} · ${phaseB.offlineQueued} statements queued, ${phaseB.offlineFlushed} flushed, ${phaseB.offlineStale} refused on a stale token`);
   console.log("");
   console.log("  guard kinds (an expected rejection is the fuzz reaching an edge):");
   for (const [kind, count] of [...guardCounts.entries()].sort((a, b) => b[1] - a[1])) {

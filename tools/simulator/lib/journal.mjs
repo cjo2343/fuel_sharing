@@ -61,6 +61,23 @@ export function readJournal(filePath) {
  * omits `ts`, `ms`, and any uuid the database minted, none of which a replay can or
  * should reproduce. Two runs of the same seed and configuration must produce the same
  * digest; that is what makes the one-line repro in a violation report true.
+ *
+ * GV-478 ADDED THREE FIELDS, and the tuple changed shape rather than being extended
+ * quietly, because a tick is no longer one statement:
+ *
+ *   dup      — a duplicate send is a separate line with the same tick and action as the
+ *              first send. Without this the two would hash identically and a run that
+ *              double-sent could not be told from one that did not.
+ *   session  — which psql session the statement went to. A contention scenario's three
+ *              sub-steps differ only in session and step.
+ *   step     — the sub-step: `holder` / `contender` / `holder_commit`, `dup:idempotent`,
+ *              `offline-queue@N`, `offline-flush@N`. The offline ones carry the DECISION
+ *              tick, so two runs of one seed must agree not merely on what was flushed
+ *              but on how long each statement had been waiting.
+ *
+ * What is NOT in here, on purpose: the simulated weekday and clock label. Both are
+ * derived from `--epoch`, which varies with the day a default run happens, while
+ * `simOffsetMin` is the epoch-independent half and is already covered.
  */
 export function digestOf(records) {
   const hash = createHash("sha256");
@@ -75,6 +92,9 @@ export function digestOf(records) {
       record.action,
       record.outcome,
       record.guardKind ?? "",
+      record.dup ? "dup" : "",
+      record.session ?? 0,
+      record.step ?? "",
     ].join("|"));
     hash.update("\n");
   }

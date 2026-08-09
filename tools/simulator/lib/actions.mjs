@@ -103,6 +103,20 @@ const GUARDS = [
   },
 ];
 
+/**
+ * GV-478 Phase B: a lock conflict, which is neither a guard nor a bug.
+ *
+ * `contention` is its own outcome class for the same reason `guard` is: it is a
+ * SUCCESS signal. 55P03 means two sessions genuinely collided on the same lock and the
+ * database serialised them — the RPC's advisory lock or its `for update` did the job it
+ * exists to do. It is only reachable at all because lib/interleave.mjs runs the
+ * contender under `SET LOCAL lock_timeout`; nothing in an ordinary tick can produce it,
+ * since ordinary ticks all run on the primary session.
+ */
+export function isLockTimeout(sqlstate, message) {
+  return String(sqlstate) === "55P03" || /canceling statement due to lock timeout/i.test(String(message ?? ""));
+}
+
 /** guardKind for an expected rejection, or null when the rejection is a finding. */
 export function classifyRejection(sqlstate, message) {
   const text = String(message ?? "");
@@ -114,6 +128,146 @@ export function classifyRejection(sqlstate, message) {
 }
 
 export const GUARD_KINDS = [...new Set(GUARDS.map((g) => g.kind))];
+
+// ── Expected duplicates (GV-478 Phase B, feature 3) ──────────────────────────
+//
+// Real clients double-tap, and real clients retry a request whose response they never
+// saw. Both send the identical RPC twice, and the second send is the interesting one.
+//
+// This catalogue answers, per action, WHAT THE SCHEMA PROMISES about that second send —
+// and every entry below was read out of supabase-schema.sql rather than assumed:
+//
+//   "idempotent"  the schema guarantees the second send cannot create a second row.
+//                 Verified, not trusted: `probe` counts the rows the action creates,
+//                 the tick loop runs it before the first send and after the duplicate,
+//                 and ANY increase is a `duplicate_hazard` finding. This is the half of
+//                 the feature that can fail a run.
+//
+//   "tolerated"   the action is a plain INSERT with no idempotency key, so a second
+//                 send legitimately creates a second row TODAY. That is real
+//                 double-tap exposure and it is worth seeing, but it is not a
+//                 regression and must not fail a run, so it is journalled as the
+//                 outcome `dup-tolerated` — a note, never a finding, and never counted
+//                 as a guard.
+//
+// An action absent from this catalogue is never duplicated at all. That is deliberate:
+// duplicating an action whose expectation nobody has worked out would produce a run
+// whose result nobody can interpret.
+//
+// The three mechanisms the "idempotent" entries rest on, all in supabase-schema.sql:
+//   · trips / fuel_payments / car_bookings carry a UNIQUE (ledger_id, legacy_id) and
+//     the upsert RPCs resolve with `on conflict … do update`, behind a per-legacy-id
+//     `pg_advisory_xact_lock(hashtext(ledger || ':trip:' || legacy_id))`;
+//   · booking_handovers.booking_id is UNIQUE — migration GVM-529 states outright that
+//     "a second save EDITS the handover rather than stacking a duplicate";
+//   · upsert_settlement_request_status looks the pair's row up `for update` and UPDATEs
+//     it, inserting only when there is none (the GVM-241 shape), and
+//     generate_due_recurring_expenses inserts `on conflict (recurring_expense_id,
+//     occurrence_date)` behind workspace_expenses_recurrence_uq.
+//
+// NOT COVERED, and named so the gap is not mistaken for a claim: redeem_ledger_invite
+// runs only during seeding, before the tick loop exists, so a duplicated redemption is
+// out of this catalogue's reach even though the RPC is idempotent by design.
+export const DUPLICATE_CATALOGUE = {
+  log_trip: {
+    expect: "idempotent",
+    why: "upsert_trip_with_participants keys on (ledger_id, legacy_id) with on conflict do update, behind the ':trip:' advisory lock.",
+    probe: (ws, detail) => (`select count(*) from public.trips
+        where ledger_id = ${lit(ws.ledgerId)} and legacy_id = ${lit(detail.legacyId)}`),
+  },
+  log_trip_backdated: { alias: "log_trip" },
+  log_trip_with_crossing: { alias: "log_trip" },
+  edit_trip: { alias: "log_trip" },
+  complete_booking: {
+    expect: "idempotent",
+    why: "complete_booking_trip_with_fuel writes the trip through the same (ledger_id, legacy_id) upsert, so a re-sent completion cannot produce a second trip for the booking.",
+    probe: (ws, detail) => (`select count(*) from public.trips
+        where ledger_id = ${lit(ws.ledgerId)} and legacy_id = ${lit(detail.legacyId)}`),
+  },
+
+  log_fuel: {
+    expect: "idempotent",
+    why: "upsert_fuel_payment keys on (ledger_id, legacy_id) with on conflict do update, behind the ':fuel:' advisory lock.",
+    probe: (ws, detail) => (`select count(*) from public.fuel_payments
+        where ledger_id = ${lit(ws.ledgerId)} and legacy_id = ${lit(detail.legacyId)}`),
+  },
+  log_fuel_backdated: { alias: "log_fuel" },
+  edit_fuel: { alias: "log_fuel" },
+
+  create_booking: {
+    expect: "idempotent",
+    why: "upsert_car_booking looks the (ledger_id, legacy_id) row up FOR UPDATE behind the ':booking:' advisory lock and updates it, so a re-sent booking is an edit of the same window, not a second reservation.",
+    probe: (ws, detail) => (`select count(*) from public.car_bookings
+        where ledger_id = ${lit(ws.ledgerId)} and legacy_id = ${lit(detail.legacyId)}`),
+  },
+  edit_booking_window: { alias: "create_booking" },
+
+  save_handover: {
+    expect: "idempotent",
+    why: "booking_handovers.booking_id is UNIQUE and upsert_booking_handover holds the ':handover:' advisory lock, so a second save edits the one row.",
+    probe: (ws, detail) => (`select count(*) from public.booking_handovers
+        where ledger_id = ${lit(ws.ledgerId)} and booking_id = ${uuidLit(detail.bookingId)}`),
+  },
+
+  request_settlement: {
+    expect: "idempotent",
+    why: "upsert_settlement_request_status selects the (period, payer, recipient) row FOR UPDATE and UPDATEs it; it inserts only when no row exists. Two pending requests for one pair must be impossible.",
+    probe: (ws, detail) => (`select count(*) from public.settlement_requests
+        where period_id = ${uuidLit(detail.periodId)}
+          and from_member_id = ${uuidLit(detail.fromId)}
+          and to_member_id = ${uuidLit(detail.toId)}
+          and status <> 'cancelled'`),
+  },
+  mark_settlement_paid: { alias: "request_settlement" },
+  confirm_settlement: { alias: "request_settlement" },
+
+  close_period: {
+    expect: "idempotent",
+    why: "close_settlement_period takes `for update of sp` on the OPEN period row and raises when there is none, so the second close of the same period cannot close a second one.",
+    probe: (ws) => (`select count(*) from public.settlement_periods
+        where ledger_id = ${lit(ws.ledgerId)} and status = 'closed'`),
+  },
+
+  generate_recurring: {
+    expect: "idempotent",
+    why: "generate_due_recurring_expenses inserts `on conflict (recurring_expense_id, occurrence_date) do nothing` under workspace_expenses_recurrence_uq, and advances next_due_date, so the second call has nothing to materialise.",
+    probe: (ws) => (`select count(*) from public.workspace_expenses
+        where ledger_id = ${lit(ws.ledgerId)} and recurring_expense_id is not null`),
+  },
+
+  // ── The tolerated half: real exposure, documented rather than failed ────────
+  add_expense: {
+    expect: "tolerated",
+    why: "upsert_workspace_expense creates when expense_id_value is null and there is no idempotency key, so a double-tapped 'Tilføj udgift' books the amount twice. Real exposure; not a regression.",
+    probe: (ws) => (`select count(*) from public.workspace_expenses
+        where ledger_id = ${lit(ws.ledgerId)} and deleted_at is null`),
+  },
+  log_repair: {
+    expect: "tolerated",
+    why: "insert_repair is a plain INSERT with no key of any kind — the double-tap lands twice, and both rows split.",
+    probe: (ws) => (`select count(*) from public.vehicle_repairs where ledger_id = ${lit(ws.ledgerId)}`),
+  },
+  upsert_recurring: {
+    expect: "tolerated",
+    why: "upsert_recurring_expense creates a NEW template when recurring_id_value is null, so a re-sent create is a second template that then generates its own occurrences forever.",
+    probe: (ws) => (`select count(*) from public.recurring_expenses where ledger_id = ${lit(ws.ledgerId)}`),
+  },
+  post_message: {
+    expect: "tolerated",
+    why: "post_message appends. A duplicate chat line is the least harmful duplicate on the platform, and it is here as the control case.",
+    probe: (ws) => (`select count(*) from public.messages where ledger_id = ${lit(ws.ledgerId)}`),
+  },
+};
+
+/** Resolve aliases and return {name, expect, why, probe} or null when the action is
+ *  not in the catalogue and therefore must never be duplicated. */
+export function duplicateExpectation(action) {
+  const entry = DUPLICATE_CATALOGUE[action];
+  if (!entry) return null;
+  const resolved = entry.alias ? DUPLICATE_CATALOGUE[entry.alias] : entry;
+  if (!resolved) return null;
+  return { action, expect: resolved.expect, why: resolved.why, probe: resolved.probe };
+}
 
 // ── Fixture vocabulary (Danish, synthetic, no real people or places) ─────────
 const STATIONS = ["Circle K", "Shell", "OK", "Q8", "Ingo", "Uno-X"];
@@ -298,7 +452,7 @@ export const ACTIONS = {
       const odo = ctx.ws.odometer + ctx.rng.int(0, 40);
       const fraction = Math.round(ctx.rng.float() * 100) / 100;
       return {
-        detail: { legacyId: booking.legacyId, odometer: odo, fraction },
+        detail: { legacyId: booking.legacyId, bookingId: booking.id, odometer: odo, fraction },
         inner: `select public.upsert_booking_handover(
                   target_ledger_id => ${lit(ctx.ws.ledgerId)},
                   target_booking_id => ${uuidLit(booking.id)},
@@ -441,6 +595,7 @@ export const ACTIONS = {
         apply: (result) => {
           booking.completed = true;
           ctx.ws.odometer = endKm;
+          ctx.ws.kmSinceFuel = logged ? 0 : (ctx.ws.kmSinceFuel ?? 0) + Math.max(0, endKm - startKm);
           ctx.ws.trips.push({
             legacyId,
             id: result?.trip_id ?? null,
@@ -632,7 +787,7 @@ export const ACTIONS = {
       const pair = ctx.rng.pick(outstanding.length > 0 ? outstanding : pairs);
       if (!pair) return null;
       return {
-        detail: { amount: pair.amount },
+        detail: { amount: pair.amount, periodId: ctx.ws.openPeriodId, fromId: pair.fromId, toId: pair.toId },
         inner: `select public.upsert_settlement_request_status(
                   target_ledger_id => ${lit(ctx.ws.ledgerId)},
                   target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
@@ -665,7 +820,7 @@ export const ACTIONS = {
       const request = ctx.rng.pick(mine);
       if (!request) return null;
       return {
-        detail: { amount: request.amount },
+        detail: { amount: request.amount, periodId: ctx.ws.openPeriodId, fromId: request.fromId, toId: request.toId },
         inner: `select public.upsert_settlement_request_status(
                   target_ledger_id => ${lit(ctx.ws.ledgerId)},
                   target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
@@ -688,7 +843,7 @@ export const ACTIONS = {
       const request = ctx.rng.pick(mine);
       if (!request) return null;
       return {
-        detail: { amount: request.amount },
+        detail: { amount: request.amount, periodId: ctx.ws.openPeriodId, fromId: request.fromId, toId: request.toId },
         inner: `select public.upsert_settlement_request_status(
                   target_ledger_id => ${lit(ctx.ws.ledgerId)},
                   target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
@@ -741,13 +896,44 @@ export const ACTIONS = {
 };
 
 // ── Shared builders ──────────────────────────────────────────────────────────
+//
+// tripWrite and fuelWrite are EXPORTED as well as used here: lib/interleave.mjs drives
+// the very same RPC calls from a second session, and a contention scenario built out of
+// a hand-written copy of the call would stop testing the thing the tick loop tests the
+// moment either drifted.
+
+/**
+ * GV-478 Phase B: the offline queue's stale precondition token.
+ *
+ * A phone that decided on an edit at 08:12 and sent it at 17:40 carries the row version
+ * it saw at 08:12. That is the WHOLE bug class the offline persona exists for: if
+ * anybody touched the row in between, migration 160's GV-421 guard must refuse the late
+ * write rather than silently overwrite nine hours of somebody else's work.
+ *
+ * So for an offline actor the token is READ AT DECISION TIME (a database read in the
+ * decision path, which is deterministic — the database's state at that tick is itself a
+ * function of the seed) and carried in the queued statement. For everyone else nothing
+ * changes: the token stays whatever the caller's own `stale` draw asked for, and this
+ * function makes no PRNG draw in either case.
+ */
+async function offlineToken(ctx, table, id) {
+  if (!ctx.offline || !id || typeof ctx.readUpdatedAt !== "function") return null;
+  return ctx.readUpdatedAt(table, id);
+}
+
+/** `expected_updated_at =>` for an action: the offline token if there is one, else the
+ *  deliberately stale epoch when the caller drew `stale`, else null (last write wins). */
+function preconditionSql(token, stale, ctx) {
+  if (token) return `${lit(token)}::timestamptz`;
+  return stale ? `${lit(ctx.sim.epochIso)}::timestamptz` : "null";
+}
 
 function nextId(ws, kind) {
   ws.counters[kind] = (ws.counters[kind] ?? 0) + 1;
   return `w${ws.index}-${kind}-${ws.counters[kind]}`;
 }
 
-function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, stale = false }) {
+export async function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, stale = false }) {
   const members = active(ctx.ws);
   if (members.length === 0) return null;
   // On an edit the driver usually stays put; one edit in four REASSIGNS it, which is
@@ -771,9 +957,10 @@ function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, s
   const tripDate = existing ? existing.date : ctx.sim.date(-backdateDays * 24 * 60);
   const crossingCost = crossing ? ctx.rng.money(35, 260) : null;
   const crossingPayer = crossing ? ctx.rng.pick(participants) ?? driver : null;
+  const offlineTok = await offlineToken(ctx, "trips", existing?.id);
 
   return {
-    detail: { legacyId, endKm, edit: Boolean(existing), stale, crossing, reassign },
+    detail: { legacyId, endKm, edit: Boolean(existing), stale, crossing, reassign, offlineToken: Boolean(offlineTok) },
     inner: `select public.upsert_trip_with_participants(
               target_ledger_id => ${lit(ctx.ws.ledgerId)},
               target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
@@ -790,9 +977,12 @@ function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, s
               event_title => ${lit("Ny tur logget")},
               event_body => ${lit(`${endKm - startKm} km`)},
               crossing_provided => ${crossing},
-              expected_updated_at => ${stale ? `${lit(ctx.sim.epochIso)}::timestamptz` : "null"})`,
+              expected_updated_at => ${preconditionSql(offlineTok, stale, ctx)})`,
     apply: (result) => {
       ctx.ws.odometer = Math.max(ctx.ws.odometer, endKm);
+      // Kilometres since the last fill drive the rhythm's `thirsty` rule (lib/rhythm.mjs):
+      // a fill is logged because the car has been driven, not because a die came up 4.
+      ctx.ws.kmSinceFuel = (ctx.ws.kmSinceFuel ?? 0) + Math.max(0, endKm - startKm);
       if (existing) {
         existing.endKm = endKm;
         existing.driverSlot = driver.slot;
@@ -813,7 +1003,7 @@ function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, s
   };
 }
 
-function fuelWrite(ctx, { existing = null, backdateDays = 0, stale = false }) {
+export async function fuelWrite(ctx, { existing = null, backdateDays = 0, stale = false }) {
   // Same rule as trips: you normally log the fill YOU paid for (see tripWrite).
   const self = memberOf(ctx.ws, ctx.actorSlot);
   const payer = existing
@@ -826,8 +1016,9 @@ function fuelWrite(ctx, { existing = null, backdateDays = 0, stale = false }) {
   const liters = Math.round((amount / pricePerLiter) * 100) / 100;
   const date = existing ? existing.date : ctx.sim.date(-backdateDays * 24 * 60);
   const station = ctx.rng.pick(STATIONS);
+  const offlineTok = await offlineToken(ctx, "fuel_payments", existing?.id);
   return {
-    detail: { legacyId, amount, edit: Boolean(existing), stale },
+    detail: { legacyId, amount, edit: Boolean(existing), stale, offlineToken: Boolean(offlineTok) },
     inner: `select public.upsert_fuel_payment(
               target_ledger_id => ${lit(ctx.ws.ledgerId)},
               target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
@@ -844,9 +1035,10 @@ function fuelWrite(ctx, { existing = null, backdateDays = 0, stale = false }) {
               full_tank_value => ${ctx.rng.bool(0.45)},
               event_title => ${lit("Optankning registreret")},
               event_body => ${lit(`${amount} kr`)},
-              expected_updated_at => ${stale ? `${lit(ctx.sim.epochIso)}::timestamptz` : "null"},
+              expected_updated_at => ${preconditionSql(offlineTok, stale, ctx)},
               booking_id_value => null)`,
     apply: (result) => {
+      ctx.ws.kmSinceFuel = 0;
       if (existing) { existing.amount = amount; return; }
       ctx.ws.fuel.push({
         legacyId,
@@ -861,7 +1053,7 @@ function fuelWrite(ctx, { existing = null, backdateDays = 0, stale = false }) {
   };
 }
 
-function bookingWrite(ctx, { existing = null, overlapWith = null, stale = false }) {
+async function bookingWrite(ctx, { existing = null, overlapWith = null, stale = false }) {
   const member = existing ? memberOf(ctx.ws, existing.memberSlot) : ctx.rng.pick(active(ctx.ws));
   if (!member) return null;
   const legacyId = existing ? existing.legacyId : nextId(ctx.ws, "booking");
@@ -893,10 +1085,11 @@ function bookingWrite(ctx, { existing = null, overlapWith = null, stale = false 
   const startAt = ctx.sim.isoAt(startAbs);
   const endAt = ctx.sim.isoAt(startAbs + lengthMinutes);
   const startDate = ctx.sim.dateAt(startAbs);
+  const offlineTok = await offlineToken(ctx, "car_bookings", existing?.id);
 
   return {
     actorOverride: member.slot,
-    detail: { legacyId, edit: Boolean(existing), overlap: Boolean(overlapWith) },
+    detail: { legacyId, edit: Boolean(existing), overlap: Boolean(overlapWith), offlineToken: Boolean(offlineTok) },
     inner: `select public.upsert_car_booking(
               target_ledger_id => ${lit(ctx.ws.ledgerId)},
               legacy_booking_id => ${lit(legacyId)},
@@ -907,7 +1100,7 @@ function bookingWrite(ctx, { existing = null, overlapWith = null, stale = false 
               event_title => ${lit("Booking oprettet")},
               event_body => ${lit("Reserveret")},
               fuel_stop_value => null,
-              expected_updated_at => ${stale ? `${lit(ctx.sim.epochIso)}::timestamptz` : "null"})`,
+              expected_updated_at => ${preconditionSql(offlineTok, stale, ctx)})`,
     apply: (result) => {
       if (existing) {
         existing.lengthMinutes = lengthMinutes;
