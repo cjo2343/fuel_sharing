@@ -129,7 +129,7 @@
   }
   /* Progress is not a verdict, so it is not green: a neutral fill, and the green is
      saved for the pills that actually say something passed. */
-  .progress > span { display: block; height: 100%; background: var(--ink-faint); width: 0; transition: width 200ms linear; }
+  .progress > span { display: block; height: 100%; background: color-mix(in srgb, var(--ink-faint) 60%, transparent); width: 0; transition: width 200ms linear; }
 
   .tally { display: flex; gap: 8px; flex-wrap: wrap; }
   .pill {
@@ -189,7 +189,12 @@
   details.phones > summary::-webkit-details-marker { display: none; }
   details.phones > summary .chev { transition: transform 120ms ease; }
   details.phones[open] > summary .chev { transform: rotate(90deg); }
-  .phone-grid { display: grid; gap: 8px; margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); }
+  /* 150px is chosen, not rounded to: it puts TWO phones on a row both when four
+     workspaces share the page (wide cards) and when eight do (narrow ones), so the shelf
+     keeps its shape instead of collapsing to one column at the size where there is most
+     to read. Below that the column count drops and the page scrolls — it never squashes
+     a phone narrower than a legible "1.184,11 kr". */
+  .phone-grid { display: grid; gap: 8px; margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); }
   .phone-grid > * { min-width: 0; }
   .phone {
     border: 1px solid var(--line); border-radius: 14px; background: var(--bg);
@@ -420,6 +425,13 @@
     mark_settlement_paid: "Markeret betalt",
     confirm_settlement: "Betaling bekræftet",
     close_period: "Periode lukket",
+    // Phase B's lockstep scenarios (lib/interleave.mjs). Their own `danish` strings are
+    // full sentences written for the ticker's width; these are the phone-sized versions
+    // of the same four.
+    interleave_same_trip_edit: "Samtidig turrettelse",
+    interleave_fuel_during_close: "Tankning under lukning",
+    interleave_settlement_pair_race: "Kapløb om afregning",
+    interleave_handover_race: "Kapløb om overdragelse",
   };
   const actionLabel = (name) => ACTION_LABELS[name] ?? name;
 

@@ -320,6 +320,45 @@ if (flatLines.some((line) => line.simPhase !== null)) fail("--flat-clock still a
 if (flatLines.filter((line) => line.outcome === "guard").length === 0) fail("Phase A shape produced zero guards.");
 console.log(`✅ Phase A shape: 60 actions, one per tick, no duplicates, no scenarios, one session, flat clock, still green.`);
 
+// ── 1g. GV-480 Phase C: the dashboard's phone data, and its cost ─────────────
+//
+// The mission-control phone panels are fed by a `state` journal line the oracle sweep
+// writes (run.mjs's workspaceViews()). Nothing in the harness reads it back, so if it
+// ever stopped carrying per-member nets the only symptom would be a dashboard quietly
+// showing "–" for every member — the shipped-feature-goes-dark failure this repo keeps
+// hitting. Both halves below are read off the CLEAN run's journal, already in memory.
+//
+// The second half is the one that matters most: REMOVING every `state` line must not
+// change the determinism digest. That is the whole Phase C contract in one assertion —
+// the line is display-only, and no repro command in any violation report moved because
+// of it.
+const stateLines = cleanRecords.filter((line) => line.kind === "state");
+if (stateLines.length === 0) {
+  fail("the clean run journalled no `state` line — mission control's phone panels have nothing to replay from.");
+}
+const lastState = stateLines[stateLines.length - 1];
+if ((lastState.workspaces ?? []).length !== 2) {
+  fail(`the last \`state\` line covers ${(lastState.workspaces ?? []).length} workspace(s), expected 2.`);
+}
+const phoneMembers = (lastState.workspaces ?? []).flatMap((ws) => ws.members ?? []);
+if (phoneMembers.length !== 8) fail(`the last \`state\` line carries ${phoneMembers.length} member(s), expected 2 × 4.`);
+if (!phoneMembers.some((m) => m.admin)) fail("no member in the `state` line is marked admin — the phone panels cannot mark one.");
+if (phoneMembers.some((m) => !m.personaLabel)) fail("a member in the `state` line carries no persona label.");
+// A settled workspace legitimately nets everyone to zero, so the assertion is that the
+// nets were MEASURED (a number, not null), not that somebody owes something.
+const measured = phoneMembers.filter((m) => typeof m.net === "number");
+if (measured.length === 0) {
+  fail("no member in the last `state` line has a measured net — the phones would show a dash for everybody.");
+}
+const digestWithoutState = digestOf(cleanRecords.filter((line) => line.kind !== "state"));
+if (digestWithoutState !== cleanDigest) {
+  fail(
+    "removing the `state` lines changed the determinism digest — the Phase C display snapshot is NOT display-only:\n" +
+    `  with them:    ${cleanDigest}\n  without them: ${digestWithoutState}`,
+  );
+}
+console.log(`✅ phone data: ${stateLines.length} \`state\` line(s), ${measured.length}/${phoneMembers.length} members with a measured net, and the digest is identical without them.`);
+
 // ── 2. Chaos run: the oracle's self-test ─────────────────────────────────────
 const chaos = runSimulator(["--chaos"], "chaos run");
 const chaosViolations = (chaos.report.violations ?? []).filter((v) => !v.known);
