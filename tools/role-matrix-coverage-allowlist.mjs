@@ -61,26 +61,14 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
-  {
-    fn: 'recompute_handover_mirror',
-    reason:
-      'New in migration 195 (GV-475) and deliberately server-first: it is the audited ' +
-      'admin correction for a poisoned odometer mirror, and migration 193\'s mirror is ' +
-      'monotone precisely so a deleted or edited-down handover cannot retract a reading, ' +
-      'so this RPC is the ONLY way back from a fat-fingered 1181660. The mobile ' +
-      'affordance for it is a follow-up; until that ships an operator calls the RPC ' +
-      'directly, which is exactly the "built but unreachable" shape GV-379 exists to ' +
-      'surface — written down here rather than left silent. The guard exercises it ' +
-      'because it is admin-only through is_ledger_admin with no policy behind it, so ' +
-      'nothing else in CI would notice if that gate came off: the four cases assert ' +
-      'admin succeeds, an ordinary member is refused, another workspace\'s admin is ' +
-      'refused and anon is refused. What would change this answer: govehlo-mobile ' +
-      'shipping the correction UI (findClientCallers then reports this entry STALE and ' +
-      'it must be DELETED, not renewed), or a decision that the recompute belongs to the ' +
-      'operator console only, in which case the authenticated grant is revoked and the ' +
-      'cases become service-role cases.',
-    reviewBy: '2026-11-09',
-  },
+  // recompute_handover_mirror needs NO entry, and the coverage check is what proved it.
+  // Migration 195 (GV-475) shipped the RPC server-first and its own tracker note said the
+  // mobile affordance was a follow-up, so the GV-477 role-matrix cases were written
+  // expecting the migration-195-first window and an entry was drafted here for it. The
+  // guard immediately reported that entry STALE, naming govehlo-mobile's
+  // src/lib/handover-mirror.ts and src/screens/CarProfile/useHandoverMirror.ts: the
+  // follow-up had already landed. Deleted rather than renewed, which is the prescribed
+  // course, and a reminder that this list is the wrong place to record an intention.
   // attach_fuel_payment_receipt's and detach_fuel_payment_receipt's entries were
   // deleted here on the entries' own instruction: they covered only the
   // migration-169-first window, and govehlo-mobile has called both RPCs since PR #563
