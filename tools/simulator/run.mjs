@@ -2,7 +2,8 @@
 //
 //   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 400 --seed 42
 //                                [--serve [port]] [--headless] [--oracle-every 25]
-//                                [--chaos] [--keep]
+//                                [--chaos] [--chaos-parity] [--no-parity]
+//                                [--fat-finger] [--keep]
 //
 // WHAT THIS IS FOR. Every other guard in tools/ asserts a SCRIPTED sequence: this RPC,
 // then that one, then this assertion. They are excellent at the bug you already thought
@@ -43,6 +44,7 @@ import { runOracle, INVARIANTS } from "./lib/oracle.mjs";
 import { Journal, digestOf } from "./lib/journal.mjs";
 import { startServer } from "./lib/server.mjs";
 import { PsqlSession, SIM_SCRATCH_DDL, actionSql, claimsFor, lit, uuidLit } from "./lib/db.mjs";
+import { loadClientModules, MOBILE_ROOT } from "./lib/client-parity.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUT_DIR = path.join(REPO, "tools", "simulator", "out");
@@ -78,6 +80,13 @@ const config = {
   seed: num("seed", 42),
   oracleEvery: num("oracle-every", 25),
   chaos: has("chaos"),
+  // Phase A. On by default — a parity check nobody runs is a comment. `--no-parity`
+  // turns it off, which is how the determinism proof compares the two action streams.
+  parity: !has("no-parity"),
+  chaosParity: has("chaos-parity"),
+  // Off by default ON PURPOSE. See ACTIONS.save_handover_fat_finger: today this action
+  // SUCCEEDS, and a default run must not be red for a bug nobody has fixed yet.
+  fatFinger: has("fat-finger"),
   headless: has("headless"),
   keep: has("keep"),
   serve: has("serve") && !has("headless"),
@@ -98,6 +107,9 @@ const REPRO = [
   `--oracle-every ${config.oracleEvery}`,
   `--epoch ${EPOCH.toISOString().slice(0, 10)}`,
   config.chaos ? "--chaos" : "",
+  config.chaosParity ? "--chaos-parity" : "",
+  config.parity ? "" : "--no-parity",
+  config.fatFinger ? "--fat-finger" : "",
   "--headless",
 ].filter(Boolean).join(" ");
 
@@ -111,14 +123,45 @@ const REPRO = [
 // Each entry needs a narrow `match`. A broad one (any zero_sum failure) would quietly
 // swallow the next real settlement bug, which is the whole reason the invariant exists.
 //
-// The list is EMPTY today, and an empty registry is the healthy state, not a dead one:
 // GV-471-F1 — fuel paid in a period with zero kilometres credited to nobody's debit —
 // lived here from the tool's first run until migration 194 (GV-472) fixed it, and its
 // entry was deleted with the fix rather than left behind as a silencer. The pattern
 // stays: when this fuzzer surfaces something a person has read and that is not the
 // current PR's job, it goes here with a narrow match and comes out again when it is
 // fixed. The historical repro for F1 is kept in README.md, not here.
-const KNOWN_FINDINGS = [];
+//
+// GV-471-F2 below is Phase A's first finding, surfaced by the client-parity oracle on
+// its first long run. It is a CLIENT-vs-SERVER disagreement, not a corruption: the
+// database is self-consistent and the period still nets to zero, but a member's phone
+// and the server's own settlement figure can print amounts one øre apart. It is not
+// this PR's job to fix (the fix is a migration, and this PR ships no SQL), the close's
+// 0,02 kr per-member gate already absorbs it so no close can be blocked by it, and the
+// README records the mechanism and the repro. See there before widening this match.
+const KNOWN_FINDINGS = [
+  {
+    id: "GV-471-F2",
+    title:
+      "tripCost lands one øre apart when km × totalPaid / totalKm is an exact half-øre: " +
+      "Postgres divides FIRST into a 16-digit numeric (product falls just below the tie, rounds down) " +
+      "while the client divides first in a double (product falls just above, rounds up).",
+    // NARROW on purpose, in three independent ways: only the client_parity invariant,
+    // only the two fields the fuel rate feeds, and only a difference of ONE øre. The
+    // length check matters as much as the rest — `mismatches` is truncated at 40, so
+    // without it a hundred-mismatch divergence whose first forty happened to be one-øre
+    // tripCosts would be laundered into this entry.
+    match: (violation) =>
+      violation.kind === "invariant" &&
+      violation.invariant === "client_parity" &&
+      Array.isArray(violation.detail?.mismatches) &&
+      violation.detail.mismatches.length > 0 &&
+      violation.detail.mismatches.length === violation.detail.mismatchCount &&
+      violation.detail.mismatches.every(
+        (m) =>
+          (m.field === "person.tripCost" || m.field === "person.net") &&
+          Math.abs(Number(m.client) - Number(m.server)) <= 0.010000001,
+      ),
+  },
+];
 
 // ── Fixture vocabulary (synthetic, Danish) ───────────────────────────────────
 const FIRST_NAMES = [
@@ -145,6 +188,9 @@ const clock = new SimClock(EPOCH, rootRng.fork("clock"));
 const workspaces = [];
 let currentTick = 0;
 let server = null;
+// The client-parity oracle's state: whether govehlo-mobile's modules loaded, and the
+// one-shot arming for --chaos-parity. Populated in main(); null means "not attempted".
+let parity = null;
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -187,11 +233,17 @@ async function main() {
       ticks: config.ticks,
       oracleEvery: config.oracleEvery,
       chaos: config.chaos,
+      chaosParity: config.chaosParity,
+      parity: config.parity,
+      fatFinger: config.fatFinger,
     },
     epoch: EPOCH.toISOString(),
     repro: REPRO,
     invariants: INVARIANTS,
   });
+
+  await prepareParity();
+  if (config.fatFinger) armFatFinger();
 
   console.log("⏳ Booting disposable Postgres 17 and applying supabase-schema.sql…");
   const schemaSeconds = bootDatabase();
@@ -229,6 +281,12 @@ async function main() {
   writeViolations();
   report(wallSeconds, schemaSeconds);
 
+  // A self-test that had nothing to corrupt proved nothing, and silently passing would
+  // be the worst possible outcome for a check whose entire job is to fail on demand.
+  if (config.chaosParity && !parity?.perturb?.applied) {
+    throw new Error("--chaos-parity found no live trip, fuel or expense row to drop from the client's copy — the self-test did not run.");
+  }
+
   if (newViolations().length > 0) exitCode = 1;
 }
 
@@ -238,7 +296,54 @@ function banner() {
   console.log(`  seed=${config.seed}  workspaces=${config.workspaces}  members=${config.members}  ticks=${config.ticks}`);
   console.log(`  oracle every ${config.oracleEvery} ticks  ·  simulated epoch ${EPOCH.toISOString().slice(0, 10)}`);
   if (config.chaos) console.log("  --chaos: one known corruption will be injected to prove the oracle detects it.");
+  if (config.chaosParity) console.log("  --chaos-parity: one row will be dropped from the CLIENT's copy to prove the parity oracle detects it.");
+  if (config.fatFinger) console.log("  --fat-finger: the ten-times-odometer handover is in the action mix.");
   console.log("────────────────────────────────────────────────────────────");
+}
+
+// ── Client parity: load govehlo-mobile's real calculation modules ────────────
+//
+// Loud on the way in, in every channel a reader might be looking at: the console, the
+// journal (its own `parity` line kind, which the dashboard reads for the header pill),
+// and — because a skipped check that looks green is worse than no check — a muted
+// `client_parity` cell on the invariant wall for every workspace.
+async function prepareParity() {
+  if (!config.parity) {
+    parity = { available: false, reason: "--no-parity", report: [] };
+  } else {
+    const loaded = await loadClientModules();
+    parity = { ...loaded, perturb: config.chaosParity ? { applied: null } : null };
+  }
+  journal.write({
+    kind: "parity",
+    phase: "load",
+    available: parity.available,
+    reason: parity.reason ?? null,
+    mobileRoot: MOBILE_ROOT,
+    modules: parity.report ?? [],
+  });
+  if (parity.available) {
+    const loadedFiles = parity.report.filter((m) => m.loaded).map((m) => m.file);
+    note(`Klient-paritet: kører govehlo-mobiles egne moduler (${loadedFiles.join(", ")}).`);
+    for (const module of parity.report.filter((m) => !m.loaded)) {
+      console.warn(`⚠  client parity: ${module.file} did not load — ${module.error}`);
+    }
+  } else {
+    console.warn(`\n⚠  CLIENT PARITY SKIPPED: ${parity.reason}`);
+    console.warn("   The invariant wall shows 'Klient-paritet' as ikke tilgængelig, not as green.\n");
+    note(`Klient-paritet ikke tilgængelig: ${parity.reason}`);
+  }
+  if (config.chaosParity && !parity.available) {
+    throw new Error("--chaos-parity was requested but the parity oracle is unavailable — the self-test would prove nothing.");
+  }
+}
+
+// --fat-finger: put the ten-times-odometer handover into the mix. Done by mutating the
+// persona weights rather than by shipping the weight, so the default action stream — and
+// therefore the determinism digest of every existing repro command — is untouched.
+function armFatFinger() {
+  PERSONAS.booker.weights.save_handover_fat_finger = 3;
+  PERSONAS.serial_editor.weights.save_handover_fat_finger = 1;
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -569,7 +674,29 @@ async function callAs(member, innerSql) {
 // ── Oracle sweeps ────────────────────────────────────────────────────────────
 
 async function sweep(tick, { final = false } = {}) {
-  const results = await runOracle(db, workspaces);
+  const results = await runOracle(db, workspaces, { parity });
+  // Parity gets its own journal line as well as its cell on the wall: the wall says
+  // green/red/muted, this says WHAT was compared — which periods, how many members,
+  // and (when it is red) the first disagreeing field. A reader tailing the journal
+  // should not have to open the dashboard to see that.
+  const parityResults = results.filter((r) => r.invariant === "client_parity");
+  if (parityResults.length > 0) {
+    journal.write({
+      kind: "parity",
+      phase: "sweep",
+      tick,
+      simTime: clock.now().toISOString(),
+      available: Boolean(parity?.available),
+      results: parityResults.map((r) => ({
+        ws: r.ws,
+        ok: r.ok,
+        skipped: Boolean(r.skipped),
+        periods: r.detail?.periods?.length ?? 0,
+        mismatchCount: r.detail?.mismatchCount ?? 0,
+        first: r.detail?.first ?? null,
+      })),
+    });
+  }
   for (const result of results) {
     invariantState.set(`${result.invariant}:${result.ws}`, result);
     if (!result.ok) {
@@ -692,6 +819,16 @@ function snapshot() {
       samples: stat.samples,
     })),
     invariants: [...invariantState.values()],
+    // Client parity's availability, for the dashboard header. A wall cell can only say
+    // muted; this says WHY, and which of govehlo-mobile's modules were actually run.
+    parity: parity
+      ? {
+        available: parity.available,
+        reason: parity.reason ?? null,
+        modules: parity.report ?? [],
+        perturbed: parity.perturb?.applied ?? null,
+      }
+      : null,
     violations,
     repro: REPRO,
     workspaces: workspaces.map((ws) => ({
@@ -744,11 +881,24 @@ function report(wallSeconds, schemaSeconds) {
   }
   console.log("");
   const failed = [...invariantState.values()].filter((r) => !r.ok);
-  console.log(`  invariants: ${invariantState.size} cells checked, ${failed.length} failing`);
+  const skippedCells = [...invariantState.values()].filter((r) => r.skipped).length;
+  console.log(`  invariants: ${invariantState.size} cells checked, ${failed.length} failing${skippedCells > 0 ? `, ${skippedCells} not available` : ""}`);
   for (const invariant of INVARIANTS) {
     const cells = [...invariantState.values()].filter((r) => r.invariant === invariant);
     const bad = cells.filter((r) => !r.ok).length;
-    console.log(`     ${bad === 0 ? "✓" : "✗"} ${invariant.padEnd(24)} ${cells.length - bad}/${cells.length} workspaces green`);
+    const skipped = cells.filter((r) => r.skipped).length;
+    // A skipped cell must never read as a pass. `–` is the muted state the dashboard
+    // paints too, and the reason is printed once underneath rather than per workspace.
+    const glyph = skipped === cells.length && cells.length > 0 ? "–" : bad === 0 ? "✓" : "✗";
+    const tally = skipped === cells.length && cells.length > 0
+      ? "ikke tilgængelig"
+      : `${cells.length - bad}/${cells.length} workspaces green${skipped > 0 ? ` (${skipped} not available)` : ""}`;
+    console.log(`     ${glyph} ${invariant.padEnd(24)} ${tally}`);
+  }
+  if (parity && !parity.available) console.log(`       client parity: ${parity.reason}`);
+  if (parity?.perturb?.applied) {
+    const applied = parity.perturb.applied;
+    console.log(`       --chaos-parity: dropped one ${applied.label} (${applied.id}) from workspace ${applied.ws}'s CLIENT rows.`);
   }
   console.log("");
   console.log(`  determinism digest (actions only): ${digestOf(journal.lines)}`);

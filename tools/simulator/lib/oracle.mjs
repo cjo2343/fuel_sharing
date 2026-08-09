@@ -13,6 +13,7 @@
 import { FEED_VISIBLE_EVENT_TYPES } from "../../ledger-event-visibility.mjs";
 import { EVENT_TYPE_EXCLUDE } from "../../load-rehearsal/lib/hotpaths.mjs";
 import { lit, claimsFor } from "./db.mjs";
+import { readParityRows, diffSettlementParity, diffOdometerParity, perturbClientRows } from "./client-parity.mjs";
 
 export const INVARIANTS = [
   "zero_sum",
@@ -22,6 +23,7 @@ export const INVARIANTS = [
   "rls_isolation",
   "event_classification",
   "recurring_integrity",
+  "client_parity",
 ];
 
 export const INVARIANT_LABELS = {
@@ -32,6 +34,7 @@ export const INVARIANT_LABELS = {
   rls_isolation: "RLS-isolation",
   event_classification: "Hændelser klassificeret",
   recurring_integrity: "Faste udgifter unikke",
+  client_parity: "Klient-paritet",
 };
 
 // ── 1. Zero sum ──────────────────────────────────────────────────────────────
@@ -291,13 +294,76 @@ async function recurringIntegrity(db, ws) {
   return { ok, detail: payload };
 }
 
+// ── 8. Client parity (GV-471 Phase A) ────────────────────────────────────────
+//
+// The other seven invariants ask the database about itself. This one asks whether the
+// APP would agree with it: it loads the rows govehlo-mobile's gateway would load, runs
+// the mobile repo's OWN settlement modules over them, and diffs every displayed number
+// against calculate_period_settlement's. See lib/client-parity.mjs for how the
+// TypeScript is imported and why the two engines are pointed at the same universe.
+//
+// SKIPPING IS A FIRST-CLASS OUTCOME. The sibling repo is not checked out in
+// .github/workflows/nightly-simulator.yml and never will be, so "not available" must
+// read as *muted*, not as green and not as red — the same tolerate-missing convention
+// tools/check-hotpath-mirror.mjs uses. `skipped: true` carries that state through the
+// journal to the dashboard's invariant wall.
+async function clientParity(db, ws, parity) {
+  if (!parity?.available) {
+    return { ok: true, skipped: true, detail: { skipped: parity?.reason ?? "client parity is disabled" } };
+  }
+  const rows = await readParityRows(db, ws);
+
+  // --chaos-parity: drop ONE row from the CLIENT's copy (never from the database) in
+  // the first workspace that has one, so exactly one workspace's parity must go red.
+  //
+  // It is re-applied to that SAME workspace on every later sweep, deliberately: a
+  // one-shot perturbation would leave the invariant wall green at the end of a run that
+  // reported a violation, and a dashboard that contradicts the report is worse than
+  // either alone. Violations are keyed by (invariant, workspace), so re-firing still
+  // yields exactly one.
+  let perturbed = null;
+  if (parity.perturb && (parity.perturb.applied === null || parity.perturb.applied.ws === ws.index)) {
+    perturbed = perturbClientRows(rows);
+    if (perturbed) parity.perturb.applied = { ws: ws.index, ...perturbed };
+  }
+
+  const { mismatches, notes, periods } = diffSettlementParity(parity.modules, rows);
+  const odometer = diffOdometerParity(parity.modules, rows);
+  const problems = [...(odometer?.problems ?? [])];
+
+  const ok = mismatches.length === 0 && problems.length === 0;
+  const detail = ok
+    ? {
+      periods,
+      odometer: odometer ? { value: odometer.value, source: odometer.source, floor: odometer.floor, ceiling: odometer.ceiling } : "odometer.ts not loaded",
+      notes: notes.length > 0 ? notes : undefined,
+      perturbed: perturbed ?? undefined,
+    }
+    : {
+      // The FIRST mismatch is what a reader needs first — which member, which field,
+      // both numbers — so it is lifted out of the list rather than buried in it.
+      first: mismatches[0] ?? problems[0],
+      mismatchCount: mismatches.length,
+      mismatches: mismatches.slice(0, 40),
+      odometerProblems: problems.length > 0 ? problems : undefined,
+      periods,
+      notes: notes.length > 0 ? notes : undefined,
+      perturbed: perturbed ?? undefined,
+    };
+  return { ok, detail };
+}
+
 /**
  * Run every invariant against every workspace.
  *
- * Returns [{ invariant, ws, ok, detail }]. The caller journals them and turns the
- * failures into violations; nothing here writes or exits.
+ * Returns [{ invariant, ws, ok, detail }] — plus `skipped: true` on a cell that could
+ * not be measured. The caller journals them and turns the failures into violations;
+ * nothing here writes or exits.
+ *
+ * `parity` is lib/client-parity.mjs's load result (or null). Nothing in this module
+ * draws from the PRNG, so enabling parity cannot move the action stream.
  */
-export async function runOracle(db, workspaces) {
+export async function runOracle(db, workspaces, { parity = null } = {}) {
   const results = [];
   for (let i = 0; i < workspaces.length; i += 1) {
     const ws = workspaces[i];
@@ -310,12 +376,15 @@ export async function runOracle(db, workspaces) {
       ["rls_isolation", () => rlsIsolation(db, ws, other)],
       ["event_classification", () => eventClassification(db, ws)],
       ["recurring_integrity", () => recurringIntegrity(db, ws)],
+      ["client_parity", () => clientParity(db, ws, parity)],
     ];
     for (const [invariant, run] of checks) {
       try {
         const outcome = await run();
         if (outcome.balances) ws.balances = outcome.balances;
-        results.push({ invariant, ws: ws.index, ok: outcome.ok, detail: outcome.detail });
+        const result = { invariant, ws: ws.index, ok: outcome.ok, detail: outcome.detail };
+        if (outcome.skipped) result.skipped = true;
+        results.push(result);
       } catch (err) {
         results.push({ invariant, ws: ws.index, ok: false, detail: { threw: String(err.message).slice(0, 800) } });
       }

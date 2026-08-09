@@ -5,10 +5,13 @@ with a live mission-control dashboard.
 
 ```sh
 npm run sim:run -- --workspaces 4 --members 4 --ticks 400 --seed 42 --serve
-npm run test:simulator          # short self-test (clean run + chaos run)
+npm run test:simulator          # short self-test (clean, determinism, chaos, chaos-parity)
 ```
 
 Needs Docker. Nothing else — no npm dependency was added, and none will be.
+
+Since GV-471 Phase A it also **runs govehlo-mobile's own settlement code** against every
+sweep, when the sibling repo is checked out. See [Client parity](#client-parity-phase-a).
 
 ---
 
@@ -142,7 +145,7 @@ finding.
 
 ## The oracle
 
-Seven invariants, checked per workspace. Failures are keyed by `(invariant, workspace)`, so
+Eight invariants, checked per workspace. Failures are keyed by `(invariant, workspace)`, so
 a corruption that survives several sweeps is one violation, not five.
 
 | # | Invariant | What it asserts |
@@ -154,8 +157,9 @@ a corruption that survives several sweeps is one violation, not five.
 | 5 | `rls_isolation` | a member of workspace A, as role `authenticated`, sees **zero** rows of workspace B across eleven tables |
 | 6 | `event_classification` | every `event_type` a run actually wrote is in `FEED_VISIBLE_EVENT_TYPES` or `EVENT_TYPE_EXCLUDE` (GV-413) |
 | 7 | `recurring_integrity` | no duplicate `(recurring_expense_id, occurrence_date)`, and `workspace_expenses_recurrence_uq` still exists |
+| 8 | `client_parity` | govehlo-mobile's OWN settlement modules, run on the same rows, produce the same numbers as the SQL — see below. Muted, not green, when the sibling repo is absent |
 
-Two of these deserve their reasoning written down.
+Three of these deserve their reasoning written down.
 
 **Why invariant 1 has a tolerance.** Expenses, repairs and crossings each run a
 largest-remainder integer-øre split, so those three sum exactly. The fuel share does not:
@@ -168,6 +172,109 @@ beyond `n × 0,005 kr` is arithmetic that lost money.
 The simulator asks the *server* for it and puts it in the snapshot, so the close persists
 it into `snapshot_json` and invariant 2 has something to recompute against later. Without
 that, closed-period immutability is unobservable after the fact.
+
+---
+
+## Client parity (Phase A)
+
+Every other guard in this repo that claims to protect the mobile client from the SQL does
+it by **reading** the mobile source. `check-hotpath-mirror.mjs` diffs a column list.
+`test-crossing-split-contract.mjs` greps `settlement-calc.ts` for the arithmetic it expects
+to find. `test-fuel-stop-verdict-contract.mjs` transcribes the client's scenarios into SQL
+by hand. A regex over a TypeScript file can tell you a line still *looks* right; it cannot
+tell you the two engines still produce the same number — and the pin drift GV-473 had to
+heal, plus GV-472's zero-km divergence, were both exactly that failure.
+
+Invariant 8 does the other thing. At every sweep it loads the rows govehlo-mobile's
+gateway would load, **imports and runs the mobile repo's real, unmodified modules** over
+them, and diffs what a member would see against what the server says:
+
+| Module | What it contributes |
+|---|---|
+| `src/lib/settlement-calc.ts` | `calculateSettlements` — `fuelRate`, `totalKm`, `totalPaid`, `totalExpenses`, `totalRepairs`, `totalCrossings`, and per member `km`, `fuelPaid`, `tripCost`, `expensePaid/Share`, `repairPaid/Share`, `crossingPaid/Share`, `net`, plus `deferredFuel` presence and total |
+| `src/lib/period-balance.ts` | `periodSettlement` — the app's OWN period scoping, so the scoping is not a transcription that can drift |
+| `src/lib/period-snapshot.ts` | `periodEntryFingerprint` — byte-compared against `calculate_period_entry_fingerprint`, the string the close's staleness gate compares |
+| `src/lib/odometer.ts` | `deriveOdometer` — the derived reading must not sit below `ledgers.max_handover_odometer` (migration 193's monotone floor) nor above the greatest source, computed independently in SQL |
+
+Money is compared at **half an øre**: both sides round to two decimals, one in `numeric`
+and one in binary doubles, so the comparison has to survive representation dust while
+still catching a single øre. The fingerprint is compared byte for byte, because "close
+enough" has no meaning for a string the server uses to reject a close.
+
+### How the TypeScript is loaded — no build step, no dependency, no flag
+
+The four modules are dependency-free and erasable-syntax-only, so Node can run them. Two
+bundler conventions are in the way, and `lib/client-parity.mjs` removes both with
+`module.registerHooks` (Node 22.15 / 23.5+), which is synchronous and in-thread — no
+worker, no child process, no serialisation boundary:
+
+- a **`load` hook** strips types with `module.stripTypeScriptTypes(src, { mode: "strip" })`.
+  Doing it explicitly rather than relying on Node's default means the tool behaves the same
+  on Node 22.13 and on Node 24, and `.github/workflows/nightly-simulator.yml` needs no flag
+  it does not have. `mode: "strip"` also *refuses* non-erasable syntax (enums, namespaces,
+  parameter properties), so a module that would need real transformation fails to load and
+  is reported rather than being quietly mistranslated;
+- a **`resolve` hook** maps `@/x` → `<mobile>/src/x` and appends `.ts` to extensionless
+  relative imports. It only fires for `@/…` or for a relative specifier coming *from* a
+  `.ts` file, and nothing in this repo is either, so it cannot touch the simulator's own
+  imports.
+
+`SIMULATOR_MOBILE_ROOT` overrides the sibling path (default `../govehlo-mobile` — the
+pre-rename directory name, on purpose; see CLAUDE.md).
+
+### Two deliberate deviations from the gateway
+
+Both narrow the check to arithmetic, and both are in `readParityRows`:
+
+- **Members.** The gateway loads `.eq('is_active', true)`; this loads every member and lets
+  `calculateSettlements` apply its own `is_active` filter, which is what the SQL's
+  `active_members` CTE does. That puts both engines on ONE universe, so a difference is
+  arithmetic and not a row-selection choice. The gateway's active-only load does mean an
+  inactive payer's GV-274 credit never reaches a phone — a real gap, but a fetch decision,
+  so it is reported as a `gatewayActiveOnlyGap` note and never as a violation.
+- **Windowing.** The gateway bounds trips/fuel by a date window and a row cap (GVM-559). A
+  simulator workspace is far inside both; a windowed read here could only hide rows and
+  turn a genuine mismatch into a pass.
+
+### Skipping is a first-class outcome
+
+The nightly workflow checks out this repo alone, so parity must skip cleanly there. When
+`../govehlo-mobile` is missing, or a module fails to import, or the Node is too old, the
+run prints a loud warning, writes a `parity` journal line saying why, and the dashboard
+paints the **Klient-paritet** row as *ikke tilgængelig* — muted with a dashed border and an
+em dash, never green. `npm run test:simulator` asserts both directions: with the sibling
+present, that parity really compared periods; without it, that every cell is marked
+skipped and the run still passes.
+
+### `--chaos-parity`: the parity oracle's self-test
+
+`--chaos` corrupts a column, which proves the database-side invariants fire. It says
+nothing about client-vs-server, because both engines would read the corrupted column and
+agree. So `--chaos-parity` perturbs the **client's copy of the rows** instead: it drops one
+live fuel payment (falling back to a trip, then an expense) from the array handed to the
+mobile modules, before they see it, in the first workspace that has one — and never touches
+the database. The run must then report exactly one violation, and it must be
+`client_parity`. Re-applied to that same workspace on every later sweep, so the invariant
+wall does not end green on a run that reported a finding.
+
+### `--fat-finger`
+
+Adds `save_handover_fat_finger` to the booker and serial-editor mixes: a handover odometer
+with one extra digit, ten times the plausible reading. It is the commonest odometer mistake
+there is, and it matters here because migration 193 makes `ledgers.max_handover_odometer`
+**monotone** — one fat finger does not merely record a wrong reading, it ratchets the
+workspace's odometer floor and no later correction brings it down.
+
+**Today this write succeeds.** There is no plausibility guard on
+`upsert_booking_handover`, so the outcome is `ok`, the mirror is poisoned by design, and
+parity stays green because the client faithfully reports the poisoned floor — both engines
+are wrong together, which is precisely why a parity check alone cannot catch this class.
+That is why it is behind a flag and out of the default mix: a default run must not be red
+for a bug nobody has fixed. When migration 195's plausibility guard lands the action flips
+to expecting a `guard` outcome and joins the default mix; the exact four-step change is
+written down beside the action in `lib/actions.mjs`.
+
+---
 
 ### `--chaos`: the oracle's self-test
 
@@ -190,8 +297,46 @@ A finding this tool has already surfaced and that a person has read lives in
 meaning *"the harness works and nothing new appeared"*. Each entry carries a **narrow**
 match: a broad one would quietly swallow the next real bug in the same invariant.
 
-Current entries: **none.** An empty registry is the healthy state — a finding is
-supposed to leave it when it is fixed, not sit there as a silencer.
+Current entries: **GV-471-F2**, below. An entry is supposed to leave this list when it is
+fixed, not sit there as a silencer.
+
+### Open: GV-471-F2 — the app and the server can print `tripCost` one øre apart
+
+Phase A's first finding, surfaced by `client_parity` on its first long run.
+
+```
+node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 400 --seed 11 \
+  --oracle-every 25 --epoch 2026-06-07 --headless        # workspace 0, tick 25
+```
+
+One trip, 90 km, two participants; one fill of 221,43 kr. Each participant's `tripCost` is
+`45 × (221,43 / 90)` — exactly **110,715 kr**, a true half-øre tie. The two engines land on
+opposite sides of it:
+
+| | computation | result |
+|---|---|---|
+| Postgres | `221.43/90.0` → `2.4603333333333333` (numeric division truncates the repeating decimal to 16 fractional digits), `× 45.0` = `110.7149999999999985` | **110,71 kr** |
+| Client | `221.43/90` → `2.4603333333333332611` (double), `× 45` = `110.71500000000000341`, `× 100` = `11071.5` exactly | **110,72 kr** |
+
+Both round half away from zero. They simply disagree about which side of the half the
+product is on, and the divide-then-multiply order is what puts it there. Sofie's phone says
+she is owed 110,71 kr; the server-derived settlement request says 110,72 kr.
+
+Bounded, and that is why nobody has seen it: the close's integrity gate allows 0,02 kr per
+member, so no close can be blocked by it, and the period still nets to zero on both sides.
+
+**The likely fix is one line of SQL, and it belongs in a migration, not here.**
+`round(pm.km * (t.total_paid / t.total_km), 2)` divides first and loses the tie;
+`round(pm.km * t.total_paid / t.total_km, 2)` keeps full numeric precision through the
+multiply — `221.43 * 45.0 / 90.0` is exactly `110.715`, which rounds to `110,72` and agrees
+with the client. It does not make the two engines provably identical (the client is still a
+double), but it removes the systematic half-øre case, which is the one that recurs. Written
+down here rather than done: this PR ships no SQL, and changing a settlement expression is a
+migration with a schema mirror, a types regeneration and a close-gate review.
+
+The `KNOWN_FINDINGS` match is narrow in three independent ways — only `client_parity`, only
+`person.tripCost` / `person.net`, only a difference of one øre, and only when the mismatch
+list was not truncated. Anything larger, or in any other field, still fails the run.
 
 ### Fixed: GV-471-F1 — fuel paid in a period with zero kilometres was credited to nobody's debit
 
@@ -287,10 +432,22 @@ SVG icons.
 every push. The simulator hosts a Postgres container and takes tens of seconds. It belongs
 with the other Docker-backed checks, as its own npm script.
 
-`npm run test:simulator` is the short self-test: a 60-tick clean run (must finish, must
-produce guards, must report no new violation) and the same run with `--chaos` (must report
-exactly one new violation, and it must be the injected one). It warns and exits 0 without
-Docker, like every other Docker-backed guard here, and fails under `--strict`.
+`npm run test:simulator` is the short self-test, four 60-tick runs of one fixed seed:
+
+1. **clean** — must finish, must produce guards, must report no new violation;
+2. **client parity** — read off the clean run's journal. With `../govehlo-mobile` present:
+   the mobile modules imported, at least one period was actually compared (a parity check
+   over zero periods is vacuously green, which is the one way this could pass while proving
+   nothing), and no new parity violation. Absent: every cell marked skipped, and the run
+   still green;
+3. **determinism** — the same seed with `--no-parity` must produce the byte-identical
+   action digest. Parity is oracle-side and draws no PRNG, and every `repro:` line in this
+   repo depends on that staying true;
+4. **`--chaos`** and, when the sibling is present, **`--chaos-parity`** — each must report
+   exactly one new violation, and it must be the injected one.
+
+It warns and exits 0 without Docker, like every other Docker-backed guard here, and fails
+under `--strict`.
 
 ---
 
@@ -303,6 +460,7 @@ Docker, like every other Docker-backed guard here, and fails under `--strict`.
 | `lib/personas.mjs` | five personas and their action weights |
 | `lib/actions.mjs` | the action catalogue and the expected-rejection catalogue |
 | `lib/oracle.mjs` | the seven invariants |
+| `lib/client-parity.mjs` | Phase A: imports govehlo-mobile's calculation modules, reads the rows its gateway would read, and diffs |
 | `lib/journal.mjs` | the append-only JSONL stream and the determinism digest |
 | `lib/db.mjs` | the persistent `psql` session, SQL literal helpers, `sim_exec` |
 | `lib/server.mjs` | the `--serve` web server |

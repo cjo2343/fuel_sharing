@@ -327,6 +327,67 @@ export const ACTIONS = {
     },
   },
 
+  // ── The fat finger (GV-471 Phase A) ────────────────────────────────────────
+  //
+  // A real person, on a real dashboard, in the dark, types 452310 where the car reads
+  // 45231. It is the single most common odometer mistake there is, and the reason it
+  // matters here rather than in a form-validation test is migration 193: a handover's
+  // end_odometer feeds `ledgers.max_handover_odometer`, which is MONOTONE. One extra
+  // digit therefore does not just record a wrong reading — it ratchets the workspace's
+  // odometer floor ten times too high and no later correction can bring it back down.
+  // Every prefill, every trip start, every fuel-stop estimate reads from that floor.
+  //
+  // WHAT HAPPENS TODAY: this write SUCCEEDS. There is no plausibility guard on
+  // upsert_booking_handover, so the action is `ok`, the mirror is poisoned by design,
+  // and the odometer half of the client-parity oracle stays green (the client faithfully
+  // reports the poisoned floor — both engines are wrong together, which is exactly why a
+  // parity check alone cannot catch this class). That is why it is behind `--fat-finger`
+  // and out of the default mix: a default run must not be red for a bug nobody has fixed.
+  //
+  // TODO (migration 195, the plausibility guard): when that lands, this action becomes
+  // an ordinary hostile action like create_overlapping_booking. The change is exactly:
+  //   1. add `expect: "odometer_plausibility"` beside `detail` below;
+  //   2. add a GUARDS entry matching the new rejection message;
+  //   3. move the two weights out of run.mjs's armFatFinger() into personas.mjs
+  //      (booker 3, serial_editor 1) and delete the --fat-finger flag;
+  //   4. delete this paragraph.
+  save_handover_fat_finger: {
+    build: (ctx) => {
+      const booking = preferOwn(ctx, liveBookings(ctx.ws).filter((b) => b.id), (b) => b.memberSlot);
+      if (!booking) return null;
+      const plausible = ctx.ws.odometer + ctx.rng.int(0, 40);
+      const odo = plausible * 10;
+      const fraction = Math.round(ctx.rng.float() * 100) / 100;
+      return {
+        detail: { legacyId: booking.legacyId, odometer: odo, plausible, fatFinger: true },
+        inner: `select public.upsert_booking_handover(
+                  target_ledger_id => ${lit(ctx.ws.ledgerId)},
+                  target_booking_id => ${uuidLit(booking.id)},
+                  end_odometer_value => ${odo},
+                  fuel_fraction_value => ${fraction},
+                  parking_location_value => ${lit("P-plads ved nr. " + ctx.rng.int(1, 40))},
+                  key_location_value => ${lit("Noeglebox")},
+                  condition_ok_value => true,
+                  condition_note_value => null,
+                  note_to_next_value => null,
+                  keys_confirmed_value => true,
+                  parking_lat_value => null,
+                  parking_lng_value => null,
+                  location_seen_at => null,
+                  event_title => ${lit("Bilen er afleveret")},
+                  event_body => ${lit("Overdragelse registreret")},
+                  expected_updated_at => ${booking.handoverUpdatedAt ? `${lit(booking.handoverUpdatedAt)}::timestamptz` : "null"})`,
+        apply: (result) => {
+          booking.handover = true;
+          booking.handoverUpdatedAt = result?.updated_at ?? null;
+          // Deliberately NOT raising ctx.ws.odometer: the harness's idea of the car's
+          // mileage must stay the plausible one, or every subsequent trip and fill would
+          // be generated ten times too high and the run would stop resembling a workspace.
+        },
+      };
+    },
+  },
+
   complete_booking: {
     build: (ctx) => {
       const booking = ctx.rng.pick(liveBookings(ctx.ws).filter((b) => b.id && !b.completed));
