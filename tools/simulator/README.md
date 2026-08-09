@@ -404,46 +404,59 @@ A finding this tool has already surfaced and that a person has read lives in
 meaning *"the harness works and nothing new appeared"*. Each entry carries a **narrow**
 match: a broad one would quietly swallow the next real bug in the same invariant.
 
-Current entries: **GV-471-F2**, below. An entry is supposed to leave this list when it is
-fixed, not sit there as a silencer.
+**The list is empty**, and that is its healthy state. Both findings it has ever held —
+GV-471-F1 and GV-471-F2, below — left it the way an entry is supposed to leave it: with
+a migration, not with a wider match. An entry is not a silencer.
 
-### Open: GV-471-F2 — the app and the server can print `tripCost` one øre apart
+### Fixed: GV-471-F2 — the app and the server printed `tripCost` one øre apart
 
-Phase A's first finding, surfaced by `client_parity` on its first long run.
+Phase A's first finding, surfaced by `client_parity` on its first long run. Kept here as
+history now that it no longer belongs in `KNOWN_FINDINGS`.
 
 ```
 node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 400 --seed 11 \
   --oracle-every 25 --epoch 2026-06-07 --headless        # workspace 0, tick 25
 ```
 
-One trip, 90 km, two participants; one fill of 221,43 kr. Each participant's `tripCost` is
-`45 × (221,43 / 90)` — exactly **110,715 kr**, a true half-øre tie. The two engines land on
-opposite sides of it:
+One trip, 90 km, two participants; one fill of 221,43 kr. Each participant's `tripCost` was
+`45 × (221,43 / 90)` — exactly **110,715 kr**, a true half-øre tie. The two engines landed
+on opposite sides of it:
 
 | | computation | result |
 |---|---|---|
 | Postgres | `221.43/90.0` → `2.4603333333333333` (numeric division truncates the repeating decimal to 16 fractional digits), `× 45.0` = `110.7149999999999985` | **110,71 kr** |
 | Client | `221.43/90` → `2.4603333333333332611` (double), `× 45` = `110.71500000000000341`, `× 100` = `11071.5` exactly | **110,72 kr** |
 
-Both round half away from zero. They simply disagree about which side of the half the
-product is on, and the divide-then-multiply order is what puts it there. Sofie's phone says
-she is owed 110,71 kr; the server-derived settlement request says 110,72 kr.
+Both round half away from zero. They simply disagreed about which side of the half the
+product was on, and the divide-then-multiply order is what put it there. Sofie's phone said
+she was owed 110,71 kr; the server-derived settlement request said 110,72 kr.
 
-Bounded, and that is why nobody has seen it: the close's integrity gate allows 0,02 kr per
-member, so no close can be blocked by it, and the period still nets to zero on both sides.
+Bounded, and that is why nobody had seen it: the close's integrity gate allows 0,02 kr per
+member, so no close could be blocked by it, and the period still netted to zero on both
+sides. Systematic, though — an exact tie is what a group splitting one fill evenly between
+two or three drivers produces all the time — so it recurred rather than drifted.
 
-**The likely fix is one line of SQL, and it belongs in a migration, not here.**
-`round(pm.km * (t.total_paid / t.total_km), 2)` divides first and loses the tie;
-`round(pm.km * t.total_paid / t.total_km, 2)` keeps full numeric precision through the
-multiply — `221.43 * 45.0 / 90.0` is exactly `110.715`, which rounds to `110,72` and agrees
-with the client. It does not make the two engines provably identical (the client is still a
-double), but it removes the systematic half-øre case, which is the one that recurs. Written
-down here rather than done: this PR ships no SQL, and changing a settlement expression is a
-migration with a schema mirror, a types regeneration and a close-gate review.
+**Fixed by migration 196 (GV-477):** `round(pm.km * (t.total_paid / t.total_km), 2)` divides
+first and loses the tie; `round(pm.km * t.total_paid / t.total_km, 2)` keeps full numeric
+precision through the multiply — `221.43 * 45.0 / 90.0` is exactly `110.715`, which rounds
+to `110,72` and agrees with the client. Both occurrences moved together (the printed
+`tripCost` and the copy `net` recomputes inline), `fuelRate` was deliberately left alone,
+and the mobile client is unchanged: the fix moves the server toward the client, not the
+other way. It does not make the two engines provably identical — the client is still a
+double — but it removes the systematic half-øre case. Pinned by
+`tools/test-zero-km-fuel-carryforward-contract.mjs`, whose calc half now reads migration
+196 because that is where the live definition lives.
 
-The `KNOWN_FINDINGS` match is narrow in three independent ways — only `client_parity`, only
+The historical repro, kept for posterity: on the **pre-196** schema the seed-11 command
+above hit it at workspace 0, tick 25, and the Phase B default mix
+`--workspaces 4 --members 4 --ticks 400 --seed 42 --oracle-every 25 --epoch 2026-05-26 --sessions 2`
+hit it once at workspace 2, tick 50 (`tripCost` 642,53 client vs 642,52 server, with that
+member's `net` one øre the other way). Both are clean now, and the seed-42 run going from
+*one known finding* to *none* is what verified the migration.
+
+Its `KNOWN_FINDINGS` match was narrow in three independent ways — only `client_parity`, only
 `person.tripCost` / `person.net`, only a difference of one øre, and only when the mismatch
-list was not truncated. Anything larger, or in any other field, still fails the run.
+list was not truncated — which is the shape any future entry should copy.
 
 ### Fixed: GV-471-F1 — fuel paid in a period with zero kilometres was credited to nobody's debit
 

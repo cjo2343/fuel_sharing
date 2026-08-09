@@ -38,6 +38,16 @@
 // Part 2 (Docker): the ARITHMETIC and the CLOSE, on a real Postgres.
 // Part 3 (Docker): the pre-194 comparison — the same mixed fixture on both schemas.
 //
+// ── GV-477, migration 196 ───────────────────────────────────────────────────────
+// calculate_period_settlement's live definition is now migration 196's, not 194's:
+// 196 re-declares it off 194 so the per-member fuel share multiplies before it divides
+// (round(km * totalPaid / totalKm, 2)), which is the one place the two files differ.
+// Part 1 reads the calc half from 196 and its own mirror block accordingly, and the
+// pin on the totalKm > 0 branch tracks the LIVE expression rather than freezing 157's.
+// Part 3 is unaffected: its mixed fixture divides 500 kr over 100 km, an exact rate, so
+// both orders produce the same characters and the pre-194 comparison still measures
+// "nothing else changed".
+//
 // ── Modes ───────────────────────────────────────────────────────────────────────
 //   node tools/test-zero-km-fuel-carryforward-contract.mjs            # warn on Docker
 //   node tools/test-zero-km-fuel-carryforward-contract.mjs --strict   # umbrella
@@ -85,36 +95,78 @@ function pin(label, fn) {
 // Part 1: the SHAPE (needs nothing)
 // ═══════════════════════════════════════════════════════════════════════════════
 const MIGRATION = join(ROOT, "supabase", "migrations", "194_zero_km_fuel_carryforward.sql");
+// GV-477 (migration 196) re-declares calculate_period_settlement off 194 so the fuel
+// share MULTIPLIES before it divides. 194 is therefore no longer that function's live
+// definition — 196 is, and last definition wins on replay — while
+// close_settlement_period_unlocked is still 194's. This contract reads each function
+// from wherever its newest declaration actually lives; pinning 194's copy of
+// calculate_period_settlement would pin a definition the database never runs, which is
+// exactly the drift this file exists to catch.
+const CALC_MIGRATION = join(ROOT, "supabase", "migrations", "196_trip_cost_multiply_first.sql");
 const CONSOLIDATED = join(ROOT, "supabase-schema.sql");
 const consolidatedSql = readFileSync(CONSOLIDATED, "utf8");
 
 // The consolidated schema carries every historical definition of both functions, so a
 // bare search proves nothing about which one WINS. Last definition wins on replay, so
-// read only the tail from 194's own mirror header.
+// read each function only from the tail that starts at ITS OWN newest mirror header.
 const mirrorIdx = consolidatedSql.lastIndexOf("-- ── Migration 194:");
 assert.notEqual(mirrorIdx, -1, "supabase-schema.sql is missing the migration 194 mirror block");
+const calcMirrorIdx = consolidatedSql.lastIndexOf("-- ── Migration 196:");
+assert.notEqual(calcMirrorIdx, -1, "supabase-schema.sql is missing the migration 196 mirror block");
+
+const CALC_HEAD = "create or replace function public.calculate_period_settlement(";
+const CLOSE_HEAD = "create or replace function public.close_settlement_period_unlocked(";
+const TRACKER_HEAD = "insert into public.fuel_ledger_schema_migrations";
 
 const sqlSources = {
-  "migration 194": readFileSync(MIGRATION, "utf8"),
-  "supabase-schema.sql (194 tail)": consolidatedSql.slice(mirrorIdx),
+  "migration 196 (calc) + migration 194 (close)": {
+    calcSql: readFileSync(CALC_MIGRATION, "utf8"),
+    closeSql: readFileSync(MIGRATION, "utf8"),
+  },
+  "supabase-schema.sql (196 tail for calc, 194 tail for close)": {
+    calcSql: consolidatedSql.slice(calcMirrorIdx),
+    closeSql: consolidatedSql.slice(mirrorIdx),
+  },
 };
 
-process.stdout.write("\nSQL shape (migration 194 + its supabase-schema.sql mirror):\n");
-for (const [name, sql] of Object.entries(sqlSources)) {
-  const calc = sql.slice(
-    sql.indexOf("create or replace function public.calculate_period_settlement("),
-    sql.indexOf("create or replace function public.close_settlement_period_unlocked("),
-  );
-  const close = sql.slice(sql.indexOf("create or replace function public.close_settlement_period_unlocked("));
+process.stdout.write("\nSQL shape (the live definitions + their supabase-schema.sql mirrors):\n");
+for (const [name, { calcSql, closeSql }] of Object.entries(sqlSources)) {
+  const calcStart = calcSql.indexOf(CALC_HEAD);
+  assert.notEqual(calcStart, -1, `${name}: calculate_period_settlement not found`);
+  // The function ends at whichever comes first: the next function in the same file, or
+  // the migration's own tracker INSERT. Without the second bound the tracker's prose --
+  // which QUOTES the old expression to explain it -- would be read as if it were body.
+  const calcEnds = [CLOSE_HEAD, TRACKER_HEAD]
+    .map((needle) => calcSql.indexOf(needle, calcStart))
+    .filter((idx) => idx !== -1);
+  const calc = calcSql.slice(calcStart, calcEnds.length > 0 ? Math.min(...calcEnds) : undefined);
+  const close = closeSql.slice(closeSql.indexOf(CLOSE_HEAD));
   assert.notEqual(calc.length, 0, `${name}: calculate_period_settlement not found`);
   assert.notEqual(close.length, 0, `${name}: close_settlement_period_unlocked not found`);
 
-  pin(`${name}: the totalKm > 0 branch of net is migration 157 UNCHANGED`, () => {
+  pin(`${name}: the totalKm > 0 branch of net multiplies before it divides (GV-477)`, () => {
     // The whole compatibility story rests on this line. If it moves, every ordinary
-    // settlement in the app moves with it.
+    // settlement in the app moves with it. Migration 196 moved it exactly once and
+    // deliberately: the parenthesised divide-first form truncated the repeating
+    // quotient to 16 fractional digits and dropped an exact half-øre tie one øre BELOW
+    // what the client prints (GV-471-F2). Everything else here is still 157's.
     assert.match(
       calc,
-      /then round\(pm\.fuel_paid \+ pm\.expense_paid \+ pm\.repair_paid \+ pm\.crossing_paid - round\(pm\.km \* \(t\.total_paid \/ t\.total_km\), 2\) - pm\.expense_share - pm\.repair_share - pm\.crossing_share, 2\)/,
+      /then round\(pm\.fuel_paid \+ pm\.expense_paid \+ pm\.repair_paid \+ pm\.crossing_paid - round\(pm\.km \* t\.total_paid \/ t\.total_km, 2\) - pm\.expense_share - pm\.repair_share - pm\.crossing_share, 2\)/,
+    );
+  });
+
+  pin(`${name}: the printed tripCost uses that same multiply-first expression`, () => {
+    // net subtracts its own copy of the share. One of the two lagging behind the other
+    // is an øre of self-disagreement inside a single payload — worse than GV-471-F2.
+    assert.match(
+      calc,
+      /'tripCost', case when t\.total_km > 0 then round\(pm\.km \* t\.total_paid \/ t\.total_km, 2\) else 0 end,/,
+    );
+    assert.doesNotMatch(
+      calc,
+      /round\(pm\.km \* \(t\.total_paid \/ t\.total_km\), 2\)/,
+      "the divide-first form must not survive anywhere in the live definition — it IS GV-471-F2",
     );
   });
 

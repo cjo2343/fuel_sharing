@@ -61,6 +61,14 @@ export const coverageExceptions = [
       'a service-role case.',
     reviewBy: '2026-10-25',
   },
+  // recompute_handover_mirror needs NO entry, and the coverage check is what proved it.
+  // Migration 195 (GV-475) shipped the RPC server-first and its own tracker note said the
+  // mobile affordance was a follow-up, so the GV-477 role-matrix cases were written
+  // expecting the migration-195-first window and an entry was drafted here for it. The
+  // guard immediately reported that entry STALE, naming govehlo-mobile's
+  // src/lib/handover-mirror.ts and src/screens/CarProfile/useHandoverMirror.ts: the
+  // follow-up had already landed. Deleted rather than renewed, which is the prescribed
+  // course, and a reminder that this list is the wrong place to record an intention.
   // attach_fuel_payment_receipt's and detach_fuel_payment_receipt's entries were
   // deleted here on the entries' own instruction: they covered only the
   // migration-169-first window, and govehlo-mobile has called both RPCs since PR #563
