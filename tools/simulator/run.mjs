@@ -1268,6 +1268,21 @@ async function sweep(tick, { final = false } = {}) {
     final,
     results,
   });
+  // GV-480 Phase C: the display-only snapshot the dashboard's phone panels and its
+  // scrubber replay from. Written HERE, straight after the oracle line, because
+  // `ws.balances` is refreshed by the zero_sum invariant a few lines above — the
+  // per-member nets are already in hand and a phone that showed a balance from a
+  // different moment than the invariant wall would be lying about the same tick.
+  //
+  // It journals nothing the run did not already hold, draws no PRNG and sends no
+  // statement, and digestOf() hashes `kind === "action"` only, so the determinism digest
+  // cannot see this line. See workspaceViews() for the shape and why there is one.
+  journal.write({
+    kind: "state",
+    tick,
+    simTime: clock.now().toISOString(),
+    workspaces: workspaceViews(),
+  });
 }
 
 // ── Chaos: the oracle's self-test ────────────────────────────────────────────
@@ -1359,6 +1374,66 @@ function note(text) {
   if (!config.headless) console.log(`   ${text}`);
 }
 
+// ── The workspace view (GV-480 Phase C) ──────────────────────────────────────
+//
+// ONE shape, TWO readers: `/state` (the dashboard's once-a-second poll) and the `state`
+// journal line every oracle sweep writes. The dashboard paints its workspace grid and its
+// per-member phone panels from whichever of the two it has — live from `/state`, and from
+// the journal when the scrubber is dragged back to an earlier tick or the page is opened
+// after the run. Two builders would drift the first time a field was added to one of them,
+// and the drift would show up as a phone that changes what it says when you scrub to
+// "now", so there is exactly one.
+//
+// DISPLAY-ONLY, in the strict sense the determinism digest cares about. Every value here
+// is read from the harness's own model — which the tick loop maintains anyway — or from
+// `ws.balances`, which the zero_sum invariant piggybacks onto a sweep that was already
+// happening (lib/oracle.mjs). Nothing in here draws from the PRNG, sends a statement, or
+// is hashed by digestOf().
+function workspaceViews() {
+  return workspaces.map((ws) => {
+    const netOf = new Map((ws.balances ?? []).map((b) => [b.id, b]));
+    return {
+      index: ws.index,
+      name: ws.name,
+      ledgerId: ws.ledgerId,
+      openPeriodId: ws.openPeriodId,
+      closedPeriods: ws.closedPeriodIds.length,
+      lastAction: ws.lastAction,
+      lastOutcome: ws.lastOutcome,
+      odometer: Math.round(ws.odometer),
+      counts: {
+        trips: ws.trips.filter((t) => !t.deleted).length,
+        fuel: ws.fuel.filter((f) => !f.deleted).length,
+        bookings: ws.bookings.filter((b) => !b.cancelled).length,
+        expenses: ws.expenses.filter((e) => !e.deleted).length,
+        repairs: ws.repairs.length,
+      },
+      members: ws.members.map((m) => {
+        const balance = netOf.get(m.memberId) ?? null;
+        return {
+          slot: m.slot,
+          name: m.name,
+          persona: m.persona,
+          personaLabel: PERSONAS[m.persona]?.danish ?? m.persona,
+          // Slot 0 created the workspace, so slot 0 is its admin. The phone panel marks
+          // it discreetly rather than colouring the whole card.
+          admin: m.slot === 0,
+          // The member's own net in the OPEN period, as their app would show it: negative
+          // means they owe, positive means they are owed. `null` until the first sweep
+          // has computed one — which the dashboard renders as "–", never as 0,00 kr.
+          net: balance ? balance.net : null,
+          km: balance ? balance.km : null,
+          // Writes this phone decided while it was out of range and has not sent yet.
+          queued: m.offlineState?.queue.length ?? 0,
+        };
+      }),
+      requests: ws.requests.map((r) => ({ amount: r.amount, status: r.status })),
+      // Per-member nets from the most recent oracle sweep (see lib/oracle.mjs).
+      balances: (ws.balances ?? []).map((b) => ({ name: b.name, net: b.net, km: b.km })),
+    };
+  });
+}
+
 function snapshot() {
   return {
     seed: config.seed,
@@ -1398,32 +1473,7 @@ function snapshot() {
       : null,
     violations,
     repro: REPRO,
-    workspaces: workspaces.map((ws) => ({
-      index: ws.index,
-      name: ws.name,
-      ledgerId: ws.ledgerId,
-      openPeriodId: ws.openPeriodId,
-      closedPeriods: ws.closedPeriodIds.length,
-      lastAction: ws.lastAction,
-      lastOutcome: ws.lastOutcome,
-      odometer: Math.round(ws.odometer),
-      counts: {
-        trips: ws.trips.filter((t) => !t.deleted).length,
-        fuel: ws.fuel.filter((f) => !f.deleted).length,
-        bookings: ws.bookings.filter((b) => !b.cancelled).length,
-        expenses: ws.expenses.filter((e) => !e.deleted).length,
-        repairs: ws.repairs.length,
-      },
-      members: ws.members.map((m) => ({
-        slot: m.slot,
-        name: m.name,
-        persona: m.persona,
-        personaLabel: PERSONAS[m.persona]?.danish ?? m.persona,
-      })),
-      requests: ws.requests.map((r) => ({ amount: r.amount, status: r.status })),
-      // Per-member nets from the most recent oracle sweep (see lib/oracle.mjs).
-      balances: (ws.balances ?? []).map((b) => ({ name: b.name, net: b.net, km: b.km })),
-    })),
+    workspaces: workspaceViews(),
   };
 }
 

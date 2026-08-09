@@ -7,7 +7,13 @@
 //                file. That single choice is what makes "live view" and "report view"
 //                the same page: opening the dashboard after a run replays the whole run
 //                and then simply has nothing more to follow.
-//   GET /state   the current snapshot (workspaces, balances, counters) as JSON
+//   GET /state   the current snapshot (workspaces, per-member balances, counters) as JSON
+//
+// GV-480 made that replay load-bearing twice over rather than merely convenient. The
+// dashboard's timeline scrubber derives the whole page from the lines it has already
+// received, so "every line, from the first" is what lets a reader drag back to tick 40 of
+// a finished run; and the phone panels read the per-member `state` lines the oracle sweep
+// writes, which is why they populate on a page opened after the process's last tick.
 //
 // It binds 127.0.0.1 explicitly. The journal holds synthetic fixture data only, but a
 // run's data is still a workspace's data in shape, and a dashboard is not a thing to
