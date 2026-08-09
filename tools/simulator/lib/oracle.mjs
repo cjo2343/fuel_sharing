@@ -41,7 +41,8 @@ export const INVARIANT_LABELS = {
 //
 // TOLERANCE, and why it is not zero. Expenses, repairs and crossings each run a
 // largest-remainder integer-øre split, so those three sum EXACTLY. The fuel share does
-// not: tripCost is `round(km * (totalPaid / totalKm), 2)` per member, an independent
+// not: tripCost is `round(km * totalPaid / totalKm, 2)` per member (multiply-first since
+// migration 196 / GV-477, so an exact half-øre tie rounds the way the client rounds it), an independent
 // rounding per person, so the sum of the tripCosts can miss totalPaid by up to half an
 // øre per member. The function's own comments call netting to zero the goal (the
 // crossing CTE skips a trip with no assignees precisely "so the period still nets to

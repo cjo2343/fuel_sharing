@@ -215,45 +215,23 @@ itself. There is no env file, no connection string and no URL anywhere in it.
 // Each entry needs a narrow `match`. A broad one (any zero_sum failure) would quietly
 // swallow the next real settlement bug, which is the whole reason the invariant exists.
 //
-// GV-471-F1 — fuel paid in a period with zero kilometres credited to nobody's debit —
-// lived here from the tool's first run until migration 194 (GV-472) fixed it, and its
-// entry was deleted with the fix rather than left behind as a silencer. The pattern
-// stays: when this fuzzer surfaces something a person has read and that is not the
-// current PR's job, it goes here with a narrow match and comes out again when it is
-// fixed. The historical repro for F1 is kept in README.md, not here.
+// EMPTY IS THE HEALTHY STATE, and this list has now been empty twice. Both of the
+// findings that lived here left it the way an entry is supposed to leave it — with a
+// migration, not with a wider match:
 //
-// GV-471-F2 below is Phase A's first finding, surfaced by the client-parity oracle on
-// its first long run. It is a CLIENT-vs-SERVER disagreement, not a corruption: the
-// database is self-consistent and the period still nets to zero, but a member's phone
-// and the server's own settlement figure can print amounts one øre apart. It is not
-// this PR's job to fix (the fix is a migration, and this PR ships no SQL), the close's
-// 0,02 kr per-member gate already absorbs it so no close can be blocked by it, and the
-// README records the mechanism and the repro. See there before widening this match.
-const KNOWN_FINDINGS = [
-  {
-    id: "GV-471-F2",
-    title:
-      "tripCost lands one øre apart when km × totalPaid / totalKm is an exact half-øre: " +
-      "Postgres divides FIRST into a 16-digit numeric (product falls just below the tie, rounds down) " +
-      "while the client divides first in a double (product falls just above, rounds up).",
-    // NARROW on purpose, in three independent ways: only the client_parity invariant,
-    // only the two fields the fuel rate feeds, and only a difference of ONE øre. The
-    // length check matters as much as the rest — `mismatches` is truncated at 40, so
-    // without it a hundred-mismatch divergence whose first forty happened to be one-øre
-    // tripCosts would be laundered into this entry.
-    match: (violation) =>
-      violation.kind === "invariant" &&
-      violation.invariant === "client_parity" &&
-      Array.isArray(violation.detail?.mismatches) &&
-      violation.detail.mismatches.length > 0 &&
-      violation.detail.mismatches.length === violation.detail.mismatchCount &&
-      violation.detail.mismatches.every(
-        (m) =>
-          (m.field === "person.tripCost" || m.field === "person.net") &&
-          Math.abs(Number(m.client) - Number(m.server)) <= 0.010000001,
-      ),
-  },
-];
+//   GV-471-F1 — fuel paid in a period with zero kilometres credited to nobody's debit —
+//   lived here from the tool's first run until migration 194 (GV-472) fixed it.
+//   GV-471-F2 — the app and the server printing tripCost one øre apart on an exact
+//   half-øre tie, because Postgres divided FIRST into a 16-digit numeric while the
+//   client's double did not — lived here from Phase A until migration 196 (GV-477)
+//   made the expression multiply before it divides. The seed-42 run that reported it
+//   as a known finding now reports nothing, which is that migration's verification.
+//
+// The historical repro and the arithmetic for both are kept in README.md, not here.
+// The pattern stays: when this fuzzer surfaces something a person has read and that is
+// not the current PR's job to fix, it goes here with a NARROW match and comes out again
+// when it is fixed.
+const KNOWN_FINDINGS = [];
 
 // ── Fixture vocabulary (synthetic, Danish) ───────────────────────────────────
 const FIRST_NAMES = [
