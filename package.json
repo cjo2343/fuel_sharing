@@ -31,6 +31,8 @@
     "test:drill-logic": "node tools/test-restore-drill-logic.mjs",
     "test:drill-smoke": "node tools/test-restore-drill-smoke.mjs",
     "test:load-rehearsal": "node tools/load-rehearsal/test-load-rehearsal.mjs",
+    "sim:run": "node tools/simulator/run.mjs",
+    "test:simulator": "node tools/test-simulator.mjs",
     "drill:restore": "node tools/restore-drill.mjs",
     "load:schema": "node tools/load-rehearsal/schema-apply.mjs",
     "load:seed": "node tools/load-rehearsal/seed.mjs",

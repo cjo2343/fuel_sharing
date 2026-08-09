@@ -21,3 +21,6 @@ test-results/
 # ever been committed (verified), and this keeps it that way everywhere.
 .claude/.jira-token
 .claude/.sentry-token
+
+# GV-471 simulator run artefacts (journal + violations) — regenerated on every run.
+tools/simulator/out/

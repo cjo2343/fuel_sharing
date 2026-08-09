@@ -1,0 +1,478 @@
+<!--
+  Mission control for the VehloShare workspace simulator (GV-471).
+
+  ONE FILE, ZERO REQUESTS. Everything below is inline: no CDN, no webfont, no image, no
+  analytics. The page is served from a localhost process that also holds a database
+  container, and a dashboard that phones out is a dashboard that leaks what a run
+  contains. Fonts are NAMED but never fetched — Nunito and Inter render if the machine
+  has them and fall back to the system stack if not.
+
+  BRANDING RULES ARE LAW HERE TOO (design_handoff_govehlo_v1/design-system):
+    · amber #F4A261 is MONEY, and nothing else. Every amber pixel on this page is a
+      kroner amount somebody owes. Guards and warnings use --color-attention #C4673D,
+      which exists precisely so amber can stay money-only.
+    · blue #355d9c appears exactly once: the "Anmodet" (requested) settlement chip.
+    · Courier New for odometer, fuel, rates, hex-ish ids and latencies.
+    · Danish locale throughout: 1.234 km, 52,00 kr, sentence case, no emoji. Icons are
+      inline SVG in the Lucide idiom.
+    · Amount direction (GVM-74): owes = amber, is owed = leaf, settled = muted.
+
+  Dark cockpit surfaces are mixed from the canonical tokens with color-mix() rather than
+  invented as new hexes, so the palette here is provably the palette.
+-->
+<title>Simulator · mission control</title>
+<style>
+  :root {
+    /* Canonical tokens (design_handoff_govehlo_v1/design-system/tokens/colors.css) */
+    --color-deep-forest: #1A2E1F;
+    --color-forest: #2D6A4F;
+    --color-leaf: #52B788;
+    --color-light-leaf: #7EE0AB;
+    --color-mist: #D8F3DC;
+    --color-amber: #F4A261;
+    --color-attention: #C4673D;
+    --color-error: #D95050;
+    --color-blue: #355d9c;
+    --text-on-forest: #FFFFFF;
+
+    /* Dark-cockpit surfaces, mixed from the tokens above. */
+    --bg: var(--color-deep-forest);
+    --panel: color-mix(in srgb, var(--color-mist) 6%, var(--color-deep-forest));
+    --panel-raised: color-mix(in srgb, var(--color-mist) 11%, var(--color-deep-forest));
+    --line: color-mix(in srgb, var(--color-mist) 18%, var(--color-deep-forest));
+    --ink: var(--text-on-forest);
+    --ink-quiet: color-mix(in srgb, var(--color-mist) 66%, var(--color-deep-forest));
+    --ink-faint: color-mix(in srgb, var(--color-mist) 42%, var(--color-deep-forest));
+
+    --radius-card: 16px;
+    --radius-chip: 12px;
+    --space: 4px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Nunito', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .mono, .num { font-family: 'Courier New', Courier, monospace; font-variant-numeric: tabular-nums; }
+
+  h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: 0.2px; }
+  h2 { font-size: 13px; margin: 0 0 12px; font-weight: 700; color: var(--ink-quiet); text-transform: none; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    padding: 12px;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────────────────────── */
+  /* min-width:0 everywhere a grid item lives. A grid item's implicit minimum is its
+     MAX-CONTENT width, so one long workspace name silently widens the whole page and the
+     body scrolls sideways — the classic CSS grid overflow, and the only layout bug this
+     page had. */
+  .grid { display: grid; gap: 12px; }
+  .grid > * { min-width: 0; }
+  .layout { grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); align-items: start; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ── Run header ─────────────────────────────────────────────────────────── */
+  header.card { margin-bottom: 12px; }
+  .header-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+  .facts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px; color: var(--ink-quiet); font-size: 13px; }
+  .fact b { color: var(--ink); font-weight: 600; }
+
+  .progress {
+    margin-top: 12px; height: 8px; border-radius: 999px;
+    background: color-mix(in srgb, var(--color-mist) 12%, var(--color-deep-forest));
+    overflow: hidden;
+  }
+  .progress > span { display: block; height: 100%; background: var(--color-forest); width: 0; transition: width 200ms linear; }
+
+  .tally { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    border-radius: var(--radius-chip); padding: 4px 10px; font-size: 12px; font-weight: 600;
+    border: 1px solid var(--line); background: var(--panel-raised); color: var(--ink-quiet);
+    display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
+  }
+  .pill.ok { color: var(--color-light-leaf); border-color: color-mix(in srgb, var(--color-light-leaf) 40%, transparent); }
+  .pill.guard { color: var(--color-attention); border-color: color-mix(in srgb, var(--color-attention) 45%, transparent); }
+  .pill.error { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 45%, transparent); }
+  .pill.live { color: var(--color-light-leaf); }
+
+  /* ── Workspace grid ─────────────────────────────────────────────────────── */
+  .ws-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+  .ws-grid > * { min-width: 0; }
+  .ws-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .ws-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+  .ws-head .status-chip { flex: none; }
+  .ws-meta { color: var(--ink-faint); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+  .balances { margin-top: 10px; display: grid; gap: 4px; }
+  .balance { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .balance .who { color: var(--ink-quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .owes   { color: var(--color-amber); }        /* money owed outward */
+  .owed   { color: var(--color-light-leaf); }   /* money coming in */
+  .settled{ color: var(--ink-faint); }
+  .ws-last { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-faint); }
+
+  .status-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-quiet); }
+  .status-chip.requested { background: var(--color-blue); border-color: var(--color-blue); color: var(--text-on-forest); }
+
+  /* ── Ticker ─────────────────────────────────────────────────────────────── */
+  #ticker { max-height: 420px; overflow-y: auto; }
+  .tick-row {
+    display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: baseline;
+    padding: 4px 0; border-bottom: 1px solid color-mix(in srgb, var(--color-mist) 8%, transparent);
+    font-size: 12px;
+  }
+  .tick-row .n { color: var(--ink-faint); }
+  .tick-row .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tick-row .who { color: var(--ink-faint); }
+  .badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+  .badge.ok { color: var(--color-light-leaf); background: color-mix(in srgb, var(--color-light-leaf) 14%, transparent); }
+  .badge.guard { color: var(--color-attention); background: color-mix(in srgb, var(--color-attention) 20%, transparent); border: 1px dashed color-mix(in srgb, var(--color-attention) 55%, transparent); }
+  .badge.error { color: var(--text-on-forest); background: var(--color-error); }
+
+  /* ── Invariant wall ─────────────────────────────────────────────────────── */
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 6px; }
+  th { color: var(--ink-faint); font-weight: 600; }
+  tbody tr + tr td { border-top: 1px solid color-mix(in srgb, var(--color-mist) 8%, transparent); }
+  .cell {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel-raised);
+  }
+  .cell.pass { color: var(--color-light-leaf); border-color: color-mix(in srgb, var(--color-light-leaf) 45%, transparent); }
+  .cell.fail { color: var(--text-on-forest); background: var(--color-error); border-color: var(--color-error); }
+  .cell.unknown { color: var(--ink-faint); }
+  #invariant-detail {
+    margin-top: 10px; padding: 8px; border-radius: var(--radius-chip);
+    background: var(--panel-raised); border: 1px solid var(--line);
+    font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--ink-quiet);
+    max-height: 200px; overflow: auto;
+  }
+
+  /* ── Violations ─────────────────────────────────────────────────────────── */
+  .violation { border-left: 3px solid var(--color-error); padding-left: 10px; margin-bottom: 12px; }
+  .violation.known { border-left-color: var(--color-attention); }
+  .violation h3 { margin: 0 0 2px; font-size: 13px; }
+  .violation p { margin: 0 0 6px; color: var(--ink-quiet); font-size: 12px; }
+  .repro {
+    display: block; padding: 6px 8px; border-radius: 8px; font-size: 11px;
+    background: color-mix(in srgb, var(--color-mist) 9%, var(--color-deep-forest));
+    border: 1px solid var(--line); color: var(--ink); word-break: break-all;
+  }
+  .empty { color: var(--ink-faint); font-size: 12px; }
+
+  svg.icon { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+
+<header class="card">
+  <div class="header-top">
+    <div>
+      <h1>Simulator · mission control</h1>
+      <div class="facts" id="facts"></div>
+    </div>
+    <div class="tally" id="tally"></div>
+  </div>
+  <div class="progress"><span id="progress-bar"></span></div>
+</header>
+
+<div class="grid layout">
+  <div class="grid">
+    <section class="card">
+      <h2>Workspaces</h2>
+      <div class="ws-grid" id="workspaces"><p class="empty">Venter på data …</p></div>
+    </section>
+
+    <section class="card">
+      <h2>Invarianter</h2>
+      <div style="overflow-x:auto"><table id="invariant-wall"></table></div>
+      <div id="invariant-detail">Vælg en celle for at se detaljerne.</div>
+    </section>
+
+    <section class="card">
+      <h2>Kald, svartid og antal</h2>
+      <div style="overflow-x:auto"><table id="rpc-table"></table></div>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Fund</h2>
+      <div id="violations"><p class="empty">Ingen fund endnu.</p></div>
+    </section>
+
+    <section class="card">
+      <h2>Handlinger</h2>
+      <div id="ticker"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ── Danish formatting ─────────────────────────────────────────────────────
+  const kr = (value) => `${Number(value).toLocaleString("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr`;
+  const km = (value) => `${Math.round(Number(value)).toLocaleString("da-DK")} km`;
+  const int = (value) => Number(value).toLocaleString("da-DK");
+  const ms = (value) => `${Number(value).toLocaleString("da-DK", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ms`;
+
+  const INVARIANT_LABELS = {
+    zero_sum: "Nulsum pr. periode",
+    closed_fingerprint: "Lukket periode uændret",
+    handover_mirror: "Overdragelses-spejl (193)",
+    participant_denorm: "Deltager-ledger (192)",
+    rls_isolation: "RLS-isolation",
+    event_classification: "Hændelser klassificeret",
+    recurring_integrity: "Faste udgifter unikke",
+  };
+
+  const OUTCOME_LABELS = { ok: "ok", guard: "værn", error: "fejl" };
+
+  // Mirrors the `danish` field on each persona in lib/personas.mjs. The journal carries
+  // the key so the file stays machine-readable; the label belongs to the reader.
+  const PERSONA_LABELS = {
+    admin: "Administrator",
+    heavy_driver: "Storforbruger",
+    forgetful_logger: "Glemsom logger",
+    serial_editor: "Serieredigerer",
+    booker: "Bookinggal",
+  };
+  const persona = (key) => PERSONA_LABELS[key] ?? key;
+
+  // Danish plurals for the two counts on a workspace card.
+  const plural = (n, one, many) => `${int(n)} ${Number(n) === 1 ? one : many}`;
+
+  const ICON = {
+    check: '<svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+    cross: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+    dot: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>',
+    alert: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+  };
+
+  const esc = (text) => String(text ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ── State assembled from the journal stream ───────────────────────────────
+  const run = {
+    header: null,
+    counters: { ok: 0, guard: 0, error: 0 },
+    tick: 0,
+    simTime: null,
+    invariants: new Map(),   // "invariant:ws" -> result
+    workspaceIds: new Set(),
+    violations: [],
+    ended: false,
+  };
+
+  const el = (id) => document.getElementById(id);
+
+  // ── Stream ────────────────────────────────────────────────────────────────
+  const source = new EventSource("/events");
+  source.onmessage = (event) => {
+    let record;
+    try { record = JSON.parse(event.data); } catch { return; }
+    apply(record);
+    scheduleRender();
+  };
+
+  function apply(record) {
+    switch (record.kind) {
+      case "run":
+        run.header = record;
+        break;
+      case "action":
+        run.tick = record.tick;
+        run.simTime = record.simTime;
+        run.counters[record.outcome] = (run.counters[record.outcome] ?? 0) + 1;
+        run.workspaceIds.add(record.ws);
+        pushTick(record);
+        break;
+      case "oracle":
+        for (const result of record.results ?? []) {
+          run.invariants.set(`${result.invariant}:${result.ws}`, result);
+          run.workspaceIds.add(result.ws);
+        }
+        break;
+      case "violation":
+        run.violations.push(record);
+        break;
+      case "note":
+        pushNote(record);
+        break;
+      case "end":
+        run.ended = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  // ── Ticker (newest first, capped) ─────────────────────────────────────────
+  const TICKER_CAP = 300;
+  function pushTick(record) {
+    const row = document.createElement("div");
+    row.className = "tick-row";
+    const label = record.guardKind ? `${OUTCOME_LABELS.guard} · ${record.guardKind}` : OUTCOME_LABELS[record.outcome];
+    row.innerHTML = `
+      <span class="n mono">${record.tick}</span>
+      <span class="what">${esc(record.action)}
+        <span class="who">· ${esc(record.actor)} (${esc(persona(record.persona))}) · w${record.ws}</span></span>
+      <span class="badge ${record.outcome}">${esc(label)}</span>`;
+    if (record.message) row.title = record.message;
+    const ticker = el("ticker");
+    ticker.prepend(row);
+    while (ticker.childElementCount > TICKER_CAP) ticker.lastElementChild.remove();
+  }
+
+  function pushNote(record) {
+    const row = document.createElement("div");
+    row.className = "tick-row";
+    row.innerHTML = `<span class="n mono">·</span><span class="what">${esc(record.text)}</span><span></span>`;
+    el("ticker").prepend(row);
+  }
+
+  // ── Render (throttled to one frame) ───────────────────────────────────────
+  let queued = false;
+  function scheduleRender() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; render(); });
+  }
+
+  function render() {
+    renderHeader();
+    renderInvariantWall();
+    renderViolations();
+  }
+
+  function renderHeader() {
+    const header = run.header;
+    const config = header?.config ?? {};
+    el("facts").innerHTML = [
+      `<span class="fact">Seed <b class="mono">${header ? header.seed : "–"}</b></span>`,
+      `<span class="fact">Workspaces <b class="mono">${config.workspaces ?? "–"}</b> × medlemmer <b class="mono">${config.members ?? "–"}</b></span>`,
+      `<span class="fact">Simuleret tid <b class="mono">${run.simTime ? run.simTime.replace("T", " ").slice(0, 16) : "–"}</b></span>`,
+      `<span class="fact">Orakel hver <b class="mono">${config.oracleEvery ?? "–"}</b>. tick</span>`,
+      config.chaos ? '<span class="fact">Kaostilstand slået til</span>' : "",
+    ].join("");
+
+    const total = config.ticks ?? 0;
+    el("progress-bar").style.width = total > 0 ? `${Math.min(100, (run.tick / total) * 100)}%` : "0%";
+
+    el("tally").innerHTML = [
+      `<span class="pill ${run.ended ? "" : "live"}">${run.ended ? ICON.dot : ICON.dot} ${run.ended ? "Kørsel afsluttet" : "Kører"} · tick ${int(run.tick)}${total ? ` / ${int(total)}` : ""}</span>`,
+      `<span class="pill ok">${ICON.check} ok ${int(run.counters.ok)}</span>`,
+      `<span class="pill guard">${ICON.alert} værn ${int(run.counters.guard)}</span>`,
+      `<span class="pill error">${ICON.cross} fejl ${int(run.counters.error)}</span>`,
+    ].join("");
+  }
+
+  function renderInvariantWall() {
+    const wsIds = [...run.workspaceIds].sort((a, b) => a - b);
+    const names = Object.keys(INVARIANT_LABELS);
+    const head = `<thead><tr><th>Invariant</th>${wsIds.map((w) => `<th class="mono">w${w}</th>`).join("")}</tr></thead>`;
+    const body = names.map((name) => {
+      const cells = wsIds.map((w) => {
+        const result = run.invariants.get(`${name}:${w}`);
+        const state = !result ? "unknown" : result.ok ? "pass" : "fail";
+        const glyph = !result ? ICON.dot : result.ok ? ICON.check : ICON.cross;
+        return `<td><span class="cell ${state}" data-key="${name}:${w}" role="button" tabindex="0"
+                  title="${esc(INVARIANT_LABELS[name])} · w${w}">${glyph}</span></td>`;
+      }).join("");
+      return `<tr><td>${esc(INVARIANT_LABELS[name])}</td>${cells}</tr>`;
+    }).join("");
+    el("invariant-wall").innerHTML = `${head}<tbody>${body}</tbody>`;
+  }
+
+  document.addEventListener("click", (event) => {
+    const cell = event.target.closest?.(".cell");
+    if (!cell) return;
+    const result = run.invariants.get(cell.dataset.key);
+    el("invariant-detail").textContent = result
+      ? `${cell.dataset.key}\n${result.ok ? "grøn" : "RØD"}\n\n${JSON.stringify(result.detail, null, 2)}`
+      : `${cell.dataset.key}\nEndnu ikke målt.`;
+  });
+
+  function renderViolations() {
+    const host = el("violations");
+    if (run.violations.length === 0) {
+      host.innerHTML = '<p class="empty">Ingen fund endnu.</p>';
+      return;
+    }
+    host.innerHTML = run.violations.map((v) => `
+      <div class="violation ${v.known ? "known" : ""}">
+        <h3>${v.known ? `Kendt fund ${esc(v.known.id)}` : "Nyt fund"} · ${esc(v.invariant ?? v.action ?? v.violationKind)}</h3>
+        <p>Workspace w${v.ws} · tick ${int(v.tick)}${v.known ? ` · ${esc(v.known.title)}` : ""}${v.message ? ` · ${esc(String(v.message).split("\n")[0])}` : ""}</p>
+        <code class="repro mono">${esc(v.repro ?? "")}</code>
+      </div>`).join("");
+  }
+
+  // ── /state poll: workspace grid and the RPC table ─────────────────────────
+  async function poll() {
+    try {
+      const response = await fetch("/state", { cache: "no-store" });
+      if (response.ok) paintState(await response.json());
+    } catch { /* the run's process has gone; the replay above still stands */ }
+  }
+
+  function paintState(state) {
+    el("workspaces").innerHTML = (state.workspaces ?? []).map((ws) => {
+      const balances = (ws.balances ?? []).map((b) => {
+        const cls = b.net < -0.005 ? "owes" : b.net > 0.005 ? "owed" : "settled";
+        return `<div class="balance"><span class="who">${esc(b.name)}</span>
+                  <span class="num ${cls}">${kr(b.net)}</span></div>`;
+      }).join("") || '<p class="empty">Ingen balance beregnet endnu.</p>';
+      const requested = (ws.requests ?? []).filter((r) => r.status === "requested").length;
+      return `<div class="card" style="background:var(--panel-raised)">
+        <div class="ws-head">
+          <span class="ws-name">${esc(ws.name)}</span>
+          <span class="status-chip">${ws.openPeriodId ? "Åben periode" : "Ingen åben periode"}</span>
+        </div>
+        <div class="ws-meta mono">${km(ws.odometer)} · ${plural(ws.counts.trips, "tur", "ture")} · ${plural(ws.counts.fuel, "tankning", "tankninger")} · ${plural(ws.closedPeriods, "lukket periode", "lukkede perioder")}</div>
+        ${requested > 0 ? `<div style="margin-top:6px"><span class="status-chip requested">Anmodet · ${int(requested)}</span></div>` : ""}
+        <div class="balances">${balances}</div>
+        <div class="ws-last">Sidst: ${esc(ws.lastAction ?? "–")} (${esc(OUTCOME_LABELS[ws.lastOutcome] ?? "–")})</div>
+      </div>`;
+    }).join("") || '<p class="empty">Venter på data …</p>';
+
+    const rows = (state.rpc ?? []).slice().sort((a, b) => b.count - a.count);
+    el("rpc-table").innerHTML = `
+      <thead><tr><th>Handling</th><th>Antal</th><th>Gns.</th><th>Maks.</th><th>Forløb</th></tr></thead>
+      <tbody>${rows.map((r) => `
+        <tr>
+          <td>${esc(r.action)}</td>
+          <td class="num">${int(r.count)}</td>
+          <td class="num">${ms(r.avgMs)}</td>
+          <td class="num">${ms(r.maxMs)}</td>
+          <td>${sparkline(r.samples)}</td>
+        </tr>`).join("")}</tbody>`;
+  }
+
+  // Inline SVG sparkline — the only chart on the page, and it draws itself.
+  function sparkline(samples) {
+    if (!samples || samples.length < 2) return '<span class="empty">–</span>';
+    const width = 90;
+    const height = 18;
+    const max = Math.max(...samples, 1);
+    const step = width / (samples.length - 1);
+    const points = samples.map((value, i) => `${(i * step).toFixed(1)},${(height - (value / max) * (height - 2) - 1).toFixed(1)}`).join(" ");
+    return `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="${points}" fill="none" stroke="var(--color-leaf)" stroke-width="1.4"/>
+            </svg>`;
+  }
+
+  poll();
+  setInterval(poll, 1000);
+})();
+</script>
