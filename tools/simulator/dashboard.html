@@ -153,6 +153,10 @@
   .cell.pass { color: var(--color-light-leaf); border-color: color-mix(in srgb, var(--color-light-leaf) 45%, transparent); }
   .cell.fail { color: var(--text-on-forest); background: var(--color-error); border-color: var(--color-error); }
   .cell.unknown { color: var(--ink-faint); }
+  /* Measured and not available is a THIRD state, and it must not read as green: muted
+     ink, dashed border, an em dash for a glyph. The row it appears on is client parity,
+     which is genuinely unmeasurable without the sibling repo checked out. */
+  .cell.skipped { color: var(--ink-faint); border-style: dashed; background: transparent; }
   #invariant-detail {
     margin-top: 10px; padding: 8px; border-radius: var(--radius-chip);
     background: var(--panel-raised); border: 1px solid var(--line);
@@ -236,6 +240,7 @@
     rls_isolation: "RLS-isolation",
     event_classification: "Hændelser klassificeret",
     recurring_integrity: "Faste udgifter unikke",
+    client_parity: "Klient-paritet",
   };
 
   const OUTCOME_LABELS = { ok: "ok", guard: "værn", error: "fejl" };
@@ -258,6 +263,7 @@
     check: '<svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
     cross: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
     dot: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>',
+    dash: '<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
     alert: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
   };
 
@@ -272,6 +278,7 @@
     invariants: new Map(),   // "invariant:ws" -> result
     workspaceIds: new Set(),
     violations: [],
+    parity: null,            // the `parity` line's load report (GV-471 Phase A)
     ended: false,
   };
 
@@ -306,6 +313,12 @@
         break;
       case "violation":
         run.violations.push(record);
+        break;
+      // GV-471 Phase A. The `load` line says whether govehlo-mobile's own calculation
+      // modules were imported at all; the `sweep` lines are the per-tick results, which
+      // the invariant wall already paints, so only the first is kept here.
+      case "parity":
+        if (record.phase === "load") run.parity = record;
         break;
       case "note":
         pushNote(record);
@@ -364,7 +377,9 @@
       `<span class="fact">Workspaces <b class="mono">${config.workspaces ?? "–"}</b> × medlemmer <b class="mono">${config.members ?? "–"}</b></span>`,
       `<span class="fact">Simuleret tid <b class="mono">${run.simTime ? run.simTime.replace("T", " ").slice(0, 16) : "–"}</b></span>`,
       `<span class="fact">Orakel hver <b class="mono">${config.oracleEvery ?? "–"}</b>. tick</span>`,
+      parityFact(),
       config.chaos ? '<span class="fact">Kaostilstand slået til</span>' : "",
+      config.chaosParity ? '<span class="fact">Paritetskaos slået til</span>' : "",
     ].join("");
 
     const total = config.ticks ?? 0;
@@ -378,6 +393,19 @@
     ].join("");
   }
 
+  // Client parity is the one check that can be legitimately UNAVAILABLE (the sibling
+  // repo govehlo-mobile is not checked out in the nightly workflow), so the header says
+  // so in words rather than leaving a muted row to be interpreted.
+  function parityFact() {
+    const parity = run.parity;
+    if (!parity) return "";
+    if (parity.available) {
+      const files = (parity.modules ?? []).filter((m) => m.loaded).length;
+      return `<span class="fact">Klient-paritet <b>til</b> · <b class="mono">${int(files)}</b> mobilmoduler</span>`;
+    }
+    return `<span class="fact">Klient-paritet <b>ikke tilgængelig</b></span>`;
+  }
+
   function renderInvariantWall() {
     const wsIds = [...run.workspaceIds].sort((a, b) => a - b);
     const names = Object.keys(INVARIANT_LABELS);
@@ -385,10 +413,11 @@
     const body = names.map((name) => {
       const cells = wsIds.map((w) => {
         const result = run.invariants.get(`${name}:${w}`);
-        const state = !result ? "unknown" : result.ok ? "pass" : "fail";
-        const glyph = !result ? ICON.dot : result.ok ? ICON.check : ICON.cross;
+        const state = !result ? "unknown" : result.skipped ? "skipped" : result.ok ? "pass" : "fail";
+        const glyph = !result ? ICON.dot : result.skipped ? ICON.dash : result.ok ? ICON.check : ICON.cross;
+        const title = `${INVARIANT_LABELS[name]} · w${w}${result?.skipped ? " · ikke tilgængelig" : ""}`;
         return `<td><span class="cell ${state}" data-key="${name}:${w}" role="button" tabindex="0"
-                  title="${esc(INVARIANT_LABELS[name])} · w${w}">${glyph}</span></td>`;
+                  title="${esc(title)}">${glyph}</span></td>`;
       }).join("");
       return `<tr><td>${esc(INVARIANT_LABELS[name])}</td>${cells}</tr>`;
     }).join("");
@@ -399,8 +428,9 @@
     const cell = event.target.closest?.(".cell");
     if (!cell) return;
     const result = run.invariants.get(cell.dataset.key);
+    const verdict = !result ? null : result.skipped ? "ikke tilgængelig" : result.ok ? "grøn" : "RØD";
     el("invariant-detail").textContent = result
-      ? `${cell.dataset.key}\n${result.ok ? "grøn" : "RØD"}\n\n${JSON.stringify(result.detail, null, 2)}`
+      ? `${cell.dataset.key}\n${verdict}\n\n${JSON.stringify(result.detail, null, 2)}`
       : `${cell.dataset.key}\nEndnu ikke målt.`;
   });
 
