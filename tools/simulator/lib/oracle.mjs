@@ -315,13 +315,16 @@ async function clientParity(db, ws, parity) {
 
   // --chaos-parity: drop ONE row from the CLIENT's copy (never from the database) in
   // the first workspace that has one, so exactly one workspace's parity must go red.
+  //
+  // It is re-applied to that SAME workspace on every later sweep, deliberately: a
+  // one-shot perturbation would leave the invariant wall green at the end of a run that
+  // reported a violation, and a dashboard that contradicts the report is worse than
+  // either alone. Violations are keyed by (invariant, workspace), so re-firing still
+  // yields exactly one.
   let perturbed = null;
-  if (parity.perturb?.armed) {
+  if (parity.perturb && (parity.perturb.applied === null || parity.perturb.applied.ws === ws.index)) {
     perturbed = perturbClientRows(rows);
-    if (perturbed) {
-      parity.perturb.armed = false;
-      parity.perturb.applied = { ws: ws.index, ...perturbed };
-    }
+    if (perturbed) parity.perturb.applied = { ws: ws.index, ...perturbed };
   }
 
   const { mismatches, notes, periods } = diffSettlementParity(parity.modules, rows);

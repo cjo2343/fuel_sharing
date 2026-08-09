@@ -123,14 +123,45 @@ const REPRO = [
 // Each entry needs a narrow `match`. A broad one (any zero_sum failure) would quietly
 // swallow the next real settlement bug, which is the whole reason the invariant exists.
 //
-// The list is EMPTY today, and an empty registry is the healthy state, not a dead one:
 // GV-471-F1 — fuel paid in a period with zero kilometres credited to nobody's debit —
 // lived here from the tool's first run until migration 194 (GV-472) fixed it, and its
 // entry was deleted with the fix rather than left behind as a silencer. The pattern
 // stays: when this fuzzer surfaces something a person has read and that is not the
 // current PR's job, it goes here with a narrow match and comes out again when it is
 // fixed. The historical repro for F1 is kept in README.md, not here.
-const KNOWN_FINDINGS = [];
+//
+// GV-471-F2 below is Phase A's first finding, surfaced by the client-parity oracle on
+// its first long run. It is a CLIENT-vs-SERVER disagreement, not a corruption: the
+// database is self-consistent and the period still nets to zero, but a member's phone
+// and the server's own settlement figure can print amounts one øre apart. It is not
+// this PR's job to fix (the fix is a migration, and this PR ships no SQL), the close's
+// 0,02 kr per-member gate already absorbs it so no close can be blocked by it, and the
+// README records the mechanism and the repro. See there before widening this match.
+const KNOWN_FINDINGS = [
+  {
+    id: "GV-471-F2",
+    title:
+      "tripCost lands one øre apart when km × totalPaid / totalKm is an exact half-øre: " +
+      "Postgres divides FIRST into a 16-digit numeric (product falls just below the tie, rounds down) " +
+      "while the client divides first in a double (product falls just above, rounds up).",
+    // NARROW on purpose, in three independent ways: only the client_parity invariant,
+    // only the two fields the fuel rate feeds, and only a difference of ONE øre. The
+    // length check matters as much as the rest — `mismatches` is truncated at 40, so
+    // without it a hundred-mismatch divergence whose first forty happened to be one-øre
+    // tripCosts would be laundered into this entry.
+    match: (violation) =>
+      violation.kind === "invariant" &&
+      violation.invariant === "client_parity" &&
+      Array.isArray(violation.detail?.mismatches) &&
+      violation.detail.mismatches.length > 0 &&
+      violation.detail.mismatches.length === violation.detail.mismatchCount &&
+      violation.detail.mismatches.every(
+        (m) =>
+          (m.field === "person.tripCost" || m.field === "person.net") &&
+          Math.abs(Number(m.client) - Number(m.server)) <= 0.010000001,
+      ),
+  },
+];
 
 // ── Fixture vocabulary (synthetic, Danish) ───────────────────────────────────
 const FIRST_NAMES = [
@@ -281,7 +312,7 @@ async function prepareParity() {
     parity = { available: false, reason: "--no-parity", report: [] };
   } else {
     const loaded = await loadClientModules();
-    parity = { ...loaded, perturb: config.chaosParity ? { armed: true, applied: null } : null };
+    parity = { ...loaded, perturb: config.chaosParity ? { applied: null } : null };
   }
   journal.write({
     kind: "parity",
