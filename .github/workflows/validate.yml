@@ -351,6 +351,17 @@ jobs:
       - name: Run zero-km fuel carry-forward contract
         run: node tools/test-zero-km-fuel-carryforward-contract.mjs --strict
 
+      # GV-475. Same arrangement again: the fast `validate` job runs this without
+      # --strict so it can warn where Docker is absent; here a skip is a failure. It is
+      # the only thing holding migration 195's plausibility ceiling to the one promise
+      # that matters more than catching the typo — that a TRUE reading is never refused
+      # — which needs a real Postgres for both carve-outs (a workspace with no odometer
+      # history, and one anchored only by migration 092's tank baseline), and the only
+      # place the recompute's deliberate break with 193's monotone mirror is exercised
+      # against rows rather than read out of a regex.
+      - name: Run handover odometer guard contract
+        run: node tools/test-handover-odometer-guard-contract.mjs --strict
+
       - name: Run deferred fuel-close smoke
         run: bash tools/test-deferred-fuel-close-functional.sh
 

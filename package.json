@@ -23,6 +23,7 @@
     "test:booking-caps": "node tools/test-booking-caps-contract.mjs --strict",
     "test:conflict-preconditions": "node tools/test-conflict-precondition-contract.mjs --strict",
     "test:booking-handover": "node tools/test-booking-handover-contract.mjs --strict",
+    "test:handover-odometer-guard": "node tools/test-handover-odometer-guard-contract.mjs --strict",
     "test:incident-repair-link": "node tools/test-incident-repair-link-contract.mjs --strict",
     "test:deferred-fuel-close": "bash tools/test-deferred-fuel-close-functional.sh",
     "test:member-recurring-suspension": "bash tools/test-member-recurring-suspension-functional.sh",

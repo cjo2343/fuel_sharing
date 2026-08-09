@@ -1735,6 +1735,13 @@ pin("'nothing to mirror' also reports location_mirrored false", () => {
 // retract a counter reading that was made), the fraction half follows observed_at
 // (so migration 189's restamp moves it), and a never-observed ledger stays NULL
 // rather than acquiring a fake 0 km reading.
+//
+// The readings below sit just above this fixture's own 82.3xx–82.4xx history, and that
+// is a requirement rather than a style choice since migration 195 (GV-475): a handover
+// more than 50.000 km above the workspace's greatest odometer anchor is now refused as a
+// mistyped digit, so the 500.000 km readings these pins used to carry — a sixfold jump on
+// a workspace whose newest reading was 82.400 — are exactly what the new ceiling exists
+// to reject. Nothing else here changed; every assertion still says what it said.
 
 const mirrorOdometer = (ledger = L) =>
   scalar(`select coalesce(max_handover_odometer::text, 'NULL') from public.ledgers where id = '${ledger}'`);
@@ -1762,22 +1769,22 @@ pin("a never-observed ledger's mirror is NULL, not 0 (GVM-546)", () => {
 });
 
 pin("a handover's odometer and fuel reach the ledgers mirror (GVM-546)", () => {
-  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000101", odometer: 500000, fuel: 0.25 }), "OK");
-  assert.equal(mirrorOdometer(), "500000");
+  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000101", odometer: 82500, fuel: 0.25 }), "OK");
+  assert.equal(mirrorOdometer(), "82500");
   assert.equal(mirrorFraction(), "0.25");
 });
 
 pin("the odometer mirror is monotone: a newer, LOWER reading advances 'latest' but never the max (GVM-546)", () => {
   // The day-newer booking carries a lower km entry (a typo, or a different gauge
   // read) — the fraction pair follows observed_at, the max does not move.
-  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000102", odometer: 499000, fuel: 0.75 }), "OK");
-  assert.equal(mirrorOdometer(), "500000");
+  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000102", odometer: 82460, fuel: 0.75 }), "OK");
+  assert.equal(mirrorOdometer(), "82500");
   assert.equal(mirrorFraction(), "0.75");
 });
 
 pin("an edited-down handover does not retract the max either (GVM-546)", () => {
-  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000101", odometer: 480000, fuel: 0.25 }), "OK");
-  assert.equal(mirrorOdometer(), "500000");
+  assert.equal(saveHandover({ booking: "31000000-0000-0000-0000-000000000101", odometer: 82430, fuel: 0.25 }), "OK");
+  assert.equal(mirrorOdometer(), "82500");
 });
 
 pin("migration 189's restamp propagates through to the mirror's observed_at (GVM-546)", () => {
@@ -1798,7 +1805,7 @@ pin("migration 189's restamp propagates through to the mirror's observed_at (GVM
 pin("deleting a handover recomputes the fraction pair but never lowers the odometer (GVM-546)", () => {
   raw(`delete from public.booking_handovers where booking_id = '31000000-0000-0000-0000-000000000102';`);
   assert.equal(mirrorFraction(), "0.25");
-  assert.equal(mirrorOdometer(), "500000");
+  assert.equal(mirrorOdometer(), "82500");
 });
 
 removeContainer(CONTAINER);
