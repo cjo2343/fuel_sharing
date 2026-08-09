@@ -139,24 +139,30 @@ export const PERSONAS = {
     label: "Offline commuter",
     danish: "Offline-pendleren",
     offline: {
-      // Drawn once per tick this persona is picked and not already offline. At ~1 in 5
-      // with a 3–9 tick stretch, an offline member spends roughly half a long run
-      // queueing, which is aggressive for one member and about right for a workspace:
-      // it guarantees several bursts per run without turning the whole run into one.
+      // Drawn once per PICK — that is, once every time this member is the tick's actor
+      // and is not already offline.
       chance: 0.22,
-      minTicks: 3,
-      maxTicks: 9,
-      // A real queue is bounded by the user's patience, not by disk. Eight is enough
-      // to land a burst across a period close and short enough that one member cannot
-      // monopolise a run's writes.
+      // THE STRETCH IS COUNTED IN THIS MEMBER'S OWN PICKS, NOT IN TICKS, and the first
+      // version of this got it wrong in a way worth writing down. A member of a
+      // four-workspace, four-member run is the actor roughly once every sixteen ticks,
+      // so a window of "3 to 9 ticks" expired before they were picked again: the
+      // persona went offline, queued nothing, and reconnected to an empty queue. Every
+      // burst was one statement long and the whole feature was decorative. Counted in
+      // picks, a burst is 2–6 DECISIONS by construction, which is what a burst is.
+      minPicks: 2,
+      maxPicks: 6,
+      // A real queue is bounded by the user's patience, not by disk.
       maxQueued: 8,
     },
     weights: {
       log_trip: 9,
       log_fuel: 5,
       log_trip_backdated: 3,
-      edit_trip: 3,
-      edit_fuel: 2,
+      // Edits are weighted UP relative to a plain commuter's habits, on purpose: an
+      // edit is the only action that carries a precondition token, and a token read
+      // before the tunnel and sent after it is the whole reason this persona exists.
+      edit_trip: 5,
+      edit_fuel: 4,
       complete_booking: 2,
       create_booking: 2,
       save_handover: 1,

@@ -130,6 +130,18 @@ const CONTAINER = `govehlo-sim-${process.pid}`;
 const DUP_CHANCE = 1 / 12;
 const INTERLEAVE_CHANCE = 0.08;
 
+// Tables readUpdatedAt() may read a precondition token from — a hard allow-list rather
+// than an interpolation, because `public.${table}` with a caller-supplied name is how a
+// helper like that becomes an injection point the next time somebody extends it.
+//
+// DECLARED HERE, ABOVE `await main()`, AND NOT BESIDE ITS FUNCTION. This module awaits
+// main() at the top level, so every `const` further down the file is still in its
+// temporal dead zone while the run is happening: function declarations hoist, `const`
+// does not. The first version had it next to readUpdatedAt and the whole run died with
+// "Cannot access 'PRECONDITION_TABLES' before initialization" the first time an offline
+// member queued an EDIT rather than a create.
+const PRECONDITION_TABLES = new Set(["trips", "fuel_payments", "car_bookings"]);
+
 // The one-line reproduction, printed with every violation and stored in violations.json.
 //
 // --epoch was always here; since GV-478 it is LOAD-BEARING rather than cosmetic. The
@@ -275,8 +287,14 @@ const phaseB = {
   offlineBursts: 0,
   offlineQueued: 0,
   offlineFlushed: 0,
-  offlineStale: 0,
+  offlineLate: 0,
 };
+
+/** The guards that mean "the world moved on while the phone was offline" — the whole
+ *  reason the offline persona exists. A stale precondition token is the sharpest of
+ *  them, but a period that closed, a row that was deleted and a period locked by a
+ *  settlement request are the same story told by a different rule. */
+const LATE_WRITE_GUARDS = new Set(["stale_precondition", "closed_period", "not_found", "period_locked", "repair_locked"]);
 
 const sessions = new SessionPool(CONTAINER, DB, config.sessions);
 const db = sessions.primary;
@@ -624,16 +642,19 @@ async function runTick(tick) {
   let queueing = false;
   let offlineState = null;
   if (offlinePolicy) {
-    offlineState = actor.offlineState ?? (actor.offlineState = { until: 0, queue: [] });
-    if (offlineState.queue.length > 0 && tick > offlineState.until) {
+    // `remaining` counts THIS MEMBER'S OWN remaining offline decisions, not ticks: see
+    // the note beside the persona in lib/personas.mjs for why the tick-counted version
+    // produced bursts of one.
+    offlineState = actor.offlineState ?? (actor.offlineState = { remaining: 0, queue: [] });
+    if (offlineState.queue.length > 0 && offlineState.remaining <= 0) {
       await flushOfflineQueue(tick, ws, actor, offlineState);
       return;
     }
-    if (offlineState.queue.length === 0 && ws.rng.bool(offlinePolicy.chance)) {
-      offlineState.until = tick + ws.rng.int(offlinePolicy.minTicks, offlinePolicy.maxTicks);
+    if (offlineState.queue.length === 0 && offlineState.remaining <= 0 && ws.rng.bool(offlinePolicy.chance)) {
+      offlineState.remaining = ws.rng.int(offlinePolicy.minPicks, offlinePolicy.maxPicks);
       phaseB.offlineBursts += 1;
     }
-    queueing = tick <= offlineState.until && offlineState.queue.length < offlinePolicy.maxQueued;
+    queueing = offlineState.remaining > 0 && offlineState.queue.length < offlinePolicy.maxQueued;
     ctx.offline = queueing;
   }
 
@@ -694,6 +715,7 @@ async function runTick(tick) {
       decidedOffset: clock.offsetMinutes(),
       staleToken: Boolean(built.detail?.offlineToken),
     });
+    offlineState.remaining -= 1;
     phaseB.offlineQueued += 1;
     journalAction({
       tick,
@@ -702,7 +724,7 @@ async function runTick(tick) {
       action: chosen,
       outcome: "queued",
       offline: "queued",
-      step: `offline-queue@${offlineState.until}`,
+      step: `offline-queue:${offlineState.queue.length}`,
       detail: built.detail ?? null,
       ms: 0,
       rhythm,
@@ -763,11 +785,9 @@ function makeContext(ws, actorSlot) {
  *
  * A read in the decision path, which is fine and already the norm here: the database's
  * state at a given tick is itself a function of the seed, so a replay reads the same
- * value. The table list is a hard allow-list rather than an interpolation, because
- * `public.${table}` with a caller-supplied name is how a helper like this becomes an
- * injection point the next time somebody extends it.
+ * value. PRECONDITION_TABLES (declared at the top of this file, and see the note there)
+ * is the allow-list of tables it may read from.
  */
-const PRECONDITION_TABLES = new Set(["trips", "fuel_payments", "car_bookings"]);
 async function readUpdatedAt(table, id) {
   if (!id || !PRECONDITION_TABLES.has(table)) return null;
   try {
@@ -886,14 +906,14 @@ function recordActionViolation(tick, ws, actor, action, result, built, extra = {
 // nothing else in this repo produces.
 async function flushOfflineQueue(tick, ws, actor, state) {
   const entries = state.queue.splice(0, state.queue.length);
-  state.until = 0;
+  state.remaining = 0;
   for (const entry of entries) {
     // eslint-disable-next-line no-await-in-loop -- the burst is ordered on purpose
     const result = await sendAction(entry.sql);
     // eslint-disable-next-line no-await-in-loop
     await applyIfOk(entry.built, result);
     phaseB.offlineFlushed += 1;
-    if (entry.staleToken && result.guardKind === "stale_precondition") phaseB.offlineStale += 1;
+    if (LATE_WRITE_GUARDS.has(result.guardKind)) phaseB.offlineLate += 1;
     journalAction({
       tick,
       ws,
@@ -1335,7 +1355,7 @@ function report(wallSeconds, schemaSeconds) {
   console.log(`     rhythm                   ${config.rhythm ? `on · ${clock.now().toISOString().slice(0, 10)} ${clockLabel(clock.now())} at the last tick` : "off (--flat-clock)"}`);
   console.log(`     duplicates sent          ${phaseB.duplicatesSent} (${phaseB.duplicatesAbsorbed} absorbed by the schema, ${phaseB.duplicatesTolerated} created a second row)`);
   console.log(`     contention scenarios     ${phaseB.scenariosRun}${phaseB.scenariosRun > 0 ? ` · contender ${Object.entries(phaseB.scenariosByOutcome).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}`);
-  console.log(`     offline bursts           ${phaseB.offlineBursts} · ${phaseB.offlineQueued} statements queued, ${phaseB.offlineFlushed} flushed, ${phaseB.offlineStale} refused on a stale token`);
+  console.log(`     offline bursts           ${phaseB.offlineBursts} · ${phaseB.offlineQueued} statements queued, ${phaseB.offlineFlushed} flushed, ${phaseB.offlineLate} refused because the world had moved on`);
   console.log("");
   console.log("  guard kinds (an expected rejection is the fuzz reaching an edge):");
   for (const [kind, count] of [...guardCounts.entries()].sort((a, b) => b[1] - a[1])) {
