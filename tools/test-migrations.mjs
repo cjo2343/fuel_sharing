@@ -204,6 +204,7 @@ const expected = [
   "191_review_hardening_bundle.sql",
   "192_trip_participants_read_policy_indexable.sql",
   "193_handover_observation_mirror.sql",
+  "194_zero_km_fuel_carryforward.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
