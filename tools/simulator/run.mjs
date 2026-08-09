@@ -653,12 +653,12 @@ async function stampDeterministicMemberIds() {
   for (const ws of workspaces) {
     for (const member of ws.members) {
       if (!member.memberId) continue;
-      rows.push({ member, ws, next: deterministicMemberId(ws.index, member.slot) });
+      rows.push({ member, ws, old: member.memberId, next: deterministicMemberId(ws.index, member.slot) });
     }
   }
   if (rows.length === 0) return;
 
-  const values = rows.map((row) => `(${uuidLit(row.member.memberId)}, ${uuidLit(row.next)})`).join(",\n");
+  const values = rows.map((row) => `(${uuidLit(row.old)}, ${uuidLit(row.next)})`).join(",\n");
   await db.exec(
     [
       "begin;",
@@ -697,7 +697,9 @@ async function stampDeterministicMemberIds() {
   // only the settlement requests seeding never creates, but leaving the sweep out would
   // be a trap for the next person who caches an id during seeding.
   for (const ws of workspaces) {
-    const byOld = new Map(rows.filter((row) => row.ws === ws).map((row) => [row.member.memberId, row.next]));
+    // Keyed on the id captured BEFORE the mutation loop above — member.memberId already
+    // holds the new id by now, and a map keyed on it would remap nothing.
+    const byOld = new Map(rows.filter((row) => row.ws === ws).map((row) => [row.old, row.next]));
     ws.requests = (ws.requests ?? []).map((request) => ({
       ...request,
       fromId: byOld.get(request.fromId) ?? request.fromId,
