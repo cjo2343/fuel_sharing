@@ -12,9 +12,15 @@ name: Nightly simulator fuzz
 #   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 \
 #     --seed <seed> --oracle-every 25 --epoch <date> --headless
 #
-# replays it exactly on any machine with Docker. The epoch is pinned to the run
-# date for the same reason — the simulator's clock is simulated, but its starting
-# point is a CLI input, and reproducibility requires repeating it.
+# replays it exactly on any machine with Docker. The epoch is pinned to a date
+# DERIVED from the run date for the same reason — the simulator's clock is
+# simulated, but its starting point is a CLI input, and reproducibility requires
+# repeating it. Pinned 100 days in the PAST, not to the run date itself (GV-474):
+# a 600-tick run spans ~93 simulated days, and the simulator's own default anchors
+# the whole run before the real present so that now()-keyed rules answer the same
+# at any hour. The original today-pinned epoch made nightly runs future-anchored,
+# which silently shifted the guard profile — "Bookingen er ikke startet" fired,
+# migration 195's odometer-plausibility guard never did.
 #
 # On failure the journal + violations.json upload as an artifact and the repro
 # command is printed in the job log. The admin console's Health page reads this
@@ -37,10 +43,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -48,7 +54,7 @@ jobs:
         run: |
           set -u
           DATE_TAG="$(date -u +%Y%m%d)"
-          EPOCH="$(date -u +%Y-%m-%d)"
+          EPOCH="$(date -u -d '100 days ago' +%Y-%m-%d)"
           FAILED=0
           for n in 1 2 3; do
             SEED="${DATE_TAG}${n}"

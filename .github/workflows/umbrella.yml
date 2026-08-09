@@ -219,13 +219,13 @@ jobs:
       #     govehlo-mobile/   <- ../govehlo-mobile
       - name: Check out fuel_sharing
         if: steps.probe.outputs.has_token == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: fuel_sharing
 
       - name: Check out govehlo-web
         if: steps.probe.outputs.has_token == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: cjo2343/vehloshare-web
           path: govehlo-web
@@ -233,7 +233,7 @@ jobs:
 
       - name: Check out govehlo-mobile
         if: steps.probe.outputs.has_token == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: cjo2343/vehloshare-mobile
           path: govehlo-mobile
@@ -241,7 +241,7 @@ jobs:
 
       - name: Set up Node
         if: steps.probe.outputs.has_token == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
 
