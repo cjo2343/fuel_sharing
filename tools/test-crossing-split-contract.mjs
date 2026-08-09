@@ -488,9 +488,13 @@ function checkMobileMirror() {
   });
 
   pin("settlement-calc.ts: net extends symmetrically and totalCrossings is summarised", () => {
+    // Since GVM-564 (migration 194) the net is a two-branch ternary: the totalKm > 0
+    // branch is the original expression, the zero-km branch drops fuelPaid AND tripCost
+    // (that fuel carries forward instead). Crossings must stay symmetric — paid credited,
+    // share debited — in BOTH branches, so both are pinned.
     assert.match(
       calc,
-      /p\.net = round\(p\.fuelPaid \+ p\.expensePaid \+ p\.repairPaid \+ p\.crossingPaid - p\.tripCost - p\.expenseShare - p\.repairShare - p\.crossingShare\)/,
+      /p\.net = totalKm > 0\s*\?\s*round\(p\.fuelPaid \+ p\.expensePaid \+ p\.repairPaid \+ p\.crossingPaid - p\.tripCost - p\.expenseShare - p\.repairShare - p\.crossingShare\)\s*:\s*round\(p\.expensePaid \+ p\.repairPaid \+ p\.crossingPaid - p\.expenseShare - p\.repairShare - p\.crossingShare\)/,
     );
     assert.match(calc, /totalCrossings/);
   });
