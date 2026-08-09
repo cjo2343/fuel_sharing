@@ -561,19 +561,26 @@ before they were next picked: the persona went offline, queued nothing, and reco
 an empty queue. Every burst was one statement long and the feature was decorative. Counted
 in picks, a burst is 2–6 decisions by construction.
 
-A representative burst from `--seed 478 --ticks 400`:
+A real burst from
+`--workspaces 4 --members 4 --ticks 400 --seed 478 --epoch 2026-05-26`:
 
 ```
- 68 queued edit_trip        tok=true            188 queued edit_trip
- 84 queued edit_trip        tok=true            220 queued complete_booking
- 98 queued log_trip                             238 queued edit_fuel        tok=true
-140 flush  log_fuel   ok            waited 106  253 flush  edit_trip   guard not_found  waited 65
-140 flush  edit_trip  guard permission waited 72  253 flush  complete_booking guard not_found
-140 flush  edit_trip  guard closed_period waited 56  253 flush  edit_fuel guard not_found waited 15
+ 34 queued log_fuel                                    98 queued log_trip
+ 68 queued edit_trip        tok                       127 queued edit_fuel        tok
+ 84 queued edit_trip        tok
+132 flush  log_fuel    guard not_found    waited 98   <- "Open settlement period was not
+132 flush  edit_trip   guard not_found    waited 64       found or was already closed"
+132 flush  edit_trip   guard not_found    waited 48
+132 flush  log_trip    guard not_found    waited 34
+132 flush  edit_fuel   guard permission   waited 5
 ```
 
-An edit decided on a Tuesday, refused 56 ticks later because the period closed while the
-phone was in a tunnel. Nothing else in this repo writes that sequence.
+Five writes decided between tick 34 and tick 127, sent in one burst at tick 132, and four
+of them refused because **the admin closed the period while the phone was in a tunnel**:
+each carried the `target_open_period_id` it could see when it was decided, and that period
+no longer exists. The fifth was refused because the row's payer had changed underneath it.
+Nothing else in this repo writes that sequence, and the guard messages are the product's
+own.
 
 A phone that never comes back into range before the run ends keeps its queue; the run
 prints a note saying how many statements never made it, because an unflushed queue is a
@@ -688,11 +695,14 @@ refused on its own malformed snapshot in the hazard case, and a hazard that repo
 | `ok` | **`interleave_hazard`.** Two writers got through the same named lock at once, which is precisely what the lock is in the schema to prevent |
 | `error` | already a violation by the ordinary path |
 
-That first clause is not a loophole, it is the honest reading, and it fires: in a 400-tick
-seed-478 run, three of thirty scenarios had their holder refused by the fuel payer gate
-("Only the fuel payer or a ledger admin can create this fuel payment"), the contender's
-close then succeeded legitimately, and no hazard was reported. Twenty-two of the remaining
-twenty-seven ended in `contention`.
+That first clause is not a loophole, it is the honest reading, and it fires. In a 400-tick
+seed-478 run, **four of thirty** scenarios had their holder refused by the fuel payer gate
+("Only the fuel payer or a ledger admin can create this fuel payment" — `fuelWrite` names
+somebody else as payer one time in five), so no `for share` was ever taken, the contender's
+close succeeded legitimately, and nothing was reported. Of the remaining twenty-six,
+**nineteen ended in `contention`** and seven in a `guard`. Making the holder always pay for
+their own fill would raise the engagement rate; it is left alone because a scenario skipped
+for a stated reason costs less than one more special case in the builders.
 
 **Two members completing the same booking** is the one collision from the brief that is
 *not* a scenario here. With the same idempotency key it is identical to the duplicate
