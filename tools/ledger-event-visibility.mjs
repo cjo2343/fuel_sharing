@@ -45,6 +45,18 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   // car and its keys were left, and the feed is where the group looks. The title comes
   // from the client, so it says what happened without repeating the free-text location.
   "handover_created",
+  // handover_odometer_corrected (migration 195, GV-475) — written by
+  // recompute_handover_mirror when an admin rebuilds the ledgers odometer mirror from
+  // the surviving handovers, which is the one place migration 193's monotone rule is
+  // deliberately dropped. Feed-visible on purpose: the workspace's kilometre reading is
+  // a SHARED fact that other members' service reminders, odometer floors and Start-km
+  // prefills all follow, and it has just been moved DOWNWARD by somebody other than the
+  // member who entered it. A silent correction is how the group learns about a mistyped
+  // odometer by noticing the number changed, which is exactly the state GV-475 exists to
+  // end — so the row is written even when the recompute changes nothing. The title and
+  // body are server-authored Danish and the metadata carries only the old and new
+  // maximum: two integers, no free text, no names.
+  "handover_odometer_corrected",
 
   // Members (migrations 059, 079, 096, 112).
   "member_joined",
