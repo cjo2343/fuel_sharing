@@ -340,6 +340,17 @@ jobs:
       - name: Run pre-departure fuel-stop verdict contract
         run: node tools/test-fuel-stop-verdict-contract.mjs --strict
 
+      # GV-472. Same arrangement as the step above: the fast `validate` job runs this
+      # without --strict so it can warn where Docker is absent; here a skip is a
+      # failure. It is the only thing holding migration 194's two claims — that a
+      # zero-km period defers its fuel and nets to exactly zero, and that a period WITH
+      # kilometres is byte-for-byte what it was before 194 (measured against a replay of
+      # migrations 001–193, not asserted) — and it is also the only place the close-time
+      # promotion is exercised against a LOCKED period, which is the state that decides
+      # whether the promotion may run before or after the flip to closed.
+      - name: Run zero-km fuel carry-forward contract
+        run: node tools/test-zero-km-fuel-carryforward-contract.mjs --strict
+
       - name: Run deferred fuel-close smoke
         run: bash tools/test-deferred-fuel-close-functional.sh
 
