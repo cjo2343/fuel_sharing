@@ -110,32 +110,15 @@ const REPRO = [
 //
 // Each entry needs a narrow `match`. A broad one (any zero_sum failure) would quietly
 // swallow the next real settlement bug, which is the whole reason the invariant exists.
-const KNOWN_FINDINGS = [
-  {
-    id: "GV-471-F1",
-    title: "Fuel paid in a period with zero kilometres is credited to nobody's debit",
-    // calculate_period_settlement's `net` expression:
-    //     case when totalKm > 0 then fuelPaid + … - tripCost - shares
-    //                           else fuelPaid + … - shares  end
-    // The else branch omits tripCost — correct, since a per-km rate is undefined at
-    // zero km — but it also omits any other way of charging the fuel. So a period that
-    // holds fuel logs and no live trips credits the payer the full amount and debits
-    // no one, and the period stops netting to zero by exactly totalPaid. Reachable in
-    // production the moment a group logs a fill before its first trip of a new period,
-    // or deletes the only trip in one. Reproduce with
-    //   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 400 --seed 11 \
-    //     --oracle-every 25 --epoch 2026-06-07 --headless
-    // which hits it three times: w1/tick 25 (637,36 kr, open period), w3/tick 100
-    // (938,20 kr, QUEUED period — the carry-over path from migration 140 is affected
-    // too) and w0/tick 150 (262,66 kr). In every case the residue equals totalPaid to
-    // the øre, which is the signature.
-    match: (v) => v.invariant === "zero_sum"
-      && Array.isArray(v.detail?.failed)
-      && v.detail.failed.length > 0
-      && v.detail.failed.every((row) => Number(row.totalKm) === 0
-        && Math.abs(Number(row.netSum) - Number(row.totalPaid)) < 0.02),
-  },
-];
+//
+// The list is EMPTY today, and an empty registry is the healthy state, not a dead one:
+// GV-471-F1 — fuel paid in a period with zero kilometres credited to nobody's debit —
+// lived here from the tool's first run until migration 194 (GV-472) fixed it, and its
+// entry was deleted with the fix rather than left behind as a silencer. The pattern
+// stays: when this fuzzer surfaces something a person has read and that is not the
+// current PR's job, it goes here with a narrow match and comes out again when it is
+// fixed. The historical repro for F1 is kept in README.md, not here.
+const KNOWN_FINDINGS = [];
 
 // ── Fixture vocabulary (synthetic, Danish) ───────────────────────────────────
 const FIRST_NAMES = [

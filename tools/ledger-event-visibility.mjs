@@ -96,6 +96,15 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   "settlement_open",
   "settlement_cancelled",
   "period_closed",
+  // fuel_carried_forward (migration 194, GV-472) — written by close_settlement_period
+  // when the period it is closing has no kilometres and holds fuel: that fuel cannot be
+  // split against usage that does not exist, so the rows are moved into the next period
+  // and split there. Feed-visible, and not a close call: money the group already spent
+  // has just been moved out of the settlement everyone is looking at and into the next
+  // one, which is precisely the kind of thing a member should not have to discover by
+  // noticing their balance changed. The title is server-authored Danish naming the
+  // amount; the metadata carries the two period ids and the moved fuel_payment ids.
+  "fuel_carried_forward",
 
   // Written by govehlo-web, not by any migration: the operator console's soft-delete
   // endpoint (functions/api/owner/workspace/[id]/soft-delete.js) logs one event per

@@ -190,20 +190,34 @@ A finding this tool has already surfaced and that a person has read lives in
 meaning *"the harness works and nothing new appeared"*. Each entry carries a **narrow**
 match: a broad one would quietly swallow the next real bug in the same invariant.
 
-Current entries:
+Current entries: **none.** An empty registry is the healthy state — a finding is
+supposed to leave it when it is fixed, not sit there as a silencer.
 
-- **GV-471-F1 — fuel paid in a period with zero kilometres is credited to nobody's debit.**
-  `calculate_period_settlement`'s `net` expression is
-  `case when totalKm > 0 then fuelPaid + … - tripCost - shares else fuelPaid + … - shares end`.
-  The `else` branch omits `tripCost` — correct, a per-km rate is undefined at zero km — but
-  it also omits any other way of charging the fuel. A period holding fuel logs and no live
-  trips therefore credits the payer the full amount, debits nobody, and stops netting to
-  zero by exactly `totalPaid`. Reachable in production the moment a group logs a fill
-  before its first trip of a new period, or deletes the only trip in one. Reproduce with
-  `--workspaces 4 --members 4 --ticks 400 --seed 11 --oracle-every 25 --epoch 2026-06-07`,
-  which hits it three times — 637,36 kr (open period), 938,20 kr (a **queued** period, so
-  migration 140's carry-over path is affected too) and 262,66 kr. In every case the residue
-  equals `totalPaid` to the øre, which is the signature.
+### Fixed: GV-471-F1 — fuel paid in a period with zero kilometres was credited to nobody's debit
+
+The tool's first finding, and the reason the registry pattern exists. Kept here as
+history now that it no longer belongs in `KNOWN_FINDINGS`.
+
+`calculate_period_settlement`'s `net` expression was
+`case when totalKm > 0 then fuelPaid + … - tripCost - shares else fuelPaid + … - shares end`.
+The `else` branch omits `tripCost` — correct, a per-km rate is undefined at zero km — but
+it also omitted any other way of charging the fuel. A period holding fuel logs and no live
+trips therefore credited the payer the full amount, debited nobody, and stopped netting to
+zero by exactly `totalPaid`; the close guard only compares snapshot totals, so such a
+period could be archived with a payer owed money nobody owed. Reachable in production the
+moment a group logs a fill before its first trip of a new period, or deletes the only trip
+in one.
+
+**Fixed by migration 194 (GV-472):** fuel bought in a period with no kilometres is
+excluded from `net`, reported as a `deferredFuel` block, and moved into the next period by
+`close_settlement_period`, where it is split against real kilometres. Pinned by
+`tools/test-zero-km-fuel-carryforward-contract.mjs`.
+
+The historical repro, kept for posterity — on the **pre-194** schema
+`--workspaces 4 --members 4 --ticks 400 --seed 11 --oracle-every 25 --epoch 2026-06-07`
+hit it three times: 637,36 kr (open period), 938,20 kr (a **queued** period, so migration
+140's carry-over path was affected too) and 262,66 kr. In every case the residue equalled
+`totalPaid` to the øre, which was the signature. That same command is now clean.
 
 ---
 

@@ -60,6 +60,18 @@ const scripts = [
   // Postgres. Warns and exits 0 without Docker, and warns while govehlo-mobile's twin
   // has not landed; a PARTIAL mobile mirror fails hard. The umbrella runs it --strict.
   "node tools/test-crossing-split-contract.mjs",
+  // Anti-drift contract for the zero-km fuel carry-forward (GV-472, migration 194).
+  // Docker for the same reason as the lines above, plus two that are specific to this
+  // change. First, the promise it has to keep is a NEGATIVE — that a period WITH
+  // kilometres answers exactly as it did before — and the only way to certify that is to
+  // replay migrations 001–193 alongside the consolidated schema and diff the JSON, which
+  // this file does. Second, the close-time promotion depends on an interaction no regex
+  // can see: it runs after the flip to closed precisely because
+  // settlement_entry_is_locked (090) only counts requests on an OPEN period, so the
+  // fixture closes a LOCKED period and reads the rows back. Also pins the chained carry
+  // and the entry-less duplicate-guard carve-out that makes it possible. Warns and exits
+  // 0 without Docker; CI's functional-smoke job runs it --strict.
+  "node tools/test-zero-km-fuel-carryforward-contract.mjs",
   // Anti-drift contract for the booking caps — booked days + horizon (GVM-463). Docker
   // for the same reason as the two above, plus the one that is specific to this pair:
   // migration 159 is the first booking setting that REJECTS a write rather than letting
