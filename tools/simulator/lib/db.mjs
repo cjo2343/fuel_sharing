@@ -272,6 +272,13 @@ create table if not exists public.sim_members (
   primary key (ws, slot)
 );
 
+-- GV-478: the mapping stampDeterministicMemberIds() rewrites ledger_members.id through.
+-- Harness scratch, like everything else in this block; never part of the product schema.
+create table if not exists public.sim_member_remap (
+  old_id uuid primary key,
+  new_id uuid not null
+);
+
 create or replace function public.sim_exec(p_claims text, p_sqls text[])
 returns jsonb
 language plpgsql

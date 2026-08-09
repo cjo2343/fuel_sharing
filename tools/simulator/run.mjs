@@ -373,6 +373,7 @@ async function main() {
   await db.exec(SIM_SCRATCH_DDL, "simulator scratch DDL");
 
   await seed();
+  await stampDeterministicMemberIds();
   note(`Seeded ${workspaces.length} workspaces × ${config.members} members through the production onboarding RPCs.`);
 
   if (config.chaos) await injectChaos();
@@ -603,6 +604,105 @@ async function seed() {
         repairs_split_mode_value => ${lit(rng.pick(["ligeligt", "efter_koersel"]))})) sim_void`);
 
     workspaces.push(ws);
+  }
+}
+
+// ── Deterministic member ids (GV-478) ────────────────────────────────────────
+//
+// THE FLAKE THIS FIXES, because it took three hours to find and would take three more.
+//
+// `ledger_members.id` is a gen_random_uuid() minted by redeem_ledger_invite, so it is
+// different on every run of the same seed. That would be harmless if nothing ever
+// ORDERED by it — but the settlement greedy does. computeSettlementsFromNets breaks an
+// amount tie with `a.id.localeCompare(b.id)`, and migration 117's
+// enforce_settlement_request_exact_amount recomputes the same greedy server-side and
+// refuses a request whose amount disagrees. Two members with equal nets — which an equal
+// split produces constantly — therefore pair up in a different DIRECTION from one run to
+// the next, and everything downstream follows: which pair request_settlement picks,
+// whether mark_settlement_paid finds one belonging to the actor, and which member is the
+// contender in the settlement_pair_race scenario.
+//
+// In Phase A this was a rare flake nobody had hit. Phase B keys a journalled actorSlot
+// off the payer's identity, and `npm run test:simulator` started disagreeing with itself
+// about one run in three.
+//
+// THE FIX HAS TO BE THE IDS, not the ordering. Changing the tie-break on this side would
+// simply disagree with the server's copy of the greedy on every tie. So right after
+// seeding — with the workspaces created, every member joined, and no domain rows written
+// yet — the ids are rewritten to `…-9001-<ws><slot>`, derived from the workspace and slot
+// and therefore from the configuration alone.
+//
+// HOW, and why this is not as violent as it looks:
+//   · it runs ONCE, at seed time, in operator context (role postgres), on the harness's
+//     own scratch surface — never during the tick loop and never through an RPC;
+//   · `session_replication_role = replica` turns FK and user triggers off for the length
+//     of ONE transaction, which is what makes an id rewrite possible at all;
+//   · the referencing columns are discovered from pg_constraint rather than listed, so a
+//     migration that adds a new FK to ledger_members cannot silently leave a dangling
+//     reference behind;
+//   · children first, then the ids themselves.
+//
+// The side benefit is worth as much as the determinism: a member id in a violation
+// report is now the same string on a replay, so two runs can be diffed line by line.
+function deterministicMemberId(wsIndex, slot) {
+  return `00000000-0000-4000-9001-${String(wsIndex * 1000 + slot).padStart(12, "0")}`;
+}
+
+async function stampDeterministicMemberIds() {
+  const rows = [];
+  for (const ws of workspaces) {
+    for (const member of ws.members) {
+      if (!member.memberId) continue;
+      rows.push({ member, ws, next: deterministicMemberId(ws.index, member.slot) });
+    }
+  }
+  if (rows.length === 0) return;
+
+  const values = rows.map((row) => `(${uuidLit(row.member.memberId)}, ${uuidLit(row.next)})`).join(",\n");
+  await db.exec(
+    [
+      "begin;",
+      "set local session_replication_role = replica;",
+      "truncate table public.sim_member_remap;",
+      `insert into public.sim_member_remap (old_id, new_id) values\n${values};`,
+      `do $simremap$
+       declare
+         fk record;
+       begin
+         for fk in
+           select c.conrelid::regclass::text as tbl, a.attname as col
+             from pg_constraint c
+             join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+             join pg_attribute r on r.attrelid = c.confrelid and r.attnum = c.confkey[1]
+            where c.contype = 'f'
+              and c.confrelid = 'public.ledger_members'::regclass
+              and array_length(c.conkey, 1) = 1
+              and r.attname = 'id'
+         loop
+           execute format(
+             'update %s t set %I = m.new_id from public.sim_member_remap m where t.%I = m.old_id',
+             fk.tbl, fk.col, fk.col);
+         end loop;
+       end
+       $simremap$;`,
+      "update public.ledger_members lm set id = m.new_id from public.sim_member_remap m where lm.id = m.old_id;",
+      "set local session_replication_role = origin;",
+      "commit;",
+    ].join("\n"),
+    "stamp deterministic member ids",
+  );
+
+  for (const row of rows) row.member.memberId = row.next;
+  // Anything the harness cached before the rewrite has to move with it. Today that is
+  // only the settlement requests seeding never creates, but leaving the sweep out would
+  // be a trap for the next person who caches an id during seeding.
+  for (const ws of workspaces) {
+    const byOld = new Map(rows.filter((row) => row.ws === ws).map((row) => [row.member.memberId, row.next]));
+    ws.requests = (ws.requests ?? []).map((request) => ({
+      ...request,
+      fromId: byOld.get(request.fromId) ?? request.fromId,
+      toId: byOld.get(request.toId) ?? request.toId,
+    }));
   }
 }
 
@@ -1090,6 +1190,12 @@ async function settlementPairs(ws, periodId) {
   const admin = ws.members[0];
   const calc = await callAs(admin, `select public.calculate_period_settlement(${lit(ws.ledgerId)}, ${uuidLit(periodId)})`);
   if (!calc.ok || !calc.result) return [];
+  // The tie-break inside computeSettlementsFromNets is `a.id.localeCompare(b.id)`, and
+  // it MUST stay that way: migration 117's enforce_settlement_request_exact_amount
+  // recomputes the pair amount server-side with the same greedy and the same ordering,
+  // and rejects a request whose amount does not match. Any "improvement" to the ordering
+  // here immediately disagrees with the server. What makes the whole thing deterministic
+  // is not this function but stampDeterministicMemberIds() — see there.
   return computeSettlementsFromNets(calc.result.people ?? []);
 }
 

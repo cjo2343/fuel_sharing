@@ -91,6 +91,35 @@ written. The day/week rhythm keys off the simulated **weekday**, so two runs of 
 under different epochs now diverge. Every repro command this tool prints has always
 included `--epoch`; since GV-478 a repro without it is not a repro.
 
+### Member ids are deterministic too, and that is not cosmetic
+
+`ledger_members.id` is a `gen_random_uuid()` minted by `redeem_ledger_invite`, so it is
+different on every run of the same seed. That would be harmless if nothing ever ORDERED
+by it — but the settlement greedy does. `computeSettlementsFromNets` breaks an amount tie
+with `a.id.localeCompare(b.id)`, and migration 117's
+`enforce_settlement_request_exact_amount` recomputes the same greedy server-side and
+refuses a request whose amount disagrees. Two members with **equal nets** — which an equal
+split produces constantly — therefore paired up in a different *direction* from one run to
+the next, and every choice downstream followed: which pair `request_settlement` picked,
+whether `mark_settlement_paid` found one belonging to the actor, which member was the
+contender in `settlement_pair_race`.
+
+In Phase A this was a rare flake nobody had hit. Phase B journals an `actorSlot` derived
+from the payer's identity, and `npm run test:simulator` started disagreeing with itself
+about one run in three.
+
+**The fix has to be the ids, not the ordering.** Changing the tie-break on this side would
+simply disagree with the server's copy of the greedy on every tie. So right after seeding
+— workspaces created, every member joined, no domain rows written yet —
+`stampDeterministicMemberIds()` rewrites every `ledger_members.id` to
+`…-9001-<ws><slot>`, derived from the configuration alone. It runs once, in operator
+context, inside one transaction with `session_replication_role = replica`, and discovers
+the referencing columns from `pg_constraint` rather than listing them, so a migration that
+adds a new FK to `ledger_members` cannot silently leave a dangling reference behind.
+
+The side benefit is worth as much as the determinism: a member id in a violation report is
+now the same string on a replay, so two runs can be diffed line by line.
+
 ### The epoch, and the one thing determinism costs
 
 Several production rules read `now()` — a handover may not be written before its booking
