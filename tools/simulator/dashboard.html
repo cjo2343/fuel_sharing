@@ -106,6 +106,7 @@
   .pill.guard { color: var(--color-attention); border-color: color-mix(in srgb, var(--color-attention) 45%, transparent); }
   .pill.error { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 45%, transparent); }
   .pill.live { color: var(--color-light-leaf); }
+  .pill.muted { color: var(--ink-quiet); }
 
   /* ── Workspace grid ─────────────────────────────────────────────────────── */
   .ws-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
@@ -139,6 +140,16 @@
   .badge.ok { color: var(--color-light-leaf); background: color-mix(in srgb, var(--color-light-leaf) 14%, transparent); }
   .badge.guard { color: var(--color-attention); background: color-mix(in srgb, var(--color-attention) 20%, transparent); border: 1px dashed color-mix(in srgb, var(--color-attention) 55%, transparent); }
   .badge.error { color: var(--text-on-forest); background: var(--color-error); }
+  /* GV-478 Phase B outcomes. All three are MUTED on purpose and share the mist tint:
+     none of them is money (so never amber) and none of them is a failure (so never the
+     error red). They are told apart by their border, the way the invariant wall tells a
+     skipped cell from a green one:
+       · contention   solid — the database serialised two writers, which is a success;
+       · dublet       dotted — a double-tap that really did create a second row;
+       · i kø         dashed — decided on a phone, not yet sent to anything. */
+  .badge.contention { color: var(--ink-quiet); background: color-mix(in srgb, var(--color-mist) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-mist) 34%, transparent); }
+  .badge.dup-tolerated { color: var(--ink-quiet); background: color-mix(in srgb, var(--color-mist) 9%, transparent); border: 1px dotted color-mix(in srgb, var(--color-mist) 45%, transparent); }
+  .badge.queued { color: var(--ink-faint); background: transparent; border: 1px dashed color-mix(in srgb, var(--color-mist) 34%, transparent); }
 
   /* ── Invariant wall ─────────────────────────────────────────────────────── */
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
@@ -243,7 +254,17 @@
     client_parity: "Klient-paritet",
   };
 
-  const OUTCOME_LABELS = { ok: "ok", guard: "værn", error: "fejl" };
+  const OUTCOME_LABELS = {
+    ok: "ok",
+    guard: "værn",
+    error: "fejl",
+    // GV-478 Phase B. `contention` is a lock conflict the database resolved, `dublet` a
+    // duplicate send that really did land twice, `i kø` a write a phone decided on while
+    // it was offline and has not sent yet.
+    contention: "låsekonflikt",
+    "dup-tolerated": "dublet",
+    queued: "i kø",
+  };
 
   // Mirrors the `danish` field on each persona in lib/personas.mjs. The journal carries
   // the key so the file stays machine-readable; the label belongs to the reader.
@@ -253,6 +274,7 @@
     forgetful_logger: "Glemsom logger",
     serial_editor: "Serieredigerer",
     booker: "Bookinggal",
+    offline_commuter: "Offline-pendleren",
   };
   const persona = (key) => PERSONA_LABELS[key] ?? key;
 
@@ -279,6 +301,7 @@
     workspaceIds: new Set(),
     violations: [],
     parity: null,            // the `parity` line's load report (GV-471 Phase A)
+    simClock: null,          // "tir 14:05" — the day/week rhythm (GV-478 Phase B)
     ended: false,
   };
 
@@ -301,6 +324,7 @@
       case "action":
         run.tick = record.tick;
         run.simTime = record.simTime;
+        run.simClock = record.simClock ?? run.simClock;
         run.counters[record.outcome] = (run.counters[record.outcome] ?? 0) + 1;
         run.workspaceIds.add(record.ws);
         pushTick(record);
@@ -336,11 +360,19 @@
   function pushTick(record) {
     const row = document.createElement("div");
     row.className = "tick-row";
-    const label = record.guardKind ? `${OUTCOME_LABELS.guard} · ${record.guardKind}` : OUTCOME_LABELS[record.outcome];
+    const label = record.guardKind
+      ? `${OUTCOME_LABELS.guard} · ${record.guardKind}`
+      : (OUTCOME_LABELS[record.outcome] ?? record.outcome);
+    const marks = [
+      record.dup ? "dublet" : "",
+      record.offline === "queued" ? "i kø" : record.offline === "flush" ? "offline-burst" : "",
+      record.session ? `s${record.session}` : "",
+      record.step && record.scenario ? esc(record.step) : "",
+    ].filter(Boolean).join(" · ");
     row.innerHTML = `
       <span class="n mono">${record.tick}</span>
       <span class="what">${esc(record.action)}
-        <span class="who">· ${esc(record.actor)} (${esc(persona(record.persona))}) · w${record.ws}</span></span>
+        <span class="who">· ${esc(record.actor)} (${esc(persona(record.persona))}) · w${record.ws}${marks ? ` · ${marks}` : ""}</span></span>
       <span class="badge ${record.outcome}">${esc(label)}</span>`;
     if (record.message) row.title = record.message;
     const ticker = el("ticker");
@@ -375,8 +407,11 @@
     el("facts").innerHTML = [
       `<span class="fact">Seed <b class="mono">${header ? header.seed : "–"}</b></span>`,
       `<span class="fact">Workspaces <b class="mono">${config.workspaces ?? "–"}</b> × medlemmer <b class="mono">${config.members ?? "–"}</b></span>`,
-      `<span class="fact">Simuleret tid <b class="mono">${run.simTime ? run.simTime.replace("T", " ").slice(0, 16) : "–"}</b></span>`,
+      // The weekday and the clock, not just the date: the whole point of the rhythm is
+      // that a Tuesday at 07:40 and a Sunday at 23:10 are different workspaces.
+      `<span class="fact">Simuleret tid <b class="mono">${run.simTime ? run.simTime.slice(0, 10) : "–"}</b> <b class="mono">${run.simClock ?? "–"}</b>${config.rhythm === false ? " (fladt ur)" : ""}</span>`,
       `<span class="fact">Orakel hver <b class="mono">${config.oracleEvery ?? "–"}</b>. tick</span>`,
+      `<span class="fact">Sessioner <b class="mono">${config.sessions ?? 1}</b>${config.interleave === false ? " (ingen låsekonflikter)" : ""}</span>`,
       parityFact(),
       config.chaos ? '<span class="fact">Kaostilstand slået til</span>' : "",
       config.chaosParity ? '<span class="fact">Paritetskaos slået til</span>' : "",
@@ -390,7 +425,12 @@
       `<span class="pill ok">${ICON.check} ok ${int(run.counters.ok)}</span>`,
       `<span class="pill guard">${ICON.alert} værn ${int(run.counters.guard)}</span>`,
       `<span class="pill error">${ICON.cross} fejl ${int(run.counters.error)}</span>`,
-    ].join("");
+      // Only shown once they have happened: a permanent "0 låsekonflikter" chip is noise
+      // on a run that switched interleaving off.
+      run.counters.contention ? `<span class="pill muted">${ICON.dot} låsekonflikt ${int(run.counters.contention)}</span>` : "",
+      run.counters["dup-tolerated"] ? `<span class="pill muted">${ICON.dot} dublet ${int(run.counters["dup-tolerated"])}</span>` : "",
+      run.counters.queued ? `<span class="pill muted">${ICON.dash} i kø ${int(run.counters.queued)}</span>` : "",
+    ].filter(Boolean).join("");
   }
 
   // Client parity is the one check that can be legitimately UNAVAILABLE (the sibling

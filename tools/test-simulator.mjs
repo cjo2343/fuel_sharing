@@ -18,6 +18,11 @@
 //      chaos run also re-surfaces the reviewed finding, and counting that would make the
 //      self-test depend on whether a fixture happened to log fuel before a trip.)
 //
+// GV-478 Phase B adds three more again, about behavioural realism — see the halves at
+// the bottom of this file. In short: a default run must actually EXERCISE the new
+// behaviour (a feature that is enabled but never fires is a feature nobody is testing),
+// the digest must survive it, and Phase A's shape must still be reachable by flag.
+//
 // GV-471 Phase A adds three more, all about the client-parity oracle:
 //
 //   3. it ran at all — and when govehlo-mobile is absent (which is every CI job here,
@@ -52,18 +57,31 @@ const VIOLATIONS = path.join(REPO, "tools", "simulator", "out", "violations.json
 const JOURNAL = path.join(REPO, "tools", "simulator", "out", "journal.jsonl");
 const strict = process.argv.includes("--strict");
 
-// Fixed configuration for both halves: small enough to run in seconds, long enough to
+// Fixed configuration for every half: small enough to run in seconds, long enough to
 // close periods, hand cars over and reach the entry lock.
+//
+// THE SEED IS CHOSEN, NOT ARBITRARY. GV-478 moved it from 4711 to 101 for one reason:
+// at 4711 neither workspace draws the Offline-pendleren, and a self-test that never
+// exercises the offline queue would let that whole feature rot silently. 101 draws it in
+// BOTH workspaces and still produces duplicates, contention scenarios, a period close and
+// a spread of guards inside 60 ticks. THE EPOCH IS LOAD-BEARING TOO: the day/week rhythm
+// keys off the simulated weekday, so an unpinned epoch would make this file's assertions
+// depend on the day it ran.
 const BASE = [
   "tools/simulator/run.mjs",
   "--workspaces", "2",
   "--members", "4",
   "--ticks", "60",
-  "--seed", "4711",
+  "--seed", "101",
   "--oracle-every", "20",
   "--epoch", "2026-06-01",
   "--headless",
 ];
+
+/** Action lines of the journal the last run wrote. */
+function actionsOf(records) {
+  return records.filter((line) => line.kind === "action");
+}
 
 function dockerAvailable() {
   return spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
@@ -111,14 +129,20 @@ if (clean.report.newViolationCount !== 0) {
 }
 if (clean.status !== 0) fail(`clean run exited ${clean.status} with no new violations:\n${tail(clean.stdout)}\n${tail(clean.stderr)}`);
 
-const journalLines = readFileSync(JOURNAL, "utf8").split("\n").filter((l) => l.trim() !== "");
-const actionLines = journalLines.filter((l) => JSON.parse(l).kind === "action");
-if (actionLines.length !== 60) fail(`clean run journalled ${actionLines.length} actions, expected one per tick (60).`);
+// ONE LINE PER TICK STOPPED BEING TRUE IN PHASE B, on purpose: a duplicate send is its
+// own line, a contention scenario is three, an offline burst is one per flushed
+// statement. What must still hold is that EVERY tick produced at least one line — that
+// is what keeps a tick number in a violation report meaningful.
+const cleanRecords = readJournal(JOURNAL);
+const actionLines = actionsOf(cleanRecords);
+const ticksSeen = new Set(actionLines.map((line) => line.tick));
+if (ticksSeen.size !== 60) fail(`clean run journalled actions for ${ticksSeen.size} distinct ticks, expected all 60.`);
+if (actionLines.length < 60) fail(`clean run journalled ${actionLines.length} action lines for 60 ticks.`);
 
-const outcomes = actionLines.map((l) => JSON.parse(l).outcome);
+const outcomes = actionLines.map((line) => line.outcome);
 const guards = outcomes.filter((o) => o === "guard").length;
 if (guards === 0) fail("clean run produced zero guard outcomes — the fuzz never reached an edge, so the run proves nothing.");
-console.log(`✅ clean run: 60 actions, ${outcomes.filter((o) => o === "ok").length} ok, ${guards} guard, 0 new violations` +
+console.log(`✅ clean run: ${actionLines.length} actions over 60 ticks, ${outcomes.filter((o) => o === "ok").length} ok, ${guards} guard, 0 new violations` +
   `${clean.report.knownFindingCount > 0 ? ` (${clean.report.knownFindingCount} known finding[s])` : ""}.`);
 
 // ── 1b. Client parity: it ran, or it skipped — never silently neither ────────
@@ -128,7 +152,7 @@ console.log(`✅ clean run: 60 actions, ${outcomes.filter((o) => o === "ok").len
 // dev machine WITH the sibling repo (parity really compared numbers) and in this repo's
 // CI WITHOUT it (parity really skipped, and the run still passed).
 const siblingPresent = existsSync(path.join(MOBILE_ROOT, "src", "lib", "settlement-calc.ts"));
-const cleanJournal = readJournal(JOURNAL);
+const cleanJournal = cleanRecords;
 const cleanDigest = digestOf(cleanJournal);
 const parityLoad = cleanJournal.find((line) => line.kind === "parity" && line.phase === "load");
 if (!parityLoad) fail("clean run journalled no `parity` load line — the parity oracle did not even report its own availability.");
@@ -180,6 +204,122 @@ if (noParityDigest !== cleanDigest) {
 }
 console.log(`✅ determinism: identical action digest with and without parity (${cleanDigest.slice(0, 16)}…).`);
 
+// ── 1d. GV-478 Phase B: the behaviour actually happened ──────────────────────
+//
+// A flag that is on and never fires is a feature nobody is testing. These read the
+// CLEAN run's journal — no extra container — and assert that each of the four
+// behavioural features left its fingerprint on it. All four are pinned by the seed, so
+// a failure here means the behaviour changed, not that the dice went the other way.
+
+// (1) The day and week rhythm: every action line carries the simulated weekday and
+//     clock, and a 60-tick run at this seed spans several days and more than one phase.
+const withClock = actionLines.filter((line) => typeof line.simClock === "string" && /^(man|tir|ons|tor|fre|lør|søn) \d\d:\d\d$/.test(line.simClock));
+if (withClock.length !== actionLines.length) {
+  fail(`${actionLines.length - withClock.length} action line(s) carry no simulated weekday/clock — the rhythm is not being journalled.`);
+}
+const phases = new Set(actionLines.map((line) => line.simPhase).filter(Boolean));
+if (phases.size < 2) fail(`the whole run happened in one phase of the day (${[...phases]}) — the rhythm is not moving the clock.`);
+console.log(`✅ rhythm: every line stamped with a weekday and clock; ${phases.size} phases of the day visited (${[...phases].join(", ")}).`);
+
+// (2) The offline persona: at least one write was decided while offline, and the burst
+//     that followed carried it to the database backdated.
+const queued = actionLines.filter((line) => line.offline === "queued");
+const flushed = actionLines.filter((line) => line.offline === "flush");
+if (queued.length === 0) fail("no action was queued offline — the Offline-pendleren never went out of range (has the persona pool or the seed changed?).");
+if (flushed.length === 0) fail(`${queued.length} action(s) were queued offline but none was ever flushed — the burst never happened.`);
+const backdated = flushed.filter((line) => Number(line.queuedTicks) > 0);
+if (backdated.length === 0) fail("the offline burst flushed statements that had waited zero ticks — nothing arrived late, which is the entire point.");
+console.log(`✅ offline persona: ${queued.length} statement(s) queued, ${flushed.length} flushed in a burst, longest wait ${Math.max(...flushed.map((l) => Number(l.queuedTicks) || 0))} ticks.`);
+
+// (3) Duplicate sends: at least one pair, and every duplicate carries its expectation.
+const duplicates = actionLines.filter((line) => line.dup === true);
+if (duplicates.length === 0) fail("the clean run sent no duplicate at all — either the draw or the catalogue stopped working.");
+const unlabelled = duplicates.filter((line) => !line.dupExpect);
+if (unlabelled.length > 0) fail(`${unlabelled.length} duplicate line(s) carry no dupExpect — the duplicate was sent without an expectation to judge it against.`);
+for (const line of duplicates) {
+  // The whole point of the idempotent half: the schema said no second row, so there
+  // must be no second row. A violation would already have failed the run above; this
+  // catches the case where the delta was recorded but not acted on.
+  if (line.dupExpect === "idempotent" && Number(line.dupRowDelta) > 0) {
+    fail(`a duplicate of ${line.action} created ${line.dupRowDelta} row(s) but was not reported as a duplicate_hazard.`);
+  }
+}
+console.log(`✅ duplicates: ${duplicates.length} re-sent action(s) (${duplicates.map((l) => `${l.action}:${l.dupExpect}`).join(", ")}), no unguarded second row.`);
+
+// (4) Contention: at least one lockstep scenario ran to completion on two sessions, and
+//     the contender met the lock rather than sailing through it.
+const scenarioLines = actionLines.filter((line) => line.scenario);
+if (scenarioLines.length === 0) fail("the clean run ran no contention scenario — interleaving is on but never fired.");
+const contenders = scenarioLines.filter((line) => line.step === "contender");
+if (contenders.length === 0) fail("contention scenarios ran but journalled no contender step.");
+if (!scenarioLines.some((line) => line.session > 0)) {
+  fail("every contention line came from session 0 — the holder never used a second session, so nothing was actually contended.");
+}
+const contended = contenders.filter((line) => line.outcome === "contention").length;
+if (contended === 0) {
+  fail(`${contenders.length} contender step(s) ran and none hit the lock (outcomes: ${contenders.map((l) => l.outcome).join(", ")}) — either the holder failed every time or lock_timeout is not being applied.`);
+}
+console.log(`✅ contention: ${scenarioLines.length / 3} scenario(s) over ${new Set(scenarioLines.map((l) => l.session)).size} sessions, ${contended} contender(s) serialised by the lock.`);
+
+// (5) The fat finger, since migration 195 (GV-475) put a plausibility guard on
+//     upsert_booking_handover: the ten-times odometer is in the DEFAULT mix now, and it
+//     may never be accepted. A success poisons ledgers.max_handover_odometer forever and
+//     no invariant can see it, which is why the assertion lives here.
+const fatFinger = actionLines.filter((line) => line.action === "save_handover_fat_finger");
+const accepted = fatFinger.filter((line) => line.outcome === "ok");
+if (accepted.length > 0) {
+  fail(`${accepted.length} ten-times-odometer handover(s) were ACCEPTED — migration 195's plausibility guard is not holding.`);
+}
+if (fatFinger.length > 0) {
+  const plausibility = fatFinger.filter((line) => line.guardKind === "odometer_plausibility").length;
+  if (plausibility === 0) {
+    fail(`${fatFinger.length} fat-finger handover(s) were refused, but never by the plausibility guard (${fatFinger.map((l) => l.guardKind).join(", ")}) — the run is not reaching migration 195's check.`);
+  }
+  console.log(`✅ fat finger: ${fatFinger.length} ten-times odometer(s) attempted, ${plausibility} refused by migration 195's plausibility guard, 0 accepted.`);
+}
+
+// ── 1e. Determinism with everything on ───────────────────────────────────────
+//
+// The --no-parity run above proves parity draws no PRNG. This proves the stronger and
+// more obvious thing GV-478 needed: the SAME command, twice, with duplicates,
+// interleaving over two sessions and the offline queue all live, produces the identical
+// digest. Two sessions are the risk — an OS-scheduled race would land here as a flake —
+// so this half is what says the lockstep really is lockstep.
+const repeat = runSimulator([], "determinism run (identical flags, second time)");
+if (repeat.status !== 0) fail(`repeat run exited ${repeat.status}:\n${tail(repeat.stdout)}\n${tail(repeat.stderr)}`);
+const repeatDigest = digestOf(readJournal(JOURNAL));
+if (repeatDigest !== cleanDigest) {
+  fail(
+    "the same command produced two different action digests with interleaving and duplicates on:\n" +
+    `  first:  ${cleanDigest}\n  second: ${repeatDigest}\n` +
+    "Something in the contention or duplicate path is reading the wall clock or the OS scheduler.",
+  );
+}
+console.log(`✅ determinism: the identical command twice, two sessions and all, same digest (${repeatDigest.slice(0, 16)}…).`);
+
+// ── 1f. Phase A's shape is still reachable ───────────────────────────────────
+//
+// The four features are defaults, not obligations. `--flat-clock --no-dup
+// --no-interleave --sessions 1` must still run clean — it is what an A/B against the
+// rhythm uses, and it is the configuration a bisect falls back to when a Phase B
+// feature is the suspect.
+const phaseAShape = runSimulator(
+  ["--flat-clock", "--no-dup", "--no-interleave", "--sessions", "1"],
+  "Phase A shape (--flat-clock --no-dup --no-interleave --sessions 1)",
+);
+if (phaseAShape.status !== 0) fail(`Phase A shape exited ${phaseAShape.status}:\n${tail(phaseAShape.stdout)}\n${tail(phaseAShape.stderr)}`);
+if (phaseAShape.report.newViolationCount !== 0) {
+  fail(`Phase A shape reported ${phaseAShape.report.newViolationCount} NEW violation(s):\n${JSON.stringify(phaseAShape.report.violations.filter((v) => !v.known), null, 2)}`);
+}
+const flatLines = actionsOf(readJournal(JOURNAL));
+if (flatLines.length !== 60) fail(`Phase A shape journalled ${flatLines.length} action lines, expected exactly one per tick (60).`);
+if (flatLines.some((line) => line.dup)) fail("--no-dup still sent a duplicate.");
+if (flatLines.some((line) => line.scenario)) fail("--no-interleave still ran a contention scenario.");
+if (flatLines.some((line) => (line.session ?? 0) !== 0)) fail("--sessions 1 still used a second session.");
+if (flatLines.some((line) => line.simPhase !== null)) fail("--flat-clock still applied the rhythm's time-of-day weighting.");
+if (flatLines.filter((line) => line.outcome === "guard").length === 0) fail("Phase A shape produced zero guards.");
+console.log(`✅ Phase A shape: 60 actions, one per tick, no duplicates, no scenarios, one session, flat clock, still green.`);
+
 // ── 2. Chaos run: the oracle's self-test ─────────────────────────────────────
 const chaos = runSimulator(["--chaos"], "chaos run");
 const chaosViolations = (chaos.report.violations ?? []).filter((v) => !v.known);
@@ -222,4 +362,4 @@ if (siblingPresent) {
   console.log("ℹ  chaos-parity: skipped — govehlo-mobile is absent, so there is no parity oracle to self-test.");
 }
 
-console.log("\n✅ test-simulator: the harness detects nothing when nothing is wrong, and the injected corruption when something is.");
+console.log("\n✅ test-simulator: the harness detects nothing when nothing is wrong, the injected corruption when something is, and it does both while a rhythm, an offline queue, duplicate sends and two contending sessions are live.");

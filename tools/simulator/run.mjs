@@ -1174,13 +1174,21 @@ async function sweep(tick, { final = false } = {}) {
 // table's max is exactly what an edited-down or deleted handover leaves behind, and the
 // oracle asserts `mirror >= table max` for precisely that reason. The detectable
 // corruption is the fraction pair, which 193 recomputes rather than ratchets.
+//
+// GV-478 REMOVED `max_handover_odometer = 999999` FROM THIS UPDATE. It was only ever
+// here to illustrate the paragraph above — the oracle never flagged it, by design — and
+// since migration 195 it has a second effect that ruins the self-test: the plausibility
+// ceiling is `greatest(max_handover_odometer, tank_baseline_odometer) + 50.000`, so a
+// mirror of 999999 lifts the workspace's ceiling past a million and the ten-times
+// odometer the booker types becomes a legitimate reading. The chaos run then reported a
+// `guard-missing` finding for a guard that was working perfectly. A self-test must
+// corrupt exactly the thing it claims to corrupt.
 async function injectChaos() {
   const ws = workspaces[0];
   await db.exec(
     `update public.ledgers
         set latest_handover_fraction = 0.42,
-            latest_handover_observed_at = ${lit(EPOCH.toISOString())}::timestamptz,
-            max_handover_odometer = 999999
+            latest_handover_observed_at = ${lit(EPOCH.toISOString())}::timestamptz
       where id = ${lit(ws.ledgerId)};`,
     "chaos injection",
   );
