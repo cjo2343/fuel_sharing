@@ -1,0 +1,78 @@
+name: Nightly simulator fuzz
+
+# GV-473: the simulator (GV-471) proved its worth on day one — seed 11 found the
+# zero-km fuel settlement bug (GV-472) that had been latent since the calc's
+# beginning. A fixed-seed PR smoke only ever replays histories we have already
+# seen; this job rotates seeds nightly so new corners of the state space get
+# visited while everyone sleeps.
+#
+# Seeds are DERIVED FROM THE DATE (YYYYMMDD1/2/3), which keeps every run
+# reproducible after the fact: a red night names its seed, and
+#
+#   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 \
+#     --seed <seed> --oracle-every 25 --epoch <date> --headless
+#
+# replays it exactly on any machine with Docker. The epoch is pinned to the run
+# date for the same reason — the simulator's clock is simulated, but its starting
+# point is a CLI input, and reproducibility requires repeating it.
+#
+# On failure the journal + violations.json upload as an artifact and the repro
+# command is printed in the job log. The admin console's Health page reads this
+# workflow's latest conclusion via the GitHub API (the govehlo-web half of
+# GV-473), so a red night is visible without opening GitHub.
+#
+# Deliberately NOT part of validate.yml: this is a scheduled deep sweep, not a
+# PR gate — tools/test-simulator.mjs already gates PRs with a fixed seed.
+
+on:
+  schedule:
+    # 02:20 UTC — after the day's work, before the morning. Cron is UTC.
+    - cron: "20 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    name: Rotating-seed fuzz (3 seeds x 600 ticks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run three date-derived seeds
+        run: |
+          set -u
+          DATE_TAG="$(date -u +%Y%m%d)"
+          EPOCH="$(date -u +%Y-%m-%d)"
+          FAILED=0
+          for n in 1 2 3; do
+            SEED="${DATE_TAG}${n}"
+            echo "::group::seed ${SEED}"
+            if node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 \
+                --seed "${SEED}" --oracle-every 25 --epoch "${EPOCH}" --headless; then
+              echo "seed ${SEED}: clean"
+            else
+              FAILED=1
+              echo "::error::seed ${SEED} found something. Repro locally:"
+              echo "::error::node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 --seed ${SEED} --oracle-every 25 --epoch ${EPOCH} --headless"
+              # Keep this seed's evidence out of the next seed's way.
+              mkdir -p fuzz-failures
+              cp -R tools/simulator/out "fuzz-failures/seed-${SEED}"
+            fi
+            echo "::endgroup::"
+          done
+          exit "${FAILED}"
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-fuzz-failures
+          path: fuzz-failures/
+          retention-days: 30
+          if-no-files-found: warn
