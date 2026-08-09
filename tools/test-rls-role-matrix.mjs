@@ -542,6 +542,26 @@ const WS1_LOCATION_AUTHOR = `(select coalesce(l.location_updated_by_member_id::t
   from public.ledgers l where l.id = '${WS1}')`;
 const WS1_PIN = `(select coalesce(l.parking_lat::text, 'NULL') || ' / ' || coalesce(l.parking_lng::text, 'NULL')
   from public.ledgers l where l.id = '${WS1}')`;
+// GV-475 (migration 195). The odometer mirror migration 193 keeps on the ledgers row,
+// read back as text so a CASEFAIL can print NULL rather than say nothing.
+const WS1_ODOMETER_MIRROR = `(select coalesce(l.max_handover_odometer::text, 'NULL')
+  from public.ledgers l where l.id = '${WS1}')`;
+// The fat finger, and the correction. B hands the car over at 82345 (SAVE_HANDOVER_B),
+// then edits the SAME handover down — always allowed, migration 195 caps only upward
+// moves — and 193's mirror is monotone by design, so the ledgers row keeps 82345 while
+// the surviving handover says 8234. That gap is precisely what
+// recompute_handover_mirror exists to close, and it is the state every case below
+// starts from.
+const EDIT_HANDOVER_B_DOWN = `perform public.upsert_booking_handover(
+  target_ledger_id => '${WS1}', target_booking_id => '${HANDOVER_BOOKING_B}'::uuid,
+  end_odometer_value => 8234, fuel_fraction_value => 0.25,
+  parking_location_value => 'P-kaelder niveau 2, plads 14',
+  key_location_value => 'Noegler i postkassen',
+  condition_ok_value => true, condition_note_value => null,
+  note_to_next_value => 'Rettet: et ciffer for meget', keys_confirmed_value => true,
+  parking_lat_value => null, parking_lng_value => null,
+  event_title => null, event_body => null, expected_updated_at => null);`;
+const POISONED_MIRROR = [step(SUPER, SEED_HANDOVER_BOOKINGS), step(B, SAVE_HANDOVER_B), step(B, EDIT_HANDOVER_B_DOWN)];
 
 // Push devices for the migration-150 target RPCs (GV-398). Deliberately shaped to
 // carry the two arguments those functions exist for: one owner with TWO devices (so
@@ -4920,6 +4940,67 @@ end`,
       then raise exception 'CASEFAIL handover-old-client-call-clears-the-pin: the old-signature save did not land (%)', ${WS1_LOCATION}; end if;
       if ${WS1_PIN} <> 'NULL / NULL'
       then raise exception 'CASEFAIL handover-old-client-call-clears-the-pin: a pin from the PREVIOUS spot survived a text-only save (%)', ${WS1_PIN}; end if;`,
+  }),
+
+  // ── 17. Recomputing the odometer mirror (migration 195: GV-475) ────────────
+  // recompute_handover_mirror is the ONE deliberate exception to migration 193's
+  // monotone mirror: it assigns whatever the surviving handovers say, downward
+  // included. That is a destructive privilege over a shared fact — the workspace's
+  // odometer floor, which gates every Start-km prefill and service calculation — so
+  // the only question this section asks is who may exercise it. Admin yes, ordinary
+  // member no, another workspace's admin no, anon no. The RPC gates itself
+  // (SECURITY DEFINER, is_ledger_admin, which is false for a non-member too, so the
+  // admin check IS the workspace boundary); there is no policy behind it to fall back
+  // on, which is exactly why the denials are cases and not a comment.
+  //
+  // Every case starts from the poisoned state the ticket is about: a reading saved too
+  // high, then edited down, with the monotone mirror still holding the high value.
+  rpcCase({
+    name: "handover-mirror-recompute-admin",
+    desc: "admin A recomputes the mirror down onto the surviving handover — the GV-475 correction",
+    setup: POISONED_MIRROR,
+    actor: A,
+    op: `perform public.recompute_handover_mirror('${WS1}');`,
+    expect: "ok",
+    post: `if ${WS1_ODOMETER_MIRROR} <> '8234'
+      then raise exception 'CASEFAIL handover-mirror-recompute-admin: the mirror holds % instead of the surviving 8234', ${WS1_ODOMETER_MIRROR}; end if;
+      if not exists (select 1 from public.ledger_events le
+        where le.ledger_id = '${WS1}' and le.event_type = 'handover_odometer_corrected'
+          and le.actor_member_id = '${A_ID}')
+      then raise exception 'CASEFAIL handover-mirror-recompute-admin: a correction nobody can see is the state GV-475 is about'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-mirror-recompute-member-denied",
+    desc: "B, an ordinary active member and the author of the handover itself, cannot recompute the mirror",
+    setup: POISONED_MIRROR,
+    actor: B,
+    op: `perform public.recompute_handover_mirror('${WS1}');`,
+    expect: "42501",
+    post: `if ${WS1_ODOMETER_MIRROR} <> '82345'
+      then raise exception 'CASEFAIL handover-mirror-recompute-member-denied: a refused recompute moved the mirror to %', ${WS1_ODOMETER_MIRROR}; end if;
+      if exists (select 1 from public.ledger_events le
+        where le.ledger_id = '${WS1}' and le.event_type = 'handover_odometer_corrected')
+      then raise exception 'CASEFAIL handover-mirror-recompute-member-denied: a refused recompute left an event behind'; end if;`,
+  }),
+  rpcCase({
+    name: "handover-mirror-recompute-foreign-admin-denied",
+    desc: "E, an ADMIN of the other workspace, cannot recompute ws1's mirror — is_ledger_admin is the boundary",
+    setup: POISONED_MIRROR,
+    actor: E,
+    op: `perform public.recompute_handover_mirror('${WS1}');`,
+    expect: "42501",
+    post: `if ${WS1_ODOMETER_MIRROR} <> '82345'
+      then raise exception 'CASEFAIL handover-mirror-recompute-foreign-admin-denied: another workspace moved ws1 mirror to %', ${WS1_ODOMETER_MIRROR}; end if;`,
+  }),
+  rpcCase({
+    name: "handover-mirror-recompute-anon-denied",
+    desc: "anon cannot recompute the mirror — execute is revoked from anon and the RPC would refuse anyway",
+    setup: POISONED_MIRROR,
+    actor: ANON,
+    op: `perform public.recompute_handover_mirror('${WS1}');`,
+    expect: "42501",
+    post: `if ${WS1_ODOMETER_MIRROR} <> '82345'
+      then raise exception 'CASEFAIL handover-mirror-recompute-anon-denied: an anonymous caller moved the mirror to %', ${WS1_ODOMETER_MIRROR}; end if;`,
   }),
 ];
 
