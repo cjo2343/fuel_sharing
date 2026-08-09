@@ -65,6 +65,16 @@ const GUARDS = [
     test: (m) => /En anden har ændret/i.test(m),
   },
   {
+    // Migration 195 (GV-475): the absolute 2.000.000 km cap and the anchor + 50.000 km
+    // relative ceiling on upsert_booking_handover. Both raise the SAME Danish sentence
+    // under errcode GV475 — deliberately, because the member's remedy is identical —
+    // so one message match covers both halves. Matched on the MESSAGE and not on the
+    // SQLSTATE alone, per this catalogue's rule; GV475 happens to be unique to this
+    // rule today, and relying on that would make the next reuse of the code silent.
+    kind: "odometer_plausibility",
+    test: (m) => /Kilometerstanden ser for høj ud/i.test(m),
+  },
+  {
     kind: "close_precondition",
     test: (m) => /All settlements must be requested|Entries changed since this close was prepared|^Snapshot |Another settlement close is already in progress|Period snapshot must be a JSON object/i.test(m),
   },
@@ -491,28 +501,43 @@ export const ACTIONS = {
   // odometer floor ten times too high and no later correction can bring it back down.
   // Every prefill, every trip start, every fuel-stop estimate reads from that floor.
   //
-  // WHAT HAPPENS TODAY: this write SUCCEEDS. There is no plausibility guard on
-  // upsert_booking_handover, so the action is `ok`, the mirror is poisoned by design,
-  // and the odometer half of the client-parity oracle stays green (the client faithfully
-  // reports the poisoned floor — both engines are wrong together, which is exactly why a
-  // parity check alone cannot catch this class). That is why it is behind `--fat-finger`
-  // and out of the default mix: a default run must not be red for a bug nobody has fixed.
+  // MIGRATION 195 (GV-475) LANDED, AND THIS ACTION CHANGED SIDES. Until then the write
+  // SUCCEEDED — there was no plausibility guard, the mirror was poisoned by design, and
+  // the odometer half of the client-parity oracle stayed green because the client
+  // faithfully reported the poisoned floor. Both engines were wrong together, which is
+  // exactly why a parity check alone can never catch this class, and why the action was
+  // behind a `--fat-finger` flag: a default run must not be red for a bug nobody has
+  // fixed. It now IS fixed, so the action is an ordinary hostile one like
+  // create_overlapping_booking: it lives in the booker's and the serial editor's default
+  // weights (lib/personas.mjs), the flag is gone, and the expected outcome is a guard.
   //
-  // TODO (migration 195, the plausibility guard): when that lands, this action becomes
-  // an ordinary hostile action like create_overlapping_booking. The change is exactly:
-  //   1. add `expect: "odometer_plausibility"` beside `detail` below;
-  //   2. add a GUARDS entry matching the new rejection message;
-  //   3. move the two weights out of run.mjs's armFatFinger() into personas.mjs
-  //      (booker 3, serial_editor 1) and delete the --fat-finger flag;
-  //   4. delete this paragraph.
+  // `mustNotSucceed` is the assertion that makes it worth running. Migration 195's two
+  // halves — the absolute 2.000.000 km cap and the anchor + 50.000 km ceiling — sit
+  // AFTER the membership gate and after the GV-421 stale-token precondition, so this
+  // write can legitimately be refused for a different reason on a given tick; what it
+  // may never be is accepted. The run.mjs check is therefore "not ok", not "exactly
+  // this guardKind", and a success is reported as a `guard-missing` violation. The
+  // oracle cannot make that call for us: nothing downstream of a poisoned monotone
+  // floor is observably wrong.
   save_handover_fat_finger: {
     build: (ctx) => {
-      const booking = preferOwn(ctx, liveBookings(ctx.ws).filter((b) => b.id), (b) => b.memberSlot);
+      // Unlike save_handover, this one is ALWAYS typed by the person who had the car.
+      // Two reasons, and the first is the important one: the plausibility guard sits
+      // after the write gate ("Kun den, der havde bilen …"), so a fat finger from
+      // somebody who may not write the handover is refused for the wrong reason and the
+      // guard this action exists to reach is never exercised. The second is that it is
+      // simply what happens — the driver standing at the car types their own reading.
+      const candidates = liveBookings(ctx.ws)
+        .filter((b) => b.id)
+        .filter((b) => ctx.ws.members.some((m) => m.slot === b.memberSlot && m.active));
+      const booking = ctx.rng.pick(candidates);
       if (!booking) return null;
       const plausible = ctx.ws.odometer + ctx.rng.int(0, 40);
       const odo = plausible * 10;
       const fraction = Math.round(ctx.rng.float() * 100) / 100;
       return {
+        actorOverride: booking.memberSlot,
+        mustNotSucceed: "odometer_plausibility",
         detail: { legacyId: booking.legacyId, odometer: odo, plausible, fatFinger: true },
         inner: `select public.upsert_booking_handover(
                   target_ledger_id => ${lit(ctx.ws.ledgerId)},

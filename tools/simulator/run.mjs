@@ -371,6 +371,13 @@ async function main() {
   }
   if (!config.headless) process.stdout.write("\n");
 
+  // A phone that never came back into range before the run ended still has writes in
+  // its pocket. Say so: an unflushed queue is a silently missing chunk of a workspace's
+  // history, and a reader comparing tick counts to journal lines deserves the reason.
+  const stranded = workspaces.flatMap((ws) => ws.members)
+    .reduce((sum, member) => sum + (member.offlineState?.queue.length ?? 0), 0);
+  if (stranded > 0) note(`${stranded} offline-kø-handling(er) nåede aldrig at blive sendt: telefonen kom ikke online igen inden kørslen sluttede.`);
+
   await sweep(config.ticks, { final: true });
   const wallSeconds = (Date.now() - started) / 1000;
 
@@ -817,6 +824,10 @@ function journalAction({
   ws.lastAction = action;
   ws.lastOutcome = outcome;
 
+  // Callers that already built a rhythm context (the ordinary action path) hand it in
+  // rather than pay for a second one; the contention and offline paths do not, and the
+  // journal must still say what time of day it was.
+  const beat = rhythm ?? (config.rhythm ? clock.context({ kmSinceFuel: ws.kmSinceFuel ?? 0 }) : null);
   const now = clock.now();
   journal.write({
     kind: "action",
@@ -827,8 +838,8 @@ function journalAction({
     // the epoch, so it is NOT in the determinism digest — simOffsetMin is the
     // epoch-independent half, and it already is.
     simClock: clockLabel(now),
-    simPhase: rhythm?.phase ?? null,
-    rhythmRules: rhythm ? firedRules(rhythm) : null,
+    simPhase: beat?.phase ?? null,
+    rhythmRules: beat ? firedRules(beat) : null,
     ws: ws.index,
     wsName: ws.name,
     actorSlot: actor.slot,

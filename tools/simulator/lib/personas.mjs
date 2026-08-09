@@ -83,6 +83,7 @@ export const PERSONAS = {
       edit_fuel: 6,
       edit_booking_window: 6,
       delete_trip: 3,
+      save_handover_fat_finger: 1,
       delete_fuel: 3,
       cancel_booking: 2,
       edit_expense: 3,
@@ -101,6 +102,11 @@ export const PERSONAS = {
     weights: {
       create_booking: 10,
       create_overlapping_booking: 3,
+      // Migration 195 (GV-475) made the ten-times odometer a guard, so it belongs in
+      // the default mix like every other hostile action. Until then it was flag-gated
+      // out, because the write succeeded and a default run must not be red for a bug
+      // nobody has fixed. See ACTIONS.save_handover_fat_finger.
+      save_handover_fat_finger: 3,
       complete_booking: 6,
       save_handover: 6,
       edit_booking_window: 3,
