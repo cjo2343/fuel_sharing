@@ -169,6 +169,20 @@ const scripts = [
   // grant — the property that makes RPC-only enforcement sound instead of conventional.
   // Warns and exits 0 without Docker; CI runs it --strict.
   "node tools/test-incident-repair-link-contract.mjs",
+  // Anti-drift contract for the workspace's named split weight set (GVM-563, migration 199).
+  // Docker-FREE, unlike the block above, and deliberately so: the role-matrix cases already
+  // prove the behaviour against a real Postgres, and what is left over is the shape the
+  // matrix cannot see. Three of them. The stale-fingerprint fallback has to REWRITE the rule
+  // to 'equal' rather than lean on the zero-total-weight path — the two agree numerically
+  // today, the client mirrors the explicit branch, and only the explicit branch survives a
+  // careless edit. The fingerprint's `collate "C"` is what makes the SQL string identical to
+  // the client's ids.sort().join(','); drop it and every set silently reads as STALE, which
+  // no numeric assertion can catch because stale is a valid state. And the owner's
+  // invalidate-never-re-normalise decision is a NEGATIVE, so a helpful rescale would pass
+  // every case that only checks the shares sum to the amount. Also re-reads the event types
+  // the block writes and requires each to be classified (GV-413) — reusing settings_changed
+  // is what keeps the register unchanged, and only while nothing else is written.
+  "node tools/test-workspace-split-weight-set-contract.mjs",
   "node tools/test-restore-drill-logic.mjs",
   // Pure unit tests for the load-rehearsal tooling (GV-317): env/prod-guard/arg
   // parsing, deterministic fixtures, settlement-close math, and the lib/hotpaths

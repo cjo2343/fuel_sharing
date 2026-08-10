@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 198 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 199 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -653,6 +653,9 @@ export type Database = {
           created_at: string
           created_by_member_id: string | null
           currency: string
+          default_split_member_fingerprint: string | null
+          default_split_set_name: string | null
+          default_split_weights: Json | null
           deleted_at: string | null
           estimated_consumption_l_per_100km: number
           expense_split_defaults: Json
@@ -722,6 +725,9 @@ export type Database = {
           created_at?: string
           created_by_member_id?: string | null
           currency?: string
+          default_split_member_fingerprint?: string | null
+          default_split_set_name?: string | null
+          default_split_weights?: Json | null
           deleted_at?: string | null
           estimated_consumption_l_per_100km?: number
           expense_split_defaults?: Json
@@ -791,6 +797,9 @@ export type Database = {
           created_at?: string
           created_by_member_id?: string | null
           currency?: string
+          default_split_member_fingerprint?: string | null
+          default_split_set_name?: string | null
+          default_split_weights?: Json | null
           deleted_at?: string | null
           estimated_consumption_l_per_100km?: number
           expense_split_defaults?: Json
@@ -2075,6 +2084,10 @@ export type Database = {
         }
         Returns: Json
       }
+      active_member_fingerprint: {
+        Args: { target_ledger_id: string }
+        Returns: string
+      }
       add_incident_photo: {
         Args: { p_incident_id: string; p_storage_path: string }
         Returns: Json
@@ -2782,6 +2795,14 @@ export type Database = {
       }
       set_weekly_digest_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
+        Returns: undefined
+      }
+      set_workspace_split_weight_set: {
+        Args: {
+          set_name_value: string
+          target_ledger_id: string
+          weights_value: Json
+        }
         Returns: undefined
       }
       settlement_entry_is_locked: {
