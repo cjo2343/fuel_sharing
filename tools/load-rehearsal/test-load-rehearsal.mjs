@@ -57,6 +57,11 @@ import {
   tripParticipantsRequest,
   EVENT_TYPE_EXCLUDE,
   SETTLE_ROW_CAP,
+  SETTLEMENT_REQUEST_ROW_CAP,
+  BOOKING_ROW_CAP,
+  REPAIR_ROW_CAP,
+  EXPENSE_ROW_CAP,
+  RECURRING_ROW_CAP,
 } from "./lib/hotpaths.mjs";
 import { postgrestToSql, withLimit } from "./lib/hotpaths-sql.mjs";
 
@@ -445,18 +450,95 @@ test("ledgerReadRequests mirrors the 12-query fan-out", () => {
     ],
   );
 });
-test("trips and fuel reads carry the +1 truncation sentinel and soft-delete filter", () => {
+
+// ── Ordering and limit, EVERY read (GV-484) ──────────────────────────────────
+// This used to pin trips, fuel and events and nothing else, which is how GVM-572's
+// five new caps could be mirrored wrong without a red test. Each row here is the
+// exact PostgREST ordering and the exact `cap + 1` sentinel the mobile fan-out sends;
+// `null` means the gateway asks for no limit and neither may this.
+//
+// The orderings are not cosmetic. Each one is what makes its cap SAFE: newest-first
+// keeps live-period money rows above the cut, `start_at` desc keeps active and future
+// bookings at the head, and recurring is ASCENDING because what matters there is which
+// templates are due. An `id` tiebreak turns each into a total order, which is what
+// Historik's and the feed's keyset paging resume from. Replaying a different order
+// under the same cap measures a different tail falling off — a rehearsal of a query
+// the app does not send.
+//
+// Whether these still agree with govehlo-mobile is check-hotpath-mirror.mjs's job (it
+// now compares ordering and limit too); these pin the mirror's own shape so a local
+// edit to hotpaths.mjs cannot pass unnoticed where the sibling repo is absent.
+const READ_SHAPES = [
+  ["read:ledger", null, 1],
+  ["read:members", "name.asc", null],
+  ["read:periods", "opened_at.desc", null],
+  ["read:trips", "trip_date.desc,id.desc", SETTLE_ROW_CAP + 1],
+  ["read:fuel", "payment_date.desc,id.desc", SETTLE_ROW_CAP + 1],
+  ["read:settlements", "created_at.desc,id.desc", SETTLEMENT_REQUEST_ROW_CAP + 1],
+  ["read:bookings", "start_at.desc,id.desc", BOOKING_ROW_CAP + 1],
+  ["read:events", "created_at.desc,id.desc", 50],
+  ["read:repairs", "repair_date.desc,id.desc", REPAIR_ROW_CAP + 1],
+  ["read:messages", "created_at.desc,id.desc", 50],
+  ["read:expenses", "expense_date.desc,id.desc", EXPENSE_ROW_CAP + 1],
+  ["read:recurring", "next_due_date.asc,id.asc", RECURRING_ROW_CAP + 1],
+];
+
+test("every read carries its exact ordering and limit", () => {
   const reqs = ledgerReadRequests("x");
-  const trips = reqs.find((r) => r.label === "read:trips");
-  const fuel = reqs.find((r) => r.label === "read:fuel");
-  assert.ok(trips.query.includes(`limit=${SETTLE_ROW_CAP + 1}`));
-  assert.ok(trips.query.includes("deleted_at=is.null"));
-  // GVM-559: id tiebreak makes the ordering total, so Historik's keyset paging
-  // can resume below the window without repeating or skipping same-date rows.
-  assert.ok(trips.query.includes("order=trip_date.desc,id.desc"));
-  assert.ok(fuel.query.includes(`limit=${SETTLE_ROW_CAP + 1}`));
-  assert.ok(fuel.query.includes("order=payment_date.desc,id.desc"));
+  assert.equal(READ_SHAPES.length, reqs.length, "READ_SHAPES must cover every read in the fan-out");
+  for (const [label, order, limit] of READ_SHAPES) {
+    const entry = reqs.find((r) => r.label === label);
+    assert.ok(entry, `no read labelled ${label}`);
+    const params = new URLSearchParams(entry.query);
+    assert.equal(params.get("order"), order, `${label} ordering`);
+    assert.equal(params.get("limit"), limit == null ? null : String(limit), `${label} limit`);
+  }
 });
+
+test("the capped reads use the +1 sentinel, not the cap itself (truncation must be provable)", () => {
+  const reqs = ledgerReadRequests("x");
+  const CAPS = [
+    ["read:trips", SETTLE_ROW_CAP],
+    ["read:fuel", SETTLE_ROW_CAP],
+    ["read:settlements", SETTLEMENT_REQUEST_ROW_CAP],
+    ["read:bookings", BOOKING_ROW_CAP],
+    ["read:repairs", REPAIR_ROW_CAP],
+    ["read:expenses", EXPENSE_ROW_CAP],
+    ["read:recurring", RECURRING_ROW_CAP],
+  ];
+  for (const [label, cap] of CAPS) {
+    const query = reqs.find((r) => r.label === label).query;
+    assert.ok(query.includes(`limit=${cap + 1}`), `${label} must fetch cap + 1 rows`);
+  }
+});
+
+test("every ordering ends on an id tiebreak, so each capped read is a total order", () => {
+  for (const [label, order] of READ_SHAPES) {
+    if (order == null || !order.includes(",")) continue;
+    assert.match(order, /,id\.(asc|desc)$/, `${label} must break ties on id`);
+    const [first, tiebreak] = order.split(",");
+    assert.equal(
+      first.split(".")[1],
+      tiebreak.split(".")[1],
+      `${label}: the tiebreak must run the same direction as the sort key`,
+    );
+  }
+});
+
+test("soft-delete filters: applied everywhere the gateway applies them, and NOT on bookings", () => {
+  const reqs = ledgerReadRequests("x");
+  const FILTERED = ["read:trips", "read:fuel", "read:repairs", "read:messages", "read:expenses", "read:recurring"];
+  for (const label of FILTERED) {
+    assert.ok(
+      reqs.find((r) => r.label === label).query.includes("deleted_at=is.null"),
+      `${label} must filter soft-deleted rows`,
+    );
+  }
+  // GVM-388: cancelled bookings are soft-deletes the Historik tab lists, so the real
+  // read returns them and this one must too.
+  assert.ok(!reqs.find((r) => r.label === "read:bookings").query.includes("deleted_at"));
+});
+
 test("events read excludes every reminder-audit event type", () => {
   assert.deepEqual(EVENT_TYPE_EXCLUDE, [
     "payment_reminder_sent",
