@@ -436,6 +436,50 @@ const seedClosedRequest = (status) => `
   update public.settlement_requests set status = '${status}' where id = '${CLOSED_REQUEST}';`
   }`;
 
+// GVM-238 P0 "Jeg er på vej" helpers (migration 202). THREE bookings, because the gate
+// under test is a three-way distinction the handover fixtures cannot express: the
+// booking's MEMBER may share, its CREATOR may share, and a workspace ADMIN who is
+// neither may NOT — the one place this schema deliberately declines
+// public.can_manage_car_booking, since an admin announcing that another person is on
+// their way is a statement about where that person is.
+//
+//   OMW_BOOKING_B      — member B, created by B      (the ordinary case)
+//   OMW_BOOKING_C_BY_B — member C, created by B      (B is the CREATOR, not the member)
+//   OMW_BOOKING_C      — member C, created by C      (A is neither: the admin refusal)
+//   OMW_BOOKING_PAST_B — member B, created by B, ENDED (the "nothing to arrive at" case)
+//
+// Seeded as the service role for the reason SEED_HANDOVER_BOOKINGS gives: routing them
+// through upsert_car_booking would drag migrations 159/162's caps into a failure message
+// that is not about ETA sharing. Windows are anchored to whole days rather than
+// `now() + N hours` — PR #224's lesson about Copenhagen midnight — and the live ones are
+// TOMORROW, since set_on_my_way refuses a booking whose end_at has passed.
+const OMW_BOOKING_B = "20200000-0000-0000-0000-000000000001";
+const OMW_BOOKING_C_BY_B = "20200000-0000-0000-0000-000000000002";
+const OMW_BOOKING_C = "20200000-0000-0000-0000-000000000003";
+const OMW_BOOKING_PAST_B = "20200000-0000-0000-0000-000000000004";
+const SEED_OMW_BOOKINGS = `insert into public.car_bookings
+  (id, legacy_id, ledger_id, member_id, start_at, end_at, created_by_member_id) values
+  ('${OMW_BOOKING_B}', 'omw-b', '${WS1}', '${ID.B}',
+   date_trunc('day', now()) + interval '1 day' + interval '9 hour',
+   date_trunc('day', now()) + interval '1 day' + interval '13 hour', '${ID.B}'),
+  ('${OMW_BOOKING_C_BY_B}', 'omw-c-by-b', '${WS1}', '${ID.C}',
+   date_trunc('day', now()) + interval '2 day' + interval '9 hour',
+   date_trunc('day', now()) + interval '2 day' + interval '13 hour', '${ID.B}'),
+  ('${OMW_BOOKING_C}', 'omw-c', '${WS1}', '${ID.C}',
+   date_trunc('day', now()) + interval '3 day' + interval '9 hour',
+   date_trunc('day', now()) + interval '3 day' + interval '13 hour', '${ID.C}'),
+  ('${OMW_BOOKING_PAST_B}', 'omw-past-b', '${WS1}', '${ID.B}',
+   date_trunc('day', now()) - interval '2 day' + interval '9 hour',
+   date_trunc('day', now()) - interval '2 day' + interval '13 hour', '${ID.B}');`;
+// The client always composes the sentence, so the ordinary first share carries a title
+// and therefore writes the FEED row; the refresh below deliberately carries one too, to
+// prove that a title does NOT buy a second feed row once a share is running.
+const SHARE_B = `perform public.set_on_my_way('${WS1}', 'omw-b', 12, 'Bo er på vej', 'Ca. 12 min');`;
+const OMW_STATE_B = `(select on_my_way from public.car_bookings where id = '${OMW_BOOKING_B}')`;
+const OMW_TOUCHED_B = `(select updated_at from public.car_bookings where id = '${OMW_BOOKING_B}')`;
+const OMW_EVENTS = (type) =>
+  `(select count(*) from public.ledger_events where ledger_id = '${WS1}' and event_type = '${type}')`;
+
 // GVM-529 vehicle-handover helpers (migration 164). Two bookings in ws1 — one held by
 // B (the normal writer) and one held by the INACTIVE member D — inserted as the
 // service role, because this suite's fixture has no bookings of its own and routing
@@ -4470,6 +4514,248 @@ end`,
     actor: A,
     op: `perform public.list_registered_storage_paths('vehicle_document_photos', null, 1000);`,
     expect: "42501",
+  }),
+
+  // ── Photo ROW caps (migration 202, review finding) ────────────────────────
+  // Migration 184's trigger caps storage OBJECTS. Until migration 202 nothing capped
+  // the ROW registrations, so a member could register unbounded pages — including pages
+  // whose path has no object behind it, which the trigger by definition never sees.
+  // These two cases are the only behavioural proof that the caps exist and that they
+  // are counted under the advisory lock rather than after the fact.
+  rpcCase({
+    name: "document-page-row-cap-sixth-denied",
+    desc: "a sixth page ROW on one document is refused, matching the bucket's five-object cap",
+    setup: [
+      step(B, CREATE_DOC_B),
+      step(B, `perform public.add_vehicle_document_photo(${LATEST_WS1_DOC},
+        '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-' || n::text || '.jpg')
+        from generate_series(1, 5) as n;`),
+    ],
+    actor: B,
+    op: `perform public.add_vehicle_document_photo(${LATEST_WS1_DOC}, ${DOC_PAGE_PATH.replace("side-1", "side-6")});`,
+    expect: "23514",
+    post: `if (select count(*) from public.vehicle_document_photos where ledger_id = '${WS1}') <> 5
+      then raise exception 'CASEFAIL document-page-row-cap-sixth-denied: the row count is not capped at five'; end if;`,
+  }),
+  queryCase({
+    name: "document-page-row-cap-fifth-allowed",
+    desc: "the cap is a ceiling, not an off-by-one — the FIFTH page is still accepted",
+    setup: [
+      step(B, CREATE_DOC_B),
+      step(B, `perform public.add_vehicle_document_photo(${LATEST_WS1_DOC},
+        '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-' || n::text || '.jpg')
+        from generate_series(1, 4) as n;`),
+    ],
+    actor: B,
+    assert: `begin
+  perform public.add_vehicle_document_photo(${LATEST_WS1_DOC}, ${DOC_PAGE_PATH.replace("side-1", "side-5")});
+  if (select count(*) from public.vehicle_document_photos where ledger_id = '${WS1}') <> 5 then
+    raise exception 'CASEFAIL document-page-row-cap-fifth-allowed: the fifth page was refused';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "incident-photo-row-cap-eleventh-denied",
+    desc: "an eleventh incident-photo ROW is refused, matching that bucket's ten-object cap",
+    setup: [
+      step(B, LOG_INCIDENT_B),
+      step(B, `perform public.add_incident_photo(${LATEST_WS1_INCIDENT},
+        '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/foto-' || n::text || '.jpg')
+        from generate_series(1, 10) as n;`),
+    ],
+    actor: B,
+    op: `perform public.add_incident_photo(${LATEST_WS1_INCIDENT},
+         '${WS1}/' || ${LATEST_WS1_INCIDENT}::text || '/foto-11.jpg');`,
+    expect: "23514",
+    post: `if (select count(*) from public.vehicle_incident_photos where ledger_id = '${WS1}') <> 10
+      then raise exception 'CASEFAIL incident-photo-row-cap-eleventh-denied: the row count is not capped at ten'; end if;`,
+  }),
+
+  // ── "Jeg er på vej" (migration 202, GVM-238 P0) ───────────────────────────
+  // The share is DERIVED MINUTES and nothing else — the map was cut on 2026-08-10 and
+  // no coordinate is ever transmitted or stored. Four things here cannot be certified by
+  // any static scan: the three-way share gate (member yes, creator yes, ADMIN no), that
+  // a refresh keeps started_at and writes the AUDIT event rather than a second feed row,
+  // that the CHECK constraint stops a direct PostgREST PATCH from adding a coordinate,
+  // and that car_bookings.updated_at — migration 160's optimistic-concurrency token —
+  // does not move when an ETA refreshes.
+  queryCase({
+    name: "onmyway-share-member-ok",
+    desc: "the booked member shares an ETA; the stored state is exactly the three derived keys",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    assert: `begin
+  ${SHARE_B}
+  if ${OMW_STATE_B} is null then
+    raise exception 'CASEFAIL onmyway-share-member-ok: nothing was stored';
+  end if;
+  if (${OMW_STATE_B} ->> 'eta_minutes')::int <> 12 then
+    raise exception 'CASEFAIL onmyway-share-member-ok: the minutes were not stored';
+  end if;
+  if (select count(*) from jsonb_object_keys(${OMW_STATE_B})) <> 3 then
+    raise exception 'CASEFAIL onmyway-share-member-ok: the stored object is not exactly {eta_minutes, started_at, updated_at}';
+  end if;
+  if ${OMW_EVENTS("on_my_way_started")} <> 1 then
+    raise exception 'CASEFAIL onmyway-share-member-ok: the first share must write exactly one feed event';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-share-creator-ok",
+    desc: "B created the booking C holds, so B may share on it — the creator branch",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-c-by-b', 20, 'På vej', '');`,
+    expect: "ok",
+  }),
+  rpcCase({
+    name: "onmyway-share-admin-denied",
+    desc: "an admin who is neither the booked member nor the creator may NOT share on someone's behalf",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: A,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-c', 15, 'På vej', '');`,
+    expect: "42501",
+    post: `if (select on_my_way from public.car_bookings where id = '${OMW_BOOKING_C}') is not null
+      then raise exception 'CASEFAIL onmyway-share-admin-denied: an admin announced that another member was on their way'; end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-share-bystander-denied",
+    desc: "a plain member cannot share on a booking that is neither hers nor one she created",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: C,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-b', 15, 'På vej', '');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "onmyway-share-foreign-workspace-denied",
+    desc: "E (another workspace) cannot share on a ws1 booking",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: E,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-b', 15, 'På vej', '');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "onmyway-share-eta-above-ceiling-denied",
+    desc: "601 minutes is a bug, not a drive",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-b', 601, 'På vej', '');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "onmyway-share-eta-zero-denied",
+    desc: "under a minute there is nothing to share",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-b', 0, 'På vej', '');`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "onmyway-share-ended-booking-denied",
+    desc: "a booking that is over cannot be arrived at — a share on one is a permanent falsehood in the feed",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-past-b', 12, 'På vej', '');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "onmyway-refresh-keeps-start-and-writes-audit-only",
+    desc: "a refresh updates the minutes, preserves started_at, and writes the AUDIT type — one drive is one feed row",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: B,
+    assert: `declare
+  v_started text := ${OMW_STATE_B} ->> 'started_at';
+begin
+  perform public.set_on_my_way('${WS1}', 'omw-b', 4, 'Bo er på vej', 'Ca. 4 min');
+  if (${OMW_STATE_B} ->> 'eta_minutes')::int <> 4 then
+    raise exception 'CASEFAIL onmyway-refresh-keeps-start-and-writes-audit-only: the refresh did not update the minutes';
+  end if;
+  if (${OMW_STATE_B} ->> 'started_at') is distinct from v_started then
+    raise exception 'CASEFAIL onmyway-refresh-keeps-start-and-writes-audit-only: started_at must survive a refresh';
+  end if;
+  if ${OMW_EVENTS("on_my_way_started")} <> 1 then
+    raise exception 'CASEFAIL onmyway-refresh-keeps-start-and-writes-audit-only: a refresh wrote a SECOND feed row';
+  end if;
+  if ${OMW_EVENTS("on_my_way_updated")} <> 1 then
+    raise exception 'CASEFAIL onmyway-refresh-keeps-start-and-writes-audit-only: the refresh wrote no audit row, so no other client re-fetches';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "onmyway-does-not-move-the-booking-token",
+    desc: "sharing leaves car_bookings.updated_at alone — migration 160 made it an optimistic-concurrency token",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    assert: `declare
+  v_before timestamptz := ${OMW_TOUCHED_B};
+begin
+  ${SHARE_B}
+  if ${OMW_TOUCHED_B} is distinct from v_before then
+    raise exception 'CASEFAIL onmyway-does-not-move-the-booking-token: an ETA refresh moved the booking version, so every other member''s edit would be refused with GV42T';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-direct-coordinate-patch-denied",
+    desc: "the member may UPDATE her own booking row directly (migration 005) — but not to put a coordinate in it",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `update public.car_bookings
+         set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
+                                            'updated_at', now(), 'lat', 55.6, 'lng', 12.5)
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "23514",
+    post: `if ${OMW_STATE_B} is not null
+      then raise exception 'CASEFAIL onmyway-direct-coordinate-patch-denied: a coordinate reached the column'; end if;`,
+  }),
+  queryCase({
+    name: "onmyway-clear-member-ok",
+    desc: "the sharer stops the share; the state is gone and the other clients get an audit nudge",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: B,
+    assert: `begin
+  perform public.clear_on_my_way('${WS1}', 'omw-b');
+  if ${OMW_STATE_B} is not null then
+    raise exception 'CASEFAIL onmyway-clear-member-ok: the share survived the stop';
+  end if;
+  if ${OMW_EVENTS("on_my_way_stopped")} <> 1 then
+    raise exception 'CASEFAIL onmyway-clear-member-ok: no audit row, so other clients keep showing the badge';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-clear-admin-ok",
+    desc: "the admin escape hatch: A may clear a share stuck on by B's crashed client, even though A could not start it",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: A,
+    op: `perform public.clear_on_my_way('${WS1}', 'omw-b');`,
+    expect: "ok",
+    post: `if ${OMW_STATE_B} is not null
+      then raise exception 'CASEFAIL onmyway-clear-admin-ok: the admin could not clear a stuck share'; end if;`,
+  }),
+  queryCase({
+    name: "onmyway-clear-is-idempotent",
+    desc: "three auto-stops race by design (arrival, booking end, manual) — a second stop is a silent no-op",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B), step(B, `perform public.clear_on_my_way('${WS1}', 'omw-b');`)],
+    actor: B,
+    assert: `begin
+  if (public.clear_on_my_way('${WS1}', 'omw-b') ->> 'cleared')::boolean then
+    raise exception 'CASEFAIL onmyway-clear-is-idempotent: a second stop reported that it cleared something';
+  end if;
+  if ${OMW_EVENTS("on_my_way_stopped")} <> 1 then
+    raise exception 'CASEFAIL onmyway-clear-is-idempotent: the no-op wrote a second audit row';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-clear-foreign-workspace-denied",
+    desc: "E cannot stop a share in a workspace she is not a member of",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: E,
+    op: `perform public.clear_on_my_way('${WS1}', 'omw-b');`,
+    expect: "42501",
+    post: `if ${OMW_STATE_B} is null
+      then raise exception 'CASEFAIL onmyway-clear-foreign-workspace-denied: the share was cleared anyway'; end if;`,
   }),
 
   // ── Push-target RPCs (migration 150, GV-398) ──────────────────────────────
