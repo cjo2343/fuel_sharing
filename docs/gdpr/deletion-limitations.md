@@ -61,9 +61,15 @@ Data-minimering frem for pseudonymisering, når intet formål består.
 5. **Hændelsesindhold**: Fritekst, skadenummer og fotos kan i sig selv indeholde
    personoplysninger. De beholdes som fælles køretøjshistorik efter kontosletning,
    så en registreret anmodning kræver konkret manuel vurdering og eventuel redigering
-   eller fotosletning; anonymisering af medlemsrækken er ikke altid tilstrækkelig.
+   eller fotosletning; anonymisering af medlemsrækken er ikke altid tilstrækkelig. Det
+   samme gælder **dokumentarkivet** (GVM-523, migration 201) og i skarpere form: en
+   fotograferet registreringsattest bærer ejerens navn og adresse. Her er
+   selvbetjeningen dog reel — den, der gemte dokumentet, og enhver workspace-admin kan
+   slette det eller en enkelt side når som helst — så en anmodning om sletning af et
+   konkret dokument kan efterkommes uden operatørindgreb.
 6. **Forældreløse objekter i objektlageret** (GVM-537, migration 169): rækken i
-   `fuel_payment_receipts` — og `vehicle_incident_photos` siden migration 138 — er
+   `fuel_payment_receipts` — og `vehicle_incident_photos` siden migration 138,
+   `vehicle_document_photos` siden migration 201 — er
    databasens autoritet over, hvem der må vedhæfte og fjerne et billede, mens selve
    filen slettes af **klienten** via Storage-API'et. Det daglige retention-sweep gør
    begge dele for kvitteringer (det sletter også `storage.objects`-rækken, så filen
@@ -75,7 +81,7 @@ Data-minimering frem for pseudonymisering, når intet formål består.
    hård-slettet tankning i et levende workspace kan medlemmer fortsat hente objektet,
    selvom rækken er væk. **Lukket i GV-435** (govehlo-web PR #270, deployet
    2026-08-05): det daglige scheduler-endpoint `/api/hooks/storage-orphan-cleanup`
-   (03:30 UTC, service role) lister begge buckets og sletter objekter, hvis fulde
+   (03:30 UTC, service role) lister alle buckets og sletter objekter, hvis fulde
    sti ikke matcher nogen række — hvilket også dækker **uregistrerede uploads**
    (objekter et medlem lagde op uden nogensinde at registrere en række, eksternt
    review 2026-08-04). Værn: 24 timers frist (en igangværende vedhæftning uploader
@@ -84,6 +90,15 @@ Data-minimering frem for pseudonymisering, når intet formål består.
    fotos), maks. 500 sletninger pr. bucket pr. kørsel, og kun antal — aldrig
    stier — i logs og svar. Restrisikoen er dermed et vindue på op til ét døgn
    (plus rotationens dækningstakt ved meget store lagre), ikke ubegrænset levetid.
+   **Forbeholdet gælder også `vehicle-documents`** (GVM-523): dokumentarkivet følger
+   nøjagtig samme arbejdsdeling — SQL'en ejer rækken og autorisationen,
+   `delete_vehicle_document` giver klienten de stier, den skal fjerne, og en cascade
+   (workspace-purge, eller den fem år gamle tombstone-rydning der tager et dokuments
+   forældre-workspace) har ingen klient. Bucketen er derfor registreret i sweep'et fra
+   samme leverance (govehlo-web, GVM-523-halvdelen), og `list_registered_storage_paths`
+   er udvidet med `vehicle_document_photos` i migration 201; uden begge dele ville
+   sweep'et springe bucketen over i stedet for at fejle højlydt. Vinduet er det samme
+   ene døgn.
 
 ## End-to-end-verifikation (udestående evidens)
 

@@ -86,24 +86,11 @@ export const coverageExceptions = [
   // sheet shipped, and govehlo-mobile has called the RPC since PR #555
   // (src/lib/handover.ts via supabase-helpers.ts) — findClientCallers sees it, the
   // guard reported the entry STALE, and stale entries are deleted, not renewed.
-  {
-    fn: 'set_workspace_monthly_budget',
-    reason:
-      'The migration-first window, and nothing more. Migration 200 (GVM-574) ships the ' +
-      'SHARED workspace monthly budget server-side ahead of the mobile half, because ' +
-      'PostgREST answers PGRST202 for a function that does not exist — so the RPC must be ' +
-      'applied in production before any client may call it. No client calls it yet, which ' +
-      'is precisely why the guard sees an overlap. The role matrix exercises it for the ' +
-      'admin gate, the four validation refusals, the øre rounding, the GV-292 no-op rule ' +
-      'and the Danish-formatted settings_changed event — none of which any other caller ' +
-      'could prove today. What changes this answer: govehlo-mobile\'s GVM-574 half landing ' +
-      'a call in src/lib/supabase-helpers.ts, at which point findClientCallers sees it, the ' +
-      'guard reports this entry STALE, and it is DELETED rather than renewed — the course ' +
-      'set_vehicle_location, upsert_booking_handover, set_tank_state and the two fuel-receipt ' +
-      'RPCs all took. If the mobile half is abandoned instead, the honest fix is to revoke ' +
-      'the authenticated grant, not to renew this.',
-    reviewBy: '2026-11-10',
-  },
+  // set_workspace_monthly_budget's entry was deleted here (GVM-523), exactly as the entry
+  // itself prescribed: it covered only the migration-200-first window, and govehlo-mobile
+  // has called the RPC on main since the GVM-574 half landed (src/lib/supabase-helpers.ts,
+  // src/screens/Insights/BudgetSheet.tsx) — findClientCallers sees it, the guard reported
+  // the entry STALE, and stale entries are deleted, not renewed.
   // ── Migration 201 (GVM-523), the vehicle document archive ───────────────────
   // Five entries, one window, one reason: the SQL must be applied in production before
   // any client may call it (PostgREST answers PGRST202 for a function that does not
