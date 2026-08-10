@@ -141,6 +141,21 @@ const scripts = [
   // simulator wirings — the guard kind and the double_completion scenario.
   // Warns and exits 0 without Docker; CI runs it --strict.
   "node tools/test-double-completion-guard-contract.mjs",
+  // Anti-drift contract for the cancel-mid-batch lease receipt (GV-470, migration 198).
+  // Docker for the same reason as the entries above, plus the one specific to this fix: the
+  // property it exists to establish is a NEGATIVE about a THIRD party — after cancel, the
+  // in-flight advance and a later retry, the next mint must return the NEXT subscribers and
+  // never the ones the cancelled batch already mailed. That is real keyset arithmetic over
+  // real rows across five RPC calls, and no regex can see it; before 198 the same script
+  // re-mints sub1+sub2 and the double send is right there in the assertion. Also pins the
+  // three shapes a tidy-up would quietly undo — cancel_ keeping claimed_at (deleting that
+  // one line restores the bug in full), the reconciliation staying narrow enough not to
+  // resurrect a cancelled campaign or write it a send-log row, and the retry fence being a
+  // wall-clock comparison so it always lapses (a fence that could not would strand a job
+  // un-retryable, the GV-459 failure retry_ was added to end) — plus the GV-459 ceiling path
+  // and the crashed-hook re-claim, which must both stay exactly as they were.
+  // Warns and exits 0 without Docker; CI runs it --strict.
+  "node tools/test-newsletter-cancel-lease-contract.mjs",
   // Anti-drift contract for the damage log's repair link (GVM-521, migration 166). Docker
   // for the same reason as the five above, plus the one specific to this column:
   // vehicle_repairs.id is unique across every workspace, so the foreign key is satisfied

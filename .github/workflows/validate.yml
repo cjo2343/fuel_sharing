@@ -369,6 +369,15 @@ jobs:
       - name: Run double-completion guard contract
         run: node tools/test-double-completion-guard-contract.mjs --strict
 
+      # GV-470. Same arrangement once more, and for a reason specific to migration 198:
+      # the thing it establishes is that a cancelled-then-retried campaign resumes PAST
+      # the batch that already went out, which is five RPC calls of real keyset
+      # arithmetic over real subscriber rows — the assertion literally reads the next
+      # page back and checks it is not the previous one. A skip here would leave the
+      # only executable proof of "no subscriber gets the same campaign twice" unrun.
+      - name: Run newsletter cancel-lease contract
+        run: node tools/test-newsletter-cancel-lease-contract.mjs --strict
+
       - name: Run deferred fuel-close smoke
         run: bash tools/test-deferred-fuel-close-functional.sh
 
