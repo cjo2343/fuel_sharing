@@ -87,15 +87,15 @@ gav 0 ms i dag mod evig vedligehold af dets prædikat.)
 > **Næste drill kræver et FRISKT dump (GV-393).** Drillen udleder sit
 > aktualitetskrav fra `tools/test-migrations.mjs`' `expected`-liste og fejler hårdt
 > på et dump, der er ældre end den nyeste forventede migration. Seneste drill
-> (2026-07-18) kørte på et dump ved migration 133; repoet står nu ved **147**, så
-> det gemte dump vil fejle med det samme. Tag et nyt `pg_dump` fra prod før
+> (2026-08-10, GV-461) kørte på et dump ved migration 199 — samme dag som skemaet
+> stod ved 199, så den er aktuel. Tag et nyt `pg_dump` fra prod før
 > `npm run drill:restore` køres igen — det er en manuel handling, ikke noget CI kan
 > gøre. Kør den gerne umiddelbart efter at have anvendt en migration, mens dumpet
 > stadig er aktuelt.
 
 ## Drill-log
 
-Seneste drill: migration 133 (2026-07-18)
+Seneste drill: migration 199 (2026-08-10)
 
 > Linjen ovenfor er **maskinlæst** af [`tools/check-release-gates.mjs`](../../tools/check-release-gates.mjs)
 > (GV-422), som sammenligner tallet med det højeste migrationsnummer i
@@ -109,6 +109,7 @@ Seneste drill: migration 133 (2026-07-18)
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-07-17 | vehloshare-backup.sql.gz | sha256:30bb7db46da5… | 0.5 MB | 132 migrationer (130_operational_retention) | 9 workspaces | 350 tolereret (uklassificeret) | ikke verificeret | — | BESTÅET (før hærdning) |
 | 2026-07-18 | vehloshare-backup-2026-07-18.sql.gz | sha256:2e41c87facd1… | 0.5 MB | 133 migrationer (131_gdpr_retention_policy) | 9 workspaces | fejl: 329 tolereret / 0 fatale | 25/25 tabeller verificeret (0 afvig) | aktuel | BESTÅET |
+| 2026-08-10 | vehloshare-drill-dump.sql.gz | sha256:61eed89102b0… | 1.0 MB | 201 migrationer (199_workspace_split_weight_set) | 9 workspaces | fejl: 329 tolereret / 0 fatale | rækker: 34/34 tabeller verificeret (0 afvig) | aktuel | BESTÅET |
 
 Noter til 2026-07-17-drillen: manuelt pg_dump (Postgres 17-image) mod
 session-pooleren — Free-planen har ingen dashboard-backups endnu. 350 tolererede
