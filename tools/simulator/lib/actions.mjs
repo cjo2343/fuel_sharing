@@ -61,6 +61,17 @@ const GUARDS = [
     test: (m) => /Bookingen er annulleret|Bookingen er ikke startet|Bookingen findes ikke/i.test(m),
   },
   {
+    // Migration 197 (GV-479): a booking that already has a live trip refuses a SECOND
+    // completion — one arriving under a DIFFERENT idempotency key — with one Danish
+    // sentence under errcode GV479. A retry under the SAME key is untouched and still
+    // succeeds, which is why this can never fire for the duplicate catalogue's
+    // `complete_booking` entry. Matched on the MESSAGE and not on the SQLSTATE alone,
+    // per this catalogue's rule: GV479 is unique to this rule today, and relying on
+    // that would make the next reuse of the code silent.
+    kind: "double_completion",
+    test: (m) => /Bookingen er allerede afsluttet med en tur/i.test(m),
+  },
+  {
     kind: "stale_precondition",
     test: (m) => /En anden har ændret/i.test(m),
   },
@@ -571,80 +582,7 @@ export const ACTIONS = {
     build: (ctx) => {
       const booking = ctx.rng.pick(liveBookings(ctx.ws).filter((b) => b.id && !b.completed));
       if (!booking) return null;
-      const driver = memberOf(ctx.ws, booking.memberSlot);
-      if (!driver || !driver.active) return null;
-      const participants = ctx.rng.subset(active(ctx.ws), 1, Math.min(3, active(ctx.ws).length));
-      const ids = [...new Set([driver.memberId, ...participants.map((m) => m.memberId)])];
-      const startKm = ctx.ws.odometer;
-      const endKm = startKm + ctx.rng.int(5, 180);
-      const resolution = ctx.rng.weighted([["logged", 4], ["not_refuelled", 3], ["deferred", 2], ["not_needed", 1]]);
-      const legacyId = nextId(ctx.ws, "trip");
-      const fuelLegacyId = `${legacyId}-f`;
-      const amount = ctx.rng.money(180, 720);
-      const liters = Math.round((amount / 13.4) * 100) / 100;
-      const logged = resolution === "logged";
-      return {
-        actorOverride: driver.slot,
-        detail: { legacyId, resolution, endKm },
-        inner: `select public.complete_booking_trip_with_fuel(
-                  target_ledger_id => ${lit(ctx.ws.ledgerId)},
-                  target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
-                  target_booking_id => ${uuidLit(booking.id)},
-                  legacy_trip_id => ${lit(legacyId)},
-                  booking_driver_member_id => ${uuidLit(driver.memberId)},
-                  trip_date_value => ${lit(booking.startDate)}::date,
-                  start_km_value => ${startKm},
-                  end_km_value => ${endKm},
-                  note_value => ${lit(ctx.rng.pick(TRIP_NOTES))},
-                  participant_member_ids => ${uuidArrayLit(ids)},
-                  fuel_resolution_value => ${lit(resolution)},
-                  fuel_legacy_id => ${logged ? lit(fuelLegacyId) : "null"},
-                  fuel_payer_member_id => ${logged ? uuidLit(driver.memberId) : "null"},
-                  fuel_payment_date_value => ${logged ? `${lit(booking.startDate)}::date` : "null"},
-                  fuel_amount_value => ${logged ? amount : "null"},
-                  fuel_currency_value => ${lit("DKK")},
-                  fuel_liters_value => ${logged ? liters : "null"},
-                  fuel_price_per_liter_value => ${logged ? 13.4 : "null"},
-                  fuel_odometer_value => ${logged ? endKm : "null"},
-                  fuel_station_name_value => ${logged ? lit(ctx.rng.pick(STATIONS)) : "null"},
-                  fuel_station_brand_value => ${logged ? lit(ctx.rng.pick(STATIONS)) : "null"},
-                  fuel_full_tank_value => ${logged ? ctx.rng.bool(0.5) : "false"},
-                  crossing_cost_value => null,
-                  crossing_note_value => null,
-                  crossing_paid_by => null,
-                  trip_event_title => ${lit("Booking afsluttet")},
-                  trip_event_body => ${lit(`${endKm - startKm} km`)},
-                  fuel_event_title => ${logged ? lit("Optankning registreret") : "null"},
-                  fuel_event_body => ${logged ? lit(`${amount} kr`) : "null"},
-                  crossing_provided => false)`,
-        apply: (result) => {
-          booking.completed = true;
-          ctx.ws.odometer = endKm;
-          ctx.ws.kmSinceFuel = logged ? 0 : (ctx.ws.kmSinceFuel ?? 0) + Math.max(0, endKm - startKm);
-          ctx.ws.trips.push({
-            legacyId,
-            id: result?.trip_id ?? null,
-            periodId: ctx.ws.openPeriodId,
-            driverSlot: driver.slot,
-            participantIds: ids,
-            startKm,
-            endKm,
-            date: booking.startDate,
-            deleted: false,
-          });
-          if (result?.fuel_id) {
-            ctx.ws.fuel.push({
-              legacyId: fuelLegacyId,
-              id: result.fuel_id,
-              periodId: ctx.ws.openPeriodId,
-              payerSlot: driver.slot,
-              amount,
-              date: booking.startDate,
-              deleted: false,
-            });
-          }
-        },
-      };
+      return bookingCompletionWrite(ctx, { booking });
     },
   },
 
@@ -922,10 +860,10 @@ export const ACTIONS = {
 
 // ── Shared builders ──────────────────────────────────────────────────────────
 //
-// tripWrite and fuelWrite are EXPORTED as well as used here: lib/interleave.mjs drives
-// the very same RPC calls from a second session, and a contention scenario built out of
-// a hand-written copy of the call would stop testing the thing the tick loop tests the
-// moment either drifted.
+// tripWrite, fuelWrite and bookingCompletionWrite are EXPORTED as well as used here:
+// lib/interleave.mjs drives the very same RPC calls from a second session, and a
+// contention scenario built out of a hand-written copy of the call would stop testing the
+// thing the tick loop tests the moment either drifted.
 
 /**
  * GV-478 Phase B: the offline queue's stale precondition token.
@@ -956,6 +894,93 @@ function preconditionSql(token, stale, ctx) {
 function nextId(ws, kind) {
   ws.counters[kind] = (ws.counters[kind] ?? 0) + 1;
   return `w${ws.index}-${kind}-${ws.counters[kind]}`;
+}
+
+/**
+ * One real booking completion, for a booking the caller has already chosen.
+ *
+ * Exported for the same reason tripWrite and fuelWrite are: lib/interleave.mjs' fifth
+ * scenario sends TWO of these against the SAME booking from two sessions, and a
+ * hand-written copy of the call would stop testing what the tick loop tests the moment
+ * either drifted. Each call draws its OWN idempotency key from `nextId`, which is what
+ * makes two of them a second COMPLETION rather than a retry — the distinction migration
+ * 197's guard is built on.
+ */
+export function bookingCompletionWrite(ctx, { booking }) {
+  const driver = memberOf(ctx.ws, booking.memberSlot);
+  if (!driver || !driver.active) return null;
+  const participants = ctx.rng.subset(active(ctx.ws), 1, Math.min(3, active(ctx.ws).length));
+  const ids = [...new Set([driver.memberId, ...participants.map((m) => m.memberId)])];
+  const startKm = ctx.ws.odometer;
+  const endKm = startKm + ctx.rng.int(5, 180);
+  const resolution = ctx.rng.weighted([["logged", 4], ["not_refuelled", 3], ["deferred", 2], ["not_needed", 1]]);
+  const legacyId = nextId(ctx.ws, "trip");
+  const fuelLegacyId = `${legacyId}-f`;
+  const amount = ctx.rng.money(180, 720);
+  const liters = Math.round((amount / 13.4) * 100) / 100;
+  const logged = resolution === "logged";
+  return {
+    actorOverride: driver.slot,
+    detail: { legacyId, resolution, endKm },
+    inner: `select public.complete_booking_trip_with_fuel(
+                target_ledger_id => ${lit(ctx.ws.ledgerId)},
+                target_open_period_id => ${uuidLit(ctx.ws.openPeriodId)},
+                target_booking_id => ${uuidLit(booking.id)},
+                legacy_trip_id => ${lit(legacyId)},
+                booking_driver_member_id => ${uuidLit(driver.memberId)},
+                trip_date_value => ${lit(booking.startDate)}::date,
+                start_km_value => ${startKm},
+                end_km_value => ${endKm},
+                note_value => ${lit(ctx.rng.pick(TRIP_NOTES))},
+                participant_member_ids => ${uuidArrayLit(ids)},
+                fuel_resolution_value => ${lit(resolution)},
+                fuel_legacy_id => ${logged ? lit(fuelLegacyId) : "null"},
+                fuel_payer_member_id => ${logged ? uuidLit(driver.memberId) : "null"},
+                fuel_payment_date_value => ${logged ? `${lit(booking.startDate)}::date` : "null"},
+                fuel_amount_value => ${logged ? amount : "null"},
+                fuel_currency_value => ${lit("DKK")},
+                fuel_liters_value => ${logged ? liters : "null"},
+                fuel_price_per_liter_value => ${logged ? 13.4 : "null"},
+                fuel_odometer_value => ${logged ? endKm : "null"},
+                fuel_station_name_value => ${logged ? lit(ctx.rng.pick(STATIONS)) : "null"},
+                fuel_station_brand_value => ${logged ? lit(ctx.rng.pick(STATIONS)) : "null"},
+                fuel_full_tank_value => ${logged ? ctx.rng.bool(0.5) : "false"},
+                crossing_cost_value => null,
+                crossing_note_value => null,
+                crossing_paid_by => null,
+                trip_event_title => ${lit("Booking afsluttet")},
+                trip_event_body => ${lit(`${endKm - startKm} km`)},
+                fuel_event_title => ${logged ? lit("Optankning registreret") : "null"},
+                fuel_event_body => ${logged ? lit(`${amount} kr`) : "null"},
+                crossing_provided => false)`,
+    apply: (result) => {
+      booking.completed = true;
+      ctx.ws.odometer = endKm;
+      ctx.ws.kmSinceFuel = logged ? 0 : (ctx.ws.kmSinceFuel ?? 0) + Math.max(0, endKm - startKm);
+      ctx.ws.trips.push({
+        legacyId,
+        id: result?.trip_id ?? null,
+        periodId: ctx.ws.openPeriodId,
+        driverSlot: driver.slot,
+        participantIds: ids,
+        startKm,
+        endKm,
+        date: booking.startDate,
+        deleted: false,
+      });
+      if (result?.fuel_id) {
+        ctx.ws.fuel.push({
+          legacyId: fuelLegacyId,
+          id: result.fuel_id,
+          periodId: ctx.ws.openPeriodId,
+          payerSlot: driver.slot,
+          amount,
+          date: booking.startDate,
+          deleted: false,
+        });
+      }
+    },
+  };
 }
 
 export async function tripWrite(ctx, { existing = null, backdateDays = 0, crossing = false, stale = false }) {

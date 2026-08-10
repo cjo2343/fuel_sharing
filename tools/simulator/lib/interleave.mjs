@@ -50,7 +50,7 @@
 //   contender `error`            → already a violation by the ordinary path.
 
 import { lit, uuidLit, jsonLit, actionSql, claimsFor } from "./db.mjs";
-import { classifyRejection, isLockTimeout, tripWrite, fuelWrite } from "./actions.mjs";
+import { bookingCompletionWrite, classifyRejection, isLockTimeout, tripWrite, fuelWrite } from "./actions.mjs";
 
 /** How long the contender waits before its block is converted into 55P03. */
 export const LOCK_TIMEOUT_MS = 400;
@@ -85,10 +85,10 @@ function asMember(ctx, slot) {
 
 // ── The templates ────────────────────────────────────────────────────────────
 //
-// Four, each mapping to a collision a real group produces. Every one is built out of the
-// SAME RPC calls the tick loop uses (tripWrite / fuelWrite / the handover and settlement
-// statements), never a hand-written copy: a copy would stop testing the real call the
-// moment either drifted.
+// Five, each mapping to a collision a real group produces. Every one is built out of the
+// SAME RPC calls the tick loop uses (tripWrite / fuelWrite / bookingCompletionWrite / the
+// handover and settlement statements), never a hand-written copy: a copy would stop
+// testing the real call the moment either drifted.
 
 export const SCENARIOS = [
   {
@@ -242,6 +242,60 @@ export const SCENARIOS = [
           apply: (result) => { booking.handover = true; booking.handoverUpdatedAt = result?.updated_at ?? null; },
         },
         detail: { legacyId: booking.legacyId, odometer: odo },
+      };
+    },
+  },
+
+  {
+    id: "double_completion",
+    danish: "To medlemmer afslutter samme booking",
+    lock: "upsert_booking_trip_with_participants' `select … for update of cb` on the car_bookings row, taken one step earlier by complete_booking_trip_with_fuel's GV-479 pre-check",
+    // The collision the Phase B README listed as the one deliberately NOT covered,
+    // because its expectation was unsettled: nothing in the schema said what SHOULD
+    // happen when two members complete the same booking under two different idempotency
+    // keys. Migration 197 (GV-479) settles it, so the scenario can exist.
+    //
+    // TWO OUTCOMES ARE EXPECTED, and the shared judgement accepts both:
+    //   · the ordinary case — the booking has no trip yet, the holder's completion takes
+    //     the booking row and keeps it, and the contender BLOCKS there and comes back
+    //     55P03 (`contention`). That is the booking lock doing the job migration 123 gave
+    //     it: it is the idempotency boundary, and both completions queue on it.
+    //   · the booking already carries a live trip from an earlier tick — then the GV-479
+    //     pre-check refuses BOTH sessions with the same Danish sentence (`guard`), the
+    //     holder's statement fails, and the judgement correctly abstains because no lock
+    //     was ever held. Also worth having: that path is the one a member actually meets.
+    // `ok` is the hazard, exactly as everywhere else — a second completion that SUCCEEDS
+    // while the first is still in flight is the silent overwrite GV-479 exists to end.
+    //
+    // The contender is the admin, because the completion gate is the booked member or a
+    // ledger admin; a third member would be refused at the gate every time and never
+    // reach the lock. Each bookingCompletionWrite call draws its own idempotency key, so
+    // these two are a second COMPLETION rather than a retry — a retry under the SAME key
+    // is idempotent by design and is the duplicate catalogue's job, not this one's.
+    async build(ctx) {
+      if (!ctx.ws.openPeriodId) return null;
+      const booking = ctx.rng.pick(liveBookings(ctx.ws));
+      if (!booking) return null;
+      const member = ctx.ws.members.find((m) => m.slot === booking.memberSlot && m.active);
+      const admin = ctx.ws.members[0];
+      if (!member || !admin || member.slot === admin.slot) return null;
+      const holder = bookingCompletionWrite(asMember(ctx, member.slot), { booking });
+      const contender = bookingCompletionWrite(asMember(ctx, admin.slot), { booking });
+      if (!holder || !contender) return null;
+      return {
+        holder: { slot: member.slot, inner: holder.inner, apply: holder.apply, label: "afslut booking" },
+        contender: {
+          slot: admin.slot,
+          inner: contender.inner,
+          apply: contender.apply,
+          label: "afslut samme booking",
+        },
+        detail: {
+          bookingLegacyId: booking.legacyId,
+          holderTripLegacyId: holder.detail.legacyId,
+          contenderTripLegacyId: contender.detail.legacyId,
+          alreadyCompleted: Boolean(booking.completed),
+        },
       };
     },
   },

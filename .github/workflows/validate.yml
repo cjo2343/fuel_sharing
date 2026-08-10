@@ -362,6 +362,13 @@ jobs:
       - name: Run handover odometer guard contract
         run: node tools/test-handover-odometer-guard-contract.mjs --strict
 
+      # --strict for the same reason, and for one that is specific to migration 197: its
+      # narrow unique_violation handler can only be shown to be narrow by making a real
+      # violation happen on a real Postgres, and the retry it must NOT refuse (the offline
+      # outbox replaying the same idempotency key) can only be shown by sending it twice.
+      - name: Run double-completion guard contract
+        run: node tools/test-double-completion-guard-contract.mjs --strict
+
       - name: Run deferred fuel-close smoke
         run: bash tools/test-deferred-fuel-close-functional.sh
 

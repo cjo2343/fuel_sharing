@@ -685,10 +685,11 @@ serialises the two writers.
 | `fuel_during_close` | a member logs a fill | the admin runs the **real** period close | `close_settlement_period`'s `for update of sp` against the writers' `for share of sp` |
 | `settlement_pair_race` | the admin re-requests a pair | the payer marks the same pair paid | `hashtext(ledger \|\| ':settlement:' \|\| period_id)` |
 | `handover_race` | the booking's member saves a handover | an admin saves the same handover | `hashtext(ledger \|\| ':handover:' \|\| booking_id)` |
+| `double_completion` | the booking's member completes it | an admin completes the same booking | the `car_bookings` row itself — `for update of cb`, taken one step early by migration 197's GV-479 pre-check |
 
 Every scenario is built out of the **same** RPC calls the tick loop uses (`tripWrite`,
-`fuelWrite`, the close program) rather than a hand-written copy, which would stop testing
-the real call the moment either drifted.
+`fuelWrite`, `bookingCompletionWrite`, the close program) rather than a hand-written copy,
+which would stop testing the real call the moment either drifted.
 
 `fuel_during_close` has the roles the "wrong" way round on purpose. The close takes the
 exclusive lock, so it has to be the *contender*: a close held open as the holder would
@@ -720,12 +721,21 @@ close succeeded legitimately, and nothing was reported. Of the remaining twenty-
 their own fill would raise the engagement rate; it is left alone because a scenario skipped
 for a stated reason costs less than one more special case in the builders.
 
-**Two members completing the same booking** is the one collision from the brief that is
-*not* a scenario here. With the same idempotency key it is identical to the duplicate
-catalogue's `complete_booking` entry, minus a session; with two different keys the expected
-outcome is genuinely unsettled (nothing in the schema obviously forbids two trips against
-one booking), and a scenario whose expectation nobody has decided produces noise rather
-than findings. It is written up in the handover notes as an open question instead.
+`double_completion` is the collision this README used to list as the one deliberately left
+out. With the same idempotency key it is identical to the duplicate catalogue's
+`complete_booking` entry minus a session; with two *different* keys the expected outcome
+was genuinely unsettled — nothing in the schema said which trip should win, and a scenario
+whose expectation nobody has decided produces noise rather than findings. **Migration 197
+(GV-479) settled it**, so the scenario exists now, and it draws its two keys the only way
+that makes it a second *completion* rather than a retry: one `bookingCompletionWrite` call
+each, each with its own key from `nextId`. Two outcomes are expected and the shared
+judgement accepts both — `contention` when the booking had no trip yet (the holder takes
+the `car_bookings` row and the contender queues on it), and `guard` when the booking was
+already completed in an earlier tick, in which case the GV-479 pre-check refuses *both*
+sessions with the same Danish sentence, the holder's statement fails, and the first clause
+of the verdict table correctly abstains. `ok` is the hazard, as everywhere else: a second
+completion that succeeds while the first is still in flight is exactly the silent overwrite
+GV-479 exists to end.
 
 ---
 
@@ -867,12 +877,22 @@ with the other Docker-backed checks, as its own npm script.
 
 `npm run test:simulator` is the short self-test, six 60-tick runs of one fixed seed.
 
-**The seed is chosen, not arbitrary.** GV-478 moved it from 4711 to **101**: at 4711
-neither workspace draws the Offline-pendleren, and a self-test that never exercises the
-offline queue would let that whole feature rot. 101 draws it in both workspaces and still
-produces duplicates, contention, a period close and a spread of guards inside 60 ticks.
-The `--epoch` is pinned for the same class of reason: the rhythm keys off the simulated
-weekday.
+**The seed is chosen, not arbitrary, and it has been chosen twice.** GV-478 moved it from
+4711 to 101: at 4711 neither workspace draws the Offline-pendleren, and a self-test that
+never exercises the offline queue would let that whole feature rot. GV-479 moved it again,
+to **1717**, for the same kind of reason — adding the fifth contention scenario changes the
+weighted draw inside `buildScenario` and with it the whole downstream PRNG stream, so at
+101 the offline burst stopped flushing and `double_completion` was never drawn at all. 1717
+was picked by replaying nineteen candidates against every assertion in the self-test: it
+queues offline writes and flushes them backdated, draws `double_completion` with its
+contender refused by migration 197's own guard (so the new rule is executed, not merely
+listed), and still produces duplicates, a period close, a fat finger refused by migration
+195 and thirteen guards inside 60 ticks — in the default shape *and* in Phase A's, which is
+the clause that eliminates most candidates, since Phase A asserts exactly one action line
+per tick and an offline burst adds one per flushed statement. Re-run that search whenever a
+change to the action pool, the persona pool or the scenario list moves the stream again: a
+seed is cheaper to re-pick than an assertion is to weaken. The `--epoch` is pinned for the same class of
+reason: the rhythm keys off the simulated weekday.
 
 1. **clean** — must finish, must produce guards, must report no new violation. Note that
    "one action line per tick" stopped being true in Phase B (a duplicate is its own line,
@@ -893,9 +913,11 @@ weekday.
    of the day were visited; that at least one write was queued offline, flushed in a
    burst, and had genuinely waited; that at least one duplicate was sent, carried its
    expectation, and created no unguarded second row; that at least one contention scenario
-   ran, used a second session, and had its contender serialised by the lock; and that
-   every fat-finger odometer was refused, at least one of them by migration 195's
-   plausibility guard;
+   ran, used a second session, and had its contender serialised by the lock — including
+   `double_completion` by name, pinned so migration 197's guard cannot be left uncovered by
+   a stream that stopped drawing it, with `contention` and `guard` both accepted as its
+   contender's outcome; and that every fat-finger odometer was refused, at least one of
+   them by migration 195's plausibility guard;
 5. **determinism with everything on** — the identical command, twice. The `--no-parity`
    half above proves parity draws no PRNG; this proves the thing two sessions put at risk,
    because an OS-scheduled race would land here as a flake. It is what says the lockstep
