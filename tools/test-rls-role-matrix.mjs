@@ -1631,6 +1631,148 @@ begin
 end`,
   }),
 
+  // ── GVM-574 / migration 200: the SHARED workspace monthly budget ─────────────
+  //
+  // One nullable column written by one admin-gated RPC. Nothing on the server reads the
+  // column — it is client-consumed — so what has to be proven here is the boundary
+  // (admin only), the refusals (a budget that is zero, negative, absurd or NaN), the
+  // rounding, the GV-292 no-op rule, and the feed event with its Danish amount. The last
+  // one is the least obvious and the most worth pinning: the body is rendered VERBATIM by
+  // the feed, and its "2.500 kr" is built from to_char's literal ',' separator swapped to
+  // '.', deliberately not from the locale-dependent 'G' pattern — which is a claim about
+  // what a real Postgres produces, so only this suite can check it.
+  rpcCase({
+    name: "monthly-budget-nonadmin-denied",
+    desc: "member B sets the shared monthly budget (denied 42501) — it is a workspace setting; a personal target is the device-local one (GVM-574)",
+    actor: B,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 2500);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "monthly-budget-outsider-denied",
+    desc: "E (another workspace) sets a budget on WS1 (denied 42501) — is_ledger_admin is also the workspace boundary (GVM-574)",
+    actor: E,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 2500);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "monthly-budget-admin-sets-and-announces",
+    desc: "admin A sets 2.500 kr: the column is stored and ONE settings_changed event carries the Danish-formatted amount (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 2500);`,
+    expect: "ok",
+    post: `if (select monthly_budget_dkk from public.ledgers where id = '${WS1}') is distinct from 2500
+      then raise exception 'CASEFAIL monthly-budget-admin-sets-and-announces: the budget was not stored'; end if;
+    if (select count(*) from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed') <> 1
+      then raise exception 'CASEFAIL monthly-budget-admin-sets-and-announces: expected exactly 1 settings_changed event'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and title = 'Budget ændret'
+        and body = 'Det fælles månedsbudget blev sat til 2.500 kr.'
+        and actor_member_id = '${A_ID}'
+        and metadata->>'field' = 'monthly_budget_dkk'
+        and metadata->>'old' is null
+        and (metadata->>'new')::numeric = 2500
+    ) then raise exception 'CASEFAIL monthly-budget-admin-sets-and-announces: the feed event is missing, or the amount is not Danish-formatted (got %)',
+      (select body from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed' limit 1); end if;`,
+  }),
+  rpcCase({
+    name: "monthly-budget-oere-are-printed-only-when-present",
+    desc: "admin A sets 1.234,50 kr: the amount is rounded to øre and rendered with a comma decimal and a period thousands separator (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 1234.499);`,
+    expect: "ok",
+    // 1234.499 rounds to 1234.50 — the same øre rounding the device-local budget does.
+    post: `if (select monthly_budget_dkk from public.ledgers where id = '${WS1}') is distinct from 1234.50
+      then raise exception 'CASEFAIL monthly-budget-oere-are-printed-only-when-present: the amount was not rounded to øre'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and body = 'Det fælles månedsbudget blev sat til 1.234,50 kr.'
+    ) then raise exception 'CASEFAIL monthly-budget-oere-are-printed-only-when-present: got %',
+      (select body from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed' limit 1); end if;`,
+  }),
+  rpcCase({
+    name: "monthly-budget-resave-is-a-noop",
+    desc: "admin A re-saves the identical budget: nothing changed, so no settings_changed event (GV-292 no-op suppression) (GVM-574)",
+    setup: [
+      step(A, `perform public.set_workspace_monthly_budget('${WS1}', 2500);`),
+      step(SUPER, `delete from public.ledger_events where ledger_id = '${WS1}';`),
+    ],
+    actor: A,
+    // Typed with two more decimals: it rounds to the same stored amount, so it is the
+    // same no-op — the rounding happens BEFORE the comparison for exactly this reason.
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 2500.001);`,
+    expect: "ok",
+    post: `if exists (select 1 from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed')
+      then raise exception 'CASEFAIL monthly-budget-resave-is-a-noop: an unchanged re-save emitted an event'; end if;`,
+  }),
+  rpcCase({
+    name: "monthly-budget-cleared-by-admin",
+    desc: "admin A clears the budget with null: the column goes null and the clearing event says so (GVM-574)",
+    setup: [
+      step(A, `perform public.set_workspace_monthly_budget('${WS1}', 2500);`),
+      step(SUPER, `delete from public.ledger_events where ledger_id = '${WS1}';`),
+    ],
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', null);`,
+    expect: "ok",
+    post: `if (select monthly_budget_dkk from public.ledgers where id = '${WS1}') is not null
+      then raise exception 'CASEFAIL monthly-budget-cleared-by-admin: the budget survived the clear'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and body = 'Det fælles månedsbudget er fjernet.'
+        and (metadata->>'old')::numeric = 2500
+        and metadata->>'new' is null
+    ) then raise exception 'CASEFAIL monthly-budget-cleared-by-admin: the clearing event is missing or wrong'; end if;`,
+  }),
+  rpcCase({
+    name: "monthly-budget-clearing-an-empty-budget-is-a-noop",
+    desc: "admin A clears a budget that was never set: no event, because nothing changed (GV-292) (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', null);`,
+    expect: "ok",
+    post: `if exists (select 1 from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed')
+      then raise exception 'CASEFAIL monthly-budget-clearing-an-empty-budget-is-a-noop: a no-op clear emitted an event'; end if;`,
+  }),
+  rpcCase({
+    name: "monthly-budget-rejects-zero",
+    desc: "admin A sets a budget of 0 (rejected 22023) — null is how a budget is cleared; zero would be a budget of nothing (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 0);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "monthly-budget-rejects-negative",
+    desc: "admin A sets a negative budget (rejected 22023) (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', -100);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "monthly-budget-rejects-absurd-amount",
+    desc: "admin A sets 2.000.000 kr (rejected 22023) — above the sane ceiling it is a typo or øre entered as kroner (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 2000000);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "monthly-budget-rejects-nan",
+    desc: "admin A sets NaN (rejected 22023) — numeric accepts it and it fails no comparison, so it is refused explicitly (GVM-574)",
+    actor: A,
+    op: `perform public.set_workspace_monthly_budget('${WS1}', 'NaN'::numeric);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "monthly-budget-constraint-backstops-a-direct-write",
+    desc: "even the superuser cannot store an out-of-range budget: ledgers_monthly_budget_check survives a writer that skips the RPC (GVM-574)",
+    actor: SUPER,
+    op: `update public.ledgers set monthly_budget_dkk = 0 where id = '${WS1}';`,
+    expect: "23514",
+  }),
+
   // Migration 125: fuel settings have one validated command boundary. Admins can
   // use it, ordinary members cannot, and even admins cannot UPDATE ledgers directly.
   rpcCase({

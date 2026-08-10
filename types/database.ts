@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 199 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 200 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -684,6 +684,7 @@ export type Database = {
           location_updated_by_member_id: string | null
           low_fuel_threshold_percent: number
           max_handover_odometer: number | null
+          monthly_budget_dkk: number | null
           name: string
           next_service_date: string | null
           next_service_km: number | null
@@ -756,6 +757,7 @@ export type Database = {
           location_updated_by_member_id?: string | null
           low_fuel_threshold_percent?: number
           max_handover_odometer?: number | null
+          monthly_budget_dkk?: number | null
           name?: string
           next_service_date?: string | null
           next_service_km?: number | null
@@ -828,6 +830,7 @@ export type Database = {
           location_updated_by_member_id?: string | null
           low_fuel_threshold_percent?: number
           max_handover_odometer?: number | null
+          monthly_budget_dkk?: number | null
           name?: string
           next_service_date?: string | null
           next_service_km?: number | null
@@ -2795,6 +2798,10 @@ export type Database = {
       }
       set_weekly_digest_enabled: {
         Args: { enabled: boolean; target_ledger_id: string }
+        Returns: undefined
+      }
+      set_workspace_monthly_budget: {
+        Args: { budget_dkk_value: number; target_ledger_id: string }
         Returns: undefined
       }
       set_workspace_split_weight_set: {
