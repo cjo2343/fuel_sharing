@@ -91,75 +91,54 @@ export const coverageExceptions = [
   // has called the RPC on main since the GVM-574 half landed (src/lib/supabase-helpers.ts,
   // src/screens/Insights/BudgetSheet.tsx) — findClientCallers sees it, the guard reported
   // the entry STALE, and stale entries are deleted, not renewed.
-  // ── Migration 201 (GVM-523), the vehicle document archive ───────────────────
-  // Five entries, one window, one reason: the SQL must be applied in production before
-  // any client may call it (PostgREST answers PGRST202 for a function that does not
-  // exist), so the platform half lands first and the mobile half follows. They are
-  // listed separately rather than as one blanket entry because they expire separately:
-  // if the mobile archive ships the read + create path but never the editing screen,
-  // the update/delete entries must still be re-argued on their own terms.
+  // The FIVE vehicle-document entries (create/update/delete_vehicle_document,
+  // add/delete_vehicle_document_photo) were deleted here on 2026-08-10, exactly as their
+  // own block comment prescribed. They covered only the migration-201-first window, and
+  // govehlo-mobile has called all five on main since PR #621 (src/lib/vehicle-documents.ts
+  // via supabase-helpers.ts, plus the CarProfile archive screens) — findClientCallers sees
+  // them, the guard reported all five STALE, and stale entries are deleted, not renewed.
+  // The same course set_vehicle_location, upsert_booking_handover, set_tank_state,
+  // set_workspace_monthly_budget and the two fuel-receipt RPCs all took. This is what had
+  // the umbrella's role-matrix job red.
+  // ── Migration 202 (GVM-238 P0), "Jeg er på vej" ─────────────────────────────
+  // Two entries, one window, one reason: PostgREST answers PGRST202 for a function that
+  // does not exist, so the SQL must be applied in production before any client may call
+  // it — the platform half lands first and the mobile half follows. Listed separately
+  // because they expire separately: a mobile half that ships the share button but leaves
+  // auto-stop to a later slice would make the clear entry stale and not the set one.
   //
-  // The role matrix exercises all five for the gates nothing else can prove today: the
-  // creator-or-admin rule on edit and delete (cloned from migration 138 rather than
-  // opened to any member), the left()-prefix binding on page uploads, the 50-document
-  // cap taken under an advisory lock, and the storage_paths a delete hands back so the
-  // client can remove the objects.
+  // The role matrix exercises both for the gates nothing else can prove today: that
+  // sharing is member-or-creator and NOT admin (the one place this feature deliberately
+  // refuses public.can_manage_car_booking), that a refresh keeps started_at and writes the
+  // AUDIT type rather than a second feed row, and that clearing is idempotent.
   //
-  // What changes this answer, for every one of them: govehlo-mobile's GVM-523 half
-  // landing a call (src/lib/supabase-helpers.ts and the archive screen), at which point
-  // findClientCallers sees it, the guard reports the entry STALE, and it is DELETED
-  // rather than renewed — the course set_vehicle_location, upsert_booking_handover,
-  // set_tank_state and the two fuel-receipt RPCs all took. If the mobile half is
-  // abandoned instead, the honest fix is to revoke the authenticated grant and drop the
-  // feature, not to renew these.
+  // What changes this answer, for both: govehlo-mobile's GVM-238 half landing a call, at
+  // which point findClientCallers sees it, the guard reports the entry STALE, and it is
+  // DELETED rather than renewed — the course every entry above took. If the feature is
+  // abandoned instead, the honest fix is to revoke the authenticated grants and drop the
+  // column, not to renew these.
   {
-    fn: 'create_vehicle_document',
+    fn: 'set_on_my_way',
     reason:
-      'Migration-first window only (migration 201, GVM-523). The archive\'s create path; no ' +
-      'client calls it until the mobile half ships. The matrix proves the membership gate, ' +
-      'the trimmed/blank title refusal and the 50-document per-workspace cap taken under an ' +
-      'advisory lock — the cap in particular has no other possible prover, since a ' +
-      'check-then-insert race is invisible to any static scan. See the block comment above ' +
-      'for what makes this entry stale.',
+      'Migration-first window only (migration 202, GVM-238 P0). No client calls it until ' +
+      'the mobile share button ships. The matrix proves the gate this feature argues hardest ' +
+      'about — the booking\'s member or creator may share, a workspace ADMIN may not, which ' +
+      'is the one place the schema deliberately declines can_manage_car_booking — plus the ' +
+      '1..600 minute bounds, the ended-booking refusal, and that a refresh preserves ' +
+      'started_at while writing the audit event type instead of a second feed row. That last ' +
+      'one has no other possible prover: a static scan sees both INSERT sites and cannot say ' +
+      'which one a second call takes.',
     reviewBy: '2026-11-10',
   },
   {
-    fn: 'update_vehicle_document',
+    fn: 'clear_on_my_way',
     reason:
-      'Migration-first window only (migration 201, GVM-523). Carries the decision most ' +
-      'likely to be "simplified" later: editing is CREATOR-OR-ADMIN, migration 138\'s gate, ' +
-      'not any-member — and the expiry is FULL-SET, so a null CLEARS the date instead of ' +
-      'leaving it unchanged. Both are exercised here and by no client yet. See the block ' +
-      'comment above for what makes this entry stale.',
-    reviewBy: '2026-11-10',
-  },
-  {
-    fn: 'delete_vehicle_document',
-    reason:
-      'Migration-first window only (migration 201, GVM-523). Hard-deletes the document, ' +
-      'cascades its pages, and returns the storage_paths the CLIENT must delete (migration ' +
-      '138\'s coordination). The matrix asserts both halves — the creator-or-admin gate and ' +
-      'that the paths come back collected BEFORE the cascade — because a delete that ' +
-      'returned nothing would look correct and leave every photographed page in the bucket ' +
-      'until the daily orphan sweep found it. See the block comment above.',
-    reviewBy: '2026-11-10',
-  },
-  {
-    fn: 'add_vehicle_document_photo',
-    reason:
-      'Migration-first window only (migration 201, GVM-523). Registers one photographed ' +
-      'page. The gate the matrix proves is the left()-prefix binding: a ledger id may ' +
-      'contain the LIKE wildcard "_", so the literal-prefix comparison is what stops a row ' +
-      'pointing at another workspace\'s object. No client caller yet. See the block comment ' +
-      'above.',
-    reviewBy: '2026-11-10',
-  },
-  {
-    fn: 'delete_vehicle_document_photo',
-    reason:
-      'Migration-first window only (migration 201, GVM-523). Uploader-or-admin removal of a ' +
-      'single page, returning the path the client must delete — migration 138\'s ' +
-      'delete_incident_photo contract. No client caller yet. See the block comment above.',
+      'Migration-first window only (migration 202, GVM-238 P0). The stop half, called by ' +
+      'arrival, booking end and the manual stop — three racing auto-stops, which is why ' +
+      'IDEMPOTENCE is the property under test: a second clear must return cleared=false and ' +
+      'write no event. Also proves the deliberate asymmetry with set_on_my_way — this one ' +
+      'DOES admit the workspace admin, because clearing a share stuck on by a crashed client ' +
+      'removes information rather than asserting any. No client caller yet.',
     reviewBy: '2026-11-10',
   },
   // set_tank_state's entry was deleted in GV-411, exactly as the entry itself said it

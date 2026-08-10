@@ -54261,3 +54261,537 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ── Migration 202: "Jeg er på vej" + private Realtime presence (GVM-238 P0 / GVM-575) ─────
+-- Three things. (1) GVM-238 P0, scoped down by the owner from a live map to a single derived
+-- share: car_bookings.on_my_way holds {eta_minutes, started_at, updated_at} and NOTHING else —
+-- the ETA is computed on the phone and no coordinate is ever transmitted or stored, enforced by
+-- set_on_my_way building the jsonb from scalars AND by a table CHECK constraint (car_bookings
+-- has a real UPDATE policy, so the constraint is load-bearing). Sharing is member-or-creator;
+-- clearing also admits the admin and is idempotent. Neither RPC touches car_bookings.updated_at,
+-- which migration 160 made an optimistic-concurrency token. One event per call: on_my_way_started
+-- is feed-visible, on_my_way_updated / on_my_way_stopped are audit-only (GV-413). (2) GVM-575:
+-- two RLS policies on realtime.messages authorising presence-<ledger_id> for that workspace's
+-- members — PROD-ONLY, inside a realtime-schema guard, and non-breaking because Supabase consults
+-- them only for channels opened with private: true. (3) A review finding on two older functions:
+-- add_vehicle_document_photo (off 201) and add_incident_photo (off 138) capped OBJECTS through
+-- migration 184's storage trigger but never the ROWS, so both are re-declared with an
+-- advisory-locked row count (5 and 10, matching their buckets).
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- 1. GVM-238 P0 — the column, the shape constraint, and the two RPCs
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+alter table public.car_bookings
+  add column if not exists on_my_way jsonb;
+
+-- The "never a coordinate" promise as a constraint rather than a comment. car_bookings
+-- has a real UPDATE policy for authenticated (migration 005), so the booking's member,
+-- its creator and any workspace admin can PATCH this column directly through PostgREST
+-- without going near set_on_my_way. This is what stops them putting a position in it.
+--
+-- Exactly three keys, all three required, no others tolerated: `?&` demands all three
+-- are present and `on_my_way - array[...] = '{}'::jsonb` demands nothing else is. Types
+-- are pinned with jsonb_typeof and the bounds are compared as jsonb literals rather
+-- than cast to numeric, so every operator in here is immutable (a CHECK constraint
+-- cannot contain a subquery, which also rules out the jsonb_object_keys formulation).
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'car_bookings_on_my_way_shape_check'
+  ) then
+    alter table public.car_bookings
+      add constraint car_bookings_on_my_way_shape_check
+      check (
+        on_my_way is null
+        or (
+          jsonb_typeof(on_my_way) = 'object'
+          and on_my_way ?& array['eta_minutes', 'started_at', 'updated_at']
+          and on_my_way - array['eta_minutes', 'started_at', 'updated_at'] = '{}'::jsonb
+          and jsonb_typeof(on_my_way -> 'eta_minutes') = 'number'
+          and on_my_way -> 'eta_minutes' >= '1'::jsonb
+          and on_my_way -> 'eta_minutes' <= '600'::jsonb
+          and jsonb_typeof(on_my_way -> 'started_at') = 'string'
+          and jsonb_typeof(on_my_way -> 'updated_at') = 'string'
+        )
+      );
+  end if;
+end $$;
+
+-- ── set_on_my_way ───────────────────────────────────────────────────────────────
+-- Start or refresh the driver's "jeg er på vej" share. One call = one write = one
+-- event. The first call of a share writes the feed row; every refresh writes an
+-- audit-only row so the other clients re-fetch without the feed filling up.
+create or replace function public.set_on_my_way(
+  target_ledger_id text,
+  legacy_booking_id text,
+  eta_minutes integer,
+  event_title text default null,
+  event_body text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor_member_id uuid;
+  v_booking public.car_bookings%rowtype;
+  v_first boolean;
+  v_started_at timestamptz;
+  v_updated_at timestamptz := now();
+  v_state jsonb;
+begin
+  -- Payload validation first (migration 162's order): these judge only what the caller
+  -- sent, so they can be answered without looking anything up and they leak nothing
+  -- about the workspace.
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Mangler workspace-id' using errcode = '22023';
+  end if;
+
+  if legacy_booking_id is null or legacy_booking_id = '' then
+    raise exception 'Mangler booking-id' using errcode = '22023';
+  end if;
+
+  if eta_minutes is null then
+    raise exception 'Mangler forventet ankomsttid' using errcode = '22023';
+  end if;
+
+  -- 1..600 minutes. Under a minute there is nothing to share; over ten hours the
+  -- number came from a bug, not from a drive.
+  if eta_minutes < 1 or eta_minutes > 600 then
+    raise exception 'Forventet ankomst skal være mellem 1 og 600 minutter' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(target_ledger_id) then
+    raise exception 'Kun medlemmer af workspacet kan dele forventet ankomst' using errcode = '42501';
+  end if;
+
+  v_actor_member_id := public.current_ledger_member_id(target_ledger_id);
+  if v_actor_member_id is null then
+    raise exception 'Kunne ikke matche brugeren med et aktivt medlem' using errcode = '42501';
+  end if;
+
+  -- Its own advisory-lock infix, so it cannot collide with migration 063's ':booking:',
+  -- 162's ':bookingcap:' or 164's ':handover:'. Two refreshes racing from a reconnecting
+  -- client must not interleave read-decide-write on started_at.
+  perform pg_advisory_xact_lock(hashtext(target_ledger_id || ':onmyway:' || legacy_booking_id));
+
+  select *
+    into v_booking
+  from public.car_bookings cb
+  where cb.ledger_id = target_ledger_id
+    and cb.legacy_id = legacy_booking_id
+    and cb.deleted_at is null
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'Bookingen blev ikke fundet' using errcode = '22023';
+  end if;
+
+  -- The share is PERSONAL: the booked member or whoever created the booking, and NOT a
+  -- workspace admin. public.can_manage_car_booking would include the admin, which is
+  -- right for editing a booking and wrong for announcing that somebody else is on their
+  -- way. clear_on_my_way is where the admin escape hatch lives.
+  if v_actor_member_id is distinct from v_booking.member_id
+     and v_actor_member_id is distinct from v_booking.created_by_member_id then
+    raise exception 'Kun den, bookingen tilhører, eller den, der oprettede den, kan dele forventet ankomst'
+      using errcode = '42501';
+  end if;
+
+  -- Active or upcoming only. A booking that is over cannot be arrived at, and a share
+  -- on one would sit in the group's feed as a permanent falsehood.
+  if v_booking.end_at <= now() then
+    raise exception 'Bookingen er slut, så der er ikke noget at være på vej til' using errcode = '22023';
+  end if;
+
+  v_first := v_booking.on_my_way is null;
+
+  -- started_at survives every refresh so the reader can say how long the drive has been
+  -- running; the coalesce is the self-heal for a row whose value somehow went missing.
+  if v_first then
+    v_started_at := v_updated_at;
+  else
+    v_started_at := coalesce(
+      nullif(v_booking.on_my_way ->> 'started_at', '')::timestamptz,
+      v_updated_at
+    );
+  end if;
+
+  -- Built HERE from scalars. There is no path by which a caller-supplied object reaches
+  -- this column, which is what makes "no coordinate is ever stored" a property of the
+  -- code rather than a rule someone has to remember.
+  v_state := jsonb_build_object(
+    'eta_minutes', eta_minutes,
+    'started_at', v_started_at,
+    'updated_at', v_updated_at
+  );
+
+  -- car_bookings.updated_at is NOT touched: migration 160 made it an optimistic
+  -- concurrency token, and a five-minute refresh cadence would otherwise refuse every
+  -- other member's booking edit with GV42T. See the header.
+  update public.car_bookings cb
+     set on_my_way = v_state
+   where cb.id = v_booking.id;
+
+  -- Exactly one event per call, because the event insert IS the cross-client live sync
+  -- (migration 087). Feed row only for the first call of a share, and only when the
+  -- client composed a sentence for it; everything else is audit-only.
+  if v_first and event_title is not null then
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id, 'on_my_way_started', event_title, coalesce(event_body, ''),
+      v_actor_member_id, nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('booking_id', v_booking.id, 'eta_minutes', eta_minutes)
+    );
+  else
+    insert into public.ledger_events (
+      ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+    ) values (
+      target_ledger_id, 'on_my_way_updated', 'Forventet ankomst opdateret', '',
+      v_actor_member_id, nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+      jsonb_build_object('booking_id', v_booking.id, 'eta_minutes', eta_minutes)
+    );
+  end if;
+
+  return jsonb_build_object(
+    'booking_id', v_booking.id,
+    'ledger_id', target_ledger_id,
+    'legacy_id', legacy_booking_id,
+    'eta_minutes', eta_minutes,
+    'started_at', v_started_at,
+    'updated_at', v_updated_at,
+    'first_share', v_first
+  );
+end;
+$$;
+
+revoke all on function public.set_on_my_way(text, text, integer, text, text) from public;
+revoke all on function public.set_on_my_way(text, text, integer, text, text) from anon;
+grant execute on function public.set_on_my_way(text, text, integer, text, text) to authenticated;
+
+-- ── clear_on_my_way ─────────────────────────────────────────────────────────────
+-- Stop the share. Called by the client on arrival, at booking end and on a manual stop,
+-- so it must be IDEMPOTENT: a second stop is a no-op that returns cleared=false and
+-- writes no event, because three auto-stop triggers racing each other is the normal
+-- case, not the exceptional one.
+--
+-- Unlike set_on_my_way this DOES admit the workspace admin — via
+-- public.can_manage_car_booking, the member/creator/admin helper — because clearing is
+-- the escape hatch for a share left on by a crashed or uninstalled client, and it
+-- removes information rather than asserting any.
+--
+-- Deliberately no `deleted_at is null` filter on the lookup: a cancelled booking with a
+-- live share is precisely a case that needs clearing.
+create or replace function public.clear_on_my_way(
+  target_ledger_id text,
+  legacy_booking_id text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor_member_id uuid;
+  v_booking public.car_bookings%rowtype;
+begin
+  if target_ledger_id is null or target_ledger_id = '' then
+    raise exception 'Mangler workspace-id' using errcode = '22023';
+  end if;
+
+  if legacy_booking_id is null or legacy_booking_id = '' then
+    raise exception 'Mangler booking-id' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(target_ledger_id) then
+    raise exception 'Kun medlemmer af workspacet kan stoppe delingen' using errcode = '42501';
+  end if;
+
+  v_actor_member_id := public.current_ledger_member_id(target_ledger_id);
+  if v_actor_member_id is null then
+    raise exception 'Kunne ikke matche brugeren med et aktivt medlem' using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(target_ledger_id || ':onmyway:' || legacy_booking_id));
+
+  select *
+    into v_booking
+  from public.car_bookings cb
+  where cb.ledger_id = target_ledger_id
+    and cb.legacy_id = legacy_booking_id
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'Bookingen blev ikke fundet' using errcode = '22023';
+  end if;
+
+  if not public.can_manage_car_booking(v_booking.id) then
+    raise exception 'Kun den, bookingen tilhører, den, der oprettede den, eller en administrator kan stoppe delingen'
+      using errcode = '42501';
+  end if;
+
+  if v_booking.on_my_way is null then
+    return jsonb_build_object(
+      'booking_id', v_booking.id,
+      'ledger_id', target_ledger_id,
+      'legacy_id', legacy_booking_id,
+      'cleared', false
+    );
+  end if;
+
+  update public.car_bookings cb
+     set on_my_way = null
+   where cb.id = v_booking.id;
+
+  -- Audit-only: the other clients need the nudge to drop the badge, and "Bo stoppede
+  -- med at være på vej" is not a sentence any feed should contain.
+  insert into public.ledger_events (
+    ledger_id, event_type, title, body, actor_member_id, actor_email, metadata
+  ) values (
+    target_ledger_id, 'on_my_way_stopped', 'Deling af ankomst stoppet', '',
+    v_actor_member_id, nullif(lower(coalesce(auth.jwt() ->> 'email', '')), ''),
+    jsonb_build_object('booking_id', v_booking.id)
+  );
+
+  return jsonb_build_object(
+    'booking_id', v_booking.id,
+    'ledger_id', target_ledger_id,
+    'legacy_id', legacy_booking_id,
+    'cleared', true
+  );
+end;
+$$;
+
+revoke all on function public.clear_on_my_way(text, text) from public;
+revoke all on function public.clear_on_my_way(text, text) from anon;
+grant execute on function public.clear_on_my_way(text, text) to authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- 2. GVM-575 — RLS on realtime.messages for the presence channel
+-- ═══════════════════════════════════════════════════════════════════════════════
+--
+-- PROD-ONLY by construction: the whole block is inside the realtime-schema guard and
+-- every statement goes through EXECUTE, so a plain-Postgres replay never parses a
+-- reference to realtime.messages. RLS is already enabled on that table by Supabase, and
+-- these policies are only ever consulted for channels opened with private: true — so
+-- applying this changes nothing for the currently shipped mobile build.
+do $$
+begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'realtime') then
+    execute $pol$drop policy if exists "Ledger members can read workspace presence" on realtime.messages $pol$;
+    execute $pol$
+      create policy "Ledger members can read workspace presence"
+      on realtime.messages
+      for select
+      to authenticated
+      using (
+        realtime.messages.extension = 'presence'
+        and left(realtime.topic(), 9) = 'presence-'
+        and public.is_ledger_member(substring(realtime.topic() from 10))
+      )
+    $pol$;
+
+    execute $pol$drop policy if exists "Ledger members can track workspace presence" on realtime.messages $pol$;
+    execute $pol$
+      create policy "Ledger members can track workspace presence"
+      on realtime.messages
+      for insert
+      to authenticated
+      with check (
+        realtime.messages.extension = 'presence'
+        and left(realtime.topic(), 9) = 'presence-'
+        and public.is_ledger_member(substring(realtime.topic() from 10))
+      )
+    $pol$;
+  end if;
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- 3. Review finding — cap the photo ROWS, not just the storage objects
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- ── add_vehicle_document_photo — re-declared off migration 201 (chain 201 → 202) ──
+-- 201 verbatim apart from the advisory lock, the count under it and the refusal. The
+-- cap (5) is the same number migration 184's trigger enforces on the vehicle-documents
+-- bucket, so the row list and the object list agree instead of drifting.
+create or replace function public.add_vehicle_document_photo(
+  p_document_id uuid,
+  p_storage_path text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_document public.vehicle_documents%rowtype;
+  v_actor_member_id uuid;
+  v_expected_prefix text;
+  v_photo_id uuid;
+  v_existing integer;
+begin
+  if p_document_id is null then
+    raise exception 'Mangler dokument-id' using errcode = '22023';
+  end if;
+
+  if nullif(btrim(p_storage_path), '') is null then
+    raise exception 'Mangler sti til filen' using errcode = '22023';
+  end if;
+
+  select * into v_document
+  from public.vehicle_documents vd
+  where vd.id = p_document_id;
+
+  if v_document.id is null then
+    raise exception 'Dokumentet blev ikke fundet' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(v_document.ledger_id) then
+    raise exception 'Kun medlemmer af workspacet kan tilføje sider' using errcode = '42501';
+  end if;
+
+  v_actor_member_id := public.current_ledger_member_id(v_document.ledger_id);
+  if v_actor_member_id is null then
+    raise exception 'Kunne ikke matche brugeren med et aktivt medlem' using errcode = '42501';
+  end if;
+
+  -- Path convention: <ledger_id>/<document_id>/<token>.<ext>. Compare the literal
+  -- prefix (no LIKE -- ledger ids can contain '_', a LIKE wildcard).
+  v_expected_prefix := v_document.ledger_id || '/' || p_document_id::text || '/';
+  if left(p_storage_path, length(v_expected_prefix)) <> v_expected_prefix then
+    raise exception 'Filen skal ligge under dokumentets eget workspace og dokument-id' using errcode = '22023';
+  end if;
+
+  -- Cap the ROWS as well as the objects. Migration 184's trigger caps this bucket at 5
+  -- OBJECTS, but nothing capped the registrations -- including registrations of a path
+  -- with no object behind it, which that trigger by definition never sees. Serialise
+  -- concurrent page adds for THIS document and count under the lock: a plain
+  -- count-then-insert is the same check-then-insert race 184 was written to close.
+  perform pg_advisory_xact_lock(hashtext('vehicle_document_photos:' || p_document_id::text));
+
+  select count(*)
+    into v_existing
+    from public.vehicle_document_photos vdp
+   where vdp.document_id = p_document_id;
+
+  if v_existing >= 5 then
+    raise exception 'Der er plads til højst 5 sider på et dokument' using errcode = '23514';
+  end if;
+
+  insert into public.vehicle_document_photos (
+    document_id, ledger_id, storage_path, created_by_member_id
+  ) values (
+    p_document_id, v_document.ledger_id, p_storage_path, v_actor_member_id
+  )
+  returning id into v_photo_id;
+
+  return jsonb_build_object(
+    'photo_id', v_photo_id,
+    'document_id', p_document_id,
+    'ledger_id', v_document.ledger_id
+  );
+end;
+$$;
+
+revoke all on function public.add_vehicle_document_photo(uuid, text) from public;
+revoke all on function public.add_vehicle_document_photo(uuid, text) from anon;
+grant execute on function public.add_vehicle_document_photo(uuid, text) to authenticated;
+
+-- ── add_incident_photo — re-declared off migration 138 (chain 138 → 202) ─────────
+-- 138 verbatim apart from the same three additions. Its existing English sentences are
+-- preserved word for word: re-declaring a function to add a cap is not licence to
+-- retranslate its whole vocabulary, and a half-translated body would be worse than
+-- either. The ONE new sentence is Danish, per the current convention. The cap (10) is
+-- migration 184's incident-photos limit.
+create or replace function public.add_incident_photo(
+  p_incident_id uuid,
+  p_storage_path text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_incident public.vehicle_incidents%rowtype;
+  v_actor_member_id uuid;
+  v_expected_prefix text;
+  v_photo_id uuid;
+  v_existing integer;
+begin
+  if p_incident_id is null then
+    raise exception 'Missing incident id' using errcode = '22023';
+  end if;
+
+  if nullif(btrim(p_storage_path), '') is null then
+    raise exception 'Missing storage path' using errcode = '22023';
+  end if;
+
+  select * into v_incident
+  from public.vehicle_incidents vi
+  where vi.id = p_incident_id;
+
+  if v_incident.id is null then
+    raise exception 'Incident was not found' using errcode = '22023';
+  end if;
+
+  if not public.is_ledger_member(v_incident.ledger_id) then
+    raise exception 'Only ledger members can attach incident photos' using errcode = '42501';
+  end if;
+
+  v_actor_member_id := public.current_ledger_member_id(v_incident.ledger_id);
+  if v_actor_member_id is null then
+    raise exception 'Could not match the current user to an active ledger member' using errcode = '42501';
+  end if;
+
+  -- Path convention: <ledger_id>/<incident_id>/<uuid>.<ext>. Compare the literal
+  -- prefix (no LIKE -- ledger ids can contain '_', a LIKE wildcard).
+  v_expected_prefix := v_incident.ledger_id || '/' || p_incident_id::text || '/';
+  if left(p_storage_path, length(v_expected_prefix)) <> v_expected_prefix then
+    raise exception 'Storage path must live under the incident''s workspace/incident prefix' using errcode = '22023';
+  end if;
+
+  -- Cap the ROWS as well as the objects, for the reason spelled out on
+  -- add_vehicle_document_photo above: migration 184's trigger caps this bucket at 10
+  -- OBJECTS and nothing capped the registrations. Count under a transaction-scoped
+  -- advisory lock keyed on the incident, never a bare count-then-insert.
+  perform pg_advisory_xact_lock(hashtext('vehicle_incident_photos:' || p_incident_id::text));
+
+  select count(*)
+    into v_existing
+    from public.vehicle_incident_photos vip
+   where vip.incident_id = p_incident_id;
+
+  if v_existing >= 10 then
+    raise exception 'Der er plads til højst 10 billeder på en skade' using errcode = '23514';
+  end if;
+
+  insert into public.vehicle_incident_photos (
+    incident_id, ledger_id, storage_path, created_by_member_id
+  ) values (
+    p_incident_id, v_incident.ledger_id, p_storage_path, v_actor_member_id
+  )
+  returning id into v_photo_id;
+
+  return jsonb_build_object(
+    'photo_id', v_photo_id,
+    'incident_id', p_incident_id,
+    'ledger_id', v_incident.ledger_id
+  );
+end;
+$$;
+
+revoke all on function public.add_incident_photo(uuid, text) from public;
+revoke all on function public.add_incident_photo(uuid, text) from anon;
+grant execute on function public.add_incident_photo(uuid, text) to authenticated;
+
+-- ── Register migration ──────────────────────────────────────────────────────────
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '202_on_my_way_and_private_realtime',
+  'Three things in one apply window. (1) GVM-238 P0 "Jeg er paa vej", SCOPED DOWN by the owner on 2026-08-10 from a live location map to a single derived share: the driver of the active booking taps once, the PHONE computes the ETA from its own position, and ONLY THE MINUTES are sent -- no coordinate is transmitted, stored or processed server-side, ever. New nullable car_bookings.on_my_way jsonb holding EXACTLY three keys, {"eta_minutes": int 1..600, "started_at": ts, "updated_at": ts}: started_at survives every refresh so a reader can say how long the drive has been running, and updated_at is the honesty field the receiving client renders staleness from ("opdateret for 8 min siden"), which is what makes the ~5-minute foreground refresh cadence safe to display. The no-coordinate rule is enforced THREE ways rather than promised: set_on_my_way takes eta_minutes as a SCALAR and BUILDS the jsonb server-side (there is no parameter to smuggle a position through), a table CHECK constraint car_bookings_on_my_way_shape_check pins the key set to exactly those three names plus their types and bounds -- load-bearing rather than belt-and-braces, because migration 005 gives authenticated a real UPDATE policy on car_bookings so the member/creator/admin could otherwise PATCH a coordinate straight in -- and the event rows carry ids and minutes only. set_on_my_way(text, text, integer, text default null, text default null) is gated to the booking''s MEMBER or CREATOR and deliberately NOT to public.can_manage_car_booking, which would add the workspace admin: that helper answers "who may edit this booking", and an admin announcing that ANOTHER PERSON is on their way is a statement about where that person is. Booking must exist, be un-deleted and not have ended; eta bounded 1..600 with Danish 22023 copy. clear_on_my_way(text, text) DOES admit the admin (it uses can_manage_car_booking) because clearing is the escape hatch for a share stuck on by a crashed client and it removes information rather than asserting any, takes no deleted_at filter (a cancelled booking with a live share is exactly the case needing a clear), and is IDEMPOTENT -- a second stop returns cleared=false and writes nothing, since three auto-stop triggers racing (arrival, booking end, manual) is the normal case. Both take their own advisory-lock infix '':onmyway:'' so they cannot collide with 063''s '':booking:'', 162''s '':bookingcap:'' or 164''s '':handover:''. NEITHER TOUCHES car_bookings.updated_at, and that is a decision: migration 160 made that column an optimistic-concurrency token, so a five-minute refresh cadence would refuse every other member''s booking edit with GV42T for a driver who changed nothing about the booking. EVENTS (GV-413): exactly one ledger_events row per call, because the event insert IS the cross-client live sync (migration 087 lesson), but only the first call of a share is news -- on_my_way_started is FEED-VISIBLE with the client''s own title/body (051/052 pattern) and is registered in FEED_VISIBLE_EVENT_TYPES, while on_my_way_updated (every refresh, and a first call with no title) and on_my_way_stopped are AUDIT-ONLY, server-titled because ledger_events.title is NOT NULL, and are APPENDED LAST to EVENT_TYPE_EXCLUDE in tools/load-rehearsal/lib/hotpaths.mjs. Metadata is booking_id plus eta_minutes and nothing else. The matching order-sensitive append to govehlo-mobile''s ledger-data-gateway ships in the mobile PR, so check-hotpath-mirror.mjs is red in the umbrella between the two merges by construction. (2) GVM-575: govehlo-mobile opens presence-<ledgerId> as a PUBLIC channel, so any authenticated user who knows a workspace id can read which members currently have the app open -- not a data-plane hole, but an online/offline signal about named people crossing the workspace boundary every other read enforces. Two RLS policies on realtime.messages (SELECT to receive presence state and INSERT to track/untrack -- presence needs both, or a client sees the room and never appears in it), both gated on realtime.messages.extension = ''presence'' AND left(realtime.topic(), 9) = ''presence-'' AND public.is_ledger_member(substring(realtime.topic() from 10)); left() and substring() rather than LIKE because a ledger id can contain the ''_'' wildcard. VERIFIED AGAINST THE CURRENT SUPABASE CONTRACT (docs/guides/realtime/authorization, 2026-08-10): realtime.topic() is the topic accessor, extension carries ''presence''/''broadcast'', RLS is ENABLED BY DEFAULT on realtime.messages so this migration does NOT run an ALTER TABLE it lacks ownership for, and policies are consulted ONLY for channels opened with private: true -- which is what makes applying this NON-BREAKING while the shipped mobile build is still public, so the mobile flip can follow at its own pace. STATED PLAINLY BECAUSE SQL CANNOT CLOSE IT: since policies bind only private channels, an attacker can still open the same topic as a PUBLIC channel until an operator disables "Allow public access" in the project''s Realtime Settings -- a dashboard step that must come AFTER the private:true build is the only one in the field, or it breaks every client that has not flipped. Sequence: apply this SQL, ship mobile private:true, force-upgrade past the old build, then turn public access off. The whole realtime block sits inside an `if exists (information_schema.schemata where schema_name = ''realtime'')` guard and every statement is issued through EXECUTE, so a plain-Postgres CI replay never even parses a reference to realtime.messages -- migration 138''s storage lesson applied to a second schema. Consequence, accepted and named: the two policies are PROD-ONLY and invisible to both schema-equivalence and the role matrix, so the contract test pins their full TEXT in both the migration and the consolidated mirror, which is the only guard they will ever have. is_ledger_member is callable from an RLS policy because `authenticated` holds an EXPLICIT execute grant from Supabase''s default privileges (migration 083 revoked only PUBLIC, which is also why 148 had to revoke this same function from anon explicitly, and why the role matrix''s prelude installs those defaults); verified empirically on Postgres 17 that a policy''s function reference IS privilege-checked against the querying role, regardless of table owner, so this was checked rather than assumed. (3) REVIEW FINDING on two OLDER functions: the per-folder cap on incident photos and document pages was enforced only by migration 184''s BEFORE INSERT trigger on storage.objects, which caps OBJECTS -- nothing capped the ROW registrations, including rows whose path has no object behind it, which that trigger by definition never sees, so a member could register unbounded rows in a members-readable table. public.add_vehicle_document_photo(uuid, text) is re-declared off migration 201 (chain 201 -> 202) and public.add_incident_photo(uuid, text) off migration 138 (verified newest prior: 148 only revokes from anon and nothing between 139 and 201 re-declares it; chain 138 -> 202), each byte-identical apart from a transaction-scoped advisory lock keyed on the parent entity, a count taken UNDER that lock and a Danish check_violation refusal at the limit -- create_vehicle_document''s 50-document shape, and the anti-race form migration 184 argued for. Row caps equal their bucket''s object cap so the two agree instead of drifting: 5 pages per document, 10 photos per incident. 138''s existing ENGLISH sentences are preserved verbatim (re-declaring to add a cap is not licence to retranslate a body) while the one new sentence is Danish. Neither signature moves, so create-or-replace suffices: no DROP, no PGRST202/203 window, no stranded client build; ACLs are restated with anon named explicitly (148 convention). NO CHANGE to delete_my_account (on_my_way holds no member reference -- it is three scalars -- and the photo RPCs'' created_by_member_id pointers ride the in-place member anonymisation, as 169 and 201 documented), no retention rule (on_my_way dies with its booking, the events with ledger_events'' 30-day expiry), no new table, no storage change. GDPR: the phone processes position LOCALLY and the platform receives a derived DURATION, so the privacy page''s "ingen loebende sporing" claim is untouched -- there is no position for anyone to process and no history to build; recorded in docs/gdpr/ropa.md. Guarded by tools/test-on-my-way-realtime-contract.mjs in the dependency-free gate (both copies) and by role-matrix cases for both RPCs. MERGE ORDER: PostgREST answers PGRST202 for a function that does not exist, so this SQL must be applied in the Supabase SQL Editor BEFORE govehlo-mobile''s GVM-238/GVM-575 half ships, and the govehlo-web half (EXPECTED_LATEST_MIGRATION 202) must not deploy before it either.'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();

@@ -50,6 +50,21 @@ const scripts = [
   // Static (dependency-free) on both the migration and the consolidated schema; the role
   // matrix proves the behaviour against real Postgres.
   "node tools/test-vehicle-document-contract.mjs",
+  // Anti-drift contract for "Jeg er på vej" and the private Realtime presence channel
+  // (GVM-238 P0 / GVM-575, migration 202). Docker-free on purpose, and for two reasons
+  // that are specific to this migration rather than borrowed from the lines above.
+  // First, the GVM-575 half is INVISIBLE to every other guard in the repo: the
+  // `realtime` schema does not exist in a plain-Postgres container, so the two policies
+  // sit inside a schema guard that schema-equivalence and the role matrix both skip —
+  // this file asserting their full text is the only check they will ever have. Second,
+  // the product promise of GVM-238 P0 is a NEGATIVE — no coordinate is ever transmitted
+  // or stored — and negatives are what static assertions are actually good at: the
+  // closed key set in the CHECK constraint, the absence of a jsonb parameter, the
+  // absence of coordinate vocabulary, and the absence of an `updated_at = now()` that
+  // would turn every five-minute ETA refresh into a GV42T on somebody else's booking
+  // edit. Also pins the two photo ROW caps this migration adds against migration 184's
+  // OBJECT caps, so the two limits cannot silently disagree.
+  "node tools/test-on-my-way-realtime-contract.mjs",
   "node tools/test-late-entry-carryover-contract.mjs",
   "node tools/test-deferred-fuel-close-contract.mjs",
   // Anti-drift contract for the pre-departure fuel-stop verdict (GV-405). The one guard

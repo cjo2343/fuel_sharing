@@ -111,7 +111,19 @@ for (const [name, sql] of Object.entries(sqlSources)) {
   assert.notEqual(handoverAt, -1, `${name}: upsert_booking_handover not found`);
   assert.notEqual(recomputeAt, -1, `${name}: recompute_handover_mirror not found`);
   const handover = sql.slice(handoverAt, recomputeAt);
-  const recompute = sql.slice(recomputeAt);
+  // BOUNDED at the last of recompute_handover_mirror's own ACL lines rather than run to
+  // the end of the file. This slice used to be `sql.slice(recomputeAt)`, which on the
+  // consolidated schema meant "migration 195 and everything appended after it" — so the
+  // first later migration to contain, say, `if … event_title is not null then` anywhere
+  // in an unrelated function failed this suite with a message about the handover
+  // recompute. Migration 202 was that migration. The assertions below are all about ONE
+  // function; the slice now says so.
+  const recomputeAclEnd = sql.indexOf(
+    "grant execute on function public.recompute_handover_mirror(text, text, text) to authenticated;",
+    recomputeAt,
+  );
+  assert.notEqual(recomputeAclEnd, -1, `${name}: recompute_handover_mirror's authenticated grant not found`);
+  const recompute = sql.slice(recomputeAt, recomputeAclEnd + 200);
 
   pin(`${name}: the signature is migration 191's, unchanged, and nothing is DROPPED`, () => {
     // Two candidate signatures with defaulted parameters is PGRST203 — PostgREST resolves

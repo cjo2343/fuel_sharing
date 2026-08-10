@@ -58,6 +58,15 @@ export const FEED_VISIBLE_EVENT_TYPES = [
   // maximum: two integers, no free text, no names.
   "handover_odometer_corrected",
 
+  // on_my_way_started (migration 202, GVM-238 P0) — written by set_on_my_way on the
+  // FIRST call of a share, with the client's own title. Feed-visible on purpose and not
+  // a close call: "Bo er på vej, ca. 12 min" is the entire product, and a group that has
+  // to open a booking to discover it has not been told. Only the first call writes this
+  // row; the ~5-minute refreshes write the audit type instead, so one drive is one feed
+  // entry rather than eight. The metadata carries a booking id and a minute count — no
+  // coordinate exists anywhere in this feature to leak.
+  "on_my_way_started",
+
   // Members (migrations 059, 079, 096, 112).
   "member_joined",
   "member_renamed",
