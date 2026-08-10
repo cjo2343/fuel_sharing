@@ -420,4 +420,12 @@ jobs:
         if: steps.probe.outputs.has_token == 'true'
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         working-directory: fuel_sharing
+        # GV-483: with both RELEASE_GATE_* secrets configured on this repo, the
+        # schema gate judges against the LIVE prod migration tracker (GV-434)
+        # instead of the offline floor. Absent secrets are the documented default
+        # (floor mode); a half-configured pair is a hard error by design, so
+        # setting exactly one secret fails loudly rather than silently degrading.
+        env:
+          RELEASE_GATE_SUPABASE_URL: ${{ secrets.RELEASE_GATE_SUPABASE_URL }}
+          RELEASE_GATE_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.RELEASE_GATE_SUPABASE_SERVICE_ROLE_KEY }}
         run: node tools/check-release-gates.mjs --strict
