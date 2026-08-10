@@ -60,19 +60,31 @@ const strict = process.argv.includes("--strict");
 // Fixed configuration for every half: small enough to run in seconds, long enough to
 // close periods, hand cars over and reach the entry lock.
 //
-// THE SEED IS CHOSEN, NOT ARBITRARY. GV-478 moved it from 4711 to 101 for one reason:
-// at 4711 neither workspace draws the Offline-pendleren, and a self-test that never
-// exercises the offline queue would let that whole feature rot silently. 101 draws it in
-// BOTH workspaces and still produces duplicates, contention scenarios, a period close and
-// a spread of guards inside 60 ticks. THE EPOCH IS LOAD-BEARING TOO: the day/week rhythm
-// keys off the simulated weekday, so an unpinned epoch would make this file's assertions
-// depend on the day it ran.
+// THE SEED IS CHOSEN, NOT ARBITRARY, and it has now been chosen twice. GV-478 moved it
+// from 4711 to 101 for one reason: at 4711 neither workspace draws the Offline-pendleren,
+// and a self-test that never exercises the offline queue would let that whole feature rot
+// silently. GV-479 moved it again, from 101 to 1717, for the same KIND of reason and not
+// out of taste: adding the fifth contention scenario (double_completion) changes the
+// weighted draw inside buildScenario and therefore the ENTIRE downstream PRNG stream, and
+// at 101 the new stream stopped flushing its offline burst and never drew the new scenario
+// at all. 1717 was picked by replaying nineteen candidate seeds against every assertion
+// below: it queues offline writes AND flushes them backdated, draws double_completion —
+// whose contender is refused by migration 197's own guard, so the new rule is executed and
+// not merely listed — and still produces duplicates, a fat finger refused by migration
+// 195, a period close and thirteen guards inside 60 ticks, in both the default shape and
+// Phase A's. That last clause is the one that eliminates most candidates: Phase A's shape
+// asserts exactly one action line per tick, and an offline burst under THAT configuration
+// adds a line per flushed statement. Re-run the same search whenever a change to the
+// action pool, the persona pool or the scenario list moves the stream again — a seed is
+// far cheaper to re-pick than an assertion is to weaken. THE EPOCH IS LOAD-BEARING TOO:
+// the day/week rhythm keys off the simulated weekday, so an unpinned epoch would make this
+// file's assertions depend on the day it ran.
 const BASE = [
   "tools/simulator/run.mjs",
   "--workspaces", "2",
   "--members", "4",
   "--ticks", "60",
-  "--seed", "101",
+  "--seed", "1717",
   "--oracle-every", "20",
   "--epoch", "2026-06-01",
   "--headless",
@@ -259,7 +271,27 @@ const contended = contenders.filter((line) => line.outcome === "contention").len
 if (contended === 0) {
   fail(`${contenders.length} contender step(s) ran and none hit the lock (outcomes: ${contenders.map((l) => l.outcome).join(", ")}) — either the holder failed every time or lock_timeout is not being applied.`);
 }
-console.log(`✅ contention: ${scenarioLines.length / 3} scenario(s) over ${new Set(scenarioLines.map((l) => l.session)).size} sessions, ${contended} contender(s) serialised by the lock.`);
+// The fifth scenario, pinned by name (GV-479). Two members completing the same booking is
+// the collision the Phase B README listed as deliberately uncovered until migration 197
+// decided what should happen; a scenario that is in the list but never drawn on the one
+// seed this file runs would leave that decision untested while looking covered.
+const doubleCompletion = scenarioLines.filter((line) => line.scenario === "double_completion");
+if (doubleCompletion.length === 0) {
+  fail(
+    `no double_completion scenario ran (drawn: ${[...new Set(scenarioLines.map((l) => l.scenario))].join(", ") || "none"}) — ` +
+    "migration 197's guard is unexercised on this seed. Re-pick the seed (see the note on BASE), do not delete this check.",
+  );
+}
+const doubleContenders = doubleCompletion.filter((line) => line.step === "contender");
+// Both are expected outcomes and the run visits whichever the state of the booking makes
+// true: `contention` when the booking had no trip yet and the contender queued on the
+// car_bookings row, `guard` when it was already completed and GV-479 refused both sessions.
+// `ok` would already have been recorded as an interleave_hazard above.
+if (doubleContenders.some((line) => !["contention", "guard"].includes(line.outcome))) {
+  fail(`a double_completion contender ended ${doubleContenders.map((l) => l.outcome).join(", ")} — expected contention or guard.`);
+}
+console.log(`✅ contention: ${scenarioLines.length / 3} scenario(s) over ${new Set(scenarioLines.map((l) => l.session)).size} sessions, ${contended} contender(s) serialised by the lock` +
+  ` (double_completion ran ${doubleCompletion.length / 3}×: ${doubleContenders.map((l) => l.outcome).join(", ")}).`);
 
 // (5) The fat finger, since migration 195 (GV-475) put a plausibility guard on
 //     upsert_booking_handover: the ten-times odometer is in the DEFAULT mix now, and it
