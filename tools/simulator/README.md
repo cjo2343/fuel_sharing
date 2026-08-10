@@ -1,4 +1,4 @@
-# The workspace simulator (GV-471 · GV-478)
+# The workspace simulator (GV-471 · GV-478 · GV-480)
 
 A deterministic, multi-user, multi-workspace fuzzer for the shared VehloShare schema,
 with a live mission-control dashboard.
@@ -20,6 +20,9 @@ Since GV-478 **Phase B** the traffic it generates has a shape: a day and week rh
 member who goes offline and syncs in a burst, double-tapped requests, and two psql
 sessions colliding on the same lock in deterministic lockstep — see
 [Behavioural realism](#behavioural-realism-phase-b).
+
+Since GV-480 **Phase C** the dashboard shows each member's **own phone** and can be
+**scrubbed back** to any tick of the run — see [Mission control](#mission-control---serve).
 
 ---
 
@@ -764,15 +767,78 @@ border — `låsekonflikt` solid, `dublet` dotted, `i kø` dashed. None of them 
 none of them is amber; none of them is a failure, so none of them is the error red.
 
 Panels: run header with seed, configuration, simulated clock and tick progress; a workspace
-grid with live per-member balances, open-period status and last action; a scrolling action
-ticker where guards are visually distinct from errors; an invariant wall (one cell per
-invariant × workspace, click for the detail JSON); an RPC latency/count table with inline
-SVG sparklines; and a violations panel showing the exact repro command.
+grid with per-member phone panels; a scrolling action ticker where guards are visually
+distinct from errors; an invariant wall (one cell per invariant × workspace, click for the
+detail JSON); an RPC latency/count table with inline SVG sparklines; and a violations panel
+showing the exact repro command.
 
 The dashboard follows the branding rules: amber `#F4A261` for money amounts only, blue
 `#355d9c` only for the "Anmodet" settlement chip, Courier New for odometers, fuel and
 latencies, Danish number formatting and labels throughout, sentence case, no emoji, inline
 SVG icons.
+
+### Phase C (GV-480): the palette, the phones and the scrubber
+
+**Green is a signal now, not the room.** Phases A and B painted every surface with
+`color-mix(--color-mist into --color-deep-forest)`. That was provably on-palette and it was
+the wrong call: mixing one brand green into another for *every* panel put a green cast over
+the whole page — the user's word for it was an overlay — and it spent the one colour the
+page most needs to keep meaningful. A green cell on the invariant wall says "this invariant
+held", and it cannot say that on a green field. The surfaces are now a neutral, very
+slightly warm graphite ramp, and green appears in exactly five places, all of which mean
+something: the live/ok pills, a passing invariant cell, an "is owed" amount, the `ok` badge,
+and the latency sparkline. Amber, blue and error are untouched. The canonical palette
+already sanctions the move — `--color-disabled-*` is documented there as "neutral grey,
+deliberately NOT brand-green", for the same reason. The ramp is cockpit furniture and is
+deliberately **not** proposed as a token: nothing ships it and no product renders it. The
+contrast figures per surface are in the comment block at the top of `dashboard.html`; the
+one that actually changed a decision is `--color-attention`, which was **below AA** on deep
+forest (3.7:1) and clears it on the new panel (4.5:1) — which is why the `værn` pill and
+badge no longer carry a raised fill.
+
+**Per-member phones.** Every workspace card holds a collapsible shelf of small
+phone-shaped panels, one per member, showing what that member's app would show right now:
+their name and persona (the admin marked with a discreet `adm`), their balance with the
+GVM-74 direction — owes in amber, is owed in leaf, `I er kvit` at zero — the period they
+are in, their own last three actions with the ticker's own outcome badges, and, for the
+Offline-pendleren, `offline · N i kø` while the queue is filling and `offline-burst · N
+sendt` for the two ticks after it empties. The shelf is collapsible per workspace, and the
+grid puts two phones on a row whether four workspaces share the page or eight; below that
+it wraps and the page scrolls rather than squashing a phone narrower than a legible
+`1.184,11 kr`.
+
+Where the numbers come from matters, because a dashboard that reads the database is a
+dashboard that changes the run. They come from **`workspaceViews()` in `run.mjs`**: one
+shape with two readers — `/state`, which the page polls while it is following live, and a
+new `state` journal line the **oracle sweep** writes, which is what a replay and the
+scrubber read. Every value in it is already in the harness's model or in `ws.balances`,
+which the `zero_sum` invariant piggybacks onto a sweep that was happening anyway, so the
+phones cost the run **no extra query, no PRNG draw and no statement**. `digestOf()` hashes
+`kind === "action"` lines only, so the determinism digest cannot see any of this — Phase C
+does not move it, and the digest of a given seed is character-identical to Phase B's.
+Balances therefore step at each sweep (`--oracle-every`), which is honest: that is when they
+were measured. A member's own action list and queue depth update every tick, because both
+are derived from the `action` lines the journal already carried — the queue depth is simply
+`offline: "queued"` minus `offline: "flush"` up to that tick.
+
+**The journal scrubber.** A slider spanning tick 0 → the latest tick sits under the run
+header, with ◀ ▶ single-step buttons; `←`/`→` step and `End` jumps back to live (no other
+keys — a dashboard that swallows keystrokes is one you cannot use find-in-page on). Drag it
+back and the ticker, the phones, the workspace grid, the invariant wall, the violations and
+every counter re-render **as they were at that tick**, with a `Du ser tick T · Hop til nu`
+chip to come back; the live stream keeps accumulating behind the pinned view, and dragging
+to the right edge resumes live-follow on its own. The one panel that does not rewind is the
+RPC latency table — it is a running aggregate over the whole run rather than a per-tick
+series, and it says so in the panel heading while you are scrubbed.
+
+All of it is client-side and possible only because of the `/events` design: the stream
+replays **from line 1**, so the browser already holds every line of the run. State at tick T
+is **recomputed** from that array on demand rather than checkpointed — a full pass over a
+2.000-tick run is a few thousand integer increments, cheaper than the paint it feeds, and
+checkpoints would have bought nothing while introducing the one bug a scrubber must not
+have: a view at T that depends on which ticks you visited on the way there. Because the page
+derives everything from the journal, the scrubber works identically on a run that ended an
+hour ago: open the dashboard, let it replay, drag.
 
 ---
 

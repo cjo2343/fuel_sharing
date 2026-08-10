@@ -1,11 +1,13 @@
 <!--
-  Mission control for the VehloShare workspace simulator (GV-471).
+  Mission control for the VehloShare workspace simulator (GV-471 · Phase B GV-478 ·
+  Phase C GV-480).
 
   ONE FILE, ZERO REQUESTS. Everything below is inline: no CDN, no webfont, no image, no
   analytics. The page is served from a localhost process that also holds a database
   container, and a dashboard that phones out is a dashboard that leaks what a run
-  contains. Fonts are NAMED but never fetched — Nunito and Inter render if the machine
-  has them and fall back to the system stack if not.
+  contains. The only two URLs this page ever opens are its own `/events` and `/state`.
+  Fonts are NAMED but never fetched — Nunito and Inter render if the machine has them and
+  fall back to the system stack if not.
 
   BRANDING RULES ARE LAW HERE TOO (design_handoff_govehlo_v1/design-system):
     · amber #F4A261 is MONEY, and nothing else. Every amber pixel on this page is a
@@ -17,32 +19,62 @@
       inline SVG in the Lucide idiom.
     · Amount direction (GVM-74): owes = amber, is owed = leaf, settled = muted.
 
-  Dark cockpit surfaces are mixed from the canonical tokens with color-mix() rather than
-  invented as new hexes, so the palette here is provably the palette.
+  ── THE PALETTE, AND WHY IT CHANGED (GV-480) ─────────────────────────────────────────
+  Until Phase C the canvas was --color-deep-forest #1A2E1F and every panel, divider,
+  badge tint and quiet ink was color-mix(--color-mist into deep forest). That was
+  provably on-palette, and it was the wrong call: mixing one brand green into another
+  brand green for EVERY surface put a green cast over the whole page, and the user read
+  the dashboard as sitting under a green overlay. Ambient green also spends the one
+  colour the page most needs to keep meaningful — a green cell on the invariant wall says
+  "this invariant held", and it cannot say that loudly on a green field.
+
+  So the surfaces are now a NEUTRAL, very slightly warm graphite ramp (hue ≈ 30°,
+  saturation ≈ 4 %, so it reads as unlit metal rather than as blue steel or as sepia),
+  and green is demoted from atmosphere to signal. Green now appears in exactly five
+  places, all of which MEAN something: the live/ok pills, a passing invariant cell, an
+  "is owed" amount, the latency sparkline, and the ok badge in the ticker and on the
+  phones. Amber, blue and error are untouched, and every one of them now sits on a
+  neutral field where it reads as itself rather than as a colour fighting the background.
+
+  The canonical palette already sanctions exactly this move: --color-disabled-* is
+  documented there as "neutral grey, deliberately NOT brand-green", for the same reason —
+  a state that is not about the brand should not be painted in it. The neutral ramp is
+  cockpit-only surface furniture and is deliberately NOT proposed as a token: nothing
+  ships it, no product renders it, and the brand colours on top of it are the canonical
+  values, unmodified.
+
+  CONTRAST (WCAG AA, computed against the surface each tone actually sits on):
+    --ink        on --panel  ≈ 15.6:1   --ink-quiet on --panel        ≈ 8.1:1
+    --ink-faint  on --panel  ≈  5.2:1   --ink-faint on --panel-raised ≈ 4.8:1
+    --color-attention        ≈  4.5:1 on --panel (3.7:1 on the old deep forest — the
+                                       værn tone was BELOW AA before this change, which
+                                       is why guard pills and badges no longer carry a
+                                       raised fill: they sit on --panel and clear it)
+    --color-light-leaf       ≈ 10.9:1   --text-on-colour on blue      ≈ 6.6:1
 -->
 <title>Simulator · mission control</title>
 <style>
   :root {
-    /* Canonical tokens (design_handoff_govehlo_v1/design-system/tokens/colors.css) */
-    --color-deep-forest: #1A2E1F;
-    --color-forest: #2D6A4F;
+    /* ── Canonical brand tokens — SIGNAL ONLY ──────────────────────────────────
+       (design_handoff_govehlo_v1/design-system/tokens/colors.css, values verbatim) */
     --color-leaf: #52B788;
     --color-light-leaf: #7EE0AB;
-    --color-mist: #D8F3DC;
     --color-amber: #F4A261;
     --color-attention: #C4673D;
     --color-error: #D95050;
     --color-blue: #355d9c;
-    --text-on-forest: #FFFFFF;
+    --text-on-colour: #FFFFFF;   /* --text-on-forest by its canonical name; here it goes
+                                    on solid blue and solid error, never on a green. */
 
-    /* Dark-cockpit surfaces, mixed from the tokens above. */
-    --bg: var(--color-deep-forest);
-    --panel: color-mix(in srgb, var(--color-mist) 6%, var(--color-deep-forest));
-    --panel-raised: color-mix(in srgb, var(--color-mist) 11%, var(--color-deep-forest));
-    --line: color-mix(in srgb, var(--color-mist) 18%, var(--color-deep-forest));
-    --ink: var(--text-on-forest);
-    --ink-quiet: color-mix(in srgb, var(--color-mist) 66%, var(--color-deep-forest));
-    --ink-faint: color-mix(in srgb, var(--color-mist) 42%, var(--color-deep-forest));
+    /* ── Neutral cockpit surfaces (GV-480) — see the note at the top of this file ── */
+    --bg: #121211;             /* canvas, and the phone "screens" */
+    --panel: #191817;          /* every card */
+    --panel-raised: #211F1E;   /* a card inside a card, chips, table cells */
+    --line: #302E2C;
+    --line-soft: #252322;
+    --ink: #F6F5F3;
+    --ink-quiet: #B2AFAA;
+    --ink-faint: #8E8A84;
 
     --radius-card: 16px;
     --radius-chip: 12px;
@@ -65,6 +97,7 @@
 
   h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: 0.2px; }
   h2 { font-size: 13px; margin: 0 0 12px; font-weight: 700; color: var(--ink-quiet); text-transform: none; }
+  h2 .aside { font-weight: 600; color: var(--ink-faint); }
 
   .card {
     background: var(--panel);
@@ -91,46 +124,112 @@
 
   .progress {
     margin-top: 12px; height: 8px; border-radius: 999px;
-    background: color-mix(in srgb, var(--color-mist) 12%, var(--color-deep-forest));
+    background: var(--panel-raised);
     overflow: hidden;
   }
-  .progress > span { display: block; height: 100%; background: var(--color-forest); width: 0; transition: width 200ms linear; }
+  /* Progress is not a verdict, so it is not green: a neutral fill, and the green is
+     saved for the pills that actually say something passed. */
+  .progress > span { display: block; height: 100%; background: color-mix(in srgb, var(--ink-faint) 60%, transparent); width: 0; transition: width 200ms linear; }
 
   .tally { display: flex; gap: 8px; flex-wrap: wrap; }
   .pill {
     border-radius: var(--radius-chip); padding: 4px 10px; font-size: 12px; font-weight: 600;
-    border: 1px solid var(--line); background: var(--panel-raised); color: var(--ink-quiet);
+    border: 1px solid var(--line); background: transparent; color: var(--ink-quiet);
     display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
   }
   .pill.ok { color: var(--color-light-leaf); border-color: color-mix(in srgb, var(--color-light-leaf) 40%, transparent); }
-  .pill.guard { color: var(--color-attention); border-color: color-mix(in srgb, var(--color-attention) 45%, transparent); }
-  .pill.error { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 45%, transparent); }
+  .pill.guard { color: var(--color-attention); border-color: color-mix(in srgb, var(--color-attention) 55%, transparent); }
+  .pill.error { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 55%, transparent); }
   .pill.live { color: var(--color-light-leaf); }
   .pill.muted { color: var(--ink-quiet); }
 
+  /* ── Scrubber (GV-480) ──────────────────────────────────────────────────── */
+  .scrub { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .scrub input[type="range"] {
+    flex: 1 1 240px; min-width: 160px; height: 28px; margin: 0;
+    accent-color: var(--ink-quiet); background: transparent; cursor: pointer;
+  }
+  .step-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0; border-radius: 8px; cursor: pointer;
+    background: var(--panel-raised); border: 1px solid var(--line); color: var(--ink-quiet);
+  }
+  .step-btn:hover { color: var(--ink); }
+  .step-btn:disabled { opacity: 0.4; cursor: default; }
+  .scrub-state { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  /* The pinned chip is a BUTTON, because its whole job is to be pressed to come back. It
+     is attention-coloured, not amber and not red: being scrubbed back is neither money
+     nor a failure — it is a state the reader should not forget they are in. */
+  button.pinned {
+    font-family: inherit; cursor: pointer;
+    color: var(--color-attention); border-color: color-mix(in srgb, var(--color-attention) 55%, transparent);
+  }
+
   /* ── Workspace grid ─────────────────────────────────────────────────────── */
-  .ws-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+  .ws-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
   .ws-grid > * { min-width: 0; }
   .ws-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .ws-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
   .ws-head .status-chip { flex: none; }
   .ws-meta { color: var(--ink-faint); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
-  .balances { margin-top: 10px; display: grid; gap: 4px; }
-  .balance { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-  .balance .who { color: var(--ink-quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .owes   { color: var(--color-amber); }        /* money owed outward */
-  .owed   { color: var(--color-light-leaf); }   /* money coming in */
-  .settled{ color: var(--ink-faint); }
   .ws-last { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-faint); }
 
   .status-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-quiet); }
-  .status-chip.requested { background: var(--color-blue); border-color: var(--color-blue); color: var(--text-on-forest); }
+  .status-chip.requested { background: var(--color-blue); border-color: var(--color-blue); color: var(--text-on-colour); }
+
+  /* ── Per-member phones (GV-480) ─────────────────────────────────────────── */
+  /* Each member's own app, as it would look right now. Collapsible per workspace so
+     eight workspaces stay navigable; the grid never squashes a phone below 130px, it
+     wraps, and the page scrolls. */
+  details.phones { margin-top: 10px; }
+  details.phones > summary {
+    cursor: pointer; font-size: 12px; color: var(--ink-quiet); list-style: none;
+    display: flex; align-items: center; gap: 6px; padding: 2px 0;
+  }
+  details.phones > summary::-webkit-details-marker { display: none; }
+  details.phones > summary .chev { transition: transform 120ms ease; }
+  details.phones[open] > summary .chev { transform: rotate(90deg); }
+  /* 150px is chosen, not rounded to: it puts TWO phones on a row both when four
+     workspaces share the page (wide cards) and when eight do (narrow ones), so the shelf
+     keeps its shape instead of collapsing to one column at the size where there is most
+     to read. Below that the column count drops and the page scrolls — it never squashes
+     a phone narrower than a legible "1.184,11 kr". */
+  .phone-grid { display: grid; gap: 8px; margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); }
+  .phone-grid > * { min-width: 0; }
+  .phone {
+    border: 1px solid var(--line); border-radius: 14px; background: var(--bg);
+    padding: 6px 6px 8px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .phone .speaker { width: 22px; height: 3px; border-radius: 999px; background: var(--line); margin: 0 auto 2px; }
+  .phone .screen { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .phone-who { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+  .phone-name { font-weight: 700; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .phone-adm { font-size: 10px; color: var(--ink-faint); border: 1px solid var(--line); border-radius: 999px; padding: 0 4px; flex: none; }
+  .phone-persona { font-size: 10px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .phone-amount { font-size: 15px; font-weight: 700; margin-top: 2px; }
+  .phone-direction { font-size: 10px; color: var(--ink-faint); }
+  .phone-period { font-size: 10px; color: var(--ink-quiet); margin-top: 2px; }
+  .phone-offline {
+    font-size: 10px; color: var(--ink-quiet); border: 1px dashed color-mix(in srgb, var(--ink-quiet) 45%, transparent);
+    border-radius: 999px; padding: 0 5px; align-self: flex-start;
+  }
+  .phone-burst { border-style: solid; color: var(--ink); }
+  .phone-log { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line-soft); display: grid; gap: 2px; }
+  .phone-log .row { display: grid; grid-template-columns: 22px 1fr auto; gap: 4px; align-items: baseline; font-size: 10px; }
+  .phone-log .row .n { color: var(--ink-faint); }
+  .phone-log .row .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-quiet); }
+
+  /* Amount direction (GVM-74) — the one rule shared by the phones and every other
+     amount on this page. */
+  .owes   { color: var(--color-amber); }        /* money owed outward */
+  .owed   { color: var(--color-light-leaf); }   /* money coming in */
+  .settled{ color: var(--ink-faint); }
 
   /* ── Ticker ─────────────────────────────────────────────────────────────── */
   #ticker { max-height: 420px; overflow-y: auto; }
   .tick-row {
     display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: baseline;
-    padding: 4px 0; border-bottom: 1px solid color-mix(in srgb, var(--color-mist) 8%, transparent);
+    padding: 4px 0; border-bottom: 1px solid var(--line-soft);
     font-size: 12px;
   }
   .tick-row .n { color: var(--ink-faint); }
@@ -138,31 +237,34 @@
   .tick-row .who { color: var(--ink-faint); }
   .badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
   .badge.ok { color: var(--color-light-leaf); background: color-mix(in srgb, var(--color-light-leaf) 14%, transparent); }
-  .badge.guard { color: var(--color-attention); background: color-mix(in srgb, var(--color-attention) 20%, transparent); border: 1px dashed color-mix(in srgb, var(--color-attention) 55%, transparent); }
-  .badge.error { color: var(--text-on-forest); background: var(--color-error); }
-  /* GV-478 Phase B outcomes. All three are MUTED on purpose and share the mist tint:
-     none of them is money (so never amber) and none of them is a failure (so never the
-     error red). They are told apart by their border, the way the invariant wall tells a
-     skipped cell from a green one:
+  /* No fill: --color-attention needs the darker --panel underneath to clear AA as text
+     (4.5:1 there, 4.2:1 over a raised tint), and the dashed border already tells a værn
+     apart from an ok at a glance. */
+  .badge.guard { color: var(--color-attention); background: transparent; border: 1px dashed color-mix(in srgb, var(--color-attention) 60%, transparent); }
+  .badge.error { color: var(--text-on-colour); background: var(--color-error); }
+  /* GV-478 Phase B outcomes. All three are MUTED on purpose and share the neutral ink
+     tint: none of them is money (so never amber) and none of them is a failure (so never
+     the error red). They are told apart by their border, the way the invariant wall tells
+     a skipped cell from a green one:
        · contention   solid — the database serialised two writers, which is a success;
        · dublet       dotted — a double-tap that really did create a second row;
        · i kø         dashed — decided on a phone, not yet sent to anything. */
-  .badge.contention { color: var(--ink-quiet); background: color-mix(in srgb, var(--color-mist) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-mist) 34%, transparent); }
-  .badge.dup-tolerated { color: var(--ink-quiet); background: color-mix(in srgb, var(--color-mist) 9%, transparent); border: 1px dotted color-mix(in srgb, var(--color-mist) 45%, transparent); }
-  .badge.queued { color: var(--ink-faint); background: transparent; border: 1px dashed color-mix(in srgb, var(--color-mist) 34%, transparent); }
+  .badge.contention { color: var(--ink-quiet); background: color-mix(in srgb, var(--ink-quiet) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ink-quiet) 34%, transparent); }
+  .badge.dup-tolerated { color: var(--ink-quiet); background: color-mix(in srgb, var(--ink-quiet) 9%, transparent); border: 1px dotted color-mix(in srgb, var(--ink-quiet) 45%, transparent); }
+  .badge.queued { color: var(--ink-faint); background: transparent; border: 1px dashed color-mix(in srgb, var(--ink-quiet) 34%, transparent); }
 
   /* ── Invariant wall ─────────────────────────────────────────────────────── */
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
   th, td { text-align: left; padding: 5px 6px; }
   th { color: var(--ink-faint); font-weight: 600; }
-  tbody tr + tr td { border-top: 1px solid color-mix(in srgb, var(--color-mist) 8%, transparent); }
+  tbody tr + tr td { border-top: 1px solid var(--line-soft); }
   .cell {
     display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--line); background: var(--panel-raised);
   }
   .cell.pass { color: var(--color-light-leaf); border-color: color-mix(in srgb, var(--color-light-leaf) 45%, transparent); }
-  .cell.fail { color: var(--text-on-forest); background: var(--color-error); border-color: var(--color-error); }
+  .cell.fail { color: var(--text-on-colour); background: var(--color-error); border-color: var(--color-error); }
   .cell.unknown { color: var(--ink-faint); }
   /* Measured and not available is a THIRD state, and it must not read as green: muted
      ink, dashed border, an em dash for a glyph. The row it appears on is client parity,
@@ -182,7 +284,7 @@
   .violation p { margin: 0 0 6px; color: var(--ink-quiet); font-size: 12px; }
   .repro {
     display: block; padding: 6px 8px; border-radius: 8px; font-size: 11px;
-    background: color-mix(in srgb, var(--color-mist) 9%, var(--color-deep-forest));
+    background: var(--panel-raised);
     border: 1px solid var(--line); color: var(--ink); word-break: break-all;
   }
   .empty { color: var(--ink-faint); font-size: 12px; }
@@ -199,12 +301,22 @@
     <div class="tally" id="tally"></div>
   </div>
   <div class="progress"><span id="progress-bar"></span></div>
+  <div class="scrub">
+    <button class="step-btn" id="scrub-prev" type="button" title="Et tick tilbage" aria-label="Et tick tilbage">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M15 18 9 12l6-6"/></svg>
+    </button>
+    <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="Tidslinje: vælg tick">
+    <button class="step-btn" id="scrub-next" type="button" title="Et tick frem" aria-label="Et tick frem">
+      <svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <span class="scrub-state" id="scrub-state"></span>
+  </div>
 </header>
 
 <div class="grid layout">
   <div class="grid">
     <section class="card">
-      <h2>Workspaces</h2>
+      <h2>Workspaces og telefoner</h2>
       <div class="ws-grid" id="workspaces"><p class="empty">Venter på data …</p></div>
     </section>
 
@@ -215,7 +327,7 @@
     </section>
 
     <section class="card">
-      <h2>Kald, svartid og antal</h2>
+      <h2>Kald, svartid og antal <span class="aside" id="rpc-note"></span></h2>
       <div style="overflow-x:auto"><table id="rpc-table"></table></div>
     </section>
   </div>
@@ -278,6 +390,51 @@
   };
   const persona = (key) => PERSONA_LABELS[key] ?? key;
 
+  // The phone panels show a member's own last few actions the way their app's activity
+  // feed would name them — short Danish sentence case, not the RPC's snake_case. The
+  // ticker keeps the raw action name on purpose: it is the debugging surface.
+  const ACTION_LABELS = {
+    log_trip: "Tur logget",
+    log_trip_backdated: "Tur (bagud)",
+    log_trip_with_crossing: "Tur med bro",
+    edit_trip: "Tur rettet",
+    edit_trip_in_closed_period: "Tur i lukket periode",
+    delete_trip: "Tur slettet",
+    log_fuel: "Tankning",
+    log_fuel_backdated: "Tankning (bagud)",
+    edit_fuel: "Tankning rettet",
+    delete_fuel: "Tankning slettet",
+    create_booking: "Booking",
+    create_overlapping_booking: "Overlappende booking",
+    edit_booking_window: "Booking flyttet",
+    cancel_booking: "Booking aflyst",
+    save_handover: "Overdragelse",
+    save_handover_fat_finger: "Overdragelse (fejltast)",
+    complete_booking: "Booking afsluttet",
+    add_expense: "Udgift",
+    edit_expense: "Udgift rettet",
+    delete_expense: "Udgift slettet",
+    upsert_recurring: "Fast udgift",
+    generate_recurring: "Faste udgifter kørt",
+    log_repair: "Reparation",
+    update_settings: "Indstillinger",
+    set_tank_baseline: "Tankniveau",
+    rename_member: "Navn ændret",
+    post_message: "Besked",
+    request_settlement: "Afregning anmodet",
+    mark_settlement_paid: "Markeret betalt",
+    confirm_settlement: "Betaling bekræftet",
+    close_period: "Periode lukket",
+    // Phase B's lockstep scenarios (lib/interleave.mjs). Their own `danish` strings are
+    // full sentences written for the ticker's width; these are the phone-sized versions
+    // of the same four.
+    interleave_same_trip_edit: "Samtidig turrettelse",
+    interleave_fuel_during_close: "Tankning under lukning",
+    interleave_settlement_pair_race: "Kapløb om afregning",
+    interleave_handover_race: "Kapløb om overdragelse",
+  };
+  const actionLabel = (name) => ACTION_LABELS[name] ?? name;
+
   // Danish plurals for the two counts on a workspace card.
   const plural = (n, one, many) => `${int(n)} ${Number(n) === 1 ? one : many}`;
 
@@ -287,27 +444,33 @@
     dot: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>',
     dash: '<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
     alert: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+    chev: '<svg class="icon chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+    rewind: '<svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   };
 
   const esc = (text) => String(text ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  // ── State assembled from the journal stream ───────────────────────────────
+  // ── The stream ────────────────────────────────────────────────────────────
+  //
+  // /events replays the journal FROM LINE 1 and then follows it, so the browser holds
+  // every line of the run the moment the page has loaded — live or long after the run
+  // ended, identically. Phase C leans on that: `stream` IS the run, and everything the
+  // page draws is a pure function of (stream, viewTick).
+  const stream = [];
   const run = {
     header: null,
-    counters: { ok: 0, guard: 0, error: 0 },
-    tick: 0,
-    simTime: null,
-    invariants: new Map(),   // "invariant:ws" -> result
-    workspaceIds: new Set(),
-    violations: [],
     parity: null,            // the `parity` line's load report (GV-471 Phase A)
-    simClock: null,          // "tir 14:05" — the day/week rhythm (GV-478 Phase B)
     ended: false,
+    maxTick: 0,
   };
+  // null means live-follow. A number pins the whole page to that tick while the stream
+  // keeps accumulating behind it.
+  let pinnedTick = null;
+  let liveState = null;      // the newest /state payload
+  const phonesOpen = new Map();   // ws index -> whether the reader has that phone row open
 
   const el = (id) => document.getElementById(id);
 
-  // ── Stream ────────────────────────────────────────────────────────────────
   const source = new EventSource("/events");
   source.onmessage = (event) => {
     let record;
@@ -322,21 +485,13 @@
         run.header = record;
         break;
       case "action":
-        run.tick = record.tick;
-        run.simTime = record.simTime;
-        run.simClock = record.simClock ?? run.simClock;
-        run.counters[record.outcome] = (run.counters[record.outcome] ?? 0) + 1;
-        run.workspaceIds.add(record.ws);
-        pushTick(record);
-        break;
+      case "note":
       case "oracle":
-        for (const result of record.results ?? []) {
-          run.invariants.set(`${result.invariant}:${result.ws}`, result);
-          run.workspaceIds.add(result.ws);
-        }
-        break;
       case "violation":
-        run.violations.push(record);
+      // GV-480: the per-member display snapshot the oracle sweep writes (run.mjs's
+      // workspaceViews()). Same shape as /state's `workspaces`, on purpose.
+      case "state":
+        stream.push(record);
         break;
       // GV-471 Phase A. The `load` line says whether govehlo-mobile's own calculation
       // modules were imported at all; the `sweep` lines are the per-tick results, which
@@ -344,47 +499,89 @@
       case "parity":
         if (record.phase === "load") run.parity = record;
         break;
-      case "note":
-        pushNote(record);
-        break;
       case "end":
         run.ended = true;
         break;
       default:
         break;
     }
+    if (typeof record.tick === "number" && record.tick > run.maxTick) run.maxTick = record.tick;
   }
 
-  // ── Ticker (newest first, capped) ─────────────────────────────────────────
+  // ── State at tick T ───────────────────────────────────────────────────────
+  //
+  // RECOMPUTE, NOT CHECKPOINTS. A full pass over the stream is O(lines) of integer
+  // increments and map writes, and a 2.000-tick run is a few thousand lines — well under
+  // a millisecond, i.e. cheaper than the paint it feeds. Checkpointing would buy nothing
+  // and would introduce the one bug class a scrubber must not have: a view at T that
+  // depends on which ticks you visited on the way there. The single-entry cache below is
+  // there only so a drag that lands on the same tick twice does not recompute.
+  const PHONE_ACTIONS = 3;
   const TICKER_CAP = 300;
-  function pushTick(record) {
-    const row = document.createElement("div");
-    row.className = "tick-row";
-    const label = record.guardKind
-      ? `${OUTCOME_LABELS.guard} · ${record.guardKind}`
-      : (OUTCOME_LABELS[record.outcome] ?? record.outcome);
-    const marks = [
-      record.dup ? "dublet" : "",
-      record.offline === "queued" ? "i kø" : record.offline === "flush" ? "offline-burst" : "",
-      record.session ? `s${record.session}` : "",
-      record.step && record.scenario ? esc(record.step) : "",
-    ].filter(Boolean).join(" · ");
-    row.innerHTML = `
-      <span class="n mono">${record.tick}</span>
-      <span class="what">${esc(record.action)}
-        <span class="who">· ${esc(record.actor)} (${esc(persona(record.persona))}) · w${record.ws}${marks ? ` · ${marks}` : ""}</span></span>
-      <span class="badge ${record.outcome}">${esc(label)}</span>`;
-    if (record.message) row.title = record.message;
-    const ticker = el("ticker");
-    ticker.prepend(row);
-    while (ticker.childElementCount > TICKER_CAP) ticker.lastElementChild.remove();
-  }
+  let cache = { key: "", value: null };
 
-  function pushNote(record) {
-    const row = document.createElement("div");
-    row.className = "tick-row";
-    row.innerHTML = `<span class="n mono">·</span><span class="what">${esc(record.text)}</span><span></span>`;
-    el("ticker").prepend(row);
+  function deriveAt(tick) {
+    const key = `${tick}|${stream.length}`;
+    if (cache.key === key) return cache.value;
+    const view = {
+      tick,
+      counters: {},
+      invariants: new Map(),
+      wsIds: new Set(),
+      violations: [],
+      feed: [],
+      state: null,
+      simTime: null,
+      simClock: null,
+      phones: new Map(),   // "ws:slot" -> { recent, queued, flushTick, flushCount }
+    };
+    for (const record of stream) {
+      if ((record.tick ?? 0) > tick) continue;
+      switch (record.kind) {
+        case "action": {
+          view.counters[record.outcome] = (view.counters[record.outcome] ?? 0) + 1;
+          view.wsIds.add(record.ws);
+          view.simTime = record.simTime ?? view.simTime;
+          view.simClock = record.simClock ?? view.simClock;
+          view.feed.push(record);
+          const phoneKey = `${record.ws}:${record.actorSlot}`;
+          const phone = view.phones.get(phoneKey) ?? { recent: [], queued: 0, flushTick: null, flushCount: 0 };
+          phone.recent.push(record);
+          if (phone.recent.length > PHONE_ACTIONS) phone.recent.shift();
+          // The offline queue's depth, derived rather than journalled: Phase B already
+          // writes one `offline: "queued"` line per decision and one `offline: "flush"`
+          // line per statement sent when the phone comes back into range, so the
+          // difference at tick T IS what is still in that member's pocket at tick T.
+          if (record.offline === "queued") phone.queued += 1;
+          if (record.offline === "flush") {
+            phone.queued = Math.max(0, phone.queued - 1);
+            if (phone.flushTick !== record.tick) { phone.flushTick = record.tick; phone.flushCount = 0; }
+            phone.flushCount += 1;
+          }
+          view.phones.set(phoneKey, phone);
+          break;
+        }
+        case "note":
+          view.feed.push(record);
+          break;
+        case "oracle":
+          for (const result of record.results ?? []) {
+            view.invariants.set(`${result.invariant}:${result.ws}`, result);
+            view.wsIds.add(result.ws);
+          }
+          break;
+        case "state":
+          view.state = record;
+          break;
+        case "violation":
+          view.violations.push(record);
+          break;
+        default:
+          break;
+      }
+    }
+    cache = { key, value: view };
+    return view;
   }
 
   // ── Render (throttled to one frame) ───────────────────────────────────────
@@ -396,12 +593,19 @@
   }
 
   function render() {
-    renderHeader();
-    renderInvariantWall();
-    renderViolations();
+    const live = pinnedTick === null;
+    const tick = live ? run.maxTick : Math.min(pinnedTick, run.maxTick);
+    const view = deriveAt(tick);
+    renderHeader(view, live);
+    renderScrubber(tick, live);
+    renderTicker(view);
+    renderInvariantWall(view);
+    renderViolations(view);
+    renderWorkspaces(view, live);
+    renderRpc(live);
   }
 
-  function renderHeader() {
+  function renderHeader(view, live) {
     const header = run.header;
     const config = header?.config ?? {};
     el("facts").innerHTML = [
@@ -409,7 +613,7 @@
       `<span class="fact">Workspaces <b class="mono">${config.workspaces ?? "–"}</b> × medlemmer <b class="mono">${config.members ?? "–"}</b></span>`,
       // The weekday and the clock, not just the date: the whole point of the rhythm is
       // that a Tuesday at 07:40 and a Sunday at 23:10 are different workspaces.
-      `<span class="fact">Simuleret tid <b class="mono">${run.simTime ? run.simTime.slice(0, 10) : "–"}</b> <b class="mono">${run.simClock ?? "–"}</b>${config.rhythm === false ? " (fladt ur)" : ""}</span>`,
+      `<span class="fact">Simuleret tid <b class="mono">${view.simTime ? view.simTime.slice(0, 10) : "–"}</b> <b class="mono">${view.simClock ?? "–"}</b>${config.rhythm === false ? " (fladt ur)" : ""}</span>`,
       `<span class="fact">Orakel hver <b class="mono">${config.oracleEvery ?? "–"}</b>. tick</span>`,
       `<span class="fact">Sessioner <b class="mono">${config.sessions ?? 1}</b>${config.interleave === false ? " (ingen låsekonflikter)" : ""}</span>`,
       parityFact(),
@@ -418,18 +622,20 @@
     ].join("");
 
     const total = config.ticks ?? 0;
-    el("progress-bar").style.width = total > 0 ? `${Math.min(100, (run.tick / total) * 100)}%` : "0%";
+    el("progress-bar").style.width = total > 0 ? `${Math.min(100, (view.tick / total) * 100)}%` : "0%";
 
+    const counters = view.counters;
+    const runState = !live ? "Sat på pause i historikken" : run.ended ? "Kørsel afsluttet" : "Kører";
     el("tally").innerHTML = [
-      `<span class="pill ${run.ended ? "" : "live"}">${run.ended ? ICON.dot : ICON.dot} ${run.ended ? "Kørsel afsluttet" : "Kører"} · tick ${int(run.tick)}${total ? ` / ${int(total)}` : ""}</span>`,
-      `<span class="pill ok">${ICON.check} ok ${int(run.counters.ok)}</span>`,
-      `<span class="pill guard">${ICON.alert} værn ${int(run.counters.guard)}</span>`,
-      `<span class="pill error">${ICON.cross} fejl ${int(run.counters.error)}</span>`,
+      `<span class="pill ${live && !run.ended ? "live" : ""}">${ICON.dot} ${runState} · tick ${int(view.tick)}${total ? ` / ${int(total)}` : ""}</span>`,
+      `<span class="pill ok">${ICON.check} ok ${int(counters.ok ?? 0)}</span>`,
+      `<span class="pill guard">${ICON.alert} værn ${int(counters.guard ?? 0)}</span>`,
+      `<span class="pill error">${ICON.cross} fejl ${int(counters.error ?? 0)}</span>`,
       // Only shown once they have happened: a permanent "0 låsekonflikter" chip is noise
       // on a run that switched interleaving off.
-      run.counters.contention ? `<span class="pill muted">${ICON.dot} låsekonflikt ${int(run.counters.contention)}</span>` : "",
-      run.counters["dup-tolerated"] ? `<span class="pill muted">${ICON.dot} dublet ${int(run.counters["dup-tolerated"])}</span>` : "",
-      run.counters.queued ? `<span class="pill muted">${ICON.dash} i kø ${int(run.counters.queued)}</span>` : "",
+      counters.contention ? `<span class="pill muted">${ICON.dot} låsekonflikt ${int(counters.contention)}</span>` : "",
+      counters["dup-tolerated"] ? `<span class="pill muted">${ICON.dot} dublet ${int(counters["dup-tolerated"])}</span>` : "",
+      counters.queued ? `<span class="pill muted">${ICON.dash} i kø ${int(counters.queued)}</span>` : "",
     ].filter(Boolean).join("");
   }
 
@@ -446,13 +652,86 @@
     return `<span class="fact">Klient-paritet <b>ikke tilgængelig</b></span>`;
   }
 
-  function renderInvariantWall() {
-    const wsIds = [...run.workspaceIds].sort((a, b) => a - b);
+  // ── Scrubber ──────────────────────────────────────────────────────────────
+  function renderScrubber(tick, live) {
+    const slider = el("scrub");
+    slider.max = String(Math.max(run.maxTick, 0));
+    if (document.activeElement !== slider || live) slider.value = String(tick);
+    el("scrub-prev").disabled = tick <= 0;
+    el("scrub-next").disabled = tick >= run.maxTick;
+    el("scrub-state").innerHTML = live
+      ? `<span class="pill muted">${ICON.dot} Følger live</span>`
+      : `<button type="button" class="pill pinned" id="jump-live">${ICON.rewind} Du ser tick ${int(tick)} · Hop til nu</button>`;
+  }
+
+  function setTick(next) {
+    const clamped = Math.max(0, Math.min(next, run.maxTick));
+    // The right edge IS live-follow: drag the handle all the way over and the page
+    // starts moving again on its own.
+    pinnedTick = clamped >= run.maxTick ? null : clamped;
+    scheduleRender();
+  }
+
+  function step(delta) {
+    const current = pinnedTick === null ? run.maxTick : pinnedTick;
+    setTick(current + delta);
+  }
+
+  el("scrub").addEventListener("input", (event) => setTick(Number(event.target.value)));
+  el("scrub-prev").addEventListener("click", () => step(-1));
+  el("scrub-next").addEventListener("click", () => step(1));
+  el("scrub-state").addEventListener("click", (event) => {
+    if (event.target.closest("#jump-live")) { pinnedTick = null; scheduleRender(); }
+  });
+  // ←/→ step, End jumps back to live. Nothing else: a dashboard that swallows keys is a
+  // dashboard you cannot use the browser's own find-in-page on. The slider handles its
+  // own arrows natively (which fires `input`), so it is skipped here to avoid stepping
+  // twice.
+  document.addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.target === el("scrub")) return;
+    if (event.key === "ArrowLeft") { step(-1); event.preventDefault(); }
+    else if (event.key === "ArrowRight") { step(1); event.preventDefault(); }
+    else if (event.key === "End") { pinnedTick = null; scheduleRender(); event.preventDefault(); }
+  });
+
+  // ── Ticker (newest first, capped) ─────────────────────────────────────────
+  function renderTicker(view) {
+    const rows = view.feed.slice(-TICKER_CAP).reverse().map((record) => {
+      if (record.kind === "note") {
+        return `<div class="tick-row"><span class="n mono">·</span><span class="what">${esc(record.text)}</span><span></span></div>`;
+      }
+      const label = record.guardKind
+        ? `${OUTCOME_LABELS.guard} · ${record.guardKind}`
+        : (OUTCOME_LABELS[record.outcome] ?? record.outcome);
+      const marks = [
+        record.dup ? "dublet" : "",
+        record.offline === "queued" ? "i kø" : record.offline === "flush" ? "offline-burst" : "",
+        record.session ? `s${record.session}` : "",
+        record.step && record.scenario ? esc(record.step) : "",
+      ].filter(Boolean).join(" · ");
+      return `<div class="tick-row"${record.message ? ` title="${esc(record.message)}"` : ""}>
+        <span class="n mono">${record.tick}</span>
+        <span class="what">${esc(record.action)}
+          <span class="who">· ${esc(record.actor)} (${esc(persona(record.persona))}) · w${record.ws}${marks ? ` · ${marks}` : ""}</span></span>
+        <span class="badge ${record.outcome}">${esc(label)}</span></div>`;
+    }).join("");
+    // The ticker is a scroll container and it is rebuilt wholesale on every paint, so
+    // the reader's scroll position has to be carried across the swap — otherwise reading
+    // anything older than the top row is impossible while the run is moving.
+    const ticker = el("ticker");
+    const offset = ticker.scrollTop;
+    ticker.innerHTML = rows || '<p class="empty">Ingen handlinger endnu.</p>';
+    ticker.scrollTop = offset;
+  }
+
+  function renderInvariantWall(view) {
+    const wsIds = [...view.wsIds].sort((a, b) => a - b);
     const names = Object.keys(INVARIANT_LABELS);
     const head = `<thead><tr><th>Invariant</th>${wsIds.map((w) => `<th class="mono">w${w}</th>`).join("")}</tr></thead>`;
     const body = names.map((name) => {
       const cells = wsIds.map((w) => {
-        const result = run.invariants.get(`${name}:${w}`);
+        const result = view.invariants.get(`${name}:${w}`);
         const state = !result ? "unknown" : result.skipped ? "skipped" : result.ok ? "pass" : "fail";
         const glyph = !result ? ICON.dot : result.skipped ? ICON.dash : result.ok ? ICON.check : ICON.cross;
         const title = `${INVARIANT_LABELS[name]} · w${w}${result?.skipped ? " · ikke tilgængelig" : ""}`;
@@ -467,20 +746,21 @@
   document.addEventListener("click", (event) => {
     const cell = event.target.closest?.(".cell");
     if (!cell) return;
-    const result = run.invariants.get(cell.dataset.key);
+    const view = deriveAt(pinnedTick === null ? run.maxTick : pinnedTick);
+    const result = view.invariants.get(cell.dataset.key);
     const verdict = !result ? null : result.skipped ? "ikke tilgængelig" : result.ok ? "grøn" : "RØD";
     el("invariant-detail").textContent = result
       ? `${cell.dataset.key}\n${verdict}\n\n${JSON.stringify(result.detail, null, 2)}`
       : `${cell.dataset.key}\nEndnu ikke målt.`;
   });
 
-  function renderViolations() {
+  function renderViolations(view) {
     const host = el("violations");
-    if (run.violations.length === 0) {
+    if (view.violations.length === 0) {
       host.innerHTML = '<p class="empty">Ingen fund endnu.</p>';
       return;
     }
-    host.innerHTML = run.violations.map((v) => `
+    host.innerHTML = view.violations.map((v) => `
       <div class="violation ${v.known ? "known" : ""}">
         <h3>${v.known ? `Kendt fund ${esc(v.known.id)}` : "Nyt fund"} · ${esc(v.invariant ?? v.action ?? v.violationKind)}</h3>
         <p>Workspace w${v.ws} · tick ${int(v.tick)}${v.known ? ` · ${esc(v.known.title)}` : ""}${v.message ? ` · ${esc(String(v.message).split("\n")[0])}` : ""}</p>
@@ -488,22 +768,27 @@
       </div>`).join("");
   }
 
-  // ── /state poll: workspace grid and the RPC table ─────────────────────────
-  async function poll() {
-    try {
-      const response = await fetch("/state", { cache: "no-store" });
-      if (response.ok) paintState(await response.json());
-    } catch { /* the run's process has gone; the replay above still stands */ }
-  }
-
-  function paintState(state) {
-    el("workspaces").innerHTML = (state.workspaces ?? []).map((ws) => {
-      const balances = (ws.balances ?? []).map((b) => {
-        const cls = b.net < -0.005 ? "owes" : b.net > 0.005 ? "owed" : "settled";
-        return `<div class="balance"><span class="who">${esc(b.name)}</span>
-                  <span class="num ${cls}">${kr(b.net)}</span></div>`;
-      }).join("") || '<p class="empty">Ingen balance beregnet endnu.</p>';
+  // ── Workspaces and the per-member phones ──────────────────────────────────
+  //
+  // Two sources, ONE shape (run.mjs's workspaceViews()): `/state` while the page is
+  // following live, and the newest `state` journal line at or before T while it is
+  // scrubbed back. Everything the phones add on top of that — a member's own last few
+  // actions and how deep their offline queue is — is derived from the action lines the
+  // journal already carries, which is why the phones work identically on a replay.
+  function renderWorkspaces(view, live) {
+    const views = (live && liveState ? liveState.workspaces : view.state?.workspaces) ?? null;
+    const host = el("workspaces");
+    if (!views || views.length === 0) {
+      host.innerHTML = live
+        ? '<p class="empty">Venter på data …</p>'
+        : `<p class="empty">Ingen måling endnu ved tick ${int(view.tick)} — orakelet fejer hvert ${int(run.header?.config?.oracleEvery ?? 0)}. tick.</p>`;
+      return;
+    }
+    host.innerHTML = views.map((ws) => {
       const requested = (ws.requests ?? []).filter((r) => r.status === "requested").length;
+      const period = requested > 0 ? "Afregning anmodet" : ws.openPeriodId ? "Åben periode" : "Ingen åben periode";
+      const open = phonesOpen.get(ws.index) ?? true;
+      const phones = (ws.members ?? []).map((member) => phoneCard(ws, member, view, period)).join("");
       return `<div class="card" style="background:var(--panel-raised)">
         <div class="ws-head">
           <span class="ws-name">${esc(ws.name)}</span>
@@ -511,12 +796,84 @@
         </div>
         <div class="ws-meta mono">${km(ws.odometer)} · ${plural(ws.counts.trips, "tur", "ture")} · ${plural(ws.counts.fuel, "tankning", "tankninger")} · ${plural(ws.closedPeriods, "lukket periode", "lukkede perioder")}</div>
         ${requested > 0 ? `<div style="margin-top:6px"><span class="status-chip requested">Anmodet · ${int(requested)}</span></div>` : ""}
-        <div class="balances">${balances}</div>
+        <details class="phones" data-ws="${ws.index}"${open ? " open" : ""}>
+          <summary>${ICON.chev} Telefoner · ${plural((ws.members ?? []).length, "medlem", "medlemmer")}</summary>
+          <div class="phone-grid">${phones || '<p class="empty">Ingen medlemmer.</p>'}</div>
+        </details>
         <div class="ws-last">Sidst: ${esc(ws.lastAction ?? "–")} (${esc(OUTCOME_LABELS[ws.lastOutcome] ?? "–")})</div>
       </div>`;
-    }).join("") || '<p class="empty">Venter på data …</p>';
+    }).join("");
+  }
 
-    const rows = (state.rpc ?? []).slice().sort((a, b) => b.count - a.count);
+  // One member's phone: what their own app would show right now — their balance with the
+  // GVM-74 direction, the period they are in, their own last few actions, and, for the
+  // Offline-pendleren, what is still sitting in their pocket.
+  function phoneCard(ws, member, view, period) {
+    const phone = view.phones.get(`${ws.index}:${member.slot}`) ?? { recent: [], queued: 0, flushTick: null, flushCount: 0 };
+    const net = member.net;
+    let amount;
+    let direction;
+    if (net === null || net === undefined) {
+      amount = '<div class="phone-amount settled">–</div>';
+      direction = "ingen balance beregnet endnu";
+    } else if (net < -0.005) {
+      amount = `<div class="phone-amount num owes">${kr(Math.abs(net))}</div>`;
+      direction = "du skylder";
+    } else if (net > 0.005) {
+      amount = `<div class="phone-amount num owed">${kr(net)}</div>`;
+      direction = "du har til gode";
+    } else {
+      // The locked copy for a zero balance (DS consolidation, GVM-215).
+      amount = '<div class="phone-amount settled">I er kvit</div>';
+      direction = "intet at afregne";
+    }
+
+    // A burst is a moment, not a state: it is shown for the two ticks after the phone
+    // came back into range, then the panel goes quiet again.
+    const burst = phone.flushTick !== null && view.tick - phone.flushTick <= 2
+      ? `<span class="phone-offline phone-burst">offline-burst · ${int(phone.flushCount)} sendt</span>`
+      : "";
+    const queue = phone.queued > 0
+      ? `<span class="phone-offline">offline · ${int(phone.queued)} i kø</span>`
+      : "";
+
+    const log = phone.recent.slice().reverse().map((record) => {
+      const label = record.guardKind ? `${OUTCOME_LABELS.guard}` : (OUTCOME_LABELS[record.outcome] ?? record.outcome);
+      return `<div class="row" title="${esc(record.action)}${record.guardKind ? ` · ${esc(record.guardKind)}` : ""}">
+        <span class="n mono">${record.tick}</span>
+        <span class="lbl">${esc(actionLabel(record.action))}</span>
+        <span class="badge ${record.outcome}">${esc(label)}</span></div>`;
+    }).join("") || '<div class="row"><span class="n mono">·</span><span class="lbl">Ingen handlinger endnu</span><span></span></div>';
+
+    return `<div class="phone">
+      <span class="speaker"></span>
+      <div class="screen">
+        <div class="phone-who"><span class="phone-name">${esc(member.name)}</span>${member.admin ? '<span class="phone-adm" title="Administrator">adm</span>' : ""}</div>
+        <div class="phone-persona">${esc(member.personaLabel ?? persona(member.persona))}</div>
+        ${amount}
+        <div class="phone-direction">${esc(direction)}</div>
+        <div class="phone-period">${esc(period)}</div>
+        ${queue}${burst}
+        <div class="phone-log">${log}</div>
+      </div>
+    </div>`;
+  }
+
+  // <details> is rebuilt on every paint, so which rows the reader opened has to live
+  // outside the DOM.
+  document.addEventListener("toggle", (event) => {
+    const details = event.target;
+    if (!details.classList?.contains("phones")) return;
+    phonesOpen.set(Number(details.dataset.ws), details.open);
+  }, true);
+
+  // ── /state poll: the live workspace views and the RPC table ───────────────
+  function renderRpc(live) {
+    const rows = (liveState?.rpc ?? []).slice().sort((a, b) => b.count - a.count);
+    // Latencies are a running aggregate over the whole run, not a per-tick series, so
+    // they are the one panel the scrubber does not rewind. Say so rather than let a
+    // reader assume they moved.
+    el("rpc-note").textContent = live ? "" : "· hele kørslen, ikke tick-afgrænset";
     el("rpc-table").innerHTML = `
       <thead><tr><th>Handling</th><th>Antal</th><th>Gns.</th><th>Maks.</th><th>Forløb</th></tr></thead>
       <tbody>${rows.map((r) => `
@@ -527,6 +884,13 @@
           <td class="num">${ms(r.maxMs)}</td>
           <td>${sparkline(r.samples)}</td>
         </tr>`).join("")}</tbody>`;
+  }
+
+  async function poll() {
+    try {
+      const response = await fetch("/state", { cache: "no-store" });
+      if (response.ok) { liveState = await response.json(); scheduleRender(); }
+    } catch { /* the run's process has gone; the replay above still stands */ }
   }
 
   // Inline SVG sparkline — the only chart on the page, and it draws itself.
@@ -542,6 +906,7 @@
             </svg>`;
   }
 
+  render();
   poll();
   setInterval(poll, 1000);
 })();
