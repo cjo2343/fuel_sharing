@@ -125,13 +125,15 @@ select public.complete_booking_trip_with_fuel(
   '25 L'
 );
 
--- Another device retries with new local keys and corrected values. Both durable
--- rows must be reused, with no duplicate activity events.
+-- The SAME device retries with the SAME keys and corrected values (the offline
+-- outbox's replay). Migration 197 keeps this contract intact: both durable rows
+-- must be reused and reconciled, with no duplicate activity events. (A retry
+-- under NEW keys is no longer a reconcile — that is the GV-479 guard, below.)
 select public.complete_booking_trip_with_fuel(
   'fuel-flow',
   '20000000-0000-0000-0000-000000000001',
   '30000000-0000-0000-0000-000000000001',
-  'trip-attempt-2',
+  'trip-attempt-1',
   '10000000-0000-0000-0000-000000000001',
   current_date - 2,
   1000,
@@ -142,7 +144,7 @@ select public.complete_booking_trip_with_fuel(
     '10000000-0000-0000-0000-000000000002'::uuid
   ],
   'logged',
-  'fuel-attempt-2',
+  'fuel-attempt-1',
   '10000000-0000-0000-0000-000000000001',
   current_date - 2,
   525,
@@ -195,16 +197,51 @@ begin
   end if;
 end $$;
 
--- A stale pre-refuel replay may reconcile trip details but cannot downgrade the
--- newer logged resolution or detach its fuel payment.
-select public.complete_booking_trip_with_fuel(
-  'fuel-flow', '20000000-0000-0000-0000-000000000001',
-  '30000000-0000-0000-0000-000000000001', 'stale-trip-key',
-  '10000000-0000-0000-0000-000000000001', current_date - 2,
-  1000, 1112, 'Stale replay',
-  array['10000000-0000-0000-0000-000000000001'::uuid],
-  'deferred'
-);
+-- A completion under a DIFFERENT idempotency key — a second device or a second
+-- member — is refused with GV479 (migration 197) and writes NOTHING. This used
+-- to reconcile, which in practice meant the second completer silently overwrote
+-- the first's odometer, participants and note.
+do $$
+begin
+  perform public.complete_booking_trip_with_fuel(
+    'fuel-flow', '20000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000001', 'trip-attempt-2',
+    '10000000-0000-0000-0000-000000000001', current_date - 2,
+    1000, 1999, 'Overwrite attempt',
+    array['10000000-0000-0000-0000-000000000001'::uuid],
+    'not_needed'
+  );
+  raise exception 'FAIL: different-key completion was accepted (GV-479 guard missing)';
+exception
+  when sqlstate 'GV479' then null;
+end $$;
+
+do $$
+begin
+  if (select end_km from public.trips where booking_id = '30000000-0000-0000-0000-000000000001' and deleted_at is null) <> 1112 then
+    raise exception 'FAIL: refused completion still overwrote the trip';
+  end if;
+  if (select count(*) from public.trips where booking_id = '30000000-0000-0000-0000-000000000001' and deleted_at is null) <> 1 then
+    raise exception 'FAIL: refused completion left a second trip';
+  end if;
+end $$;
+
+-- A stale pre-refuel replay under its own key gets the same GV479 refusal —
+-- and therefore cannot downgrade the newer logged resolution either.
+do $$
+begin
+  perform public.complete_booking_trip_with_fuel(
+    'fuel-flow', '20000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000001', 'stale-trip-key',
+    '10000000-0000-0000-0000-000000000001', current_date - 2,
+    1000, 1112, 'Stale replay',
+    array['10000000-0000-0000-0000-000000000001'::uuid],
+    'deferred'
+  );
+  raise exception 'FAIL: stale different-key replay was accepted (GV-479 guard missing)';
+exception
+  when sqlstate 'GV479' then null;
+end $$;
 
 do $$
 begin
