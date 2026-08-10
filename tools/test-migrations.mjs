@@ -208,6 +208,7 @@ const expected = [
   "195_handover_odometer_guard.sql",
   "196_trip_cost_multiply_first.sql",
   "197_double_completion_guard.sql",
+  "198_newsletter_cancel_lease_safety.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

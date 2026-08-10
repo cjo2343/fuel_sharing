@@ -106,7 +106,14 @@ process.stdout.write("\nSQL shape (migration 197 + its supabase-schema.sql mirro
 for (const [name, sql] of Object.entries(sqlSources)) {
   const startAt = sql.indexOf("create or replace function public.complete_booking_trip_with_fuel(");
   assert.notEqual(startAt, -1, `${name}: complete_booking_trip_with_fuel not found`);
-  const fn = sql.slice(startAt);
+  // Bounded at 197's own tracker insert, which is the last statement of its block in BOTH
+  // sources. Slicing to end-of-file instead was correct only while 197 was the newest
+  // migration: migration 198 appended after it in supabase-schema.sql, and its
+  // `when unique_violation then` (a different function's, in a different migration)
+  // immediately failed this file's "exactly one handler" count (GV-470).
+  const endAt = sql.indexOf("insert into public.fuel_ledger_schema_migrations", startAt);
+  assert.notEqual(endAt, -1, `${name}: migration 197's tracker insert is missing`);
+  const fn = sql.slice(startAt, endAt);
 
   pin(`${name}: the signature is migration 188's, unchanged, and nothing is DROPPED`, () => {
     // Two candidate signatures with defaulted parameters is PGRST203 — PostgREST resolves
