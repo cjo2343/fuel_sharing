@@ -19,6 +19,17 @@
 // so truncation is provable.
 export const SETTLE_ROW_CAP = 500;
 
+// GVM-572 (mirrored from govehlo-mobile/src/lib/settlement-data-guard.ts): every
+// remaining fan-out read is bounded the same way — cap + 1 sentinel, with an id
+// tiebreak so the boundary is a total order. Orderings are chosen so the hot path
+// sits at the head (live-period requests, active/future bookings, DUE recurring
+// rows) and only history can fall off.
+export const SETTLEMENT_REQUEST_ROW_CAP = 500;
+export const BOOKING_ROW_CAP = 1000;
+export const REPAIR_ROW_CAP = 500;
+export const EXPENSE_ROW_CAP = 500;
+export const RECURRING_ROW_CAP = 200;
+
 // Mirrors ledger-data-gateway.ts: reminder-audit event types kept off the member
 // feed.
 export const EVENT_TYPE_EXCLUDE = [
@@ -89,7 +100,7 @@ export function ledgerReadRequests(ledgerId) {
     {
       label: "read:settlements",
       table: "settlement_requests",
-      query: `select=${SETTLEMENT_REQUEST_COLUMNS}&ledger_id=eq.${lid}&order=created_at.desc`,
+      query: `select=${SETTLEMENT_REQUEST_COLUMNS}&ledger_id=eq.${lid}&order=created_at.desc,id.desc&limit=${SETTLEMENT_REQUEST_ROW_CAP + 1}`,
     },
     {
       // Deliberately NO deleted_at filter, matching the gateway (GVM-388):
@@ -98,7 +109,7 @@ export function ledgerReadRequests(ledgerId) {
       // `&deleted_at=is.null` and so under-measured the bookings row count.
       label: "read:bookings",
       table: "car_bookings",
-      query: `select=*&ledger_id=eq.${lid}&order=start_at.desc`,
+      query: `select=*&ledger_id=eq.${lid}&order=start_at.desc,id.desc&limit=${BOOKING_ROW_CAP + 1}`,
     },
     {
       label: "read:events",
@@ -111,7 +122,7 @@ export function ledgerReadRequests(ledgerId) {
     {
       label: "read:repairs",
       table: "vehicle_repairs",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=repair_date.desc`,
+      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=repair_date.desc,id.desc&limit=${REPAIR_ROW_CAP + 1}`,
     },
     {
       label: "read:messages",
@@ -121,12 +132,12 @@ export function ledgerReadRequests(ledgerId) {
     {
       label: "read:expenses",
       table: "workspace_expenses",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=expense_date.desc`,
+      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=expense_date.desc,id.desc&limit=${EXPENSE_ROW_CAP + 1}`,
     },
     {
       label: "read:recurring",
       table: "recurring_expenses",
-      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=next_due_date.asc`,
+      query: `select=*&ledger_id=eq.${lid}&deleted_at=is.null&order=next_due_date.asc,id.asc&limit=${RECURRING_ROW_CAP + 1}`,
     },
   ];
 }
