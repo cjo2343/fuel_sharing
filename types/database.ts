@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 200 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 201 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -1761,6 +1761,100 @@ export type Database = {
           },
         ]
       }
+      vehicle_document_photos: {
+        Row: {
+          created_at: string
+          created_by_member_id: string | null
+          document_id: string
+          id: string
+          ledger_id: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_member_id?: string | null
+          document_id: string
+          id?: string
+          ledger_id: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by_member_id?: string | null
+          document_id?: string
+          id?: string
+          ledger_id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_document_photos_created_by_member_id_fkey"
+            columns: ["created_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_document_photos_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_document_photos_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_documents: {
+        Row: {
+          created_at: string
+          created_by_member_id: string | null
+          expiry_date: string | null
+          id: string
+          ledger_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_member_id?: string | null
+          expiry_date?: string | null
+          id?: string
+          ledger_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_member_id?: string | null
+          expiry_date?: string | null
+          id?: string
+          ledger_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_documents_created_by_member_id_fkey"
+            columns: ["created_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_documents_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "ledgers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_incident_photos: {
         Row: {
           created_at: string
@@ -2095,6 +2189,10 @@ export type Database = {
         Args: { p_incident_id: string; p_storage_path: string }
         Returns: Json
       }
+      add_vehicle_document_photo: {
+        Args: { p_document_id: string; p_storage_path: string }
+        Returns: Json
+      }
       admin_restore_workspace: { Args: { p_ledger_id: string }; Returns: Json }
       admin_soft_delete_workspace: {
         Args: {
@@ -2388,6 +2486,14 @@ export type Database = {
           slug: string
         }[]
       }
+      create_vehicle_document: {
+        Args: {
+          document_expiry?: string
+          document_title: string
+          target_ledger_id: string
+        }
+        Returns: Json
+      }
       current_ledger_member_id: {
         Args: { p_ledger_id: string }
         Returns: string
@@ -2396,6 +2502,14 @@ export type Database = {
       delete_incident_photo: { Args: { p_photo_id: string }; Returns: Json }
       delete_my_account: { Args: never; Returns: Json }
       delete_push_token: { Args: { token_value: string }; Returns: undefined }
+      delete_vehicle_document: {
+        Args: { target_document_id: string }
+        Returns: Json
+      }
+      delete_vehicle_document_photo: {
+        Args: { p_photo_id: string }
+        Returns: Json
+      }
       detach_fuel_payment_receipt: {
         Args: { p_receipt_id: string }
         Returns: Json
@@ -2905,6 +3019,14 @@ export type Database = {
           member_id: string
           mobilepay_phone: string
         }[]
+      }
+      update_vehicle_document: {
+        Args: {
+          document_expiry?: string
+          document_title: string
+          target_document_id: string
+        }
+        Returns: Json
       }
       update_vehicle_incident: {
         Args: {
