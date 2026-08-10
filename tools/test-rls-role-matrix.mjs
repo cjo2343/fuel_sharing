@@ -1381,6 +1381,256 @@ end`,
     op: `perform public.update_ledger_settings('${WS1}', 'running', null, null, null);`,
     expect: "42501",
   }),
+  // ── GVM-563 / migration 199: the workspace's NAMED expense-split weight set ──
+  //
+  // The set is three columns on ledgers written together by ONE admin-only RPC, and its
+  // whole design rests on a property no static check can establish: staleness is COMPUTED
+  // from the live active-member list, so a member change invalidates the set with no write
+  // of any kind. These cases exercise that against a real Postgres — the gate, the
+  // validation refusals, the inheritance into an expense that named no rule of its own, the
+  // fall back to an EQUAL split the moment the member list moves, and the feed event.
+  //
+  // The shared fixture below (used by three of them): WS1's four active members are A, B, C
+  // and G. An 'other'-category expense of 400 kr paid by A, carrying NO split_rule, and the
+  // workspace default for that category set to 'custom' — so the expense inherits whatever
+  // the named set says. Weights 2/1/1/0 over A/B/C/G total 4, giving shares 200/100/100/0.
+  // With the set stale the same expense splits equally instead.
+  rpcCase({
+    name: "split-weight-set-nonadmin-denied",
+    desc: "non-admin B saves a workspace split weight set (denied 42501) — it is a workspace setting (GVM-563)",
+    actor: B,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "split-weight-set-outsider-denied",
+    desc: "E (another workspace) saves a split weight set on WS1 (denied 42501) — is_ledger_admin is also the workspace boundary (GVM-563)",
+    actor: E,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 1));`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "split-weight-set-admin-saves-and-stamps-fingerprint",
+    desc: "admin A saves a named weight set; the ACTIVE-member fingerprint is stamped server-side and one settings_changed event is written (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', '  Hverdagskørsel  ', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1, '${ID.C}', 1, '${ID.G}', 0));`,
+    expect: "ok",
+    // The name is trimmed, the weights are stored VERBATIM (never rescaled — the
+    // 2026-08-10 owner decision), and the fingerprint equals the helper's answer for the
+    // live active members. Comparing against the helper rather than a hand-built string is
+    // deliberate: it is the same function calculate_period_settlement checks against, so
+    // this case fails if the two ever stop agreeing.
+    post: `if (select default_split_set_name from public.ledgers where id = '${WS1}') <> 'Hverdagskørsel'
+      then raise exception 'CASEFAIL split-weight-set-admin-saves-and-stamps-fingerprint: name was not stored trimmed'; end if;
+    if (select default_split_weights from public.ledgers where id = '${WS1}')
+       is distinct from jsonb_build_object('${A_ID}', 2, '${ID.B}', 1, '${ID.C}', 1, '${ID.G}', 0)
+      then raise exception 'CASEFAIL split-weight-set-admin-saves-and-stamps-fingerprint: weights were rewritten (they must be stored verbatim, never normalised)'; end if;
+    if (select default_split_member_fingerprint from public.ledgers where id = '${WS1}')
+       is distinct from public.active_member_fingerprint('${WS1}')
+      then raise exception 'CASEFAIL split-weight-set-admin-saves-and-stamps-fingerprint: stored fingerprint does not match the live active members'; end if;
+    if (select default_split_member_fingerprint from public.ledgers where id = '${WS1}') like '%${ID.D}%'
+      then raise exception 'CASEFAIL split-weight-set-admin-saves-and-stamps-fingerprint: the INACTIVE member D is in the fingerprint'; end if;
+    if (select count(*) from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed') <> 1
+      then raise exception 'CASEFAIL split-weight-set-admin-saves-and-stamps-fingerprint: expected exactly 1 settings_changed event'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and title = 'Fordeling ændret'
+        and body = 'Fordelingen blev sat til "Hverdagskørsel".'
+        and actor_member_id = '${A_ID}'
+        and metadata->>'field' = 'default_split_weight_set'
+        and metadata->>'new' = 'Hverdagskørsel'
+        and (metadata->>'memberCount')::integer = 4
+    ) then raise exception 'CASEFAIL split-weight-set-admin-saves-and-stamps-fingerprint: the feed event is missing or wrong'; end if;`,
+  }),
+  rpcCase({
+    name: "split-weight-set-resave-is-a-noop",
+    desc: "admin A re-saves the identical set: nothing changes, so no settings_changed event (GV-292 no-op suppression) (GVM-563)",
+    setup: [
+      step(A, `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1));`),
+      step(SUPER, `delete from public.ledger_events where ledger_id = '${WS1}';`),
+    ],
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1));`,
+    expect: "ok",
+    post: `if exists (select 1 from public.ledger_events where ledger_id = '${WS1}' and event_type = 'settings_changed')
+      then raise exception 'CASEFAIL split-weight-set-resave-is-a-noop: an unchanged re-save emitted an event'; end if;`,
+  }),
+  rpcCase({
+    name: "split-weight-set-cleared-by-admin",
+    desc: "admin A clears the set with two nulls: all three columns go null and the clearing event says so (GVM-563)",
+    setup: [
+      step(A, `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1));`),
+      step(SUPER, `delete from public.ledger_events where ledger_id = '${WS1}';`),
+    ],
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', null, null);`,
+    expect: "ok",
+    post: `if exists (
+      select 1 from public.ledgers where id = '${WS1}'
+        and (default_split_set_name is not null
+          or default_split_weights is not null
+          or default_split_member_fingerprint is not null)
+    ) then raise exception 'CASEFAIL split-weight-set-cleared-by-admin: a column survived the clear (all three are written together)'; end if;
+    if not exists (
+      select 1 from public.ledger_events
+      where ledger_id = '${WS1}' and event_type = 'settings_changed'
+        and metadata->>'field' = 'default_split_weight_set'
+        and metadata->>'old' = 'Hverdagskørsel'
+        and metadata->>'new' is null
+    ) then raise exception 'CASEFAIL split-weight-set-cleared-by-admin: the clearing event is missing or wrong'; end if;`,
+  }),
+  rpcCase({
+    name: "split-weight-set-rejects-blank-name",
+    desc: "admin A saves weights with a blank name (rejected 22023) — a set without a name cannot be shown or re-saved (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', '   ', jsonb_build_object('${A_ID}', 1));`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "split-weight-set-rejects-foreign-member",
+    desc: "admin A weights a member of ANOTHER workspace (rejected 22023) — every key must be an active member of THIS ledger (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${E_ID}', 1));`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "split-weight-set-rejects-inactive-member",
+    desc: "admin A weights the INACTIVE member D (rejected 22023) — the split universe is the active members, so a weight for D could never be spent (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${ID.D}', 1));`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "split-weight-set-rejects-all-zero-weights",
+    desc: "admin A saves a set where every weight is 0 (rejected 22023) — it is indistinguishable from a stale set at settle time (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 0, '${ID.B}', 0));`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "split-weight-set-rejects-negative-weight",
+    desc: "admin A saves a negative weight (rejected 22023) — a negative share is money flowing the wrong way (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', -1));`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "split-weight-set-rejects-non-object-weights",
+    desc: "admin A passes an ARRAY of weights (rejected 22023) — the config shape is { member_id: weight }, the same shape split_config uses (GVM-563)",
+    actor: A,
+    op: `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', '[1,2,3]'::jsonb);`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "split-weight-set-inherited-by-an-expense-with-no-rule",
+    desc: "a 'custom' category default resolves to the named weight set: a 400 kr expense that names no rule splits 200/100/100/0 (GVM-563)",
+    setup: [
+      step(SUPER, `insert into public.workspace_expenses
+        (id, ledger_id, period_id, category, description, amount_dkk, expense_date, paid_by_member_id, created_by_member_id)
+        values ('15630000-0000-0000-0000-000000000001', '${WS1}', '${P1}', 'other', 'Vask', 400.00, current_date, '${A_ID}', '${A_ID}');`),
+      step(A, `perform public.update_ledger_settings('${WS1}', null, '{"other":"custom"}'::jsonb, null, null);`),
+      step(A, `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1, '${ID.C}', 1, '${ID.G}', 0));`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; sh_a numeric; sh_b numeric; sh_c numeric; sh_g numeric; sum_net numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  sh_a := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  sh_b := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  sh_c := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.C}');
+  sh_g := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.G}');
+  sum_net := (select sum((p->>'net')::numeric) from jsonb_array_elements(s->'people') p);
+  if sh_a is distinct from 200 or sh_b is distinct from 100 or sh_c is distinct from 100 or sh_g is distinct from 0 or sum_net is distinct from 0 then
+    raise exception 'CASEFAIL split-weight-set-inherited-by-an-expense-with-no-rule: shares A=% B=% C=% G=% sumNet=% (expected 200/100/100/0/0 from the 2/1/1/0 named set)', sh_a, sh_b, sh_c, sh_g, sum_net;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "split-weight-set-stale-falls-back-to-equal",
+    desc: "deactivating C makes the saved set STALE with no write to the ledger row at all — the same 400 kr expense now splits EQUALLY over the three remaining members, and the stored weights survive untouched (GVM-563)",
+    setup: [
+      step(SUPER, `insert into public.workspace_expenses
+        (id, ledger_id, period_id, category, description, amount_dkk, expense_date, paid_by_member_id, created_by_member_id)
+        values ('15630000-0000-0000-0000-000000000002', '${WS1}', '${P1}', 'other', 'Vask', 400.00, current_date, '${A_ID}', '${A_ID}');`),
+      step(A, `perform public.update_ledger_settings('${WS1}', null, '{"other":"custom"}'::jsonb, null, null);`),
+      step(A, `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1, '${ID.C}', 1, '${ID.G}', 0));`),
+      // The member change. Nothing writes to public.ledgers here — that is the point of a
+      // COMPUTED fingerprint: no trigger, and the paths that never call an RPC (a cascade
+      // delete, a restore) invalidate the set just as surely as this one.
+      step(SUPER, `update public.ledger_members set is_active = false where id = '${ID.C}';`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; sh_a numeric; sh_b numeric; sh_g numeric; stored jsonb; sum_net numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  sh_a := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  sh_b := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  sh_g := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.G}');
+  sum_net := (select sum((p->>'net')::numeric) from jsonb_array_elements(s->'people') p);
+  -- Equal over three, largest remainder: 400,00 / 3 = 133,34 / 133,33 / 133,33 with the
+  -- extra oere to the lowest member id. Asserting the SUM and the spread rather than which
+  -- id got the oere keeps this case about the fallback and not about uuid ordering.
+  if round(sh_a + sh_b + sh_g, 2) is distinct from 400.00
+     or greatest(sh_a, sh_b, sh_g) - least(sh_a, sh_b, sh_g) > 0.01
+     or sum_net is distinct from 0 then
+    raise exception 'CASEFAIL split-weight-set-stale-falls-back-to-equal: shares A=% B=% G=% sumNet=% (expected an EQUAL three-way split of 400,00 — a stale set must never re-normalise 2/1/1 over the survivors)', sh_a, sh_b, sh_g, sum_net;
+  end if;
+  -- 2/1/0 over the survivors would also sum to 400; this is the assertion that tells the
+  -- two apart, and it is the owner decision (2026-08-10) in one line.
+  if round(sh_a, 2) > 200 then
+    raise exception 'CASEFAIL split-weight-set-stale-falls-back-to-equal: A still carries the old weight (share %) — the set was re-normalised instead of invalidated', sh_a;
+  end if;
+  stored := (select default_split_weights from public.ledgers where id = '${WS1}');
+  if stored is distinct from jsonb_build_object('${A_ID}', 2, '${ID.B}', 1, '${ID.C}', 1, '${ID.G}', 0) then
+    raise exception 'CASEFAIL split-weight-set-stale-falls-back-to-equal: the stored weights were altered (%) — a stale set is kept verbatim so re-saving is a review, not a re-entry', stored;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "split-weight-set-never-overrides-an-expenses-own-weights",
+    desc: "an expense carrying its OWN split_config keeps it, valid named set or not (GVM-563)",
+    setup: [
+      step(SUPER, `insert into public.workspace_expenses
+        (id, ledger_id, period_id, category, description, amount_dkk, expense_date, paid_by_member_id, created_by_member_id, split_rule, split_config)
+        values ('15630000-0000-0000-0000-000000000003', '${WS1}', '${P1}', 'other', 'Vask', 400.00, current_date, '${A_ID}', '${A_ID}',
+                'custom', jsonb_build_object('${ID.B}', 1));`),
+      step(A, `perform public.set_workspace_split_weight_set('${WS1}', 'Hverdagskørsel', jsonb_build_object('${A_ID}', 2, '${ID.B}', 1, '${ID.C}', 1, '${ID.G}', 0));`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; sh_a numeric; sh_b numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  sh_a := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  sh_b := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  if sh_b is distinct from 400 or sh_a is distinct from 0 then
+    raise exception 'CASEFAIL split-weight-set-never-overrides-an-expenses-own-weights: A=% B=% (expected 0/400 — the entry''s own split_config wins over the workspace set)', sh_a, sh_b;
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "split-weight-set-absent-custom-default-still-splits-equally",
+    desc: "a 'custom' category default with NO named set at all splits equally — the pre-199 behaviour is unchanged for every workspace that never saves one (GVM-563)",
+    setup: [
+      step(SUPER, `insert into public.workspace_expenses
+        (id, ledger_id, period_id, category, description, amount_dkk, expense_date, paid_by_member_id, created_by_member_id)
+        values ('15630000-0000-0000-0000-000000000004', '${WS1}', '${P1}', 'other', 'Vask', 400.00, current_date, '${A_ID}', '${A_ID}');`),
+      step(A, `perform public.update_ledger_settings('${WS1}', null, '{"other":"custom"}'::jsonb, null, null);`),
+    ],
+    actor: A,
+    assert: `declare s jsonb; sh_a numeric; sh_b numeric; sh_c numeric; sh_g numeric;
+begin
+  s := public.calculate_period_settlement('${WS1}', '${P1}');
+  sh_a := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${A_ID}');
+  sh_b := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.B}');
+  sh_c := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.C}');
+  sh_g := (select (p->>'expenseShare')::numeric from jsonb_array_elements(s->'people') p where p->>'id' = '${ID.G}');
+  if sh_a is distinct from 100 or sh_b is distinct from 100 or sh_c is distinct from 100 or sh_g is distinct from 100 then
+    raise exception 'CASEFAIL split-weight-set-absent-custom-default-still-splits-equally: A=% B=% C=% G=% (expected 100 each)', sh_a, sh_b, sh_c, sh_g;
+  end if;
+end`,
+  }),
+
   // Migration 125: fuel settings have one validated command boundary. Admins can
   // use it, ordinary members cannot, and even admins cannot UPDATE ledgers directly.
   rpcCase({
