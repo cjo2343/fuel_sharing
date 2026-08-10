@@ -86,22 +86,80 @@ export const coverageExceptions = [
   // sheet shipped, and govehlo-mobile has called the RPC since PR #555
   // (src/lib/handover.ts via supabase-helpers.ts) — findClientCallers sees it, the
   // guard reported the entry STALE, and stale entries are deleted, not renewed.
+  // set_workspace_monthly_budget's entry was deleted here (GVM-523), exactly as the entry
+  // itself prescribed: it covered only the migration-200-first window, and govehlo-mobile
+  // has called the RPC on main since the GVM-574 half landed (src/lib/supabase-helpers.ts,
+  // src/screens/Insights/BudgetSheet.tsx) — findClientCallers sees it, the guard reported
+  // the entry STALE, and stale entries are deleted, not renewed.
+  // ── Migration 201 (GVM-523), the vehicle document archive ───────────────────
+  // Five entries, one window, one reason: the SQL must be applied in production before
+  // any client may call it (PostgREST answers PGRST202 for a function that does not
+  // exist), so the platform half lands first and the mobile half follows. They are
+  // listed separately rather than as one blanket entry because they expire separately:
+  // if the mobile archive ships the read + create path but never the editing screen,
+  // the update/delete entries must still be re-argued on their own terms.
+  //
+  // The role matrix exercises all five for the gates nothing else can prove today: the
+  // creator-or-admin rule on edit and delete (cloned from migration 138 rather than
+  // opened to any member), the left()-prefix binding on page uploads, the 50-document
+  // cap taken under an advisory lock, and the storage_paths a delete hands back so the
+  // client can remove the objects.
+  //
+  // What changes this answer, for every one of them: govehlo-mobile's GVM-523 half
+  // landing a call (src/lib/supabase-helpers.ts and the archive screen), at which point
+  // findClientCallers sees it, the guard reports the entry STALE, and it is DELETED
+  // rather than renewed — the course set_vehicle_location, upsert_booking_handover,
+  // set_tank_state and the two fuel-receipt RPCs all took. If the mobile half is
+  // abandoned instead, the honest fix is to revoke the authenticated grant and drop the
+  // feature, not to renew these.
   {
-    fn: 'set_workspace_monthly_budget',
+    fn: 'create_vehicle_document',
     reason:
-      'The migration-first window, and nothing more. Migration 200 (GVM-574) ships the ' +
-      'SHARED workspace monthly budget server-side ahead of the mobile half, because ' +
-      'PostgREST answers PGRST202 for a function that does not exist — so the RPC must be ' +
-      'applied in production before any client may call it. No client calls it yet, which ' +
-      'is precisely why the guard sees an overlap. The role matrix exercises it for the ' +
-      'admin gate, the four validation refusals, the øre rounding, the GV-292 no-op rule ' +
-      'and the Danish-formatted settings_changed event — none of which any other caller ' +
-      'could prove today. What changes this answer: govehlo-mobile\'s GVM-574 half landing ' +
-      'a call in src/lib/supabase-helpers.ts, at which point findClientCallers sees it, the ' +
-      'guard reports this entry STALE, and it is DELETED rather than renewed — the course ' +
-      'set_vehicle_location, upsert_booking_handover, set_tank_state and the two fuel-receipt ' +
-      'RPCs all took. If the mobile half is abandoned instead, the honest fix is to revoke ' +
-      'the authenticated grant, not to renew this.',
+      'Migration-first window only (migration 201, GVM-523). The archive\'s create path; no ' +
+      'client calls it until the mobile half ships. The matrix proves the membership gate, ' +
+      'the trimmed/blank title refusal and the 50-document per-workspace cap taken under an ' +
+      'advisory lock — the cap in particular has no other possible prover, since a ' +
+      'check-then-insert race is invisible to any static scan. See the block comment above ' +
+      'for what makes this entry stale.',
+    reviewBy: '2026-11-10',
+  },
+  {
+    fn: 'update_vehicle_document',
+    reason:
+      'Migration-first window only (migration 201, GVM-523). Carries the decision most ' +
+      'likely to be "simplified" later: editing is CREATOR-OR-ADMIN, migration 138\'s gate, ' +
+      'not any-member — and the expiry is FULL-SET, so a null CLEARS the date instead of ' +
+      'leaving it unchanged. Both are exercised here and by no client yet. See the block ' +
+      'comment above for what makes this entry stale.',
+    reviewBy: '2026-11-10',
+  },
+  {
+    fn: 'delete_vehicle_document',
+    reason:
+      'Migration-first window only (migration 201, GVM-523). Hard-deletes the document, ' +
+      'cascades its pages, and returns the storage_paths the CLIENT must delete (migration ' +
+      '138\'s coordination). The matrix asserts both halves — the creator-or-admin gate and ' +
+      'that the paths come back collected BEFORE the cascade — because a delete that ' +
+      'returned nothing would look correct and leave every photographed page in the bucket ' +
+      'until the daily orphan sweep found it. See the block comment above.',
+    reviewBy: '2026-11-10',
+  },
+  {
+    fn: 'add_vehicle_document_photo',
+    reason:
+      'Migration-first window only (migration 201, GVM-523). Registers one photographed ' +
+      'page. The gate the matrix proves is the left()-prefix binding: a ledger id may ' +
+      'contain the LIKE wildcard "_", so the literal-prefix comparison is what stops a row ' +
+      'pointing at another workspace\'s object. No client caller yet. See the block comment ' +
+      'above.',
+    reviewBy: '2026-11-10',
+  },
+  {
+    fn: 'delete_vehicle_document_photo',
+    reason:
+      'Migration-first window only (migration 201, GVM-523). Uploader-or-admin removal of a ' +
+      'single page, returning the path the client must delete — migration 138\'s ' +
+      'delete_incident_photo contract. No client caller yet. See the block comment above.',
     reviewBy: '2026-11-10',
   },
   // set_tank_state's entry was deleted in GV-411, exactly as the entry itself said it

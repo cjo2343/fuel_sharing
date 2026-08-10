@@ -43,6 +43,18 @@ Cloudflare Access + Supabase-login).
   — eksisterende skade eller ny hændelse — valgfrit skadenummer, fører og relation
   til booking/tur samt til den reparation, der udbedrede skaden) samt valgfri
   hændelsesfotos,
+  **køretøjets dokumentarkiv** (GVM-523, migration 201) — workspacets papirmappe for
+  den fælles bil: en titel, en valgfri udløbsdato og op til fem **fotograferede
+  sider** pr. dokument (kun fotos, ingen PDF i v1). Kategorien er den mest
+  personfølsomme i A2 og skal læses som sådan: en **registreringsattest** bærer
+  ejerens navn og adresse, og en **forsikringspolice** bærer et policenummer — det er
+  oplysninger om ét medlem, fotograferet af et andet. Dataminimeringen ligger i
+  formen, ikke i et løfte: intet uploades af sig selv (en række findes kun, fordi et
+  medlem fotograferede en side), bucketen er privat og afgrænset til workspacet af
+  stiens første led, fem sider pr. dokument er et hårdt loft håndhævet i databasen,
+  og hverken sti eller signeret URL optræder i URL'er, query-strenge eller logs.
+  Udløbsdatoen læses **kun af klienten** (Hjem-skærmens helbredskø) — der sendes
+  ingen påmindelse og kører intet job på den,
   overdragelser ved bookingens afslutning (kilometerstand, brændstofniveau,
   **parkerings- og nøgleplacering som fritekst**, stand og bemærkning, besked til
   næste fører, nøglekvittering — lokationsangivelserne er personhenførbare og gemmes
@@ -72,9 +84,9 @@ Cloudflare Access + Supabase-login).
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
-- **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos og
-  kvitteringsfotos (to adskilte private buckets, begge kun læsbare for workspacets
-  medlemmer).
+- **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos,
+  kvitteringsfotos og dokumentsider (tre adskilte private buckets, alle kun læsbare
+  for workspacets medlemmer).
   Ved kvitterings-OCR: Mindee (Frankrig, EU) som reserve-vej, når on-device-læsning
   mangler eller er usikker — LIVE, gated alene af Pages-nøglerne (GV-482, se
   subprocessors.md). Ved opslag af tankstationer i nærheden og den stationsliste,
@@ -91,7 +103,11 @@ Cloudflare Access + Supabase-login).
   konto-id'er. Se subprocessors.md.
 - **Sletning:** Regnskabs- og hændelsesdata består som fælles, pseudonymiseret
   køretøjshistorik efter kontosletning (øvrige medlemmers regnskab og dokumentation,
-  art. 17(3)); fotoets forfatterkobling fjernes. Se deletion-limitations.md.
+  art. 17(3)); fotoets forfatterkobling fjernes. Dokumentarkivet kan derimod ryddes
+  af gruppen selv når som helst: den, der gemte et dokument, og enhver
+  workspace-admin kan slette det — rækken hård-slettes, siderne forsvinder med den,
+  og klienten fjerner objekterne (det daglige forældreløse-sweep er sikkerhedsnettet).
+  Se deletion-limitations.md.
 
 ## A3 — Aktivitetsfeed og beskeder
 

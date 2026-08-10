@@ -386,6 +386,21 @@ const RECEIPT_PATH_2 = `${WS1}/${FP1}/kvittering-2.jpg`;
 const ATTACH_RECEIPT_B = `perform public.attach_fuel_payment_receipt('${FP1}', '${RECEIPT_PATH}');`;
 const WS1_RECEIPT_ID = `(select id from public.fuel_payment_receipts where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
 
+// GVM-523 vehicle-document helpers (migration 201). B files one document into ws1;
+// later steps resolve it via the workspace's newest document id (each case is
+// isolated, so there is exactly one). The path convention is the one the RPC and the
+// storage policies both enforce, <ledger_id>/<document_id>/<file>.
+const CREATE_DOC_B = `perform public.create_vehicle_document('${WS1}', 'Forsikringspolice', current_date + 200);`;
+const LATEST_WS1_DOC = `(select id from public.vehicle_documents where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
+const DOC_PAGE_PATH = `('${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg')`;
+const ADD_DOC_PAGE_B = `perform public.add_vehicle_document_photo(${LATEST_WS1_DOC}, ${DOC_PAGE_PATH});`;
+const WS1_DOC_PHOTO_ID = `(select id from public.vehicle_document_photos where ledger_id = '${WS1}' order by created_at desc, id desc limit 1)`;
+// Five objects under one document's prefix — the quota trigger's cap (migration 201's
+// branch on 184's function), so the SIXTH upload is the one under test.
+const FILL_DOC_QUOTA_B = `insert into storage.objects (bucket_id, name, owner_id)
+  select 'vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-' || n::text || '.jpg', auth.uid()::text
+  from generate_series(1, 5) as n;`;
+
 // A CLOSED period in ws1 carrying its own fuel log + receipt — the fixture the
 // retention cases below vary the payment state around. Seeded as postgres (setup
 // only, RLS bypassed); the closed-period entry lock stands aside for the fuel-log
@@ -4131,6 +4146,330 @@ begin
     raise exception 'CASEFAIL fuel-receipt-retention-dry-run-reports-without-deleting: the DRY RUN deleted a row';
   end if;
 end`,
+  }),
+
+  // ── Vehicle document archive (migration 201, GVM-523) ─────────────────────
+  // The archive holds photographs of a registreringsattest and an insurance policy —
+  // one member's NAME and ADDRESS, photographed by another — so the gates below are a
+  // privacy boundary rather than a tidiness one. Three things are under test that no
+  // static scan can certify: the creator-or-admin gate on edit/delete (cloned from
+  // migration 138 rather than opened to any member), that the RPCs are the ONLY writers,
+  // and — new here — the upload quota trigger, which migration 201 re-declares off 184
+  // and which had no behavioural coverage at all until now.
+  queryCase({
+    name: "document-create-and-read",
+    desc: "a member files a document and it comes back with the caller as creator",
+    actor: B,
+    assert: `begin
+  perform public.create_vehicle_document('${WS1}', '  Forsikringspolice  ', current_date + 200);
+  if not exists (select 1 from public.vehicle_documents
+    where ledger_id = '${WS1}' and title = 'Forsikringspolice'
+      and expiry_date = current_date + 200 and created_by_member_id = '${ID.B}') then
+    raise exception 'CASEFAIL document-create-and-read: the document was not filed (or the title was not trimmed)';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "document-create-without-expiry-ok",
+    desc: "the expiry is optional — a vejhjælpsaftale that never expires is a normal document",
+    actor: B,
+    assert: `begin
+  perform public.create_vehicle_document('${WS1}', 'Vejhjælpsaftale', null);
+  if not exists (select 1 from public.vehicle_documents
+    where ledger_id = '${WS1}' and title = 'Vejhjælpsaftale' and expiry_date is null) then
+    raise exception 'CASEFAIL document-create-without-expiry-ok: a document without an expiry was refused or mangled';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "document-create-blank-title-denied",
+    desc: "a whitespace-only title is rejected before it reaches the table",
+    actor: B,
+    op: `perform public.create_vehicle_document('${WS1}', '   ', null);`,
+    expect: "22023",
+  }),
+  rpcCase({
+    name: "document-create-foreign-workspace-denied",
+    desc: "E (another workspace) cannot file a document into ws1",
+    actor: E,
+    op: `perform public.create_vehicle_document('${WS1}', 'Snyd', null);`,
+    expect: "42501",
+    post: `if exists (select 1 from public.vehicle_documents where ledger_id = '${WS1}' and title = 'Snyd')
+      then raise exception 'CASEFAIL document-create-foreign-workspace-denied: a document was filed anyway'; end if;`,
+  }),
+  queryCase({
+    name: "document-update-creator-clears-expiry",
+    desc: "the creator edits her document, and a NULL expiry CLEARS the date (full-set semantics)",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: B,
+    assert: `begin
+  perform public.update_vehicle_document(${LATEST_WS1_DOC}, 'Forsikring 2027', null);
+  if not exists (select 1 from public.vehicle_documents
+    where ledger_id = '${WS1}' and title = 'Forsikring 2027' and expiry_date is null) then
+    raise exception 'CASEFAIL document-update-creator-clears-expiry: a null expiry must clear the date, not be ignored';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "document-update-noncreator-denied",
+    desc: "bystander C (member, not admin, not creator) cannot edit B's document",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: C,
+    op: `perform public.update_vehicle_document(${LATEST_WS1_DOC}, 'Kapret', null);`,
+    expect: "42501",
+    post: `if not exists (select 1 from public.vehicle_documents where ledger_id = '${WS1}' and title = 'Forsikringspolice')
+      then raise exception 'CASEFAIL document-update-noncreator-denied: the document changed after the rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "document-update-admin-ok",
+    desc: "a workspace admin A may edit a document filed by B",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: A,
+    op: `perform public.update_vehicle_document(${LATEST_WS1_DOC}, 'Forsikring (rettet)', current_date + 10);`,
+    expect: "ok",
+    post: `if not exists (select 1 from public.vehicle_documents
+        where ledger_id = '${WS1}' and title = 'Forsikring (rettet)' and expiry_date = current_date + 10)
+      then raise exception 'CASEFAIL document-update-admin-ok: the admin edit did not land'; end if;`,
+  }),
+  rpcCase({
+    name: "document-delete-noncreator-denied",
+    desc: "bystander C cannot delete B's document",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: C,
+    op: `perform public.delete_vehicle_document(${LATEST_WS1_DOC});`,
+    expect: "42501",
+    post: `if not exists (select 1 from public.vehicle_documents where ledger_id = '${WS1}')
+      then raise exception 'CASEFAIL document-delete-noncreator-denied: the document was deleted after the rejection'; end if;`,
+  }),
+  queryCase({
+    name: "document-delete-returns-every-page-path",
+    desc: "deleting a document cascades its pages and hands the caller every object it must delete",
+    setup: [step(B, CREATE_DOC_B), step(B, ADD_DOC_PAGE_B)],
+    actor: B,
+    assert: `declare v_result jsonb; v_doc uuid;
+begin
+  v_doc := ${LATEST_WS1_DOC};
+  v_result := public.delete_vehicle_document(v_doc);
+  if exists (select 1 from public.vehicle_documents where id = v_doc) then
+    raise exception 'CASEFAIL document-delete-returns-every-page-path: the document survived its own delete';
+  end if;
+  if exists (select 1 from public.vehicle_document_photos where document_id = v_doc) then
+    raise exception 'CASEFAIL document-delete-returns-every-page-path: the page rows did not cascade';
+  end if;
+  -- The client owns the storage half (migration 138's coordination), so a caller told
+  -- nothing would leave every photographed page sitting in the bucket.
+  if (v_result -> 'storage_paths' ->> 0) <> '${WS1}/' || v_doc::text || '/side-1.jpg' then
+    raise exception 'CASEFAIL document-delete-returns-every-page-path: the caller was not told which objects to delete: %', v_result;
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "document-page-wrong-prefix-rejected",
+    desc: "add_vehicle_document_photo rejects a path outside the document's own workspace/document prefix",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: B,
+    op: `perform public.add_vehicle_document_photo(${LATEST_WS1_DOC}, '${WS2}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg');`,
+    expect: "22023",
+  }),
+  queryCase({
+    name: "document-page-add-and-read",
+    desc: "a member registers a correctly-prefixed page and it is readable in the workspace",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: B,
+    assert: `begin
+  perform public.add_vehicle_document_photo(${LATEST_WS1_DOC}, ${DOC_PAGE_PATH});
+  if not exists (select 1 from public.vehicle_document_photos
+    where ledger_id = '${WS1}' and created_by_member_id = '${ID.B}'
+      and storage_path = '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg') then
+    raise exception 'CASEFAIL document-page-add-and-read: the page row was not registered';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "document-page-delete-noncreator-denied",
+    desc: "bystander C cannot remove a page B uploaded",
+    setup: [step(B, CREATE_DOC_B), step(B, ADD_DOC_PAGE_B)],
+    actor: C,
+    op: `perform public.delete_vehicle_document_photo(${WS1_DOC_PHOTO_ID});`,
+    expect: "42501",
+    post: `if not exists (select 1 from public.vehicle_document_photos where ledger_id = '${WS1}')
+      then raise exception 'CASEFAIL document-page-delete-noncreator-denied: the page was deleted after the rejection'; end if;`,
+  }),
+  rpcCase({
+    name: "document-page-delete-admin-ok",
+    desc: "a workspace admin A may remove a page uploaded by B, and is told which object to delete",
+    setup: [step(B, CREATE_DOC_B), step(B, ADD_DOC_PAGE_B)],
+    actor: A,
+    op: `if (public.delete_vehicle_document_photo(${WS1_DOC_PHOTO_ID}) ->> 'storage_path') not like '${WS1}/%' then
+           raise exception 'delete did not return the removed storage path' using errcode = '22023';
+         end if;`,
+    expect: "ok",
+    post: `if exists (select 1 from public.vehicle_document_photos where ledger_id = '${WS1}')
+      then raise exception 'CASEFAIL document-page-delete-admin-ok: the page survived the admin delete'; end if;`,
+  }),
+  rpcCase({
+    name: "document-direct-insert-denied",
+    desc: "a signed-in admin cannot write the document table directly — the RPC is the only writer",
+    actor: A,
+    op: `insert into public.vehicle_documents (ledger_id, title) values ('${WS1}', 'Direkte');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "document-page-direct-insert-denied",
+    desc: "a signed-in admin cannot directly INSERT a document-page row",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: A,
+    op: `insert into public.vehicle_document_photos (document_id, ledger_id, storage_path)
+         values (${LATEST_WS1_DOC}, '${WS1}', '${WS1}/x/y.jpg');`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "document-direct-delete-denied",
+    desc: "a signed-in member cannot delete a document row directly, bypassing the creator/admin gate",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: C,
+    op: `delete from public.vehicle_documents where ledger_id = '${WS1}';`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "document-foreign-workspace-cannot-read",
+    desc: "E sees no documents from ws1 (RLS denies silently rather than raising)",
+    setup: [step(B, CREATE_DOC_B), step(B, ADD_DOC_PAGE_B)],
+    actor: E,
+    assert: `begin
+  if exists (select 1 from public.vehicle_documents where ledger_id = '${WS1}') then
+    raise exception 'CASEFAIL document-foreign-workspace-cannot-read: another workspace''s document was visible';
+  end if;
+  if exists (select 1 from public.vehicle_document_photos where ledger_id = '${WS1}') then
+    raise exception 'CASEFAIL document-foreign-workspace-cannot-read: another workspace''s page was visible';
+  end if;
+end`,
+  }),
+
+  // ── storage.objects: migration 201's document-bucket policies + the 184 quota ──
+  // Same shape the incident-photo storage cases above use, and the same reason they
+  // exist: the policies live inside an `if exists (schema_name = 'storage')` guard, so
+  // without the PRELUDE's faithful storage.objects nothing would ever create them and a
+  // regex over the SQL would be the only thing guarding who may upload a photograph of
+  // somebody's registreringsattest.
+  queryCase({
+    name: "storage-document-upload-allowed",
+    desc: "member B uploads an object under <ws>/<document>/ for a real document in her workspace",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: B,
+    assert: `begin
+  insert into storage.objects (bucket_id, name, owner_id)
+  values ('vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg', auth.uid()::text);
+  if not exists (select 1 from storage.objects where bucket_id = 'vehicle-documents') then
+    raise exception 'CASEFAIL storage-document-upload-allowed: object not stored';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "storage-document-upload-unknown-document-denied",
+    desc: "an object naming a non-existent document id is rejected (upload must bind to a real document)",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: B,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('vehicle-documents', '${WS1}/99999999/side-1.jpg', auth.uid()::text);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "storage-document-upload-foreign-workspace-denied",
+    desc: "E (other workspace) cannot upload under ws1's document prefix",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: E,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg', auth.uid()::text);`,
+    expect: "42501",
+  }),
+  // Isolates the `cardinality(storage.foldername(name)) = 2` clause, for the reason
+  // spelled out at the incident-photo twin of this case: a bucket-root path would be
+  // denied by is_ledger_member(null) even with the clause deleted, so only a NESTED path
+  // (real workspace, real document, one level too deep) can prove the clause is live.
+  rpcCase({
+    name: "storage-document-upload-nested-path-denied",
+    desc: "an object nested deeper than <ws>/<document>/ is rejected by the cardinality clause alone",
+    setup: [step(B, CREATE_DOC_B)],
+    actor: B,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/skjult/side-1.jpg', auth.uid()::text);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "storage-document-delete-noncreator-denied",
+    desc: "bystander C (member, not uploader, not admin) cannot delete B's uploaded page object",
+    setup: [
+      step(B, CREATE_DOC_B),
+      step(
+        B,
+        `insert into storage.objects (bucket_id, name, owner_id)
+         values ('vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg', auth.uid()::text);`,
+      ),
+    ],
+    actor: C,
+    op: `delete from storage.objects where bucket_id = 'vehicle-documents';
+         if not found then raise exception 'CASEFAIL: delete silently matched nothing' using errcode = '42501'; end if;`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "storage-document-delete-admin-allowed",
+    desc: "workspace admin G can delete another member's document page object",
+    setup: [
+      step(B, CREATE_DOC_B),
+      step(
+        B,
+        `insert into storage.objects (bucket_id, name, owner_id)
+         values ('vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-1.jpg', auth.uid()::text);`,
+      ),
+    ],
+    actor: G,
+    assert: `begin
+  delete from storage.objects where bucket_id = 'vehicle-documents';
+  if exists (select 1 from storage.objects where bucket_id = 'vehicle-documents') then
+    raise exception 'CASEFAIL storage-document-delete-admin-allowed: object survived an admin delete';
+  end if;
+end`,
+  }),
+  // The quota trigger (migration 184, re-declared by 201 with this bucket's branch). It
+  // is the ONLY cap on this bucket — 201 deliberately puts no count(*) in the INSERT
+  // policy, because 184 proved a count in a WITH CHECK cannot be a hard limit — so
+  // without this case the "five pages per document" rule has no behavioural guard at all.
+  rpcCase({
+    name: "storage-document-quota-sixth-page-denied",
+    desc: "a sixth object under one document's prefix is refused by the upload-quota trigger",
+    setup: [step(B, CREATE_DOC_B), step(B, FILL_DOC_QUOTA_B)],
+    actor: B,
+    op: `insert into storage.objects (bucket_id, name, owner_id)
+         values ('vehicle-documents', '${WS1}/' || ${LATEST_WS1_DOC}::text || '/side-6.jpg', auth.uid()::text);`,
+    expect: "23514",
+    post: `if (select count(*) from storage.objects where bucket_id = 'vehicle-documents') <> 5
+      then raise exception 'CASEFAIL storage-document-quota-sixth-page-denied: the prefix is not capped at five objects'; end if;`,
+  }),
+  // The orphan sweep's reader (migration 191, re-declared by 201 with the third
+  // allow-list branch). A missing branch would not fail the sweep loudly — it answers
+  // 22023, the bucket is skipped, and orphaned photographs of somebody's papers live
+  // forever. service_role only, because a row is a storage path, i.e. two identifiers.
+  queryCase({
+    name: "registered-paths-service-role-sees-document-pages",
+    desc: "service role can page the vehicle_document_photos registered set for the orphan sweep",
+    setup: [step(B, CREATE_DOC_B), step(B, ADD_DOC_PAGE_B)],
+    actor: SERVICE,
+    assert: `begin
+  if (select count(*) from public.list_registered_storage_paths('vehicle_document_photos', null, 1000)) <> 1 then
+    raise exception 'CASEFAIL registered-paths-service-role-sees-document-pages: the new bucket is invisible to the orphan sweep';
+  end if;
+  if (select count(*) from public.list_registered_storage_paths('vehicle_incident_photos', null, 1000)) <> 0 then
+    raise exception 'CASEFAIL registered-paths-service-role-sees-document-pages: the 201 re-declaration crossed the wires between two buckets';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "registered-paths-member-blocked",
+    desc: "a signed-in workspace admin cannot page the registered storage paths",
+    actor: A,
+    op: `perform public.list_registered_storage_paths('vehicle_document_photos', null, 1000);`,
+    expect: "42501",
   }),
 
   // ── Push-target RPCs (migration 150, GV-398) ──────────────────────────────
