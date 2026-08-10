@@ -125,6 +125,22 @@ const scripts = [
   // event, and the low-anchor lockout with its documented delete-then-recompute way out.
   // Warns and exits 0 without Docker; CI's functional-smoke job runs it --strict.
   "node tools/test-handover-odometer-guard-contract.mjs",
+  // Anti-drift contract for the double booking-completion guard (GV-479, migration 197).
+  // Docker for the same reason as the entries above, plus two specific to this guard.
+  // First, the promise it has to keep is a NEGATIVE — a re-sent completion under the SAME
+  // idempotency key must still be accepted AND still reconcile, because that is the path
+  // the offline outbox replays — and widening the refusal to "any existing trip" would
+  // pass every static check while turning queued retries in the field into errors, so the
+  // retry is executed and the row read back. Second, the narrow unique_violation handler
+  // can only be shown to be narrow by making a real one happen: the suite injects a writer
+  // that links the booking without taking the booking lock (which is precisely what the
+  // backstop exists for) and asserts the Danish sentence, then makes a DIFFERENT
+  // constraint fail and asserts it is re-raised untouched. Also pins the pre-check's
+  // position inside the booking lock, the gates that must still speak first (42501 and
+  // 'Missing legacy trip id'), the errcode's uniqueness in the whole schema, and the two
+  // simulator wirings — the guard kind and the double_completion scenario.
+  // Warns and exits 0 without Docker; CI runs it --strict.
+  "node tools/test-double-completion-guard-contract.mjs",
   // Anti-drift contract for the damage log's repair link (GVM-521, migration 166). Docker
   // for the same reason as the five above, plus the one specific to this column:
   // vehicle_repairs.id is unique across every workspace, so the foreign key is satisfied
