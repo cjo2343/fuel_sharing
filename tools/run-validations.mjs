@@ -41,6 +41,15 @@ const scripts = [
   // one word and a destroyed photo. Static (dependency-free) on both the migration and
   // the consolidated schema; the role matrix proves the behaviour against real Postgres.
   "node tools/test-fuel-receipt-contract.mjs",
+  // Anti-drift contract for the vehicle document archive (GVM-523, migration 201). Same
+  // job the two lines above do for the buckets it is cloned from, plus one thing neither
+  // of them has to guard: 201 RE-DECLARES two functions that belong to OTHER features —
+  // enforce_storage_upload_quota (off 184) and list_registered_storage_paths (off 191) —
+  // so a dropped branch here silently uncaps fuel-receipt uploads or blinds the
+  // incident-photo orphan sweep, with nothing in the documents feature looking wrong.
+  // Static (dependency-free) on both the migration and the consolidated schema; the role
+  // matrix proves the behaviour against real Postgres.
+  "node tools/test-vehicle-document-contract.mjs",
   "node tools/test-late-entry-carryover-contract.mjs",
   "node tools/test-deferred-fuel-close-contract.mjs",
   // Anti-drift contract for the pre-departure fuel-stop verdict (GV-405). The one guard
