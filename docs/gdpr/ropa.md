@@ -75,8 +75,12 @@ Cloudflare Access + Supabase-login).
 - **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos og
   kvitteringsfotos (to adskilte private buckets, begge kun læsbare for workspacets
   medlemmer).
-  Ved kvitterings-OCR: Mindee (planlagt — se
-  subprocessors.md). Ved ruteplanlægning: GraphHopper (DE) og Photon (koordinater,
+  Ved kvitterings-OCR: Mindee (Frankrig, EU) som reserve-vej, når on-device-læsning
+  mangler eller er usikker — LIVE, gated alene af Pages-nøglerne (GV-482, se
+  subprocessors.md). Ved opslag af tankstationer i nærheden og den stationsliste,
+  tankstations-påmindelsen geofencer omkring: OpenStreetMap/Overpass (FOSSGIS e.V.,
+  DE) — enhedens koordinater i fuld præcision, server-til-server, uden konto-id'er
+  (GV-482). Ved ruteplanlægning: GraphHopper (DE) og Photon (koordinater,
   ingen konto-id'er) — samt Cloudflare KV som korttids-cache (GV-428): den
   normaliserede rute (geometri, alternativer, krydsninger) gemmes i 10 minutter
   under en hashet koordinat-nøgle uden bruger-id eller adressetekst, så gentagne
@@ -127,9 +131,11 @@ Cloudflare Access + Supabase-login).
 
 ## A6 — Opslag ved oprettelse af bil
 
-- **Formål:** Slå bilens stamdata op ud fra nummerplade (bekvemmelighed ved oprettelse).
+- **Formål:** Slå bilens stamdata op ud fra nummerplade (bekvemmelighed ved oprettelse)
+  samt lejlighedsvis opdatering af synsdato, ejerafgift og forsikringsselskab.
 - **Datakategorier:** Nummerplade (sendes via Cloudflare-proxy i POST-body).
-- **Modtagere:** Nummerplade Tjek / autotelli.dk (dansk kilde).
+- **Modtagere:** Synsbasen ApS (dansk kilde; erstattede Nummerplade Tjek / autotelli.dk
+  i GVM-199 — den gamle nøgle er tilbagekaldt, GV-166).
 - **Retsgrundlag:** Kontrakt (brugeren initierer opslaget).
 - **Sletning:** Opslaget persisteres kun som bilens stamdata i workspacet.
 
