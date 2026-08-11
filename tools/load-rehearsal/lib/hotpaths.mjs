@@ -42,6 +42,16 @@ export const EVENT_TYPE_EXCLUDE = [
   // bekræftelse sendt". Appended last — check-hotpath-mirror.mjs compares this
   // list against the gateway's with join(","), so the order is the contract.
   "confirm_reminder_sent",
+  // GVM-238 P0 (migration 202): the two audit halves of "Jeg er på vej". A share
+  // refreshes its ETA every ~5 minutes while the app is foregrounded, and each
+  // refresh writes a row so the other clients re-fetch — the event insert IS the
+  // live sync (migration 087). Only the FIRST call is news (on_my_way_started,
+  // feed-visible); these two must never reach a feed or one drive home becomes
+  // eight entries. Appended LAST, in this order — check-hotpath-mirror.mjs
+  // compares this list against the mobile gateway's with join(","), so the order
+  // is the contract and both sides must be changed in the same PR pair.
+  "on_my_way_updated",
+  "on_my_way_stopped",
 ];
 
 // Explicit projections (data minimisation) — copied verbatim from the gateway.

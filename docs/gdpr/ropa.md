@@ -81,6 +81,30 @@ Cloudflare Access + Supabase-login).
   boolean-feltet `parking_pin_set`), aldrig i URL'er, query-strenge eller logs. Vises
   nålen på et minikort, hentes korttiles hos MapTiler (CH/EU) — se
   subprocessors.md,
+  **"Jeg er på vej" — delt forventet ankomst** (GVM-238 P0, migration 202): et
+  **afledt minuttal** knyttet til en aktiv booking, sammen med tidspunktet delingen
+  begyndte og tidspunktet tallet sidst blev opdateret (`car_bookings.on_my_way`,
+  præcis de tre nøgler `eta_minutes` / `started_at` / `updated_at`). **Der behandles
+  ingen position på serveren — hverken gemt, modtaget eller videresendt.** Telefonen
+  beregner ankomsttiden lokalt ud fra sin egen placering og sender **kun det færdige
+  minuttal**; der findes ingen breddegrad, længdegrad, adresse eller rute nogen
+  steder i denne kategori. Det er håndhævet, ikke lovet: RPC'en `set_on_my_way` tager
+  et **heltal** og bygger selv JSON-objektet på serveren (der findes ingen parameter,
+  et koordinat kan smugles ind gennem), og en **CHECK-constraint** på tabellen lukker
+  nøglesættet, så heller ikke et direkte PostgREST-kald kan tilføje et felt.
+  Kategorien er **flygtig**: tilstanden nulstilles, når medlemmet er fremme, når
+  bookingen slutter, eller når delingen stoppes manuelt, og den forsvinder helt med
+  bookingen. Feed- og synk-hændelserne (`on_my_way_started`, `on_my_way_updated`,
+  `on_my_way_stopped`) bærer kun et booking-id og et minuttal.
+  **Forholdet til løftet om "ingen løbende sporing" på privatlivssiden:** funktionen
+  modsiger det ikke. Løftet handler om behandling af **position**, og der er ingen
+  position at behandle — vi modtager en **varighed**, ikke et sted, og en varighed
+  kan ikke sammenstilles til en bevægelseshistorik. Delingen er desuden
+  **brugerudløst** (medlemmet trykker selv), **afgrænset til én aktiv booking** og
+  **synlig for den, der deler** (modtagerne får tilmed at vide, hvor gammelt tallet
+  er — "opdateret for 8 min siden" — så ingen tror, der ligger en live-sporing bag).
+  Det er den samme linje som parkeringsnålen ovenfor: brugerudløst, ét formål, ingen
+  historik — blot uden overhovedet at røre et koordinat,
   afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
 - **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
@@ -113,7 +137,18 @@ Cloudflare Access + Supabase-login).
 
 - **Formål:** Fælles aktivitets-/chatfeed pr. workspace (hvem gjorde hvad, hvornår)
   og live-synk mellem klienter.
-- **Datakategorier:** Hændelsestekster (navne + beløb), chatbeskeder, aktør-id/e-mail.
+- **Datakategorier:** Hændelsestekster (navne + beløb), chatbeskeder, aktør-id/e-mail,
+  samt **tilstedeværelse** (hvilke medlems-id'er der har appen åben lige nu) over
+  Supabase Realtime. Tilstedeværelsen er et online/offline-signal om navngivne
+  personer og hører derfor til workspacet: kanalen `presence-<workspace-id>` er indtil
+  videre **offentlig**, hvilket betyder at enhver indlogget bruger, der kender et
+  workspace-id, kan læse den (GVM-575). Migration 202 lægger RLS-politikker på
+  `realtime.messages`, så kun workspacets egne medlemmer må lytte og melde sig til
+  netop den kanal. Politikkerne virker først, når klienten åbner kanalen som
+  **privat** (mobil-halvdelen efter migrationen), og hullet er først lukket over for
+  en ondsindet klient, når "Allow public access" slås fra i projektets
+  Realtime-indstillinger — en driftsopgave, der skal ske efter at den private klient
+  er den eneste i brug.
 - **Retsgrundlag:** Kontrakt; feedet er en kernefunktion (transparens om penge).
 - **Sletning:** Feedet er workspace-historik uden aldersgrænse (produktbeslutning);
   aktørfelter anonymiseres ved kontosletning.

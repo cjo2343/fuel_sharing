@@ -539,7 +539,12 @@ test("soft-delete filters: applied everywhere the gateway applies them, and NOT 
   assert.ok(!reqs.find((r) => r.label === "read:bookings").query.includes("deleted_at"));
 });
 
-test("events read excludes every reminder-audit event type", () => {
+test("events read excludes every audit-only event type", () => {
+  // The list, IN ORDER — check-hotpath-mirror.mjs compares it against the mobile
+  // gateway's with join(","), so the order is the cross-repo contract and this
+  // literal is where a careless re-sort is caught. The last two are migration 202's
+  // "Jeg er på vej" refresh/stop rows (GVM-238 P0): a share re-computes its ETA every
+  // ~5 minutes and each write must reach the other clients without reaching the feed.
   assert.deepEqual(EVENT_TYPE_EXCLUDE, [
     "payment_reminder_sent",
     "close_reminder_sent",
@@ -547,6 +552,8 @@ test("events read excludes every reminder-audit event type", () => {
     "weekly_digest_sent",
     "booking_fuel_reminder_sent",
     "confirm_reminder_sent",
+    "on_my_way_updated",
+    "on_my_way_stopped",
   ]);
   const events = ledgerReadRequests("x").find((r) => r.label === "read:events");
   assert.ok(events.query.includes(`event_type=not.in.(${EVENT_TYPE_EXCLUDE.join(",")})`));
