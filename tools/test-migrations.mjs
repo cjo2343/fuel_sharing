@@ -214,6 +214,7 @@ const expected = [
   "201_vehicle_documents.sql",
   "202_on_my_way_and_private_realtime.sql",
   "203_dispute_guard_reprice.sql",
+  "204_rerequest_is_not_a_dispute.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");
