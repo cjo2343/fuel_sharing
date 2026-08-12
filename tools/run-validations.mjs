@@ -96,6 +96,22 @@ const scripts = [
   // and the entry-less duplicate-guard carve-out that makes it possible. Warns and exits
   // 0 without Docker; CI's functional-smoke job runs it --strict.
   "node tools/test-zero-km-fuel-carryforward-contract.mjs",
+  // Anti-drift contract for the settlement dispute guard's re-price branch (GV-485,
+  // migration 203). Docker for the same reason as the lines above and one that is
+  // peculiar to this fix: it is a FALL-THROUGH. The branch does not validate the
+  // re-requested amount — it simply stops returning early and relies on the exact-amount
+  // validation fifty lines below still being reached. An edit that adds an early return
+  // above that validation, or reorders the period-open read, turns "re-request at the
+  // server's figure" into "re-request at any figure" with no syntax error, no failing
+  // regex, and a guard that is still declared and still wired. Only executing it can
+  // tell those two apart, so this runs the whole wedge end to end: a close refused
+  // because a paid_pending claim sits at a stale amount, the creditor's re-request that
+  // migrations 117/120 forbade while GV-259 permitted it, and the same close succeeding.
+  // Also pins what must NOT move — identity drift still raises, an invented amount is
+  // still refused, and a re-price in a CLOSED period still raises, because the
+  // fall-through's one blind spot is the closed-period early return that hands the row
+  // back unvalidated. Warns and exits 0 without Docker.
+  "node tools/test-dispute-guard-reprice-contract.mjs",
   // Anti-drift contract for the booking caps — booked days + horizon (GVM-463). Docker
   // for the same reason as the two above, plus the one that is specific to this pair:
   // migration 159 is the first booking setting that REJECTS a write rather than letting
