@@ -112,6 +112,22 @@ const scripts = [
   // fall-through's one blind spot is the closed-period early return that hands the row
   // back unvalidated. Warns and exits 0 without Docker.
   "node tools/test-dispute-guard-reprice-contract.mjs",
+  // Anti-drift contract for "a re-request is not a dispute" (GV-487, migration 204).
+  // paid_pending -> requested is two actions wearing one status edge — the creditor
+  // REJECTING a claim, and the creditor asking again at the same or a new amount — and
+  // they are indistinguishable from the row: same pair, same edge, same actor, and the
+  // same amount whenever the re-request is unchanged. So the intent is carried by a
+  // transaction-local flag that the by-id lifecycle command sets around its delegate
+  // call, and every way that three-function handshake can break is silent: clear the
+  // flag a line early and every genuine dispute starts calling itself a request, forget
+  // to clear it and the next re-request in the transaction inherits a dispute, re-declare
+  // any one of the three off an older copy and the halves disagree with no syntax error.
+  // Only running the real RPCs and reading the rows they wrote separates those, so this
+  // drives a dispute, a same-amount re-request, a changed-amount re-request and a mixed
+  // single transaction, and pins the migration 087 rule that every call writes exactly
+  // one ledger_events row — never zero, or the other member's client stops live-syncing.
+  // Warns and exits 0 without Docker.
+  "node tools/test-rerequest-event-contract.mjs",
   // Anti-drift contract for the booking caps — booked days + horizon (GVM-463). Docker
   // for the same reason as the two above, plus the one that is specific to this pair:
   // migration 159 is the first booking setting that REJECTS a write rather than letting
