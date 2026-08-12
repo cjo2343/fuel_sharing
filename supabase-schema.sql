@@ -55727,3 +55727,57 @@ values (
 on conflict (migration_id) do update
 set description = excluded.description,
     applied_at = now();
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Migration 205: realtime presence policies must also authorize the broadcast extension (GVM-575)
+-- ═══════════════════════════════════════════════════════════════════════════════
+--
+-- Realtime's join-time authorization check test-INSERTS rows for BOTH extensions
+-- ('broadcast' AND 'presence') in one transaction; 202's presence-only policies made
+-- the broadcast test-row violate WITH CHECK, aborting the whole check and rejecting
+-- every private join. Re-declares both policies with extension in ('broadcast',
+-- 'presence'), membership gate unchanged; drops the TEMP diagnostic policies.
+-- Prod-only via the realtime-schema guard, exactly like 202's block above.
+
+do $$
+begin
+  if exists (select 1 from information_schema.schemata where schema_name = 'realtime') then
+    execute $pol$drop policy if exists "TEMP members broadcast read" on realtime.messages $pol$;
+    execute $pol$drop policy if exists "TEMP members broadcast write" on realtime.messages $pol$;
+
+    execute $pol$drop policy if exists "Ledger members can read workspace presence" on realtime.messages $pol$;
+    execute $pol$
+      create policy "Ledger members can read workspace presence"
+      on realtime.messages
+      for select
+      to authenticated
+      using (
+        realtime.messages.extension in ('broadcast', 'presence')
+        and left(realtime.topic(), 9) = 'presence-'
+        and public.is_ledger_member(substring(realtime.topic() from 10))
+      )
+    $pol$;
+
+    execute $pol$drop policy if exists "Ledger members can track workspace presence" on realtime.messages $pol$;
+    execute $pol$
+      create policy "Ledger members can track workspace presence"
+      on realtime.messages
+      for insert
+      to authenticated
+      with check (
+        realtime.messages.extension in ('broadcast', 'presence')
+        and left(realtime.topic(), 9) = 'presence-'
+        and public.is_ledger_member(substring(realtime.topic() from 10))
+      )
+    $pol$;
+  end if;
+end $$;
+
+insert into public.fuel_ledger_schema_migrations (migration_id, description)
+values (
+  '205_presence_policies_cover_broadcast',
+  'Realtime presence policies must also authorize the broadcast extension (GVM-575). Root cause of the private-channel Unauthorized misattributed to a Supabase fault: Realtime''s join-time authorization check test-INSERTS rows for BOTH extensions (broadcast AND presence) in one transaction; migration 202''s presence-only policies made the broadcast test-row violate WITH CHECK, and the 42501 aborted the whole check, rejecting every private join with the generic Unauthorized. Confirmed in prod 2026-08-12: reproducing the check (set role authenticated + claims + the topic GUC, insert broadcast row) raises 42501, and TEMP broadcast policies flip the live join to SUBSCRIBED in ~500ms while anon and non-member joins stay rejected; a tampered token fails with a distinct JwtSignatureError, so ES256 verification was never broken. Re-declares both 202 policies (newest prior definition) with extension in (''broadcast'', ''presence'') — the docs'' own formulation — keeping the membership gate unchanged, and drops the two TEMP diagnostic policies so applying this over them is self-cleaning. Prod-only via the realtime-schema guard with EXECUTE, like 202. No signature changes; types move only by the generation stamp.'
+)
+on conflict (migration_id) do update
+set description = excluded.description,
+    applied_at = now();
