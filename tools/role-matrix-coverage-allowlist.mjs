@@ -100,47 +100,15 @@ export const coverageExceptions = [
   // The same course set_vehicle_location, upsert_booking_handover, set_tank_state,
   // set_workspace_monthly_budget and the two fuel-receipt RPCs all took. This is what had
   // the umbrella's role-matrix job red.
-  // ── Migration 202 (GVM-238 P0), "Jeg er på vej" ─────────────────────────────
-  // Two entries, one window, one reason: PostgREST answers PGRST202 for a function that
-  // does not exist, so the SQL must be applied in production before any client may call
-  // it — the platform half lands first and the mobile half follows. Listed separately
-  // because they expire separately: a mobile half that ships the share button but leaves
-  // auto-stop to a later slice would make the clear entry stale and not the set one.
+  // set_on_my_way + clear_on_my_way entries were deleted in GVM-587, exactly as they said
+  // they should be: they existed only for the migration-first window (migration 202,
+  // GVM-238 P0) while the mobile share button was unmerged. That half has now landed —
+  // findClientCallers sees govehlo-mobile/src/lib/supabase-helpers.ts (set at :421, clear
+  // at :439) and the on-my-way-rpc test — so the guard reported both STALE and reddened the
+  // umbrella. The role matrix already exercises both (member-or-creator may share, admin may
+  // not; the 1..600 bounds; ended-booking refusal; refresh keeps started_at; clear is
+  // idempotent), so deleting the exceptions is the prescribed fix, not renewing them.
   //
-  // The role matrix exercises both for the gates nothing else can prove today: that
-  // sharing is member-or-creator and NOT admin (the one place this feature deliberately
-  // refuses public.can_manage_car_booking), that a refresh keeps started_at and writes the
-  // AUDIT type rather than a second feed row, and that clearing is idempotent.
-  //
-  // What changes this answer, for both: govehlo-mobile's GVM-238 half landing a call, at
-  // which point findClientCallers sees it, the guard reports the entry STALE, and it is
-  // DELETED rather than renewed — the course every entry above took. If the feature is
-  // abandoned instead, the honest fix is to revoke the authenticated grants and drop the
-  // column, not to renew these.
-  {
-    fn: 'set_on_my_way',
-    reason:
-      'Migration-first window only (migration 202, GVM-238 P0). No client calls it until ' +
-      'the mobile share button ships. The matrix proves the gate this feature argues hardest ' +
-      'about — the booking\'s member or creator may share, a workspace ADMIN may not, which ' +
-      'is the one place the schema deliberately declines can_manage_car_booking — plus the ' +
-      '1..600 minute bounds, the ended-booking refusal, and that a refresh preserves ' +
-      'started_at while writing the audit event type instead of a second feed row. That last ' +
-      'one has no other possible prover: a static scan sees both INSERT sites and cannot say ' +
-      'which one a second call takes.',
-    reviewBy: '2026-11-10',
-  },
-  {
-    fn: 'clear_on_my_way',
-    reason:
-      'Migration-first window only (migration 202, GVM-238 P0). The stop half, called by ' +
-      'arrival, booking end and the manual stop — three racing auto-stops, which is why ' +
-      'IDEMPOTENCE is the property under test: a second clear must return cleared=false and ' +
-      'write no event. Also proves the deliberate asymmetry with set_on_my_way — this one ' +
-      'DOES admit the workspace admin, because clearing a share stuck on by a crashed client ' +
-      'removes information rather than asserting any. No client caller yet.',
-    reviewBy: '2026-11-10',
-  },
   // set_tank_state's entry was deleted in GV-411, exactly as the entry itself said it
   // should be: it existed only while the mobile stamp writer (GVM-480) was unmerged, and
   // that has landed — findClientCallers now sees govehlo-mobile/src/lib/supabase-helpers.ts
