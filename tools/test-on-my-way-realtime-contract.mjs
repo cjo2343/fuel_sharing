@@ -248,13 +248,14 @@ for (const [label, sql] of [['migration 202', migration], ['supabase-schema.sql'
   }
 
   // ── (5) the Realtime half ───────────────────────────────────────────────────
-  // The consolidated schema carries TWO guard blocks since migration 205 (202's
-  // original and 205's re-declaration; last definition wins on replay), so the slice
-  // below (lastIndexOf) lands on the FINAL definitions — the ones a fresh install
-  // actually ends with.
+  // The consolidated schema carries SEVERAL guard blocks since migrations 205/206
+  // (202's original, 205's presence re-declaration, 206's live-sync pair; last
+  // definition wins on replay), so the slice anchors on the presence pair's own
+  // drop statement (lastIndexOf) to land on the FINAL presence definitions — the
+  // ones a fresh install actually ends with.
   const realtimeBlock = sliceFrom(
     sql,
-    "if exists (select 1 from information_schema.schemata where schema_name = 'realtime') then",
+    'drop policy if exists "Ledger members can read workspace presence" on realtime.messages',
     'end $$;',
   );
 
@@ -461,4 +462,55 @@ assert.deepEqual(
   );
 }
 
-console.log('✅ on_my_way + private realtime contract (migrations 202 + 205) holds in both copies');
+// ── Migration 206: the ledger-changes live-sync topic pair ────────────────────
+// The private-channel join check is authorized against realtime.messages even for a
+// listen-only postgres_changes channel, and it test-writes BOTH extensions in one
+// transaction (the 205 lesson). So the live-sync prefix needs the same read+write
+// pair and the same extension list as presence, in the migration AND as the final
+// state of the consolidated schema.
+{
+  const migration206 = stripComments(
+    readFileSync('supabase/migrations/206_ledger_changes_private_channel_policies.sql', 'utf8'),
+  );
+  const guardStart206 = migration206.indexOf(
+    "if exists (select 1 from information_schema.schemata where schema_name = 'realtime') then",
+  );
+  const guardEnd206 = migration206.indexOf('end $$;', guardStart206);
+  assert.ok(
+    guardStart206 >= 0 && guardEnd206 > guardStart206,
+    'migration 206: realtime guard block must exist and close',
+  );
+  for (const m of migration206.matchAll(/realtime\.(messages|topic)/g)) {
+    assert.ok(
+      m.index > guardStart206 && m.index < guardEnd206,
+      'migration 206: every realtime.* reference must sit inside the realtime-schema guard',
+    );
+  }
+  for (const [target, sql206] of [['migration 206', migration206], ['supabase-schema.sql', schema]]) {
+    const block = sliceFrom(
+      sql206,
+      'drop policy if exists "Ledger members can read workspace live-sync" on realtime.messages',
+      'end $$;',
+    );
+    for (const [policy, action, clause] of [
+      ['Ledger members can read workspace live-sync', 'select', 'using'],
+      ['Ledger members can join workspace live-sync', 'insert', 'with check'],
+    ]) {
+      assert.match(
+        block,
+        new RegExp(
+          `create policy "${policy}"\\s*\\n\\s*on realtime\\.messages\\s*\\n\\s*for ${action}\\s*\\n\\s*to authenticated\\s*\\n\\s*${clause} \\(\\s*\\n\\s*realtime\\.messages\\.extension in \\('broadcast', 'presence'\\)\\s*\\n\\s*and left\\(realtime\\.topic\\(\\), 15\\) = 'ledger-changes-'\\s*\\n\\s*and public\\.is_ledger_member\\(substring\\(realtime\\.topic\\(\\) from 16\\)\\)\\s*\\n\\s*\\)`,
+        ),
+        `${target}: ${policy} must gate on both extensions, the 15-char ledger-changes- prefix ` +
+          'and workspace membership',
+      );
+    }
+    assert.doesNotMatch(
+      block,
+      /\blike\b/i,
+      `${target}: match the live-sync topic prefix with left(), not LIKE — a ledger id can contain '_'`,
+    );
+  }
+}
+
+console.log('✅ on_my_way + private realtime contract (migrations 202 + 205 + 206) holds in both copies');
