@@ -248,24 +248,45 @@ for (const [label, sql] of [['migration 202', migration], ['supabase-schema.sql'
   }
 
   // ── (5) the Realtime half ───────────────────────────────────────────────────
+  // The consolidated schema carries TWO guard blocks since migration 205 (202's
+  // original and 205's re-declaration; last definition wins on replay), so the slice
+  // below (lastIndexOf) lands on the FINAL definitions — the ones a fresh install
+  // actually ends with.
   const realtimeBlock = sliceFrom(
     sql,
     "if exists (select 1 from information_schema.schemata where schema_name = 'realtime') then",
     'end $$;',
   );
 
-  // Every realtime reference must live inside that guard, and nowhere else: the schema
-  // does not exist in the plain-Postgres containers every Docker-backed guard replays
-  // into (the migration-138 storage lesson, applied to a second schema).
+  // Every realtime reference must live inside a guard block, and nowhere else: the
+  // schema does not exist in the plain-Postgres containers every Docker-backed guard
+  // replays into (the migration-138 storage lesson, applied to a second schema).
+  const guardRanges = [
+    ...sql.matchAll(/if exists \(select 1 from information_schema\.schemata where schema_name = 'realtime'\) then/g),
+  ].map((g) => {
+    const end = sql.indexOf('end $$;', g.index);
+    assert.ok(end > g.index, `${label}: every realtime guard block must close with end $$;`);
+    return [g.index, end];
+  });
   const realtimeMentions = [...sql.matchAll(/realtime\.(messages|topic)/g)];
   assert.ok(realtimeMentions.length >= 8, `${label}: expected the realtime policies to be present`);
   for (const m of realtimeMentions) {
     assert.ok(
-      m.index > sql.lastIndexOf("schema_name = 'realtime'") - 200,
+      guardRanges.some(([start, end]) => m.index > start && m.index < end),
       `${label}: every realtime.* reference must sit inside the realtime-schema guard`,
     );
   }
 
+  // Which extension list the FINAL policy definition must carry differs by target:
+  // migration 202's file is history and keeps its original presence-only text, while
+  // the consolidated schema must end on migration 205's widened list — Realtime's
+  // join check test-writes rows for BOTH extensions in one transaction, so a
+  // presence-only WITH CHECK aborts the whole check and every private join is
+  // rejected "Unauthorized" (the GVM-575 root cause).
+  const extensionClause =
+    label === 'migration 202'
+      ? "realtime\\.messages\\.extension = 'presence'"
+      : "realtime\\.messages\\.extension in \\('broadcast', 'presence'\\)";
   for (const [policy, action, clause] of [
     ['Ledger members can read workspace presence', 'select', 'using'],
     ['Ledger members can track workspace presence', 'insert', 'with check'],
@@ -278,9 +299,9 @@ for (const [label, sql] of [['migration 202', migration], ['supabase-schema.sql'
     assert.match(
       realtimeBlock,
       new RegExp(
-        `create policy "${policy}"\\s*\\n\\s*on realtime\\.messages\\s*\\n\\s*for ${action}\\s*\\n\\s*to authenticated\\s*\\n\\s*${clause} \\(\\s*\\n\\s*realtime\\.messages\\.extension = 'presence'\\s*\\n\\s*and left\\(realtime\\.topic\\(\\), 9\\) = 'presence-'\\s*\\n\\s*and public\\.is_ledger_member\\(substring\\(realtime\\.topic\\(\\) from 10\\)\\)\\s*\\n\\s*\\)`,
+        `create policy "${policy}"\\s*\\n\\s*on realtime\\.messages\\s*\\n\\s*for ${action}\\s*\\n\\s*to authenticated\\s*\\n\\s*${clause} \\(\\s*\\n\\s*${extensionClause}\\s*\\n\\s*and left\\(realtime\\.topic\\(\\), 9\\) = 'presence-'\\s*\\n\\s*and public\\.is_ledger_member\\(substring\\(realtime\\.topic\\(\\) from 10\\)\\)\\s*\\n\\s*\\)`,
       ),
-      `${label}: ${policy} must gate on the presence extension, the literal topic prefix and ` +
+      `${label}: ${policy} must gate on the extension list, the literal topic prefix and ` +
         'workspace membership',
     );
   }
@@ -393,4 +414,51 @@ assert.deepEqual(
     "compares this list against the mobile gateway's with join(\",\")",
 );
 
-console.log('✅ on_my_way + private realtime contract (migration 202) holds in both copies');
+// ── Migration 205: the broadcast widening itself ──────────────────────────────
+// 205 re-declares both policies with extension in ('broadcast', 'presence') and is
+// self-cleaning over the TEMP diagnostic policies created while proving the fix in
+// prod. Its file must keep the guard discipline (every realtime.* mention inside the
+// schemata guard, every statement through EXECUTE) exactly like 202's block.
+{
+  const migration205 = stripComments(
+    readFileSync('supabase/migrations/205_presence_policies_cover_broadcast.sql', 'utf8'),
+  );
+  const guardStart = migration205.indexOf(
+    "if exists (select 1 from information_schema.schemata where schema_name = 'realtime') then",
+  );
+  const guardEnd = migration205.indexOf('end $$;', guardStart);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart, 'migration 205: realtime guard block must exist and close');
+  for (const m of migration205.matchAll(/realtime\.(messages|topic)/g)) {
+    assert.ok(
+      m.index > guardStart && m.index < guardEnd,
+      'migration 205: every realtime.* reference must sit inside the realtime-schema guard',
+    );
+  }
+  for (const temp of ['TEMP members broadcast read', 'TEMP members broadcast write']) {
+    assert.match(
+      migration205,
+      new RegExp(`drop policy if exists "${temp}" on realtime\\.messages`),
+      `migration 205: must drop the prod diagnostic policy "${temp}" so applying it is self-cleaning`,
+    );
+  }
+  for (const policy of ['Ledger members can read workspace presence', 'Ledger members can track workspace presence']) {
+    assert.match(
+      migration205,
+      new RegExp(`create policy "${policy}"`),
+      `migration 205: must re-declare "${policy}"`,
+    );
+  }
+  assert.match(
+    migration205,
+    /realtime\.messages\.extension in \('broadcast', 'presence'\)/,
+    "migration 205: policies must authorize BOTH extensions — Realtime's join check " +
+      'test-writes broadcast AND presence rows in one transaction, so a presence-only ' +
+      'WITH CHECK aborts the whole check (the GVM-575 root cause)',
+  );
+  assert.ok(
+    !/realtime\.messages\.extension = 'presence'/.test(migration205),
+    'migration 205: no presence-only expression may survive in the re-declaration',
+  );
+}
+
+console.log('✅ on_my_way + private realtime contract (migrations 202 + 205) holds in both copies');
