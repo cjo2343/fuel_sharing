@@ -212,6 +212,24 @@ const scripts = [
   // and the crashed-hook re-claim, which must both stay exactly as they were.
   // Warns and exits 0 without Docker; CI runs it --strict.
   "node tools/test-newsletter-cancel-lease-contract.mjs",
+  // Anti-drift contract for the send lease's OWNER token (GV-491, migration 208). Docker for
+  // the reason the entry above is, sharpened: the property here is a NEGATIVE about a SECOND
+  // WORKER. GV-486 made the hook advance the cursor after every chunk of 5, and advance_ had
+  // released the lease at every call since 179 — so the first checkpoint handed the job back
+  // while the invocation was still mailing, and the next */5 tick claimed it, minted from the
+  // advanced cursor and mailed the same people again. Proving that fixed means claiming, check-
+  // pointing, and then watching a SECOND claim come back empty; and watching the losing worker's
+  // advance write no cursor, no counts and no lease release. None of that is visible to a regex.
+  // Also pins the shapes a tidy-up would quietly undo — `claimed_at = null` reinstated at a
+  // checkpoint (that one line IS the bug), the owner fence on only one of the two UPDATEs
+  // (which would leave 198's cancelled-job reconciliation writable by a stale worker), the
+  // four-conjunct hold condition (dropping the cursor test would leave GV-459's ceiling-failed
+  // job carrying something indistinguishable from 198's cancel receipt), the dropped 7-argument
+  // signature with its ACLs restated (a survivor is PGRST203 on every hook call), and the legacy
+  // p_lease_token-null path staying byte-for-byte pre-208 — which is what lets the SQL be applied
+  // BEFORE the govehlo-web deploy rather than in lockstep with it.
+  // Warns and exits 0 without Docker; CI runs it --strict.
+  "node tools/test-newsletter-lease-token-contract.mjs",
   // Anti-drift contract for the damage log's repair link (GVM-521, migration 166). Docker
   // for the same reason as the five above, plus the one specific to this column:
   // vehicle_repairs.id is unique across every workspace, so the foreign key is satisfied

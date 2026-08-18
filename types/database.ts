@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Canonical shared DB/RPC payload types for the GoVehlo Supabase schema (GV-223).
 // Regenerate with: npm run gen:db-types   (drift guard: npm run check:db-types)
-// Source: supabase-schema.sql @ migration 207 · supabase CLI v2.109.1 (exact-pinned)
+// Source: supabase-schema.sql @ migration 208 · supabase CLI v2.109.1 (exact-pinned)
 // Vendored byte-identically by govehlo-mobile (src/types/database.generated.ts) and
 // govehlo-web (types/database.ts); the umbrella workflow compares the copies.
 
@@ -965,6 +965,7 @@ export type Database = {
           id: string
           intro: string
           last_status_code: number | null
+          lease_token: string | null
           next_attempt_at: string | null
           operator_email: string
           sent_count: number
@@ -985,6 +986,7 @@ export type Database = {
           id?: string
           intro: string
           last_status_code?: number | null
+          lease_token?: string | null
           next_attempt_at?: string | null
           operator_email: string
           sent_count?: number
@@ -1005,6 +1007,7 @@ export type Database = {
           id?: string
           intro?: string
           last_status_code?: number | null
+          lease_token?: string | null
           next_attempt_at?: string | null
           operator_email?: string
           sent_count?: number
@@ -2213,10 +2216,12 @@ export type Database = {
           p_failed_delta: number
           p_last_confirmed_at: string
           p_last_id: string
+          p_lease_token?: string
+          p_release?: boolean
           p_sent_delta: number
           p_status_code?: number
         }
-        Returns: undefined
+        Returns: Json
       }
       attach_fuel_payment_receipt: {
         Args: { p_fuel_payment_id: string; p_storage_path: string }
@@ -2329,6 +2334,7 @@ export type Database = {
           id: string
           intro: string
           last_status_code: number | null
+          lease_token: string | null
           next_attempt_at: string | null
           operator_email: string
           sent_count: number
