@@ -227,8 +227,17 @@ check("attestations: the REAL file is well-formed and judged entry by entry", ()
   // suite gets edited until it agrees with whatever is there.
   const r = evaluateAttestations(doc, "2999-01-01");
   assert.deepEqual(r.errors, [], "the committed attestation file must be well-formed and signed where it claims to be");
-  assert.ok(Object.keys(doc.attestations).length >= 2, "the two external items must both still be listed");
-  for (const key of ["app_link_secrets", "sentry_source_maps"]) {
+  // The item list may only GROW. Each key here is state that no code in any repo can
+  // observe, so deleting one does not make it observable — it makes it invisible, and
+  // the gate goes green because there is less to be honest about. realtime_public_access
+  // _closed (GV-490) is the newest: the Supabase "Allow public access to channels"
+  // switch, which migrations 202/205/206 depend on and no query can read.
+  const required = ["app_link_secrets", "sentry_source_maps", "realtime_public_access_closed"];
+  assert.ok(
+    Object.keys(doc.attestations).length >= required.length,
+    "every external item must still be listed",
+  );
+  for (const key of required) {
     assert.ok(doc.attestations[key], `${key} must remain an attested item`);
   }
 });

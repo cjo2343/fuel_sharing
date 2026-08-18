@@ -78,10 +78,14 @@
 //     marker is within 15 migrations of the highest migration in the repo.
 //     Beyond that the saved dump cannot even be restored (the drill derives its
 //     freshness requirement from the same expected list, GV-325).
-//  5. External attestations — app-link secrets and Sentry source maps live in
-//     Apple/Google/Sentry consoles, so no repo can observe them. They are
+//  5. External attestations — app-link secrets, Sentry source maps and the
+//     Supabase Realtime "Allow public access to channels" switch (GV-490) live in
+//     Apple/Google/Sentry/Supabase consoles, so no repo can observe them. They are
 //     attested in docs/release-attestations.json, and an attestation older than
-//     30 days has stopped being evidence.
+//     30 days has stopped being evidence. This gate walks whatever the file lists
+//     — adding an item is a JSON edit, not a code change — and the Realtime one
+//     names `npm run probe:realtime-public-access` as the check to run before
+//     signing it (network + a live project, so it is not run from here).
 //
 // Deliberately NOT a gate: this script does not try to verify CI from outside
 // (whether the umbrella ran, whether a secret is set). A checker that grades its
@@ -392,8 +396,10 @@ function gateRestoreDrill(repoRoot, migrationFiles) {
 /**
  * The attestation file is the only honest way to gate state that exists in no
  * repo: an Apple/Google app-link association served from a console, a Sentry
- * release whose source maps were uploaded by a build machine. The rule is that
- * a human writes down what they verified and when, and the claim expires.
+ * release whose source maps were uploaded by a build machine, a Realtime
+ * checkbox in the Supabase dashboard. The rule is that a human writes down what
+ * they verified and when, and the claim expires. Entry-agnostic on purpose —
+ * new items are added to the JSON, never here.
  */
 export function evaluateAttestations(doc, today, maxAgeDays = ATTESTATION_MAX_AGE_DAYS) {
   const problems = [];
@@ -444,7 +450,10 @@ export function evaluateAttestations(doc, today, maxAgeDays = ATTESTATION_MAX_AG
 
 function gateAttestations(repoRoot, today) {
   const id = "external-attestations";
-  const title = "app-link secrets + Sentry source maps are attested";
+  // Title stays generic: the gate judges every entry in the file, so naming the
+  // current items here would go stale the next time one is added (GV-490 added a
+  // third without touching a line of this function).
+  const title = "state no repo can observe is attested";
   const filePath = join(repoRoot, ATTESTATION_FILE);
   if (!existsSync(filePath)) {
     return error(id, title, [
