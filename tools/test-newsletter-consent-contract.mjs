@@ -1005,11 +1005,40 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     return (firstConstraint === -1 ? lines : lines.slice(0, firstConstraint)).map((line) => line.split(/\s+/)[0]);
   }
 
+  // GV-491: the create-table parser above reads 179's block and NOTHING else, so every column
+  // added by ALTER since — 185's attempt_count/next_attempt_at, 208's lease_token — was
+  // invisible to a guard whose stated purpose is catching an ADDED column ("the mutation that
+  // would matter here is an ADDED column — `add column last_recipient_email`"). `alter table
+  // … add column` is that mutation spelled the other way, and it is the way every column after
+  // 179 actually arrived. So the ALTER clauses are parsed too and unioned in. Multi-clause
+  // ALTERs (185 adds two in one statement) are handled by splitting the statement on commas
+  // and reading the token after each `add column [if not exists]`.
+  function jobsAlterColumns(sql, table) {
+    const names = [];
+    const alter = new RegExp(`alter table ${table.replace(".", "\\.")}\\s+([\\s\\S]*?);`, "gi");
+    for (const match of sql.matchAll(alter)) {
+      for (const clause of match[1].split(",")) {
+        const column = /add\s+column\s+(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)/i.exec(clause);
+        if (column) names.push(column[1]);
+      }
+    }
+    return names;
+  }
+
   // total_recipients is a COUNT (it enumerates nobody) and operator_email is ours, not a
   // subscriber's — those are the only two names that legitimately match the patterns below,
   // and they are the only exceptions. Any OTHER column whose name reads like a subscriber
   // identity — an address, a name, a recipient, a token, a subscriber reference — is refused.
-  const JOBS_SAFE_COLUMNS = new Set(["operator_email", "total_recipients"]);
+  //
+  // lease_token (GV-491, migration 208) is the third, and it is here BECAUSE it matches: a
+  // reviewer who reads `token` on this table should stop, and this line is where the answer
+  // lives. It is a uuid minted by claim_due_newsletter_send_job to name which WORKER holds the
+  // job's lease, so an advance from a worker whose lease was re-claimed cannot move the cursor.
+  // It is generated from nothing, keyed to a job rather than a person, correlates with no
+  // address, and is nulled the moment the lease is released — it is not, and can never become,
+  // an unsubscribe token (those live digested in newsletter_send_tokens, one per subscriber,
+  // cascading on the unsubscribe DELETE).
+  const JOBS_SAFE_COLUMNS = new Set(["operator_email", "total_recipients", "lease_token"]);
   const SUBSCRIBER_PII_NAME = /email|name|recipient|address|token|subscriber/i;
   const assertNoPiiColumns = (columns, label) => {
     for (const column of columns) {
@@ -1024,9 +1053,17 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     }
   };
 
-  const columns = jobsColumns(schema, JOBS_TABLE);
-  assert.ok(columns.length >= 5, "supabase-schema.sql: newsletter_send_jobs parsed too few columns — the parser missed the block");
-  assert.ok(columns.includes("operator_email"), "supabase-schema.sql: newsletter_send_jobs is missing operator_email — the parser is off");
+  const created = jobsColumns(schema, JOBS_TABLE);
+  const altered = jobsAlterColumns(schema, JOBS_TABLE);
+  const columns = [...created, ...altered];
+  assert.ok(created.length >= 5, "supabase-schema.sql: newsletter_send_jobs parsed too few columns — the parser missed the block");
+  assert.ok(created.includes("operator_email"), "supabase-schema.sql: newsletter_send_jobs is missing operator_email — the parser is off");
+  assert.ok(
+    altered.includes("attempt_count") && altered.includes("next_attempt_at"),
+    "supabase-schema.sql: the ALTER parser did not find migration 185's attempt_count/next_attempt_at — " +
+      "if the way columns are added to this table changed, fix the parser rather than dropping the half " +
+      "of the guard that watches the columns nobody declared in 179",
+  );
   assertNoPiiColumns(columns, "supabase-schema.sql");
 
   // Self-test: every assertion passes on a clean tree, which is also what a broken regex
@@ -1045,6 +1082,19 @@ assert.equal(checked, SOURCES.length, "both the migration and the consolidated m
     () => assertNoPiiColumns(planted, "self-test"),
     /looks like subscriber PII/,
     "self-test: a subscriber-PII column added to newsletter_send_jobs must fail the guard",
+  );
+
+  // Self-test for the ALTER half (GV-491): the same column arriving the way every column since
+  // 179 actually arrived must fire too, or the guard is only watching the one door nobody uses.
+  const plantedAlter = jobsAlterColumns(
+    `${schema}\nalter table ${JOBS_TABLE}\n  add column if not exists last_recipient_email text;\n`,
+    JOBS_TABLE,
+  );
+  assert.ok(plantedAlter.includes("last_recipient_email"), "self-test: the planted ALTER column must parse");
+  assert.throws(
+    () => assertNoPiiColumns(plantedAlter, "self-test"),
+    /looks like subscriber PII/,
+    "self-test: a subscriber-PII column ADDED BY ALTER must fail the guard too",
   );
 }
 

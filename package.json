@@ -27,6 +27,7 @@
     "test:handover-odometer-guard": "node tools/test-handover-odometer-guard-contract.mjs --strict",
     "test:double-completion-guard": "node tools/test-double-completion-guard-contract.mjs --strict",
     "test:newsletter-cancel-lease": "node tools/test-newsletter-cancel-lease-contract.mjs --strict",
+    "test:newsletter-lease-token": "node tools/test-newsletter-lease-token-contract.mjs --strict",
     "test:incident-repair-link": "node tools/test-incident-repair-link-contract.mjs --strict",
     "test:workspace-split-set": "node tools/test-workspace-split-weight-set-contract.mjs",
     "test:deferred-fuel-close": "bash tools/test-deferred-fuel-close-functional.sh",

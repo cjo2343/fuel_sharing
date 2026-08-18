@@ -218,6 +218,7 @@ const expected = [
   "205_presence_policies_cover_broadcast.sql",
   "206_ledger_changes_private_channel_policies.sql",
   "207_on_my_way_rpc_only_writes.sql",
+  "208_newsletter_lease_owner_token.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

@@ -5325,6 +5325,38 @@ end`,
     op: `perform 1 from public.newsletter_send_jobs;`,
     expect: "42501",
   }),
+  // GV-491 (migration 208): advance_newsletter_send_job was DROPPED and re-created with two
+  // extra parameters and a jsonb return, because create-or-replace can do neither. A dropped
+  // function takes its ACLs with it and a freshly created one is EXECUTE-to-PUBLIC by default,
+  // so the revokes restated in 208 are the only thing standing between the browser roles and
+  // the RPC that moves a live campaign's cursor. That is exactly the kind of promise a matrix
+  // case exists to keep honest: nothing else in CI notices a dropped `revoke … from
+  // authenticated`, and the coverage half of this guard cannot see it either — it only audits
+  // functions authenticated MAY execute. Both roles, because the revokes are separate
+  // statements and a copy-paste that keeps one can lose the other.
+  rpcCase({
+    name: "newsletter-advance-anon-blocked",
+    desc: "anon cannot advance a newsletter send job — migration 208 re-created the signature and restated its revokes",
+    actor: ANON,
+    op: `perform public.advance_newsletter_send_job('00000000-0000-0000-0000-0000000000ff'::uuid,
+           null, null, 0, 0, false, null, null, true);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-advance-authenticated-blocked",
+    desc: "a signed-in app user cannot advance a newsletter send job either",
+    actor: A,
+    op: `perform public.advance_newsletter_send_job('00000000-0000-0000-0000-0000000000ff'::uuid,
+           null, null, 0, 0, false, null, null, true);`,
+    expect: "42501",
+  }),
+  rpcCase({
+    name: "newsletter-claim-authenticated-blocked",
+    desc: "and cannot claim one either — a claim mints the lease owner token the whole GV-491 fence rests on",
+    actor: A,
+    op: `perform 1 from public.claim_due_newsletter_send_job(300);`,
+    expect: "42501",
+  }),
   rpcCase({
     name: "newsletter-mint-accumulates-confirmed-only",
     desc: "minting hands out confirmed addresses with FRESH tokens, ADDS them alongside the older ones, and skips pending rows",
