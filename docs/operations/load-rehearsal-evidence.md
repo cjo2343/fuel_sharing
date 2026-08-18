@@ -254,3 +254,288 @@ The hosted rehearsal is unchanged and still the right harness for end-to-end lat
 and the RLS tenant-isolation probe; `npm run load:seed -- --aged` now seeds the same
 aged workspace there when a throwaway project is available. Budget the sign-in limit
 (~30 per 5 min per IP, whatever the dashboard says — finding T4 stands).
+
+---
+
+# Load exercise 3 — 2026-08-18 (GV-493), part A: local aged workspace at migration 208
+
+Exercises 1 (2026-08-03, hosted) and 2 (2026-08-08, local) both predate migrations
+**202–208**, and the external review of 2026-08-12 asked for the rehearsal to be re-run
+at the current schema with the things those migrations added: private Realtime channels,
+the "Jeg er på vej" ETA writes, the GVM-587 position broadcast, and the vehicle document
+archive.
+
+That is two exercises, not one, and they need different harnesses:
+
+- **Part A (this section)** — the schema half, on the local Docker harness. It re-runs
+  exercise 2's measurement at migration 208 and answers "did anything the last six
+  migrations added move the reads?".
+- **Part B (below)** — the hosted half: end-to-end latency, the private-channel joins,
+  the ETA/broadcast load and the two probes. It needs a throwaway Supabase project the
+  owner creates. **It has not been run. There are no numbers for it in this document and
+  none may be invented.**
+
+## Harness — unchanged, which is itself a finding
+
+`npm run load:aged -- --small 3 --iters 30`, seed 42, same knobs exercise 2 used. **No
+change to `aged-local.mjs` was needed**: `supabase-schema.sql` applied cleanly in 1.0 s
+(fresh-install validation in passing), and all ~4,700 seeding RPC calls, the 11 period
+closes and ~1,400 measured reads succeeded under `ON_ERROR_STOP=1`. **Error rate: zero.**
+
+Two things could plausibly have broken it and did not:
+
+- **Migration 207's `enforce_on_my_way_rpc_only_trg`** fires `before insert or update of
+  on_my_way on car_bookings`, so **every booking INSERT reaches it** — a column list
+  narrows UPDATE only. The seeder creates 72 bookings through `upsert_car_booking` and
+  none was refused, because the trigger's first branch returns early for
+  `tg_op = 'INSERT' and new.on_my_way is null`, which is exactly what a booking RPC
+  writes.
+- **Migration 201's storage half** is inside the
+  `information_schema.schemata where schema_name = 'storage'` guard, so the plain-Postgres
+  replay skips it (the migration-138 lesson holding, as designed).
+
+Same caveat as exercise 2 and for the same reason: these are **server-side execution
+times** with no PostgREST, no network and no TLS. Do not compare them with exercise 1's
+end-to-end numbers.
+
+## Fixture (identical to exercise 2)
+
+3 small workspaces + 1 aged workspace: 6 members, **12 periods (11 closed), 2,400 trips,
+2,955 `ledger_events`, 1,800 messages, 360 fuel payments, 72 bookings, 48 expenses, 55
+settlement requests.**
+
+## Per-read latency at full aged size (30 iterations, RLS applied, ms)
+
+| read | rows | p50 | p95 | exercise 2 p95 | moved? |
+|---|---|---|---|---|---|
+| `read:participants` | 703 | 14.74 | **15.22** | 8.81 *(post-192 re-measure)* | host offset — see below |
+| `read:trips` | 501 | 10.89 | **11.13** | 27.93 | **YES — migration 190's index** |
+| `read:fuel` | 360 | 8.03 | 8.22 | 4.51 | host offset |
+| `read:messages` | 50 | 3.06 | 3.18 | 2.40 | host offset |
+| `read:events` (feed) | 50 | 1.76 | **1.78** | 1.31 | host offset; still flat |
+| `read:bookings` | 72 | 1.71 | 1.83 | 1.01 | host offset |
+| `read:settlements` | 55 | 1.36 | 1.39 | 0.75 | host offset |
+| `read:expenses` | 48 | 1.10 | 1.11 | 0.68 | host offset |
+| `read:periods` (history) | 12 | 0.39 | 0.41 | 0.24 | host offset |
+| `read:ledger` / `read:members` / `read:recurring` / `read:repairs` | ≤6 | ≤0.30 | ≤0.32 | ≤0.35 | — |
+| `read:trips@100` | 100 | 2.39 | **2.44** | 28.84 | **YES — same index** |
+| `read:participants@100` | 353 | 8.02 | 8.11 | 4.68 | host offset |
+| `read:trips@period` (proposed shape) | 200 | 4.53 | 4.57 | 2.80 | host offset |
+
+### Which numbers moved, and why
+
+**One read moved for a schema reason, and it is `trips`.**
+
+- `read:trips` **27.93 → 11.13 ms p95**, and `read:trips@100` **28.84 → 2.44 ms**. This is
+  exercise 2's recommendation (2) landing: `trips_ledger_trip_date_idx` graduated from
+  candidate to schema in **migration 190**, and the plan changed with it — exercise 2 saw
+  a Seq Scan over every trip plus a top-N sort (36,422 buffers for 501 rows), this run
+  sees `Index Scan using trips_ledger_trip_date_idx` + an Incremental Sort (8,243
+  buffers). The cap now works, too: capping at 100 is a 4.6× saving where in exercise 2 it
+  was worth nothing, because the LIMIT is no longer applied after a full scan and sort.
+- **Everything else is a HOST OFFSET, not a schema effect.** Every other read moved up by
+  a similar factor (1.4×–1.8×) and **no plan changed**: `read:events` is still an ordered
+  Index Scan on `ledger_events_ledger_created_idx` stopping at the limit, `read:periods` is
+  still a Seq Scan of a 17-row table, and `read:participants` still plans as a Bitmap Heap
+  Scan on `trip_participants_pkey` with `is_ledger_member(trip_participants.ledger_id)` as
+  a cheap per-row filter — **11,101 shared buffers against the 11,087 exercise 2 recorded
+  after migration 192**. Identical work, different wall clock: this run booted Docker cold
+  on a different machine state. The doc's standing rule applies to itself — compare the
+  curve and the plans, not the absolutes.
+- **The feed is still flat**, now with a longer exclusion list: migration 202 appended
+  `on_my_way_updated` and `on_my_way_stopped` to `EVENT_TYPE_EXCLUDE` (8 types, not 6), and
+  the read still costs 1.78 ms at 2,955 events. The extra predicate is free.
+- **No new index is warranted.** All three candidates were re-measured in-container after
+  the baseline and none earned a migration: `ledger_events_feed_idx` 1.78 → 1.83,
+  `fuel_payments_ledger_payment_date_idx` 8.22 → 8.26,
+  `settlement_periods_ledger_opened_idx` 0.41 → 0.42. The feed index IS chosen by the
+  planner once it exists (the EXPLAIN switches to it) and still buys nothing — exactly
+  exercise 2's finding, and its value remains insurance against the stale-statistics plan
+  flip rather than throughput.
+
+## Growth curve (one closed period per checkpoint)
+
+| events | messages | trips | closed | feed p95 | trips p95 | history p95 | msgs p95 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 246 | 150 | 200 | 1 | 4.78 | 4.53 | 0.23 | 3.07 |
+| 486 | 300 | 400 | 2 | 10.07 | 10.67 | 0.32 | 5.81 |
+| 726 | 450 | 600 | 3 | 5.56 | 19.40 | 0.37 | 3.64 |
+| 966 | 600 | 800 | 4 | 5.54 | 18.59 | 0.31 | 4.53 |
+| 1,206 | 750 | 1,000 | 5 | 5.39 | 22.60 | 0.30 | 3.46 |
+| 1,446 | 900 | 1,200 | 6 | 5.40 | 25.70 | 1.06 | 3.52 |
+| 1,686 | 1,050 | 1,400 | 7 | 5.74 | 40.50 | 0.80 | 3.91 |
+| 1,926 | 1,200 | 1,600 | 8 | 5.96 | 43.28 | 0.45 | 3.81 |
+| 2,166 | 1,350 | 1,800 | 9 | 5.15 | **10.63** | 0.38 | 3.16 |
+| 2,406 | 1,500 | 2,000 | 10 | 5.15 | 11.13 | 0.40 | 3.18 |
+| 2,646 | 1,650 | 2,200 | 11 | 5.08 | 11.74 | 0.43 | 3.16 |
+| 2,880 | 1,800 | 2,400 | 11 | 5.36 | 11.07 | 0.42 | 3.08 |
+
+**The trips curve no longer diverges.** In exercise 2 it climbed monotonically to 34 ms at
+2,400 trips; here it climbs to 43 ms at 1,600 and then **falls back to ~11 ms and stays
+there** as the workspace doubles again. That shape is a **planner flip** — below ~1,800
+trips the planner still prefers the scan-and-sort, above it the new index — not a data
+effect. Caveat, stated rather than glossed: the harness only EXPLAINs at the END of the
+run, so the checkpoint plans were not captured and the flip point is inferred from the
+final plan plus the discontinuity. If the exact crossover ever matters, `--out` the
+evidence and add per-checkpoint EXPLAINs; nothing about the launch verdict depends on it.
+
+## Verdict for part A
+
+**Nothing migrations 201–208 added shows up in the workspace read fan-out, and the one
+read exercise 2 flagged as degrading has been fixed by the migration exercise 2 asked
+for.** The remaining top cost is `read:participants` at ~15 ms, whose plan is already the
+cheap one (migration 192) and whose absolute number here is a host artefact. No new index
+is warranted by measurement. **No schema work falls out of part A.**
+
+What part A cannot see, by construction: PostgREST, TLS, connection setup, the Realtime
+service, RLS on `realtime.messages`, and every per-connection cost of a member holding a
+socket open. That is entirely part B's job.
+
+---
+
+# Load exercise 3, part B: the HOSTED run — procedure
+
+**RESULTS: pending — hosted run not yet performed.**
+
+There is no throwaway Supabase project right now (the previous one, and its credentials
+file, were deleted after exercise 1 as the GDPR teardown requires). Everything below is
+the procedure for the owner's next throwaway project. **Nothing in this section is a
+measurement. Do not summarise it as one.**
+
+## Step 0 — the project, and the ONE switch that must be flipped
+
+Create a throwaway project in an **EU region** (GDPR) and follow
+`tools/load-rehearsal/README.md` steps 0–1 for the env file.
+
+Then, before anything else: **Realtime settings → turn OFF "Allow public access to
+channels."**
+
+This is not optional and it is not the same as the RLS policies. A **fresh Supabase
+project has public access ON by default.** With it on, migrations 202/205/206's policies
+are never consulted for a public join, so:
+
+- the **private** joins the load phase makes still succeed, and the load numbers are still
+  valid — but they are measuring a project in a configuration production is not in; and
+- the **refusal probe is not evidence at all**. `npm run probe:realtime-public-access`
+  exists to prove that a PUBLIC join is refused (GV-490). Against a project with the
+  switch on, it exits **1** and reports the hole — correctly. A green probe requires the
+  switch off first.
+
+Production had this switched off on 2026-08-12 (GVM-575) and it is attested in
+`docs/release-attestations.json` → `realtime_public_access_closed`. The throwaway must
+match it or the rehearsal is not rehearsing production.
+
+## Step 1 — schema
+
+```sh
+npm run load:schema -- --env ~/vehloshare-rehearsal.env
+```
+
+Applies `supabase-schema.sql` once, with `ON_ERROR_STOP`. Doubles as a fresh-install
+validation of the consolidated schema at migration 208.
+
+## Step 2 — seed
+
+```sh
+npm run load:seed -- --env ~/vehloshare-rehearsal.env --seed 42 --workspaces 20
+```
+
+**Budget the sign-in limit before starting — findings T1/T3 are still OPEN.** Exercise 1
+recorded three seeder findings; only T2 (the close step) was fixed, in GV-438. T1 and T3
+were **not**:
+
+- `seedWorkspace()` signs the owner in and then signs in **every other member** on every
+  pass, including for workspaces a previous pass already completed, because it recovers
+  state through `list_my_ledgers` — which needs a token. So a resumed run still spends
+  most of its rate budget re-verifying built workspaces (T3), and a full 20-workspace pass
+  still needs ~110 sign-ins against a **~30 per 5 minutes per IP** limit (T1).
+- T4 stands as an operational fact: raising the dashboard's sign-in limit did **not** take
+  effect in exercise 1, even after a project restart. Plan around the default, whatever the
+  dashboard says.
+
+Practical shape: seed in rounds, expect the run to plateau, and re-run it until
+`workspaces: N ok` stops moving. Exercise 1 completed 12 of 20 this way, which was enough
+for 27 VUs. **Fixing T1/T3 properly (skip sign-ins for complete workspaces) is worth its
+own ticket and is not part of GV-493.**
+
+Add `--aged` if the hosted run should also carry the aged workspace; it costs
+`--aged-members` further sign-ins and nothing else, since its volume rides on tokens
+already held.
+
+## Step 3 — the load run, WITH the realtime phase
+
+```sh
+npm run load:run -- --env ~/vehloshare-rehearsal.env \
+  --vus 28 --duration 60 --mix mixed --seed 42 --realtime --sharers 0.2
+```
+
+`--vus 28` is exercise 1's setting (27 signed in; one was lost to the sign-in limit), which
+brackets ~100 real users spread over small groups with margin. What `--realtime` adds:
+
+- one websocket per VU — the same one-socket-per-client shape the app has — joining
+  `presence-<ledgerId>` **and** `ledger-changes-<ledgerId>` as **private** channels with
+  the VU's own JWT, presence keyed on its member id, and the two `postgres_changes`
+  bindings `use-ledger-realtime.ts` opens;
+- presence `track` plus Phoenix heartbeats for the whole run;
+- `--sharers 0.2` of the VUs running "Jeg er på vej": `set_on_my_way` once, an
+  `omw-position` broadcast every 15 s, an ETA refresh every 5 minutes (only reached by
+  runs longer than that), and `clear_on_my_way` at teardown.
+
+The sharers need a booking they own that has **not ended** (migration 202's gate). The
+fixture's bookings are anchored at **2026-07-01** and are all in the past by now, so the
+driver prefers a live one and otherwise creates one through the app's own
+`upsert_car_booking`, on a day derived from the VU index so two sharers in one workspace
+never collide with `prevent_overlapping_car_bookings`.
+
+**Read the evidence block for:** per-endpoint p50/p95/p99 (including
+`rpc:set_on_my_way` / `rpc:clear_on_my_way`, which sit in the ordinary table because that
+is what they are), errors by status, and the Realtime section — join latency per channel,
+join failures **by reason**, presence syncs, `postgres_changes` deliveries and broadcast
+counts.
+
+**A refused join is a launch finding, not noise.** The run exits **1** on any of them and
+prints which:
+
+| reason | what it means |
+|---|---|
+| `Unauthorized` | migrations 202/205/206's policies refused a **member's** private join. Presence and live sync are down for real users. Check the migrations are applied to the throwaway project. |
+| `PrivateOnly` | a join frame lost `private: true`. Every join the harness sends sets it, so this means the harness drifted, not the project. |
+| `timeout` | no reply at all — project asleep, wrong URL/key, or network. |
+
+Also run the read-only mix (`--mix read`) if a clean read baseline is wanted; that half is
+unchanged from exercise 1 and directly comparable to it.
+
+## Step 4 — the two probes
+
+```sh
+# tenant isolation over HTTP (now including vehicle_documents)
+npm run load:run -- --env ~/vehloshare-rehearsal.env --vus 28 --rls-probe
+
+# tenant isolation over REALTIME (GV-490) — needs the Step 0 switch OFF
+SUPABASE_URL=https://<ref>.supabase.co SUPABASE_ANON_KEY=<anon key> \
+  npm run probe:realtime-public-access
+```
+
+The two answer different halves and neither substitutes for the other: the RLS probe
+proves a member cannot READ another workspace's rows; the realtime probe proves a public
+channel open is refused by the platform before any policy is consulted. Optionally set
+`SUPABASE_ACCESS_TOKEN` (a seeded member's JWT) and `LEDGER_ID` to add the probe's phase 2
+— the same topic joined WITH `private: true` must still reach SUBSCRIBED, i.e. the switch
+closed the hole without taking presence down.
+
+Probe exit codes: **0 = closed, 1 = open (launch blocker), 2 = inconclusive.** Two is
+never a pass.
+
+## Step 5 — record and tear down
+
+Replace the placeholder below with the real evidence block, then **delete the throwaway
+project** from the dashboard and `rm` the env file (GDPR teardown — one action removes
+every synthetic user and row).
+
+### RESULTS
+
+> **pending — hosted run not yet performed.** No throwaway project exists at the time of
+> writing. When it is run, paste the evidence block here: request count and req/s, the
+> per-endpoint table, the Realtime join table, join failures by reason, broadcast and
+> presence counts, and both probe verdicts.
+

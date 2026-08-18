@@ -7,6 +7,11 @@
 // parsing, deterministic fixture generation, the settlement-close snapshot math,
 // and the INTERNAL SHAPE of lib/hotpaths.mjs (labels, limits, encoding).
 //
+// GV-493 adds the realtime/ETA phase: the Phoenix frame vocabulary, the refusal
+// buckets, deterministic sharer selection, the fake-position rounding and the stats
+// aggregation — plus a socket exercised against an in-memory fake, so the pending-ref
+// plumbing is covered without a network.
+//
 // It does NOT verify that hotpaths.mjs matches govehlo-mobile — it cannot; the
 // sibling repo is not checked out here. It used to claim it did, while asserting
 // hotpaths.mjs against its own hardcoded copies of the same constants, which is a
@@ -16,10 +21,9 @@
 // strict in .github/workflows/umbrella.yml. Do not re-add "mirrors the gateway"
 // claims to the assertions below.
 //
-// This is
-// intentionally a STANDALONE script (not wired into `npm run validate`) so it
-// doesn't change the behaviour of the existing validation tools; the load
-// tooling itself needs a live throwaway project and is never run in CI.
+// This file IS wired into `npm run validate` (see tools/run-validations.mjs) — it is
+// dependency-free and sub-second. The load TOOLING itself is not: it needs a live
+// throwaway project, or Docker for the aged harness, and never runs in CI.
 
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
@@ -64,6 +68,45 @@ import {
   RECURRING_ROW_CAP,
 } from "./lib/hotpaths.mjs";
 import { postgrestToSql, withLimit } from "./lib/hotpaths-sql.mjs";
+import {
+  WRITE_RPCS,
+  ON_MY_WAY_RPCS,
+  BOOKING_WRITE_RPC,
+  VEHICLE_DOCUMENT_WORKSPACE_CAP,
+  VEHICLE_DOCUMENTS_PER_VU,
+} from "./lib/hotpaths.mjs";
+import {
+  vehicleDocumentArgs,
+  vehicleDocumentPhotoArgs,
+  onMyWaySetArgs,
+  onMyWayClearArgs,
+  sharerBookingWindow,
+} from "./lib/fixtures.mjs";
+import {
+  presenceTopic,
+  ledgerChangesTopic,
+  realtimeSocketUrl,
+  presenceJoinFrame,
+  ledgerChangesJoinFrame,
+  presenceTrackFrame,
+  broadcastFrame,
+  heartbeatFrame,
+  encodeFrame,
+  decodeFrame,
+  interpretFrame,
+  classifyJoinFailure,
+  selectSharers,
+  fakePosition,
+  RealtimeStats,
+  REALTIME_VSN,
+  CHANNEL_PRESENCE,
+  CHANNEL_LEDGER_CHANGES,
+  ON_MY_WAY_POSITION_EVENT,
+  LIVE_POSITION_INTERVAL_MS,
+  LIVE_POSITION_DECIMALS,
+  JOIN_FAILURE_REASONS,
+  RealtimeSocket,
+} from "./lib/realtime.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -568,6 +611,489 @@ test("tripParticipantsRequest builds an in.() filter over trip ids", () => {
   assert.equal(p.table, "trip_participants");
   assert.equal(p.query, "select=*&trip_id=in.(t1,t2)");
 });
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GV-493 — the realtime / ETA phase
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Same posture as the block above: these assert lib/realtime.mjs's OWN shape and its
+// pure logic. They do NOT and cannot prove that the join config still matches
+// govehlo-mobile's use-ledger-realtime.ts — the sibling repo is not checked out here —
+// so do not add "mirrors the hook" wording to them. What they do catch is the class of
+// edit that silently turns the rehearsal into a rehearsal of something else: a join that
+// lost `private: true` (and so is authorised by nobody, which is the hole GVM-575
+// closed), a presence key that stopped being the member id, a postgres_changes binding
+// that lost its table (GVM-137: a filter with no table delivers NOTHING, silently), and
+// a refusal bucket that stopped recognising the platform's own words.
+
+// ── Phoenix frames ───────────────────────────────────────────────────────────
+test("topics carry Phoenix's realtime: namespace and the client's own channel names", () => {
+  assert.equal(presenceTopic("delebil-aarhus-01"), "realtime:presence-delebil-aarhus-01");
+  assert.equal(ledgerChangesTopic("delebil-aarhus-01"), "realtime:ledger-changes-delebil-aarhus-01");
+});
+
+test("realtimeSocketUrl upgrades http→ws, keeps the vsn and encodes the key", () => {
+  const url = realtimeSocketUrl("https://throwaway.supabase.co/", "a key/with+chars");
+  assert.equal(
+    url,
+    `wss://throwaway.supabase.co/realtime/v1/websocket?apikey=${encodeURIComponent("a key/with+chars")}&vsn=${REALTIME_VSN}`,
+  );
+  assert.equal(REALTIME_VSN, "1.0.0");
+});
+
+test("the presence join is PRIVATE and keyed on the member id", () => {
+  const frame = presenceJoinFrame({ ledgerId: "l1", memberId: "m1", accessToken: "jwt", ref: 7 });
+  assert.equal(frame.event, "phx_join");
+  assert.equal(frame.topic, "realtime:presence-l1");
+  assert.equal(frame.ref, "7");
+  assert.equal(frame.join_ref, "7");
+  // Policies bind PRIVATE channels only. Without this flag the join is authorised by
+  // nobody and the rehearsal measures the pre-GVM-575 world.
+  assert.equal(frame.payload.config.private, true);
+  assert.equal(frame.payload.config.presence.key, "m1");
+  assert.deepEqual(frame.payload.config.postgres_changes, []);
+  assert.equal(frame.payload.access_token, "jwt");
+});
+
+test("the ledger-changes join is PRIVATE and binds ledger_events + messages, each WITH a table", () => {
+  const frame = ledgerChangesJoinFrame({ ledgerId: "l1", accessToken: "jwt", ref: 2 });
+  assert.equal(frame.topic, "realtime:ledger-changes-l1");
+  assert.equal(frame.payload.config.private, true);
+  const bindings = frame.payload.config.postgres_changes;
+  assert.equal(bindings.length, 2, "one binding per published table — a wildcard binding cannot carry a filter");
+  assert.deepEqual(bindings.map((b) => b.table), ["ledger_events", "messages"]);
+  for (const b of bindings) {
+    assert.equal(b.event, "*");
+    assert.equal(b.schema, "public");
+    // GVM-137: a filter without a table is invalid and Supabase silently delivers
+    // nothing, which is exactly the failure a load run would not notice.
+    assert.equal(b.filter, "ledger_id=eq.l1");
+  }
+});
+
+test("presence track and broadcast ride the presence topic with the join's own join_ref", () => {
+  const track = presenceTrackFrame({ ledgerId: "l1", ref: 9, joinRef: 1, onlineAt: "2026-08-18T10:00:00Z" });
+  assert.equal(track.topic, "realtime:presence-l1");
+  assert.equal(track.event, "presence");
+  assert.equal(track.join_ref, "1");
+  assert.deepEqual(track.payload, { type: "presence", event: "track", payload: { online_at: "2026-08-18T10:00:00Z" } });
+
+  const bcast = broadcastFrame({ ledgerId: "l1", ref: 10, joinRef: 1, event: ON_MY_WAY_POSITION_EVENT, payload: { a: 1 } });
+  assert.equal(bcast.topic, "realtime:presence-l1", "GVM-587 rides the PRESENCE topic, not a second channel");
+  assert.equal(bcast.event, "broadcast");
+  assert.deepEqual(bcast.payload, { type: "broadcast", event: "omw-position", payload: { a: 1 } });
+
+  assert.deepEqual(heartbeatFrame(4), { topic: "phoenix", event: "heartbeat", ref: "4", payload: {} });
+});
+
+test("encodeFrame/decodeFrame round-trip, and decodeFrame never throws", () => {
+  const frame = presenceJoinFrame({ ledgerId: "l1", memberId: "m1", accessToken: "jwt", ref: 1 });
+  assert.deepEqual(decodeFrame(encodeFrame(frame)), frame);
+  assert.equal(decodeFrame("not json"), null);
+  assert.equal(decodeFrame("[1,2,3]"), null, "an array is not a frame");
+  assert.equal(decodeFrame("null"), null);
+  assert.equal(decodeFrame(""), null);
+});
+
+// ── Reading the wire back ────────────────────────────────────────────────────
+test("interpretFrame separates the reply from the refusal, the sync and the payload", () => {
+  assert.deepEqual(
+    interpretFrame({ topic: "t", event: "phx_reply", ref: "1", payload: { status: "ok", response: {} } }),
+    { kind: "reply", topic: "t", ref: "1", status: "ok", reason: "{}" },
+  );
+  const refused = interpretFrame({
+    topic: "t",
+    event: "phx_reply",
+    ref: "2",
+    payload: { status: "error", response: { reason: "Unauthorized" } },
+  });
+  assert.equal(refused.status, "error");
+  assert.equal(refused.reason, "Unauthorized");
+
+  assert.equal(interpretFrame({ topic: "t", event: "phx_error", payload: { reason: "boom" } }).kind, "error");
+  assert.equal(interpretFrame({ topic: "t", event: "phx_close", payload: {} }).kind, "error");
+  assert.equal(interpretFrame({ topic: "t", event: "presence_state", payload: {} }).kind, "presence_sync");
+  assert.equal(interpretFrame({ topic: "t", event: "presence_diff", payload: {} }).kind, "presence_sync");
+  assert.equal(interpretFrame({ topic: "t", event: "postgres_changes", payload: {} }).kind, "postgres_changes");
+  const bcast = interpretFrame({ topic: "t", event: "broadcast", payload: { event: "omw-position", payload: {} } });
+  assert.equal(bcast.kind, "broadcast");
+  assert.equal(bcast.broadcastEvent, "omw-position");
+  assert.equal(interpretFrame({ topic: "t", event: "system", payload: { status: "error", message: "nope" } }).kind, "error");
+  assert.equal(interpretFrame({ topic: "t", event: "system", payload: { status: "ok", message: "Subscribed" } }).kind, "system");
+  assert.equal(interpretFrame(null).kind, "ignore");
+  assert.equal(interpretFrame({ topic: "t", event: "phx_leave" }).kind, "ignore");
+});
+
+test("classifyJoinFailure recognises the platform's own words, and buckets the rest as `other`", () => {
+  // The exact strings tools/probe-realtime-public-access.mjs matches on — the two tools
+  // must name the same refusal the same way or the evidence cannot be read together.
+  assert.equal(classifyJoinFailure("phx_reply status=error: PrivateOnly"), "PrivateOnly");
+  assert.equal(classifyJoinFailure("privateonly"), "PrivateOnly");
+  assert.equal(classifyJoinFailure("Unauthorized"), "Unauthorized");
+  assert.equal(classifyJoinFailure('{"reason":"unauthorized"}'), "Unauthorized");
+  assert.equal(classifyJoinFailure("timeout: no reply within 15000 ms"), "timeout");
+  assert.equal(classifyJoinFailure("something nobody has seen"), "other");
+  assert.equal(classifyJoinFailure(undefined), "other", "a missing reason is still a failure, never a pass");
+  assert.deepEqual(JOIN_FAILURE_REASONS, ["Unauthorized", "PrivateOnly", "timeout", "other"]);
+});
+
+// ── Sharer selection ─────────────────────────────────────────────────────────
+test("selectSharers is deterministic from the seed and picks the requested fraction", () => {
+  const indices = Array.from({ length: 28 }, (_, i) => i);
+  const a = selectSharers(indices, 0.2, 42);
+  const b = selectSharers(indices, 0.2, 42);
+  assert.deepEqual(a, b, "the same seed must put the ETA load on the same VUs");
+  assert.notDeepEqual(a, selectSharers(indices, 0.2, 43));
+  assert.equal(a.length, Math.round(28 * 0.2));
+  assert.equal(new Set(a).size, a.length, "no VU may be selected twice");
+  for (const i of a) assert.ok(indices.includes(i));
+  assert.deepEqual(a, [...a].sort((x, y) => x - y), "returned in index order so the log reads sensibly");
+});
+
+test("selectSharers: 0 means none, 1 means all, and any positive fraction means at least one", () => {
+  const indices = Array.from({ length: 8 }, (_, i) => i);
+  assert.deepEqual(selectSharers(indices, 0, 42), []);
+  assert.deepEqual(selectSharers(indices, 1, 42), indices);
+  assert.deepEqual(selectSharers([], 0.5, 42), []);
+  // A fraction that rounds to zero must NOT silently disable the phase.
+  assert.equal(selectSharers(indices, 0.01, 42).length, 1);
+  // Out-of-range values are clamped rather than producing a nonsense slice.
+  assert.deepEqual(selectSharers(indices, 5, 42), indices);
+  assert.deepEqual(selectSharers(indices, -1, 42), []);
+  assert.deepEqual(selectSharers(indices, Number.NaN, 42), []);
+});
+
+// ── Positions ────────────────────────────────────────────────────────────────
+test("fakePosition rounds to five decimals at the source and carries exactly the five wire fields", () => {
+  const p = fakePosition({ bookingId: "b1", memberId: "m1", index: 3, tick: 7, now: 1234 });
+  assert.deepEqual(Object.keys(p).sort(), ["bookingId", "lat", "lng", "memberId", "ts"]);
+  assert.equal(p.bookingId, "b1");
+  assert.equal(p.memberId, "m1");
+  assert.equal(p.ts, 1234);
+  for (const value of [p.lat, p.lng]) {
+    assert.ok(Number.isFinite(value));
+    // The client's own minimisation: round when the payload is BUILT, so nothing
+    // downstream can widen it (GVM-587 / GVM-536).
+    assert.equal(value, Math.round(value * 10 ** LIVE_POSITION_DECIMALS) / 10 ** LIVE_POSITION_DECIMALS);
+  }
+  assert.ok(p.lat >= -90 && p.lat <= 90);
+  assert.ok(p.lng >= -180 && p.lng <= 180);
+  // Deterministic for a given (index, tick) so two runs broadcast the same track.
+  assert.deepEqual(fakePosition({ bookingId: "b1", memberId: "m1", index: 3, tick: 7, now: 1234 }), p);
+});
+
+test("fakePosition stays inside real coordinate bounds for every VU index and a long run", () => {
+  for (const index of [0, 7, 19, 27, 99]) {
+    for (const tick of [0, 1, 239, 240, 5000]) {
+      const p = fakePosition({ bookingId: "b", memberId: "m", index, tick, now: 0 });
+      assert.ok(p.lat >= -90 && p.lat <= 90, `lat out of range at ${index}/${tick}`);
+      assert.ok(p.lng >= -180 && p.lng <= 180, `lng out of range at ${index}/${tick}`);
+    }
+  }
+});
+
+// ── Stats aggregation ────────────────────────────────────────────────────────
+test("RealtimeStats aggregates join latency per channel with nearest-rank percentiles", () => {
+  const stats = new RealtimeStats();
+  for (const ms of [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]) stats.recordJoin(CHANNEL_PRESENCE, ms);
+  stats.recordJoin(CHANNEL_LEDGER_CHANGES, 5);
+  const rows = stats.joinRows();
+  assert.deepEqual(rows.map((r) => r.channel), [CHANNEL_LEDGER_CHANGES, CHANNEL_PRESENCE]);
+  const presence = rows.find((r) => r.channel === CHANNEL_PRESENCE);
+  assert.equal(presence.count, 10);
+  assert.equal(presence.p50, 50);
+  assert.equal(presence.p95, 100);
+  assert.equal(presence.p99, 100);
+  assert.equal(presence.max, 100);
+});
+
+test("RealtimeStats buckets failures by channel AND reason, and keeps a sample of the raw text", () => {
+  const stats = new RealtimeStats();
+  stats.recordJoinFailure(CHANNEL_PRESENCE, "phx_reply status=error: Unauthorized");
+  stats.recordJoinFailure(CHANNEL_PRESENCE, "Unauthorized");
+  stats.recordJoinFailure(CHANNEL_LEDGER_CHANGES, "timeout: no reply within 15000 ms");
+  assert.deepEqual(stats.failureRows(), [
+    { channel: CHANNEL_LEDGER_CHANGES, reason: "timeout", count: 1 },
+    { channel: CHANNEL_PRESENCE, reason: "Unauthorized", count: 2 },
+  ]);
+  assert.equal(stats.totalJoinFailures(), 3);
+  assert.equal(stats.failureSamples.length, 3);
+  assert.match(stats.failureSamples[0].detail, /Unauthorized/);
+});
+
+test("RealtimeStats.hasFailures is the run's exit gate — clean is clean, every failure kind is loud", () => {
+  const clean = new RealtimeStats();
+  clean.recordJoin(CHANNEL_PRESENCE, 12);
+  clean.presenceSyncs = 4;
+  clean.broadcastsSent = 8;
+  assert.equal(clean.hasFailures(), false);
+  assert.deepEqual(clean.failureRows(), []);
+
+  const refused = new RealtimeStats();
+  refused.recordJoinFailure(CHANNEL_PRESENCE, "Unauthorized");
+  assert.equal(refused.hasFailures(), true);
+
+  const deadSocket = new RealtimeStats();
+  deadSocket.socketsFailed = 1;
+  assert.equal(deadSocket.hasFailures(), true);
+
+  // A selected sharer that never got to share is a finding too: the ETA half of the
+  // phase measured nothing, and a run that reported clean would be lying about it.
+  const noSharer = new RealtimeStats();
+  noSharer.sharerFailures = 1;
+  assert.equal(noSharer.hasFailures(), true);
+});
+
+// ── The new HTTP write paths (migrations 201 / 202) ──────────────────────────
+test("vehicleDocumentArgs / vehicleDocumentPhotoArgs send the RPCs' own argument names", () => {
+  assert.deepEqual(vehicleDocumentArgs({ ledgerId: "l1", title: "Forsikring", expiryDate: "2027-06-30" }), {
+    target_ledger_id: "l1",
+    document_title: "Forsikring",
+    document_expiry: "2027-06-30",
+  });
+  assert.equal(vehicleDocumentArgs({ ledgerId: "l1", title: "T" }).document_expiry, null);
+
+  const photo = vehicleDocumentPhotoArgs({ ledgerId: "l1", documentId: "d1", token: "tok" });
+  assert.deepEqual(Object.keys(photo).sort(), ["p_document_id", "p_storage_path"]);
+  // Migration 201 compares the prefix with left(), not LIKE — the path must start with
+  // the literal <ledger_id>/<document_id>/ or the RPC refuses it.
+  assert.ok(photo.p_storage_path.startsWith("l1/d1/"), photo.p_storage_path);
+});
+
+test("the document mix cannot reach migration 201's per-workspace cap", () => {
+  assert.equal(VEHICLE_DOCUMENT_WORKSPACE_CAP, 50);
+  // Fixture workspaces hold 2–8 members, so the worst case is 8 VUs × the per-VU budget.
+  assert.ok(
+    VEHICLE_DOCUMENTS_PER_VU * 8 < VEHICLE_DOCUMENT_WORKSPACE_CAP,
+    `${VEHICLE_DOCUMENTS_PER_VU} per VU × 8 members would reach the ${VEHICLE_DOCUMENT_WORKSPACE_CAP}-document cap and 23514 the run`,
+  );
+  assert.equal(WRITE_RPCS.document, "create_vehicle_document");
+  assert.equal(WRITE_RPCS.documentPhoto, "add_vehicle_document_photo");
+});
+
+test("onMyWaySetArgs carries event copy on the FIRST call only (one drive home, one feed entry)", () => {
+  const first = onMyWaySetArgs({ ledgerId: "l1", legacyBookingId: "b1", etaMinutes: 12, first: true });
+  assert.deepEqual(Object.keys(first).sort(), [
+    "eta_minutes", "event_body", "event_title", "legacy_booking_id", "target_ledger_id",
+  ]);
+  assert.equal(first.eta_minutes, 12);
+  assert.ok(first.event_title, "the first share writes the feed-visible on_my_way_started");
+
+  const refresh = onMyWaySetArgs({ ledgerId: "l1", legacyBookingId: "b1", etaMinutes: 12, first: false });
+  // Without a title the RPC writes the audit-only on_my_way_updated. A title on every
+  // ~5-minute refresh is what turns one drive home into eight feed entries.
+  assert.equal(refresh.event_title, null);
+  assert.equal(refresh.event_body, null);
+
+  assert.deepEqual(onMyWayClearArgs({ ledgerId: "l1", legacyBookingId: "b1" }), {
+    target_ledger_id: "l1",
+    legacy_booking_id: "b1",
+  });
+  assert.equal(ON_MY_WAY_RPCS.set, "set_on_my_way");
+  assert.equal(ON_MY_WAY_RPCS.clear, "clear_on_my_way");
+  assert.equal(BOOKING_WRITE_RPC, "upsert_car_booking");
+});
+
+test("sharerBookingWindow is in the FUTURE and gives each VU its own day", () => {
+  const now = Date.parse("2026-08-18T12:00:00Z");
+  const a = sharerBookingWindow({ index: 0, now });
+  const b = sharerBookingWindow({ index: 1, now });
+  // Migration 202 refuses a share on a booking that has ended, and the fixture's own
+  // bookings are anchored at 2026-07-01 — all of them are over by any real run date.
+  assert.ok(Date.parse(a.endAt) > now);
+  assert.ok(Date.parse(a.startAt) > now);
+  assert.ok(Date.parse(a.endAt) > Date.parse(a.startAt));
+  // prevent_overlapping_car_bookings refuses a second booking on a taken day, so two
+  // sharers in one workspace must never draw the same one.
+  assert.notEqual(a.startAt.slice(0, 10), b.startAt.slice(0, 10));
+  const days = new Set(Array.from({ length: 40 }, (_, i) => sharerBookingWindow({ index: i, now }).startAt.slice(0, 10)));
+  assert.equal(days.size, 40);
+});
+
+// ── The driver must FAIL LOUD (source scan, like the close-program ones above) ──
+// The bug this guards against is not wrong arithmetic: it is a realtime phase whose
+// joins were all refused reporting a clean run, which reads as perfectly reasonable code
+// and would turn "we rehearsed private channels at 100 users" into a sentence with no
+// evidence under it.
+test("load.mjs exits non-zero when the realtime phase produced failures", () => {
+  const src = readFileSync(path.join(HERE, "load.mjs"), "utf8");
+  assert.ok(src.includes("hasFailures()"), "load.mjs must consult RealtimeStats.hasFailures()");
+  assert.match(src, /rt\?\.hasFailures\(\)[\s\S]{0,200}process\.exit\(1\)/, "a failed realtime phase must exit 1");
+  // --realtime without a global WebSocket must refuse to run rather than skip silently.
+  assert.ok(src.includes('typeof WebSocket !== "function"'), "load.mjs must refuse --realtime without a global WebSocket");
+  // Both channels, opened PRIVATE, on ONE socket per VU.
+  assert.ok(src.includes("presenceJoinFrame") && src.includes("ledgerChangesJoinFrame"));
+  assert.ok(src.includes("clear_on_my_way") || src.includes("ON_MY_WAY_RPCS.clear"), "every share must be cleared at teardown");
+});
+
+test("the write mix keeps every write RPC reachable (a slot nothing routes to is dead code)", () => {
+  const src = readFileSync(path.join(HERE, "load.mjs"), "utf8");
+  for (const rpc of Object.keys(WRITE_RPCS)) {
+    assert.ok(src.includes(`WRITE_RPCS.${rpc}`), `nothing in load.mjs calls WRITE_RPCS.${rpc}`);
+  }
+  assert.equal(LIVE_POSITION_INTERVAL_MS, 15_000, "GVM-587 decision 4: the sharer broadcasts every 15 s");
+  assert.equal(ON_MY_WAY_POSITION_EVENT, "omw-position");
+});
+
+
+
+// ── The socket itself, against an in-memory fake ─────────────────────────────
+// No network and no Docker: a hand-rolled WebSocket stand-in that replays whatever
+// frames the test hands it. What this covers is the plumbing that only shows up in a
+// live run and would otherwise be discovered there — the pending-ref map (a reply must
+// resolve the join that asked for it and nothing else), the topic-level error path (a
+// phx_error must be filed as the refusal it is, not as the timeout it would become), and
+// the guarantee that a refusal is RECORDED rather than swallowed.
+
+function fakeSocketClass(script) {
+  return class FakeWebSocket {
+    constructor() {
+      this.readyState = 0;
+      this.sent = [];
+      this.listeners = new Map();
+      this.closed = false;
+      queueMicrotask(() => {
+        this.readyState = 1;
+        this.emit("open", {});
+      });
+    }
+    addEventListener(type, fn) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(fn);
+    }
+    emit(type, event) {
+      for (const fn of this.listeners.get(type) ?? []) fn(event);
+    }
+    send(text) {
+      this.sent.push(text);
+      const reply = script(decodeFrame(text), this);
+      if (reply) queueMicrotask(() => this.emit("message", { data: encodeFrame(reply) }));
+    }
+    close() {
+      this.closed = true;
+      this.readyState = 3;
+    }
+  };
+}
+
+const asyncTests = [];
+function asyncTest(name, fn) {
+  asyncTests.push([name, fn]);
+}
+
+asyncTest("RealtimeSocket: an accepted join is recorded with its latency, a refusal with its reason", async () => {
+  const stats = new RealtimeStats();
+  const WebSocketImpl = fakeSocketClass((frame) => {
+    if (frame?.event !== "phx_join") return null;
+    const ok = frame.topic.startsWith("realtime:presence-");
+    return {
+      topic: frame.topic,
+      event: "phx_reply",
+      ref: frame.ref,
+      payload: ok ? { status: "ok", response: {} } : { status: "error", response: { reason: "Unauthorized" } },
+    };
+  });
+  const socket = new RealtimeSocket({ url: "wss://x", stats, timeoutMs: 500, WebSocketImpl });
+  const opened = await socket.connect();
+  assert.equal(opened.ok, true);
+
+  const presence = await socket.join(
+    CHANNEL_PRESENCE,
+    presenceJoinFrame({ ledgerId: "l1", memberId: "m1", accessToken: "jwt", ref: socket.nextRef() }),
+  );
+  assert.equal(presence.ok, true);
+  assert.equal(stats.joinRows().find((r) => r.channel === CHANNEL_PRESENCE).count, 1);
+  assert.equal(socket.joinRefFor(CHANNEL_PRESENCE), "1");
+
+  const changes = await socket.join(
+    CHANNEL_LEDGER_CHANGES,
+    ledgerChangesJoinFrame({ ledgerId: "l1", accessToken: "jwt", ref: socket.nextRef() }),
+  );
+  assert.equal(changes.ok, false);
+  assert.match(changes.reason, /Unauthorized/);
+  assert.deepEqual(stats.failureRows(), [{ channel: CHANNEL_LEDGER_CHANGES, reason: "Unauthorized", count: 1 }]);
+  assert.equal(stats.hasFailures(), true, "a refused join must make the run exit non-zero");
+  socket.close();
+});
+
+asyncTest("RealtimeSocket: a topic-level phx_error resolves the outstanding join as that refusal, not as a timeout", async () => {
+  const stats = new RealtimeStats();
+  const WebSocketImpl = fakeSocketClass((frame) => {
+    if (frame?.event !== "phx_join") return null;
+    return { topic: frame.topic, event: "phx_error", payload: { reason: "PrivateOnly" } };
+  });
+  const socket = new RealtimeSocket({ url: "wss://x", stats, timeoutMs: 500, WebSocketImpl });
+  await socket.connect();
+  const result = await socket.join(
+    CHANNEL_PRESENCE,
+    presenceJoinFrame({ ledgerId: "l1", memberId: "m1", accessToken: "jwt", ref: socket.nextRef() }),
+  );
+  assert.equal(result.ok, false);
+  assert.deepEqual(stats.failureRows(), [{ channel: CHANNEL_PRESENCE, reason: "PrivateOnly", count: 1 }]);
+  socket.close();
+});
+
+asyncTest("RealtimeSocket: silence is a timeout, and it is a FAILURE rather than a skip", async () => {
+  const stats = new RealtimeStats();
+  const WebSocketImpl = fakeSocketClass(() => null); // never answers
+  const socket = new RealtimeSocket({ url: "wss://x", stats, timeoutMs: 40, WebSocketImpl });
+  await socket.connect();
+  const result = await socket.join(
+    CHANNEL_PRESENCE,
+    presenceJoinFrame({ ledgerId: "l1", memberId: "m1", accessToken: "jwt", ref: socket.nextRef() }),
+  );
+  assert.equal(result.ok, false);
+  assert.deepEqual(stats.failureRows(), [{ channel: CHANNEL_PRESENCE, reason: "timeout", count: 1 }]);
+  assert.equal(stats.joinRows().length, 0);
+  socket.close();
+});
+
+asyncTest("RealtimeSocket: presence syncs, postgres_changes and broadcasts are counted", async () => {
+  const stats = new RealtimeStats();
+  const WebSocketImpl = fakeSocketClass((frame) =>
+    frame?.event === "phx_join"
+      ? { topic: frame.topic, event: "phx_reply", ref: frame.ref, payload: { status: "ok", response: {} } }
+      : null);
+  const socket = new RealtimeSocket({ url: "wss://x", stats, timeoutMs: 500, WebSocketImpl });
+  await socket.connect();
+  await socket.join(
+    CHANNEL_PRESENCE,
+    presenceJoinFrame({ ledgerId: "l1", memberId: "m1", accessToken: "jwt", ref: socket.nextRef() }),
+  );
+  const topic = presenceTopic("l1");
+  socket.onMessage({ data: encodeFrame({ topic, event: "presence_state", payload: {} }) });
+  socket.onMessage({ data: encodeFrame({ topic, event: "presence_diff", payload: {} }) });
+  socket.onMessage({ data: encodeFrame({ topic, event: "postgres_changes", payload: {} }) });
+  socket.onMessage({ data: encodeFrame({ topic, event: "broadcast", payload: { event: ON_MY_WAY_POSITION_EVENT, payload: {} } }) });
+  socket.onMessage({ data: "not json at all" });
+  assert.equal(stats.presenceSyncs, 2);
+  assert.equal(stats.postgresChanges, 1);
+  assert.equal(stats.broadcastsReceived, 1);
+  assert.equal(stats.hasFailures(), false);
+  socket.close();
+});
+
+asyncTest("RealtimeSocket: sendRaw refuses to send on a closed socket and reports it", async () => {
+  const stats = new RealtimeStats();
+  const WebSocketImpl = fakeSocketClass(() => null);
+  const socket = new RealtimeSocket({ url: "wss://x", stats, timeoutMs: 100, WebSocketImpl });
+  await socket.connect();
+  assert.equal(socket.sendRaw(heartbeatFrame(1)), true);
+  socket.close();
+  assert.equal(socket.sendRaw(heartbeatFrame(2)), false, "a broadcast on a dead socket must not be counted as sent");
+});
+
+for (const [name, fn] of asyncTests) {
+  try {
+    await fn();
+    pass++;
+  } catch (err) {
+    fail++;
+    console.error(`✗ ${name}\n    ${err.message}`);
+  }
+}
+
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

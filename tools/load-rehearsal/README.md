@@ -10,7 +10,7 @@ Four plain-Node scripts (no npm packages, no k6):
 |---|---|---|---|
 | 1 | `schema-apply.mjs` | `npm run load:schema` | Applies `supabase-schema.sql` to the throwaway project (also validates the fresh install). Run **once** per project. |
 | 2 | `seed.mjs` | `npm run load:seed` | Creates ~100 auth users + ~20 workspaces of synthetic Danish fixture data through the real production RPCs. `--aged` adds one aged workspace. |
-| 3 | `load.mjs` | `npm run load:run` | Drives concurrent virtual users against the app's authenticated hot paths; also has an RLS tenant-isolation probe. |
+| 3 | `load.mjs` | `npm run load:run` | Drives concurrent virtual users against the app's authenticated hot paths; `--realtime` adds the private-channel joins and the "Jeg er på vej" ETA/broadcast load (GV-493); also has an RLS tenant-isolation probe. |
 | — | `aged-local.mjs` | `npm run load:aged` | **Local, no Supabase project** (GV-438): seeds ONE aged workspace on a disposable Postgres 17 and measures how the unbounded reads scale with history. See [Aged-workspace scaling](#aged-workspace-scaling-gv-438). |
 
 Steps 1–3 are **manual tooling** — they need a live project and are deliberately
@@ -37,6 +37,8 @@ production project ref (`kdudfqzglhydmzntqosb`) in either `SUPABASE_URL` or
 ## Prerequisites
 
 - **Node 18+** (uses global `fetch`) — the repo already targets modern Node.
+  **Node 22+ for `--realtime`**, which needs the global `WebSocket`; it refuses to run
+  on an older one rather than skipping the phase.
 - **Docker** — `schema-apply` pipes the schema through `postgres:17-alpine psql`.
 - A **dedicated throwaway Supabase project in the EU** (see below).
 
@@ -46,7 +48,7 @@ production project ref (`kdudfqzglhydmzntqosb`) in either `SUPABASE_URL` or
 
 1. In the Supabase dashboard, create a **new project** in an **EU region**
    (e.g. `eu-north-1` / `eu-west-1`) — keep processing in the EU (GDPR).
-   Give it a name like `govehlo-load-rehearsal`.
+   Give it a name like `vehloshare-load-rehearsal`.
 2. From **Project Settings → API**, note:
    - the project **URL** (`https://<ref>.supabase.co`),
    - the **anon** public key,
@@ -54,6 +56,15 @@ production project ref (`kdudfqzglhydmzntqosb`) in either `SUPABASE_URL` or
 3. From **Project Settings → Database → Connection string → Session pooler**,
    copy the connection string and put the project's database password into it.
    This is `DBURL` (host looks like `aws-0-<region>.pooler.supabase.com:5432`).
+
+4. **Realtime settings → turn OFF "Allow public access to channels."** A fresh project
+   has it **ON**, and production has had it **OFF** since 2026-08-12 (GVM-575). It matters
+   twice: with it on, migrations 202/205/206's policies are never consulted for a public
+   join, so the project is not in production's configuration; and
+   `npm run probe:realtime-public-access` (step 5) correctly exits **1** against it, so the
+   refusal probe cannot be evidence of anything. The `--realtime` load phase itself opens
+   only PRIVATE channels and works either way — which is exactly why the switch has to be
+   checked deliberately rather than inferred from a green run.
 
 > The throwaway project's ref will differ from production — the guard only ever
 > blocks the production ref, so any fresh project is allowed.
@@ -66,13 +77,13 @@ Create a KEY=VALUE file **outside** the repo and lock it down. Never commit it,
 never place it in the repo tree.
 
 ```sh
-cat > ~/govehlo-rehearsal.env <<'EOF'
+cat > ~/vehloshare-rehearsal.env <<'EOF'
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service_role key>
 DBURL=postgresql://postgres.<ref>:<db-password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 EOF
-chmod 600 ~/govehlo-rehearsal.env
+chmod 600 ~/vehloshare-rehearsal.env
 ```
 
 Every script takes `--env <file>`. Required keys per script:
@@ -86,7 +97,7 @@ Every script takes `--env <file>`. Required keys per script:
 ## Step 2 — apply the schema (once)
 
 ```sh
-npm run load:schema -- --env ~/govehlo-rehearsal.env
+npm run load:schema -- --env ~/vehloshare-rehearsal.env
 ```
 
 Applies `supabase-schema.sql` with `ON_ERROR_STOP`. Not idempotent — run it once
@@ -98,7 +109,7 @@ applied, so delete + recreate it before retrying.
 ## Step 3 — seed the fixture
 
 ```sh
-npm run load:seed -- --env ~/govehlo-rehearsal.env --seed 42 --workspaces 20
+npm run load:seed -- --env ~/vehloshare-rehearsal.env --seed 42 --workspaces 20
 ```
 
 Flags: `--seed N` (default 42, deterministic), `--workspaces N` (default 20),
@@ -146,17 +157,21 @@ to end. Runs are **resumable** (already-created users/workspaces are recovered v
 
 ```sh
 # read-only mix
-npm run load:run -- --env ~/govehlo-rehearsal.env --vus 30 --duration 60 --mix read
+npm run load:run -- --env ~/vehloshare-rehearsal.env --vus 30 --duration 60 --mix read
 
-# read + write mix (log trip / log fuel / post message)
-npm run load:run -- --env ~/govehlo-rehearsal.env --vus 30 --duration 60 --mix mixed
+# read + write mix (log trip / log fuel / post message / file a document)
+npm run load:run -- --env ~/vehloshare-rehearsal.env --vus 30 --duration 60 --mix mixed
+
+# the full current-schema run: HTTP mix + private Realtime channels + "Jeg er på vej"
+npm run load:run -- --env ~/vehloshare-rehearsal.env --vus 28 --duration 60 --realtime --sharers 0.2
 
 # tenant-isolation probe (members reading OUTSIDE their workspaces)
-npm run load:run -- --env ~/govehlo-rehearsal.env --vus 30 --rls-probe
+npm run load:run -- --env ~/vehloshare-rehearsal.env --vus 30 --rls-probe
 ```
 
 Flags: `--vus N` (default 20), `--duration Ns` (default 30), `--mix read|mixed`
 (default mixed), `--seed N` (must match the seed used for `load:seed`),
+`--realtime` (off by default), `--sharers F` (default 0.2, only with `--realtime`),
 `--rls-probe`, `--dry-run`.
 
 VUs sign in with the **same deterministic identities** the seed created (so no
@@ -174,11 +189,70 @@ Each VU iteration mirrors `LedgerContext` + `ledger-data-gateway.ts`:
    `vehicle_repairs`, `messages` (`limit=50`, GVM-535), `workspace_expenses`,
    `recurring_expenses` — plus the dependent `trip_participants` read.
 3. `rpc calculate_period_settlement` — the settlement-balance computation path.
-4. **Write mix** (mixed only, ~1 in 5 iterations): `upsert_trip_with_participants`,
-   `upsert_fuel_payment`, `post_message` (the feed write).
+4. **Write mix** (mixed only, ~1 in 5 iterations, a cycle of 20):
+   `upsert_trip_with_participants`, `upsert_fuel_payment`, `post_message` (the feed
+   write), and — since GV-493 — `create_vehicle_document` + `add_vehicle_document_photo`
+   (migration 201's archive; the storage UPLOAD is not rehearsed, because the object goes
+   to the Storage API rather than to PostgREST). Each VU has a budget of 5 documents so a
+   workspace stays under migration 201's cap of 50 **by construction** — a run that 23514s
+   is a broken harness, not a finding.
 
 If the mobile data gateway changes, update `lib/hotpaths.mjs` — the unit tests
 lock the mirror (labels, filters, limits, the event-type exclusion).
+
+### The Realtime phase (`--realtime`, GV-493)
+
+Exercises 1 and 2 predate migrations 202–208, so they rehearsed an app that no longer
+exists. Since GVM-575 every client holds an authenticated **websocket** open for as long
+as a workspace is on screen, joins two **private** channels on it, and — while somebody is
+on their way — broadcasts a position every 15 seconds. None of that was in the request
+mix, and none of it is free: a private join costs a policy evaluation on
+`realtime.messages` before a single row moves.
+
+`--realtime` adds it, opt-in so an existing run is byte-comparable with exercise 1:
+
+- **one websocket per VU** (the shape the client has), multiplexing
+  `presence-<ledgerId>` and `ledger-changes-<ledgerId>`, both opened with
+  `config.private = true` and the VU's own access token, presence keyed on its member id,
+  and the same two `postgres_changes` bindings `use-ledger-realtime.ts` opens (one per
+  published table — a filtered binding without a table silently delivers nothing, GVM-137);
+- presence `track` plus Phoenix heartbeats for the life of the run;
+- **`--sharers 0.2`** of the VUs (chosen deterministically from `--seed`) additionally run
+  "Jeg er på vej": `set_on_my_way` once, an `omw-position` broadcast every 15 s with
+  five-decimal fake coordinates, an ETA refresh every 5 minutes (`event_title: null`, so it
+  writes the audit-only `on_my_way_updated` rather than an eighth feed entry), and
+  `clear_on_my_way` at teardown.
+
+**Why the ETA RPCs are not in the default mix.** They are one half of a feature whose
+other half is the socket: the event insert IS the cross-client sync (migration 087), so
+driving them with nobody subscribed measures the cheap half and rehearses none of the
+risk. They also mutate a real `car_bookings.on_my_way` column, and they need a booking the
+caller owns that has not ended (migration 202's gate) — per-VU setup, not a request the
+loop can just fire. So they ride with `--realtime`, where the sockets that make them
+meaningful are open.
+
+**Bookings.** The fixture's bookings are anchored at 2026-07-01 and are all in the past by
+now, and migration 202 refuses a share on a booking that has ended. The driver therefore
+prefers a live booking the VU owns and otherwise creates one through the app's own
+`upsert_car_booking`, on a day derived from the VU index so two sharers in one workspace
+never collide with `prevent_overlapping_car_bookings`.
+
+**It fails loud.** Any refused join, dead socket or sharer that could not start prints a
+`REALTIME FAILURES` section and the run **exits 1**. Failures are bucketed by the
+platform's own words — the same vocabulary `tools/probe-realtime-public-access.mjs` uses,
+so the two tools' evidence reads together:
+
+| reason | what it means |
+|---|---|
+| `Unauthorized` | migrations 202/205/206's policies refused a **member's** private join. Presence and live sync are down for real users. |
+| `PrivateOnly` | a join frame lost `private: true`. Every join here sets it, so this means the harness drifted, not the project. |
+| `timeout` | no reply at all — project asleep, wrong URL/key, or network. |
+| `other` | an unrecognised refusal, reported **with** its raw text. Never silent. |
+
+Dependency-free like the rest of the toolkit: `node:*` plus the **global WebSocket
+(Node ≥ 22)**, the same floor the GV-490 probe states. `--realtime` on an older Node
+refuses to run rather than skipping the phase, because a realtime phase that quietly did
+nothing is worse than no phase at all — the evidence block would still look complete.
 
 ### Interpreting the results
 
@@ -191,7 +265,14 @@ lock the mirror (labels, filters, limits, the event-type exclusion).
   `--vus`. `401` means a VU's token expired/sign-in failed. `5xx` is a server-side
   problem worth investigating.
 - **RLS probe** — prints `leaked rows`. **Any leaked row fails the run loudly
-  (exit 1).** A pass proves cross-workspace reads return zero rows.
+  (exit 1).** A pass proves cross-workspace reads return zero rows. It covers the HTTP
+  half only; the Realtime half of tenant isolation is
+  `npm run probe:realtime-public-access` (GV-490), which is a different tool answering a
+  different question.
+- **Realtime section** (`--realtime` only) — join latency p50/p95/p99/max **per channel**,
+  join failures **by reason**, presence syncs, `postgres_changes` deliveries, and
+  broadcasts sent/received. `rpc:set_on_my_way` and `rpc:clear_on_my_way` are in the
+  ordinary per-endpoint table, because that is what they are.
 
 ---
 
@@ -241,6 +322,7 @@ reviewing the request shapes and the deterministic identities before a live run.
 npm run load:seed -- --dry-run --seed 42 --workspaces 20
 npm run load:seed -- --dry-run --aged
 npm run load:run  -- --dry-run --vus 20 --mix mixed
+npm run load:run  -- --dry-run --vus 28 --realtime --sharers 0.2
 npm run load:run  -- --dry-run --rls-probe
 npm run load:aged -- --dry-run
 ```
@@ -251,8 +333,10 @@ npm run load:aged -- --dry-run
 
 Pure-logic unit tests (env parsing, prod-ref guard, deterministic fixtures, the
 aged profile, the settlement-close math AND its request-then-close ordering, the
-PostgREST→SQL translation, hot-path shape) — dependency-free, no Docker, no
-network. Wired into `npm run validate`:
+PostgREST→SQL translation, hot-path shape, and — since GV-493 — the Phoenix frame
+vocabulary, the refusal buckets, deterministic sharer selection, the fake-position
+rounding, the stats aggregation and the socket itself against an in-memory fake) —
+dependency-free, no Docker, no network. Wired into `npm run validate`:
 
 ```sh
 npm run test:load-rehearsal
@@ -260,10 +344,20 @@ npm run test:load-rehearsal
 
 ---
 
+## The hosted run (exercise 3, part B)
+
+`docs/operations/load-rehearsal-evidence.md` carries the full step-by-step procedure for
+the next hosted run at migration 208 — including the Realtime switch above, the still-open
+seeder findings T1/T3 (sign-in budget), the exact `load:run --realtime` invocation and both
+probes. **It has not been performed and the doc's RESULTS section is a placeholder.**
+
 ## GDPR + teardown
 
 - **Fixture data is entirely synthetic** — generated Danish names on a throwaway
-  email domain. **No real personal data** is used at any point.
+  email domain. **No real personal data** is used at any point. The `omw-position`
+  broadcasts carry INVENTED coordinates for invented members, rounded to five decimals in
+  the same place the client rounds them; no real location is read, sent or stored, and a
+  Realtime broadcast is not persisted by Supabase at all.
 - Processing stays in the **EU** (create the throwaway project in an EU region).
 - **Slet projektet, når du er færdig.** Delete the throwaway Supabase project
   from the dashboard once the rehearsal is done — that removes every synthetic
