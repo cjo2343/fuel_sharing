@@ -638,3 +638,67 @@ export function recurringArgs({ ledgerId, paidByMemberId, recurring }) {
 export function messageArgs({ ledgerId, message }) {
   return { target_ledger_id: ledgerId, body_value: message.body };
 }
+
+// ── GV-493: the write paths added since exercise 1 ───────────────────────────
+
+// Migration 201's vehicle document archive. Mirrors govehlo-mobile's
+// buildCreateVehicleDocumentArgs / addVehicleDocumentPhoto — three args and two, and the
+// photo's `p_` prefixes are the RPC's own, not a typo.
+export function vehicleDocumentArgs({ ledgerId, title, expiryDate = null }) {
+  return {
+    target_ledger_id: ledgerId,
+    document_title: title,
+    document_expiry: expiryDate,
+  };
+}
+
+// The storage_path must sit under the literal `<ledger_id>/<document_id>/` prefix — the
+// RPC compares it with left(), not LIKE, because a ledger id can contain '_'. The object
+// itself is never uploaded from here (see hotpaths.mjs), so this registers a page row
+// whose object does not exist: harmless on a throwaway project that is deleted after the
+// run, and exactly what govehlo-web's daily orphan sweep exists for in production.
+export function vehicleDocumentPhotoArgs({ ledgerId, documentId, token }) {
+  return {
+    p_document_id: documentId,
+    p_storage_path: `${ledgerId}/${documentId}/${token}.jpg`,
+  };
+}
+
+// Migration 202/207's "Jeg er på vej". The 051/052 pattern: trailing event_title /
+// event_body, and the client passes them ONLY on the first call of a share — with a
+// title the RPC writes the feed-visible `on_my_way_started`, without one the audit-only
+// `on_my_way_updated`. Passing a title on every refresh is what turns one drive home
+// into eight feed entries, so `first` is not cosmetic.
+export function onMyWaySetArgs({ ledgerId, legacyBookingId, etaMinutes, first = true }) {
+  return {
+    target_ledger_id: ledgerId,
+    legacy_booking_id: legacyBookingId,
+    eta_minutes: etaMinutes,
+    event_title: first ? "På vej" : null,
+    event_body: first ? `Ankommer om ca. ${etaMinutes} min.` : null,
+  };
+}
+
+export function onMyWayClearArgs({ ledgerId, legacyBookingId }) {
+  return { target_ledger_id: ledgerId, legacy_booking_id: legacyBookingId };
+}
+
+// A future booking for a sharer to be on the way to (GV-493). The fixture's own bookings
+// are anchored at 2026-07-01 and every one of them has ENDED by now, and migration 202
+// refuses a share on a booking that is over ("Bookingen er slut") — so a run performed
+// any time after that window has no eligible booking to share and would report a phase
+// that silently did nothing. The harness therefore prefers a real fixture booking the VU
+// owns and that is still running, and falls back to creating one through the SAME
+// upsert_car_booking RPC the app uses.
+//
+// The day offset is derived from the VU index so two sharers in one workspace never draw
+// the same day — prevent_overlapping_car_bookings would refuse the second — and the whole
+// window sits far enough ahead of `now` that a long run cannot outlive it.
+export function sharerBookingWindow({ index, now = Date.now() }) {
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() + 14 + index);
+  start.setUTCHours(9, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCHours(17, 0, 0, 0);
+  return { startAt: start.toISOString(), endAt: end.toISOString(), purpose: "Load rehearsal" };
+}

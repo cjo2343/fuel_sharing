@@ -175,8 +175,50 @@ export const SETTLEMENT_CALC_RPC = "calculate_period_settlement";
 
 // Write-mix RPCs (mirrors supabase-helpers.ts). These are the hot writes a member
 // makes: log a trip, log a fuel payment, post a chat message (the feed write).
+//
+// GV-493 adds `document` and `documentPhoto` — migration 201's vehicle document archive,
+// the one user-driven HTTP write path added since exercise 1 that belongs in the DEFAULT
+// mix. It is a plain insert behind an advisory lock and a per-workspace cap, and the
+// client always files the row and then registers its pages, so both are driven. The
+// storage UPLOAD is not rehearsed and cannot be from here: the object goes to the
+// Storage API, not to PostgREST, and a throwaway project's bucket is not what this
+// harness measures.
 export const WRITE_RPCS = {
   trip: "upsert_trip_with_participants",
   fuel: "upsert_fuel_payment",
   message: "post_message",
+  document: "create_vehicle_document",
+  documentPhoto: "add_vehicle_document_photo",
 };
+
+// Migration 201: at most 50 documents per workspace, enforced under an advisory lock and
+// answered with 23514. The mix must stay under it BY CONSTRUCTION rather than by luck —
+// a run that 23514s is a broken rehearsal, not a finding — so load.mjs gives each VU its
+// own budget. Workspaces hold 2–8 members, so 5 per VU caps a workspace at 40.
+export const VEHICLE_DOCUMENT_WORKSPACE_CAP = 50;
+export const VEHICLE_DOCUMENTS_PER_VU = 5;
+
+// "Jeg er på vej" (migrations 202/207) and the booking RPC a sharer needs in order to
+// have something to be on the way TO.
+//
+// These are deliberately NOT in WRITE_RPCS, i.e. not in the default mix, and that is an
+// argued decision rather than an omission:
+//
+//   • The ETA write is one half of a feature whose other half is the socket. Its whole
+//     purpose is the live-sync fan-out to the members joined right now (migration 087 —
+//     the event insert IS the sync), so driving it with nobody subscribed measures the
+//     cheap half and rehearses none of the risk: the advisory lock two sharers in one
+//     workspace contend on, 207's trigger, and the position broadcasts riding alongside.
+//   • It MUTATES fixture bookings. `on_my_way` is a real column on a real row, and a
+//     default mix that set it would leave every rehearsal's bookings carrying a share
+//     that the RLS probe and every later reader then sees. Opt-in keeps the default run
+//     comparable with exercises 1 and 2.
+//   • It needs a booking the caller owns and that has not ended (migration 202's gate),
+//     which is per-VU setup work rather than a request the load loop can just fire.
+//
+// So they ride with `--realtime`, where the sockets that make them meaningful are open.
+export const ON_MY_WAY_RPCS = {
+  set: "set_on_my_way",
+  clear: "clear_on_my_way",
+};
+export const BOOKING_WRITE_RPC = "upsert_car_booking";
