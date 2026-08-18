@@ -217,6 +217,7 @@ const expected = [
   "204_rerequest_is_not_a_dispute.sql",
   "205_presence_policies_cover_broadcast.sql",
   "206_ledger_changes_private_channel_policies.sql",
+  "207_on_my_way_rpc_only_writes.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

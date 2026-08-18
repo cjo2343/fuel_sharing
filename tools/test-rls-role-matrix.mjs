@@ -4695,18 +4695,121 @@ begin
   end if;
 end`,
   }),
+  // ── The column is RPC-ONLY (migration 207, GV-489) ─────────────────────────
+  // Every gate above lived in an RPC body while migration 005's update policy let the
+  // member, the creator AND any admin PATCH the column straight through PostgREST. The
+  // trigger enforce_on_my_way_rpc_only_trg refuses any write to on_my_way that does not
+  // carry the transaction-local mark govehlo.on_my_way_command, so what these cases
+  // prove is that the RPC bodies are now the ONLY path — and, in the last two, that the
+  // trigger did not take an ordinary booking edit down with it.
+  //
+  // A BEFORE row trigger runs ahead of constraint evaluation, so the ORDER of the two
+  // refusals is itself part of the contract: with no mark it is the trigger's 42501,
+  // and with the mark raised by hand migration 202's shape CHECK still answers 23514.
+  // Both are asserted, because a fix that made the trigger swallow the coordinate case
+  // would look green while quietly retiring the constraint.
   rpcCase({
     name: "onmyway-direct-coordinate-patch-denied",
-    desc: "the member may UPDATE her own booking row directly (migration 005) — but not to put a coordinate in it",
+    desc: "an unmarked direct PATCH of on_my_way is refused by the RPC-only trigger before the shape CHECK is ever reached",
     setup: [step(SUPER, SEED_OMW_BOOKINGS)],
     actor: B,
     op: `update public.car_bookings
          set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
                                             'updated_at', now(), 'lat', 55.6, 'lng', 12.5)
          where id = '${OMW_BOOKING_B}';`,
-    expect: "23514",
+    expect: "42501",
     post: `if ${OMW_STATE_B} is not null
       then raise exception 'CASEFAIL onmyway-direct-coordinate-patch-denied: a coordinate reached the column'; end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-marked-coordinate-patch-still-denied",
+    desc: "migration 202's shape CHECK still bites: with the RPC mark raised by hand, a coordinate is refused with 23514",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform set_config('govehlo.on_my_way_command', '1', true);
+         update public.car_bookings
+         set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
+                                            'updated_at', now(), 'lat', 55.6, 'lng', 12.5)
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "23514",
+    post: `if ${OMW_STATE_B} is not null
+      then raise exception 'CASEFAIL onmyway-marked-coordinate-patch-still-denied: a coordinate reached the column'; end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-direct-set-by-member-denied",
+    desc: "even a perfectly shaped share must go through set_on_my_way — a direct write reaches no other client, because the event insert IS the live sync",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `update public.car_bookings
+         set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
+                                            'updated_at', now())
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "42501",
+    post: `if ${OMW_STATE_B} is not null then
+        raise exception 'CASEFAIL onmyway-direct-set-by-member-denied: a share was written without the RPC';
+      end if;
+      if ${OMW_EVENTS("on_my_way_started")} + ${OMW_EVENTS("on_my_way_updated")} <> 0 then
+        raise exception 'CASEFAIL onmyway-direct-set-by-member-denied: a refused write still produced an event';
+      end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-direct-set-by-admin-denied",
+    desc: "the admin may edit B's booking but may NOT announce that B is on her way — the refusal set_on_my_way argues for, now enforced against a direct write too",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: A,
+    op: `update public.car_bookings
+         set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
+                                            'updated_at', now())
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "42501",
+    post: `if ${OMW_STATE_B} is not null
+      then raise exception 'CASEFAIL onmyway-direct-set-by-admin-denied: an admin announced that another member was on their way'; end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-direct-clear-denied",
+    desc: "a share cannot be dropped by a direct write either — without clear_on_my_way there is no on_my_way_stopped row, so the other clients keep the badge",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: B,
+    op: `update public.car_bookings set on_my_way = null where id = '${OMW_BOOKING_B}';`,
+    expect: "42501",
+    post: `if ${OMW_STATE_B} is null then
+        raise exception 'CASEFAIL onmyway-direct-clear-denied: the share was cleared without the RPC';
+      end if;
+      if ${OMW_EVENTS("on_my_way_stopped")} <> 0 then
+        raise exception 'CASEFAIL onmyway-direct-clear-denied: a refused clear still produced an audit row';
+      end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-direct-started-at-rewrite-denied",
+    desc: "how long someone has been on their way is not editable by the person it describes — started_at survives a direct rewrite",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: B,
+    op: `update public.car_bookings
+         set on_my_way = jsonb_set(on_my_way, '{started_at}',
+                                   to_jsonb((now() - interval '4 hours')::timestamptz))
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "42501",
+    post: `if (${OMW_STATE_B} ->> 'started_at')::timestamptz < now() - interval '1 hour'
+      then raise exception 'CASEFAIL onmyway-direct-started-at-rewrite-denied: started_at was rewritten'; end if;`,
+  }),
+  queryCase({
+    name: "onmyway-unchanged-column-edit-ok",
+    desc: "an ordinary booking edit that carries on_my_way along unchanged must still succeed — a booking with a live share stays editable",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B)],
+    actor: B,
+    assert: `declare
+  v_before jsonb := ${OMW_STATE_B};
+begin
+  update public.car_bookings
+     set purpose = 'Indkøb', on_my_way = on_my_way
+   where id = '${OMW_BOOKING_B}';
+  if ${OMW_STATE_B} is distinct from v_before then
+    raise exception 'CASEFAIL onmyway-unchanged-column-edit-ok: the edit altered the share';
+  end if;
+  if (select purpose from public.car_bookings where id = '${OMW_BOOKING_B}') is distinct from 'Indkøb' then
+    raise exception 'CASEFAIL onmyway-unchanged-column-edit-ok: the ordinary booking edit was refused';
+  end if;
+end`,
   }),
   queryCase({
     name: "onmyway-clear-member-ok",
