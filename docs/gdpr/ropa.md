@@ -140,15 +140,17 @@ Cloudflare Access + Supabase-login).
 - **Datakategorier:** Hændelsestekster (navne + beløb), chatbeskeder, aktør-id/e-mail,
   samt **tilstedeværelse** (hvilke medlems-id'er der har appen åben lige nu) over
   Supabase Realtime. Tilstedeværelsen er et online/offline-signal om navngivne
-  personer og hører derfor til workspacet: kanalen `presence-<workspace-id>` er indtil
-  videre **offentlig**, hvilket betyder at enhver indlogget bruger, der kender et
-  workspace-id, kan læse den (GVM-575). Migration 202 lægger RLS-politikker på
-  `realtime.messages`, så kun workspacets egne medlemmer må lytte og melde sig til
-  netop den kanal. Politikkerne virker først, når klienten åbner kanalen som
-  **privat** (mobil-halvdelen efter migrationen), og hullet er først lukket over for
-  en ondsindet klient, når "Allow public access" slås fra i projektets
-  Realtime-indstillinger — en driftsopgave, der skal ske efter at den private klient
-  er den eneste i brug.
+  personer og hører derfor til workspacet: kanalerne `presence-<workspace-id>` og
+  `ledger-changes-<workspace-id>` er **private** (GVM-575, lukket 2026-08-12).
+  Migrationerne 202/205/206 lægger RLS-politikker på `realtime.messages`, så kun
+  workspacets egne medlemmer må lytte og melde sig til netop de kanaler, og klienten
+  åbner dem med `private: true`. Politikker binder kun private kanaler, så hullet var
+  først lukket, da **"Allow public access to channels"** blev slået fra i projektets
+  Realtime-indstillinger — en indstilling i Supabase-dashboardet, som ingen migration
+  skriver og ingen forespørgsel kan læse. Den kontrolleres derfor med
+  `npm run probe:realtime-public-access` (et offentligt join skal afvises med
+  "PrivateOnly") og attesteres før udgivelse som `realtime_public_access_closed` i
+  `docs/release-attestations.json` (GV-490); se DEPLOY-CHECKLIST.md afsnit 6a.
 - **Retsgrundlag:** Kontrakt; feedet er en kernefunktion (transparens om penge).
 - **Sletning:** Feedet er workspace-historik uden aldersgrænse (produktbeslutning);
   aktørfelter anonymiseres ved kontosletning.

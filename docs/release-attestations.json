@@ -2,11 +2,13 @@
   "_README": [
     "Release attestations (GV-422) — read by tools/check-release-gates.mjs.",
     "",
-    "WHY THIS FILE EXISTS: two launch gates judge state that exists in NO repository.",
+    "WHY THIS FILE EXISTS: some launch gates judge state that exists in NO repository.",
     "The app-link association files are served from vehloshare.app but their contents",
     "come from the Apple Developer / Google Play consoles (Team ID, signing SHA-256),",
-    "and Sentry source maps live in a Sentry release that a build machine uploads.",
-    "Nothing a CI job can grep proves either one, so the only honest gate is a human",
+    "Sentry source maps live in a Sentry release that a build machine uploads, and the",
+    "Realtime \"Allow public access to channels\" switch is a checkbox in the Supabase",
+    "dashboard that no migration writes and no query reads (GV-490).",
+    "Nothing a CI job can grep proves any of them, so the only honest gate is a human",
     "writing down what they checked, when, and under their own name — with an expiry,",
     "because an attestation nobody has re-made in a month describes a state nobody has",
     "looked at in a month.",
@@ -26,9 +28,12 @@
     "    launch blocker: a warning locally, a hard failure under --strict.",
     "  - verified_on must be a YYYY-MM-DD date no more than 30 days old.",
     "  - attested_by must be non-empty; note must actually explain the item.",
-    "  - The seeded state below is deliberately \"unverified\": neither item has been",
-    "    verified as of 2026-08-01, and a gate that starts green would be a gate that",
-    "    never once told the truth.",
+    "  - Every entry below is seeded \"unverified\" on purpose, and a gate that starts",
+    "    green would be a gate that never once told the truth. That includes",
+    "    realtime_public_access_closed, which GV-490 added AFTER the switch was flipped",
+    "    and checked in the dashboard on 2026-08-12: an agent may add the item, but only",
+    "    the person who looked at the dashboard may sign for it, and only with a date",
+    "    that is theirs. Re-check it, then attest it under your own name.",
     "",
     "This file records CLAIMS, not secrets. Never paste a token, key, signing",
     "fingerprint or Team ID into it — the repo is public."
@@ -45,6 +50,12 @@
       "verified_on": null,
       "attested_by": null,
       "note": "The mobile build being released has uploaded its source maps to the Sentry EU project (govehlo / react-native) under the matching release + dist, and a deliberately thrown error in that exact build symbolicates to a TypeScript file and line in the Sentry issue — not to a minified bundle offset. Checking that a sourcemap file was produced locally is NOT this attestation."
+    },
+    "realtime_public_access_closed": {
+      "state": "unverified",
+      "verified_on": null,
+      "attested_by": null,
+      "note": "Supabase Realtime is private-only in the PRODUCTION project, so the workspace topics cannot be read by anyone the RLS policies did not authorise (GVM-575, migrations 202/205/206; GV-490). All FOUR of these must hold, and each is a separate look: (1) Dashboard → Project Settings → Realtime → 'Allow public access to channels' is OFF in the production project (not staging, not the load-rehearsal throwaway); (2) a probe that joins presence-<any existing ledger id> WITHOUT private:true is REFUSED, with the platform's own reason 'PrivateOnly' — run `npm run probe:realtime-public-access` (SUPABASE_URL + SUPABASE_ANON_KEY, optionally SUPABASE_ACCESS_TOKEN; it exits 0 only on a refusal); (3) a real member joining the SAME topic WITH private:true still reaches SUBSCRIBED, i.e. the switch closed the hole without taking presence and live sync down with it; (4) every mobile build in the field opens BOTH presence-<id> and ledger-changes-<id> with private:true — pre-launch, with no TestFlight or App Store build released, no other build exists, so this is trivially true and saying so IS the check; once builds are in the field it means the older public-channel builds are force-upgraded or gone. Reading this note, or reading that someone flipped the switch in a ticket, is NOT this attestation."
     }
   }
 }

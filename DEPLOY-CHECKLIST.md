@@ -130,6 +130,43 @@ workflow runs it `--strict`.
       reports `UNAVAILABLE` and certifies nothing.
 - [ ] Every `BLOCKED` line cleared: privacy-page placeholder (GV-177), Supabase
       plan off Free (GV-313), restore drill within 15 migrations of HEAD.
-- [ ] `docs/release-attestations.json` signed and dated for the two items no repo
-      can observe — app-link secrets and Sentry source maps. Read that file's
-      `_README` for what "verified" has to mean; attestations expire after 30 days.
+- [ ] `docs/release-attestations.json` signed and dated for every item no repo can
+      observe — app-link secrets, Sentry source maps, and the Realtime public-access
+      switch (below). Read that file's `_README` for what "verified" has to mean;
+      attestations expire after 30 days.
+
+### 6a. Realtime is private-only (GV-490 / GVM-575)
+
+`presence-<ledgerId>` and `ledger-changes-<ledgerId>` carry workspace data — who
+has the app open, and which rows just changed. Migrations 202/205/206 put RLS
+policies on `realtime.messages` and the mobile client opens both topics with
+`private: true`, but **policies only bind private channels**: while the project
+setting **Realtime → "Allow public access to channels"** is ON, anyone logged in
+who knows a workspace id can open the same topic as a public one and the policies
+are never consulted. The switch was turned off on 2026-08-12; no migration writes
+it, no query reads it, and nothing in any repo can tell you it is still off — so
+it is re-checked here and attested, not remembered.
+
+```sh
+SUPABASE_URL=https://<prod-ref>.supabase.co \
+SUPABASE_ANON_KEY=<anon key> \
+npm run probe:realtime-public-access
+```
+
+The probe joins `presence-<id>` **without** `private: true` and exits **0 only if
+the join is refused** ("PrivateOnly"); exit 1 means the hole is open, exit 2 means
+it learned nothing (bad URL/key, no network) — which is never a pass. Add
+`SUPABASE_ACCESS_TOKEN=<a member's JWT>` and `LEDGER_ID=<their workspace>` for
+phase 2: the same topic joined **with** `private: true` must still reach
+`SUBSCRIBED`, i.e. the switch closed the hole without taking presence and live
+sync down with it. The probe needs the network and a live project, so it is
+deliberately outside `npm run validate`; it is also the one tool here that is
+meant to point at production. It reads and writes nothing, and never prints
+presence payloads (they are member ids).
+
+- [ ] Probe run against **production** and green, and the client half confirmed:
+      every mobile build in the field opens both topics with `private: true`
+      (pre-launch, with nothing released, no other build exists — that is the
+      answer, and saying so is the check).
+- [ ] `realtime_public_access_closed` in `docs/release-attestations.json` signed
+      and dated by the person who ran it.
