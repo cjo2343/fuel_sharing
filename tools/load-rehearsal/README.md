@@ -9,7 +9,7 @@ Four plain-Node scripts (no npm packages, no k6):
 | Step | Script | npm script | What it does |
 |---|---|---|---|
 | 1 | `schema-apply.mjs` | `npm run load:schema` | Applies `supabase-schema.sql` to the throwaway project (also validates the fresh install). Run **once** per project. |
-| 2 | `seed.mjs` | `npm run load:seed` | Creates ~100 auth users + ~20 workspaces of synthetic Danish fixture data through the real production RPCs. `--aged` adds one aged workspace. |
+| 2 | `seed.mjs` | `npm run load:seed` | Creates ~100 auth users + ~20 workspaces of synthetic Danish fixture data through the real production RPCs, budgeting its sign-ins against the Auth rate limit (GV-494). `--aged` adds one aged workspace. |
 | 3 | `load.mjs` | `npm run load:run` | Drives concurrent virtual users against the app's authenticated hot paths; `--realtime` adds the private-channel joins and the "Jeg er på vej" ETA/broadcast load (GV-493); also has an RLS tenant-isolation probe. |
 | — | `aged-local.mjs` | `npm run load:aged` | **Local, no Supabase project** (GV-438): seeds ONE aged workspace on a disposable Postgres 17 and measures how the unbounded reads scale with history. See [Aged-workspace scaling](#aged-workspace-scaling-gv-438). |
 
@@ -116,14 +116,45 @@ Flags: `--seed N` (default 42, deterministic), `--workspaces N` (default 20),
 `--concurrency N` (default 4), `--email-domain <domain>` (default
 `rehearsal.vehloshare.test`), `--dry-run` (build + print without any network),
 `--aged` (append one aged workspace; knobs `--aged-members`, `--aged-periods`,
-`--aged-trips`, `--aged-fuel`, `--aged-messages`).
+`--aged-trips`, `--aged-fuel`, `--aged-messages`), `--signin-budget N` (default 30),
+`--signin-window S` (default 300), `--state <file>` (default
+`~/.vehloshare-rehearsal-seed-state.json`), `--ignore-state`.
 
-**Sign-in budget.** Supabase Auth allows ~30 sign-ins per 5 minutes per IP
-regardless of the dashboard setting (GVM-533 finding T4 — raising it to 300 and
-restarting the project changed nothing). Each workspace costs one sign-in per
-member; the aged workspace costs `--aged-members` sign-ins in total, because its
-thousands of entries ride on tokens already held. Plan the run around ~30 sign-ins
-per five minutes and resume rather than fight the limit.
+**One pass, and it takes as long as it takes (GV-494).** A full 20-workspace seed is
+~110 sign-ins. Supabase Auth allows ~30 per 5 minutes per IP regardless of the
+dashboard setting (exercise-1 finding **T4** — raising it to 300 and restarting the
+project changed nothing), so the seeder **budgets** those sign-ins instead of
+discovering the limit: each grant takes a slot from a sliding window of
+`--signin-budget` per `--signin-window` seconds, and when the window is empty the run
+**pauses with a countdown** rather than firing calls that will 429. It prints the
+estimate up front —
+
+```
+   sign-in plan: ~110 sign-ins at 30/300 s ≈ 15 min (4 windows)
+```
+
+— so **~15–20 minutes of mostly waiting is the expected shape of a healthy run, not a
+hang.** If a 429 comes back anyway (a shared IP, another tool on the same project), every
+sign-in parks for the response's `Retry-After`, or a full window when it does not say.
+
+**Completed workspaces cost zero sign-ins on a resume.** Each workspace that finishes
+cleanly is recorded in a small JSON **state file kept outside the repo** —
+`~/.vehloshare-rehearsal-seed-state.json`, move it with `--state <file>` (a path inside
+the repo is refused) — and the next pass skips it *before* signing anybody in. Markers are
+keyed on project ref + `--seed` + email domain and carry a signature of the workspace's
+planned contents, so a different project, a different seed or a changed fixture rebuilds
+rather than skips; a workspace that produced any warning is **not** marked, so it is
+retried. `--ignore-state` re-verifies everything the old way. The file holds no
+credentials and no addresses — a project ref, a seed, workspace names and counts.
+
+Each workspace costs one sign-in per member (one per member per **pass** — sessions are
+reused); the aged workspace costs `--aged-members` sign-ins in total, because its
+thousands of entries ride on tokens already held.
+
+> This closes exercise-1 findings **T1** (no throttling → the window burnt in the first
+> two workspaces, then 429s) and **T3** (every pass re-signed-in already-built workspaces,
+> so retries plateaued at 10–12 of 20 across 13+ rounds). **T4 still stands** — it is the
+> platform's behaviour, and it is what the default budget is set to.
 
 **Seeding strategy — which write path per object:**
 
@@ -148,8 +179,9 @@ rehearsal's T2 finding.
 
 No service-role table inserts were needed for domain data — everything except
 auth users goes through the real RPCs, so RLS + business rules are exercised end
-to end. Runs are **resumable** (already-created users/workspaces are recovered via
-`list_my_ledgers`) and back off on HTTP 429 to stay under free-tier rate limits.
+to end. Runs are **resumable**: a workspace a previous pass completed is skipped from the
+state file with no sign-in at all, anything else is recovered in place via
+`list_my_ledgers`, and every request backs off on HTTP 429 to stay under free-tier limits.
 
 ---
 
@@ -333,10 +365,12 @@ npm run load:aged -- --dry-run
 
 Pure-logic unit tests (env parsing, prod-ref guard, deterministic fixtures, the
 aged profile, the settlement-close math AND its request-then-close ordering, the
-PostgREST→SQL translation, hot-path shape, and — since GV-493 — the Phoenix frame
+PostgREST→SQL translation, hot-path shape, since GV-493 the Phoenix frame
 vocabulary, the refusal buckets, deterministic sharer selection, the fake-position
-rounding, the stats aggregation and the socket itself against an in-memory fake) —
-dependency-free, no Docker, no network. Wired into `npm run validate`:
+rounding, the stats aggregation and the socket itself against an in-memory fake, and
+since GV-494 the sign-in budget's timing against an injected clock, the 429 backoff,
+the resume state and the `--dry-run` output) — dependency-free, no Docker, no
+network. Wired into `npm run validate`:
 
 ```sh
 npm run test:load-rehearsal
@@ -347,9 +381,11 @@ npm run test:load-rehearsal
 ## The hosted run (exercise 3, part B)
 
 `docs/operations/load-rehearsal-evidence.md` carries the full step-by-step procedure for
-the next hosted run at migration 208 — including the Realtime switch above, the still-open
-seeder findings T1/T3 (sign-in budget), the exact `load:run --realtime` invocation and both
-probes. **It has not been performed and the doc's RESULTS section is a placeholder.**
+the next hosted run at migration 208 — including the Realtime switch above, the exact
+`load:run --realtime` invocation and both probes. Its step-2 warning about budgeting around
+seeder findings T1/T3 predates GV-494: **both are fixed** (see Step 3 above), so a single
+seed pass should now reach all 20 workspaces — it just spends ~15–20 minutes doing it.
+T4 (the dashboard's sign-in limit not taking effect) still stands. **It has not been performed and the doc's RESULTS section is a placeholder.**
 
 ## GDPR + teardown
 
@@ -361,4 +397,6 @@ probes. **It has not been performed and the doc's RESULTS section is a placehold
 - Processing stays in the **EU** (create the throwaway project in an EU region).
 - **Slet projektet, når du er færdig.** Delete the throwaway Supabase project
   from the dashboard once the rehearsal is done — that removes every synthetic
-  user and row in one action. Also delete the local `--env` file.
+  user and row in one action. Also delete the local `--env` file and the seeder's
+  state file (`~/.vehloshare-rehearsal-seed-state.json`) — its completion markers
+  refer to a project that no longer exists.

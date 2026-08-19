@@ -6,6 +6,7 @@
 // the pure functions are unit-tested by ../test-load-rehearsal.mjs.
 
 import { readFileSync } from "node:fs";
+import { parseRetryAfterMs } from "./signin-budget.mjs";
 
 // ── Production guard (hard rule) ─────────────────────────────────────────────
 // The one production Supabase project ref (mirrors govehlo-mobile's
@@ -203,10 +204,13 @@ export async function httpJson(url, opts = {}) {
     }
     clearTimeout(timer);
 
+    // Retry-After may be delta-seconds OR an HTTP-date (RFC 9110); parseRetryAfterMs
+    // handles both and returns null when the platform did not say.
+    const retryAfterMs = parseRetryAfterMs(res.headers.get("retry-after"));
+
     if ((res.status === 429 || res.status >= 500) && attempt < retries) {
-      const retryAfter = Number(res.headers.get("retry-after"));
-      const wait = Number.isFinite(retryAfter) && retryAfter > 0
-        ? retryAfter * 1000
+      const wait = Number.isFinite(retryAfterMs) && retryAfterMs > 0
+        ? retryAfterMs
         : backoffWithJitter(backoffMs, attempt);
       await sleep(wait);
       attempt++;
@@ -222,7 +226,10 @@ export async function httpJson(url, opts = {}) {
         json = null;
       }
     }
-    return { status: res.status, ok: res.ok, json, text };
+    // `retryAfterMs` is surfaced so a caller that owns its own rate budget (the
+    // seeder's SignInBudget, GV-494) can honour the platform's own number rather
+    // than guess; it is null when the response carried no usable header.
+    return { status: res.status, ok: res.ok, json, text, retryAfterMs };
   }
 }
 
