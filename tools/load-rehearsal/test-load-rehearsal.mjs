@@ -26,12 +26,14 @@
 // throwaway project, or Docker for the aged harness, and never runs in CI.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir, homedir } from "node:os";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, "..", "..");
 
 import {
   parseEnvFile,
@@ -68,6 +70,26 @@ import {
   RECURRING_ROW_CAP,
 } from "./lib/hotpaths.mjs";
 import { postgrestToSql, withLimit } from "./lib/hotpaths-sql.mjs";
+import {
+  SignInBudget,
+  SessionCache,
+  parseRetryAfterMs,
+  estimateSignInMs,
+  signInWindows,
+  formatDuration,
+  formatSignInEstimate,
+  DEFAULT_SIGNIN_BUDGET,
+  DEFAULT_SIGNIN_WINDOW_S,
+} from "./lib/signin-budget.mjs";
+import {
+  SeedState,
+  defaultSeedStatePath,
+  assertStateOutsideRepo,
+  projectRefFromUrl,
+  workspaceSignature,
+  workspaceStateKey,
+  SEED_STATE_VERSION,
+} from "./lib/seed-state.mjs";
 import {
   WRITE_RPCS,
   ON_MY_WAY_RPCS,
@@ -735,7 +757,29 @@ test("classifyJoinFailure recognises the platform's own words, and buckets the r
   assert.equal(classifyJoinFailure("timeout: no reply within 15000 ms"), "timeout");
   assert.equal(classifyJoinFailure("something nobody has seen"), "other");
   assert.equal(classifyJoinFailure(undefined), "other", "a missing reason is still a failure, never a pass");
-  assert.deepEqual(JOIN_FAILURE_REASONS, ["Unauthorized", "PrivateOnly", "timeout", "other"]);
+  assert.deepEqual(JOIN_FAILURE_REASONS, ["Unauthorized", "PrivateOnly", "MissingPartition", "timeout", "other"]);
+});
+
+// GV-494 / exercise-3 finding T6.
+test("a missing realtime.messages partition is its OWN bucket, not `other` and not a policy refusal", () => {
+  assert.equal(
+    classifyJoinFailure("Realtime was unable to find the expected messages partition"),
+    "MissingPartition",
+    "the fresh-project janitor race must be nameable, or it hides in the unrecognised bucket",
+  );
+  assert.equal(
+    classifyJoinFailure('phx_reply status=error: {"reason":"Realtime was unable to find the expected messages partition"}'),
+    "MissingPartition",
+  );
+  // It is NOT an RLS problem: filing it as Unauthorized would send the operator to
+  // migrations 202/205/206 for a partition that simply did not exist yet.
+  assert.notEqual(classifyJoinFailure("Realtime was unable to find the expected messages partition"), "Unauthorized");
+  assert.ok(JOIN_FAILURE_REASONS.includes("MissingPartition"), "the bucket must be in the reported vocabulary");
+  // The legend the operator reads must carry it too — a bucket with no explanation is
+  // a string, not a finding.
+  const src = readFileSync(path.join(HERE, "load.mjs"), "utf8");
+  assert.ok(src.includes("MissingPartition"), "load.mjs's failure legend must explain the bucket");
+  assert.match(src, /day-partition of realtime\.messages/);
 });
 
 // ── Sharer selection ─────────────────────────────────────────────────────────
@@ -1082,6 +1126,289 @@ asyncTest("RealtimeSocket: sendRaw refuses to send on a closed socket and report
   assert.equal(socket.sendRaw(heartbeatFrame(1)), true);
   socket.close();
   assert.equal(socket.sendRaw(heartbeatFrame(2)), false, "a broadcast on a dead socket must not be counted as sent");
+});
+
+// ── GV-494: the sign-in budget and the resume state ──────────────────────────
+// What is under test is the thing exercise 1 got wrong twice: the seeder issued
+// sign-ins until the platform refused them (T1), and re-verified finished
+// workspaces on every retry (T3). Both are timing/bookkeeping bugs, so both are
+// pinned here with an INJECTED CLOCK — no network, no waiting five real minutes.
+
+test("parseRetryAfterMs reads delta-seconds AND an HTTP-date, and refuses to invent one", () => {
+  assert.equal(parseRetryAfterMs("120"), 120_000);
+  assert.equal(parseRetryAfterMs(" 0 "), 0);
+  const now = Date.parse("2026-08-19T10:00:00Z");
+  assert.equal(parseRetryAfterMs("Wed, 19 Aug 2026 10:02:00 GMT", now), 120_000);
+  // A date already in the past means "now", never a negative wait.
+  assert.equal(parseRetryAfterMs("Wed, 19 Aug 2026 09:00:00 GMT", now), 0);
+  assert.equal(parseRetryAfterMs("soon"), null);
+  assert.equal(parseRetryAfterMs(""), null);
+  assert.equal(parseRetryAfterMs(null), null);
+  assert.equal(parseRetryAfterMs(undefined), null);
+});
+
+test("the up-front estimate is the sliding-window math, not a guess", () => {
+  // The headline number in the ticket: ~110 sign-ins at 30 per 300 s.
+  assert.equal(estimateSignInMs({ count: 110, budget: 30, windowMs: 300_000 }), 900_000);
+  assert.equal(signInWindows({ count: 110, budget: 30 }), 4);
+  // The first `budget` grants are free — an estimate that charged for them would
+  // scare an operator off a run that takes no time at all.
+  assert.equal(estimateSignInMs({ count: 30, budget: 30, windowMs: 300_000 }), 0);
+  assert.equal(estimateSignInMs({ count: 31, budget: 30, windowMs: 300_000 }), 300_000);
+  assert.equal(estimateSignInMs({ count: 0, budget: 30, windowMs: 300_000 }), 0);
+  assert.equal(formatDuration(0), "0s");
+  assert.equal(formatDuration(45_000), "45s");
+  assert.equal(formatDuration(900_000), "15 min");
+  assert.match(
+    formatSignInEstimate({ count: 110, budget: 30, windowMs: 300_000 }),
+    /~110 sign-ins at 30\/300 s ≈ 15 min \(4 windows\)/,
+  );
+  assert.equal(DEFAULT_SIGNIN_BUDGET, 30, "the default is the limit exercise 1 MEASURED (T4), not the dashboard's");
+  assert.equal(DEFAULT_SIGNIN_WINDOW_S, 300);
+});
+
+// A clock the tests own: `sleep` advances it, so a five-minute pause costs nothing.
+function fakeClock(start = 0) {
+  let t = start;
+  return {
+    now: () => t,
+    sleep: async (ms) => {
+      t += ms;
+    },
+    advance: (ms) => {
+      t += ms;
+    },
+    get value() {
+      return t;
+    },
+  };
+}
+
+asyncTest("SignInBudget spends the window, then PAUSES for exactly as long as the window needs", async () => {
+  const clock = fakeClock(0);
+  const budget = new SignInBudget({ budget: 3, windowMs: 1000, now: clock.now, sleep: clock.sleep, tickMs: 1000 });
+
+  for (let i = 0; i < 3; i++) await budget.acquire();
+  assert.equal(clock.value, 0, "the first `budget` sign-ins go at full speed");
+  assert.equal(budget.remaining(), 0);
+
+  await budget.acquire(); // the window is full → wait for the oldest grant to age out
+  assert.equal(clock.value, 1000);
+  assert.equal(budget.waitedMs, 1000);
+
+  // Sliding, not fixed: the three grants at t=0 have now expired, so two more go free.
+  await budget.acquire();
+  await budget.acquire();
+  assert.equal(clock.value, 1000);
+
+  // Three live grants again ([1000,1000,1000]) → the next one waits a full window.
+  await budget.acquire();
+  assert.equal(clock.value, 2000);
+  assert.equal(budget.spent, 7);
+  assert.equal(budget.rateLimited, 0);
+});
+
+asyncTest("a real 429 parks EVERY sign-in — for Retry-After when given, else a full window", async () => {
+  const clock = fakeClock(0);
+  const budget = new SignInBudget({ budget: 30, windowMs: 300_000, now: clock.now, sleep: clock.sleep, tickMs: 300_000 });
+
+  await budget.acquire();
+  assert.equal(clock.value, 0);
+
+  const waited = budget.noteRateLimited({ retryAfterMs: 42_000 });
+  assert.equal(waited, 42_000, "the platform's own number wins over our window");
+  await budget.acquire();
+  assert.equal(clock.value, 42_000);
+  assert.equal(budget.rateLimited, 1);
+
+  // No Retry-After: assume the limiter's own period rather than a cheap retry.
+  const blind = budget.noteRateLimited({});
+  assert.equal(blind, 300_000);
+  await budget.acquire();
+  assert.equal(clock.value, 342_000);
+  assert.equal(budget.rateLimited, 2);
+});
+
+asyncTest("the pause is VISIBLE — a countdown line per tick, counting down", async () => {
+  const clock = fakeClock(0);
+  const seen = [];
+  const budget = new SignInBudget({
+    budget: 1,
+    windowMs: 60_000,
+    now: clock.now,
+    sleep: clock.sleep,
+    tickMs: 15_000,
+    onWait: ({ remainingMs }) => seen.push(remainingMs),
+  });
+  await budget.acquire();
+  await budget.acquire();
+  assert.deepEqual(seen, [60_000, 45_000, 30_000, 15_000], "a silent 5-minute pause reads as a hang");
+  assert.equal(clock.value, 60_000);
+});
+
+asyncTest("SessionCache signs a member in ONCE per pass, even from concurrent workers", async () => {
+  const cache = new SessionCache();
+  let mints = 0;
+  const mint = async (token) => {
+    mints++;
+    return token;
+  };
+  const [a, b, c] = await Promise.all([
+    cache.get("u0@x.test", () => mint("t0")),
+    cache.get("u0@x.test", () => mint("t0")),
+    cache.get("u1@x.test", () => mint("t1")),
+  ]);
+  assert.equal(a, "t0");
+  assert.equal(b, "t0");
+  assert.equal(c, "t1");
+  assert.equal(mints, 2, "the same member must never cost two of thirty slots");
+  assert.equal(cache.hits, 1);
+  assert.equal(cache.misses, 2);
+
+  // A FAILED sign-in must not be cached as a session.
+  await assert.rejects(cache.get("u2@x.test", async () => {
+    throw new Error("nope");
+  }));
+  assert.equal(await cache.get("u2@x.test", async () => "t2"), "t2");
+});
+
+// ── The resume state (T3) ────────────────────────────────────────────────────
+test("the state file is keyed on project + seed + domain, and signed by the plan", () => {
+  assert.equal(projectRefFromUrl("https://abcdefgh.supabase.co"), "abcdefgh");
+  assert.equal(projectRefFromUrl("https://abcdefgh.supabase.co/"), "abcdefgh");
+  assert.equal(projectRefFromUrl("https://db.example.test"), "db.example.test");
+  assert.equal(projectRefFromUrl(""), "unknown");
+
+  const key = workspaceStateKey({ projectRef: "ref1", seed: 42, emailDomain: "d.test", name: "Delebil Aarhus 01" });
+  assert.equal(key, "ref1|seed42|d.test|Delebil Aarhus 01");
+  // A different project or seed must not inherit the other's completions.
+  assert.notEqual(key, workspaceStateKey({ projectRef: "ref2", seed: 42, emailDomain: "d.test", name: "Delebil Aarhus 01" }));
+  assert.notEqual(key, workspaceStateKey({ projectRef: "ref1", seed: 7, emailDomain: "d.test", name: "Delebil Aarhus 01" }));
+
+  const plan = buildFixturePlan({ seed: 42, workspaces: 4 });
+  const ws = plan.workspaces[0];
+  assert.equal(workspaceSignature(ws), workspaceSignature(buildFixturePlan({ seed: 42, workspaces: 4 }).workspaces[0]));
+  // Change what the workspace is supposed to contain → the marker stops matching.
+  const bigger = { ...ws, periods: [...ws.periods, ws.periods[0]] };
+  assert.notEqual(workspaceSignature(ws), workspaceSignature(bigger));
+  const aged = buildFixturePlan({ seed: 42, workspaces: 2, aged: true }).workspaces.at(-1);
+  assert.match(workspaceSignature(aged), /-aged$/);
+});
+
+test("the state file is never allowed inside the repo tree", () => {
+  assert.throws(
+    () => assertStateOutsideRepo(path.join(REPO_ROOT, "seed-state.json"), REPO_ROOT),
+    /Refusing to use a seed-state file inside the repo/,
+  );
+  assert.throws(
+    () => assertStateOutsideRepo(path.join(REPO_ROOT, "tools", "load-rehearsal", "state.json"), REPO_ROOT),
+    /Refusing to use a seed-state file inside the repo/,
+  );
+  const outside = path.join(tmpdir(), "gv494-state.json");
+  assert.equal(assertStateOutsideRepo(outside, REPO_ROOT), path.resolve(outside));
+  // The default lives in $HOME, which is where the --env file lives too.
+  assert.equal(defaultSeedStatePath("/home/op"), "/home/op/.vehloshare-rehearsal-seed-state.json");
+  assert.equal(assertStateOutsideRepo(defaultSeedStatePath(), REPO_ROOT), path.join(homedir(), ".vehloshare-rehearsal-seed-state.json"));
+});
+
+test("a completed workspace is remembered across passes — and a changed plan is not", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "gv494-state-"));
+  const file = path.join(dir, "state.json");
+  try {
+    const plan = buildFixturePlan({ seed: 42, workspaces: 3 });
+    const ws = plan.workspaces[0];
+    const key = workspaceStateKey({ projectRef: "ref1", seed: 42, emailDomain: plan.emailDomain, name: ws.name });
+
+    const first = SeedState.load({ filePath: file });
+    assert.equal(first.isComplete(key, workspaceSignature(ws)), false, "nothing is complete before a pass runs");
+    first.markComplete(key, { signature: workspaceSignature(ws), workspace: ws.name, members: ws.memberCount });
+    first.save();
+
+    const second = SeedState.load({ filePath: file });
+    assert.equal(second.isComplete(key, workspaceSignature(ws)), true, "the next pass must skip it with ZERO sign-ins");
+    assert.equal(second.completedCount, 1);
+    assert.equal(second.isComplete(key, "some-other-signature"), false, "a changed fixture must be rebuilt, not skipped");
+    assert.equal(
+      second.isComplete(workspaceStateKey({ projectRef: "ref2", seed: 42, emailDomain: plan.emailDomain, name: ws.name }), workspaceSignature(ws)),
+      false,
+      "a different project must not inherit completions",
+    );
+
+    // --ignore-state re-verifies everything the old way.
+    assert.equal(SeedState.load({ filePath: file, ignoreExisting: true }).isComplete(key, workspaceSignature(ws)), false);
+
+    // No secrets and no personal data land in the file.
+    const raw = readFileSync(file, "utf8");
+    assert.equal(JSON.parse(raw).version, SEED_STATE_VERSION);
+    assert.ok(!/password|access_token|@/i.test(raw), "the state file must never grow a credential or an address");
+
+    // A corrupt or foreign-version file degrades to "nothing is complete", never a crash.
+    writeFileSync(file, "{ not json");
+    assert.equal(SeedState.load({ filePath: file }).isComplete(key, workspaceSignature(ws)), false);
+    writeFileSync(file, JSON.stringify({ version: SEED_STATE_VERSION + 99, workspaces: { [key]: { signature: workspaceSignature(ws) } } }));
+    assert.equal(SeedState.load({ filePath: file }).isComplete(key, workspaceSignature(ws)), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── The seeder must actually USE them (source scan, like the close-program ones) ──
+// The failure this guards against is the one memory keeps recording: correct
+// machinery nothing reaches. A budget the sign-in path does not call, or a state
+// file consulted after the sign-ins, would leave T1/T3 exactly as they were while
+// every unit test above stayed green.
+test("seed.mjs takes a budget slot BEFORE every sign-in, and owns the 429 backoff itself", () => {
+  const src = readFileSync(path.join(HERE, "seed.mjs"), "utf8");
+  const body = src.slice(src.indexOf("async function mintToken"));
+  const acquire = body.indexOf("budget.acquire(");
+  const grant = body.indexOf("signInWithPassword(");
+  assert.ok(acquire > -1, "seed.mjs must take a slot from the sign-in budget");
+  assert.ok(grant > -1 && acquire < grant, "the slot must be taken BEFORE the grant is issued");
+  assert.ok(body.includes("retries: 0"), "httpJson's own 429 retry must be off — the budget owns the backoff");
+  assert.ok(body.includes("noteRateLimited"), "a real 429 must park every sign-in, not just this one");
+  assert.ok(body.includes("res.retryAfterMs"), "Retry-After must be honoured when the platform sends it");
+  assert.ok(src.includes("sessions.get("), "a member must be signed in once per pass, not once per use");
+});
+
+test("seed.mjs skips a completed workspace BEFORE any sign-in, and only marks clean ones", () => {
+  const src = readFileSync(path.join(HERE, "seed.mjs"), "utf8");
+  assert.ok(src.includes("assertStateOutsideRepo("), "the state file must be forced outside the repo tree");
+  const filter = src.indexOf("plan.workspaces.filter((ws) => !isComplete(ws))");
+  const pool = src.indexOf("runPool(pending");
+  assert.ok(filter > -1, "the pass must partition the plan on the completion markers");
+  assert.ok(pool > filter, "only the pending workspaces may reach the pool — a skip that still signs in is not a skip");
+  // seedWorkspace is where every sign-in happens; it must never see a complete one.
+  assert.ok(
+    /isComplete\(ws\) \{[\s\S]{0,200}state\.isComplete/.test(src),
+    "completion must be read from the state file, not recovered through list_my_ledgers (that needs a token — finding T3)",
+  );
+  assert.ok(
+    src.includes("counters.warnings.length === warningsBefore"),
+    "a partially-seeded workspace must NOT be marked complete, or the skip hides missing rows for good",
+  );
+});
+
+test("seed --dry-run still prints the plan (and writes no state, and touches no network)", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "gv494-dry-"));
+  const file = path.join(dir, "state.json");
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [path.join(HERE, "seed.mjs"), "--dry-run", "--seed", "42", "--workspaces", "4", "--state", file],
+      { encoding: "utf8" },
+    );
+    assert.match(out, /seed --dry-run \(no network\)/);
+    assert.match(out, /seed=42\s+workspaces=4/);
+    assert.match(out, /sign-in budget:\s+30 per 300 s/);
+    assert.match(out, /sign-in plan:\s+~\d+ sign-ins at 30\/300 s/);
+    assert.match(out, new RegExp(`state file:\\s+${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(out, /create_private_ledger_workspace/);
+    assert.match(out, /close_settlement_period/);
+    assert.match(out, /Dry run only — no users, workspaces, or rows were created\./);
+    assert.equal(existsSync(file), false, "a dry run must not write the state file");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 for (const [name, fn] of asyncTests) {

@@ -2,6 +2,9 @@
 //
 //   npm run load:seed -- --env /path/to/rehearsal.env [--seed 42] [--workspaces 20]
 //                        [--concurrency 4] [--aged] [--dry-run]
+//                        [--signin-budget 30] [--signin-window 300]
+//                        [--state ~/.vehloshare-rehearsal-seed-state.json]
+//                        [--ignore-state]
 //
 // Creates ~100 auth users and ~20 workspaces (2–8 members each) of synthetic
 // Danish fixture data on the THROWAWAY project, then fills each workspace with
@@ -37,6 +40,30 @@
 // interrupted by a rate-limit can be resumed. Concurrency is modest and every
 // request backs off on 429 to stay under free-tier limits.
 //
+// GV-494 — the sign-in budget (exercise-1 findings T1/T3, both FIXED here):
+//
+//   • Sign-ins are BUDGETED, not discovered. Supabase Auth allows ~30 password
+//     grants per 5 minutes per IP and the dashboard cannot raise it (T4), so every
+//     sign-in takes a slot from a sliding window (`--signin-budget`, default 30,
+//     per `--signin-window` seconds, default 300) and the seeder PAUSES with a
+//     countdown when the window is full instead of firing calls that will 429. A
+//     real 429 still parks every sign-in for Retry-After (or a full window).
+//     Before this, a pass burned the whole window inside the first two workspaces
+//     and 429'd through the remaining eighteen (T1).
+//   • A completed workspace is SKIPPED on the next pass, with ZERO sign-ins. The
+//     old resume recovered state through list_my_ledgers, which needs a token, so
+//     each retry spent its budget re-verifying built workspaces and plateaued at
+//     10–12 of 20 across 13+ rounds (T3). Completion markers live in a small JSON
+//     state file kept OUTSIDE the repo — `--state <file>`, default
+//     `~/.vehloshare-rehearsal-seed-state.json`; `--ignore-state` re-verifies
+//     everything the old way. A marker is keyed on project + seed + email domain
+//     and carries a signature of the planned contents, so it never lets a changed
+//     fixture (or a different project) skip work that was not done.
+//   • One sign-in per member per pass — sessions are cached by email.
+//
+// A full 20-workspace pass is therefore ~110 sign-ins ≈ 4 windows ≈ 15–20 min in
+// ONE pass; the estimate is printed up front so the run is not mistaken for a hang.
+//
 // --aged (GV-438) appends ONE aged workspace to the run: ~2 years of history,
 // thousands of trips and messages, and a closed period per month, so the reads
 // that grow over TIME rather than with workspace size can be measured. Knobs:
@@ -70,13 +97,58 @@ import {
   recurringArgs,
   messageArgs,
 } from "./lib/fixtures.mjs";
+import {
+  SignInBudget,
+  SessionCache,
+  formatSignInEstimate,
+  formatDuration,
+  DEFAULT_SIGNIN_BUDGET,
+  DEFAULT_SIGNIN_WINDOW_S,
+} from "./lib/signin-budget.mjs";
+import {
+  SeedState,
+  defaultSeedStatePath,
+  assertStateOutsideRepo,
+  projectRefFromUrl,
+  workspaceSignature,
+  workspaceStateKey,
+} from "./lib/seed-state.mjs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const args = parseArgs(process.argv.slice(2), { flags: ["dry-run", "aged"] });
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+const args = parseArgs(process.argv.slice(2), { flags: ["dry-run", "aged", "ignore-state"] });
 const seed = Number(args.seed ?? 42);
 const workspaces = Number(args.workspaces ?? 20);
 const concurrency = Number(args.concurrency ?? 4);
 const emailDomain = args["email-domain"] ?? DEFAULT_EMAIL_DOMAIN;
 const dryRun = Boolean(args["dry-run"]);
+
+// GV-494: the sign-in budget. Defaults mirror the limit exercise 1 measured
+// empirically (~30 per 5 min per IP), NOT the dashboard's setting (finding T4).
+const signinBudget = Number(args["signin-budget"] ?? DEFAULT_SIGNIN_BUDGET);
+const signinWindowS = Number(args["signin-window"] ?? DEFAULT_SIGNIN_WINDOW_S);
+const signinWindowMs = signinWindowS * 1000;
+if (!Number.isFinite(signinBudget) || signinBudget <= 0 || !Number.isFinite(signinWindowS) || signinWindowS <= 0) {
+  console.error("❌ --signin-budget and --signin-window must both be positive numbers (defaults: 30 per 300 s).");
+  process.exit(1);
+}
+
+// GV-494: the resume state file. Always outside the repo tree.
+let statePath;
+try {
+  statePath = assertStateOutsideRepo(args.state ?? defaultSeedStatePath(), REPO_ROOT);
+} catch (err) {
+  console.error(`❌ ${err.message}`);
+  process.exit(1);
+}
+const ignoreState = Boolean(args["ignore-state"]);
+
+// How many times one member's sign-in may be re-attempted after a real 429 before
+// the workspace is failed. Declared up here because `await main()` runs before the
+// bottom of this module is evaluated — a const down there is still in its TDZ.
+const SIGNIN_ATTEMPTS = 4;
 
 // GV-438: --aged appends ONE aged workspace (years of history, thousands of
 // trips/messages, a closed period per month) after the small ones. The knobs let
@@ -107,6 +179,19 @@ try {
 }
 const supa = makeSupabase(env);
 
+// GV-494: one shared budget + one shared session cache for the whole pass. The
+// pool workers all take their slots from these, so `--concurrency` no longer
+// decides how fast the Auth limit is hit.
+const budget = new SignInBudget({
+  budget: signinBudget,
+  windowMs: signinWindowMs,
+  onWait: ({ remainingMs, spent }) =>
+    console.log(`   ⏳ sign-in budget spent (${signinBudget}/${signinWindowS} s, ${spent} so far) — next slot in ${formatDuration(remainingMs)}…`),
+});
+const sessions = new SessionCache();
+const projectRef = projectRefFromUrl(env.SUPABASE_URL);
+const state = SeedState.load({ filePath: statePath, ignoreExisting: ignoreState });
+
 await main().catch((err) => {
   console.error(`❌ Seed failed: ${err.stack || err.message}`);
   process.exit(1);
@@ -119,6 +204,8 @@ async function main() {
     usersFailed: 0,
     workspacesCreated: 0,
     workspacesFailed: 0,
+    workspacesSkipped: 0,
+    workspacesPartial: 0,
     memberships: 0,
     trips: 0,
     fuel: 0,
@@ -151,11 +238,36 @@ async function main() {
   console.log(`   users: ${counters.usersCreated} created, ${counters.usersExisting} already existed, ${counters.usersFailed} failed.`);
 
   // ── 2. Workspaces (production join flow + write RPCs) ─────────────────────
-  console.log("⏳ Building workspaces…");
-  await runPool(plan.workspaces, concurrency, async (ws) => {
+  //
+  // GV-494: a workspace a previous pass finished is skipped BEFORE any sign-in,
+  // and the remaining sign-ins are budgeted, so one pass can walk all 20 instead
+  // of plateauing at 10–12 (findings T1/T3).
+  const pending = plan.workspaces.filter((ws) => !isComplete(ws));
+  const skipped = plan.workspaces.length - pending.length;
+  counters.workspacesSkipped = skipped;
+  const pendingSignIns = pending.reduce((n, ws) => n + ws.memberCount, 0);
+
+  console.log(`⏳ Building workspaces… ${pending.length} to build, ${skipped} already complete (skipped, 0 sign-ins).`);
+  console.log(`   sign-in plan: ${formatSignInEstimate({ count: pendingSignIns, budget: signinBudget, windowMs: signinWindowMs })}`);
+  console.log(`   state file:   ${statePath}${ignoreState ? " (--ignore-state: nothing is skipped this pass)" : ""}`);
+
+  await runPool(pending, concurrency, async (ws) => {
+    const warningsBefore = counters.warnings.length;
     try {
       await seedWorkspace(ws, counters);
       counters.workspacesCreated++;
+      if (counters.warnings.length === warningsBefore) {
+        // Only a clean workspace earns a marker — a partial one must be revisited
+        // by the next pass, or the skip would hide missing rows for good.
+        state.markComplete(stateKeyFor(ws), {
+          signature: workspaceSignature(ws),
+          workspace: ws.name,
+          members: ws.memberCount,
+        });
+        state.save();
+      } else {
+        counters.workspacesPartial++;
+      }
     } catch (err) {
       counters.workspacesFailed++;
       counters.warnings.push(`workspace ${ws.name}: ${err.message}`);
@@ -171,13 +283,44 @@ async function main() {
   console.log("✅ Seed complete. Next: npm run load:run -- --env <file>");
 }
 
+function stateKeyFor(ws) {
+  return workspaceStateKey({ projectRef, seed, emailDomain, name: ws.name });
+}
+
+function isComplete(ws) {
+  return state.isComplete(stateKeyFor(ws), workspaceSignature(ws));
+}
+
 // Sign in and return an access token (throws on failure).
+//
+// GV-494: every grant takes a slot from the shared sign-in budget FIRST, so the
+// seeder waits for the window instead of burning it, and a member is only ever
+// signed in once per pass (SessionCache). httpJson's own 429 retry is switched off
+// here on purpose — the budget owns the backoff, and a silent retry underneath it
+// would spend slots the budget does not know about.
 async function signIn(member) {
-  const res = await signInWithPassword(supa, { email: member.email, password: member.password });
-  if (!res.ok || !res.json?.access_token) {
+  return sessions.get(member.email, () => mintToken(member));
+}
+
+async function mintToken(member) {
+  for (let attempt = 1; attempt <= SIGNIN_ATTEMPTS; attempt++) {
+    await budget.acquire(member.email);
+    const res = await signInWithPassword(supa, { email: member.email, password: member.password }, { retries: 0 });
+    if (res.ok && res.json?.access_token) return res.json.access_token;
+    if (res.status === 429) {
+      // The limiter said no despite the budget (a co-running tool, a shared IP, or
+      // a window we mis-measured). Park EVERY sign-in for Retry-After — or a full
+      // window when the platform did not say — and try again.
+      const waitMs = budget.noteRateLimited({ retryAfterMs: res.retryAfterMs });
+      console.warn(`   ⏳ Auth 429 on sign-in ${attempt}/${SIGNIN_ATTEMPTS} — pausing all sign-ins for ${formatDuration(waitMs)}.`);
+      continue;
+    }
     throw new Error(`sign-in failed for ${member.email}: ${describeError(res)}`);
   }
-  return res.json.access_token;
+  throw new Error(
+    `sign-in for ${member.email} kept hitting the Auth rate limit after ${SIGNIN_ATTEMPTS} attempts ` +
+      `(budget ${signinBudget}/${signinWindowS} s) — lower --signin-budget and resume; completed workspaces are skipped.`,
+  );
 }
 
 async function seedWorkspace(ws, counters) {
@@ -387,7 +530,10 @@ function printSummary(c) {
   console.log("");
   console.log("── Seed summary ────────────────────────────────────────────");
   console.log(`  auth users:        ${c.usersCreated} created, ${c.usersExisting} existing, ${c.usersFailed} failed`);
-  console.log(`  workspaces:        ${c.workspacesCreated} ok, ${c.workspacesFailed} failed`);
+  console.log(`  workspaces:        ${c.workspacesCreated} ok, ${c.workspacesFailed} failed, ${c.workspacesSkipped} skipped (already complete), ${c.workspacesPartial} partial (will be retried)`);
+  const b = budget.summary();
+  console.log(`  sign-ins:          ${b.spent} (${sessions.hits} reused), ${formatDuration(b.waitedMs)} paused for the budget, ${b.rateLimited} × HTTP 429`);
+  console.log(`  state file:        ${statePath} (${state.completedCount} workspace(s) marked complete)`);
   console.log(`  memberships:       ${c.memberships} joined (via redeem_ledger_invite)`);
   console.log(`  trips:             ${c.trips}`);
   console.log(`  fuel payments:     ${c.fuel}`);
@@ -424,8 +570,13 @@ function runDryRun(plan) {
     { trips: 0, fuel: 0, expenses: 0, closed: 0, recurring: 0, bookings: 0, messages: 0 },
   );
 
+  const plannedSignIns = plan.workspaces.reduce((n, ws) => n + ws.memberCount, 0);
+
   console.log("── seed --dry-run (no network) ─────────────────────────────");
   console.log(`  seed=${plan.seed}  workspaces=${plan.workspaceCount}  users=${plan.totalUsers}  emailDomain=${plan.emailDomain}`);
+  console.log(`  sign-in budget:    ${signinBudget} per ${signinWindowS} s (sliding window; pauses rather than 429s)`);
+  console.log(`  sign-in plan:      ${formatSignInEstimate({ count: plannedSignIns, budget: signinBudget, windowMs: signinWindowMs })} — for a FRESH project; complete workspaces cost 0`);
+  console.log(`  state file:        ${statePath} (per project+seed+domain; skips completed workspaces with no sign-in)`);
   const sizes = plan.workspaces.map((w) => w.memberCount);
   console.log(`  workspace sizes:   [${sizes.join(", ")}]  (min ${Math.min(...sizes)}, max ${Math.max(...sizes)})`);
   console.log(`  planned entries:   ${totals.trips} trips, ${totals.fuel} fuel, ${totals.expenses} expenses, ${totals.recurring} recurring, ${totals.bookings} bookings, ${totals.messages} messages`);

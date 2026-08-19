@@ -36,7 +36,7 @@
 //     clear_on_my_way at the end.
 //
 // It reports join latency per channel, join failures BY REASON (Unauthorized /
-// PrivateOnly / timeout / other), presence syncs, postgres_changes deliveries and
+// PrivateOnly / MissingPartition / timeout / other), presence syncs, postgres_changes deliveries and
 // broadcast counts; the two RPCs land in the ordinary per-endpoint table because that is
 // what they are. Nothing in the phase is allowed to fail quietly: any refused join, dead
 // socket or failed sharer setup prints a REALTIME FAILURES section and exits 1.
@@ -585,6 +585,11 @@ function printRealtimeEvidence(rt) {
   console.log("                     join. Presence and live sync are down for real users.");
   console.log("     PrivateOnly   → a join frame lost `private: true`. Every join here sets it,");
   console.log('                     so this means the harness drifted, not the project.');
+  console.log("     MissingPartition → Realtime's day-partition of realtime.messages did not exist");
+  console.log("                     yet — on a FRESH project the first joins race the tenant janitor");
+  console.log("                     that creates them; re-run once the tenant is warm. On production");
+  console.log("                     this same string would mean a partition gap on a day roll-over;");
+  console.log("                     presence is cosmetic in the app but report it.");
   console.log("     timeout       → no reply at all. Check the project is awake and reachable.");
 }
 
