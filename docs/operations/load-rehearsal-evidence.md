@@ -395,12 +395,10 @@ socket open. That is entirely part B's job.
 
 # Load exercise 3, part B: the HOSTED run — procedure
 
-**RESULTS: pending — hosted run not yet performed.**
-
-There is no throwaway Supabase project right now (the previous one, and its credentials
-file, were deleted after exercise 1 as the GDPR teardown requires). Everything below is
-the procedure for the owner's next throwaway project. **Nothing in this section is a
-measurement. Do not summarise it as one.**
+**RESULTS: recorded 2026-08-19 — see [§ RESULTS](#results) at the end of this section.**
+Run against a throwaway EU project (`eu-west-1`, Postgres 17.6) created for the purpose
+and deleted afterwards with its credentials file. Steps 0–5 below are the procedure that
+was followed; the numbers live only under RESULTS.
 
 ## Step 0 — the project, and the ONE switch that must be flipped
 
@@ -455,8 +453,9 @@ were **not**:
 
 Practical shape: seed in rounds, expect the run to plateau, and re-run it until
 `workspaces: N ok` stops moving. Exercise 1 completed 12 of 20 this way, which was enough
-for 27 VUs. **Fixing T1/T3 properly (skip sign-ins for complete workspaces) is worth its
-own ticket and is not part of GV-493.**
+for 27 VUs; exercise 3 completed 10 of 20 in one pass and did not retry (a retry pass
+spends its whole window re-verifying the ten built ones first, T3). **Fixing T1/T3
+properly is GV-494** (sign-in token bucket + resume that skips complete workspaces).
 
 Add `--aged` if the hosted run should also carry the aged workspace; it costs
 `--aged-members` further sign-ins and nothing else, since its volume rides on tokens
@@ -534,8 +533,110 @@ every synthetic user and row).
 
 ### RESULTS
 
-> **pending — hosted run not yet performed.** No throwaway project exists at the time of
-> writing. When it is run, paste the evidence block here: request count and req/s, the
-> per-endpoint table, the Realtime join table, join failures by reason, broadcast and
-> presence counts, and both probe verdicts.
+Hosted run performed **2026-08-19** at migration **208** against a throwaway project
+(`afsadukfqmvqwfvcmmyd`, `eu-west-1`, Postgres 17.6, "Allow public access to channels"
+switched OFF before any step). Project and `~/vehloshare-rehearsal.env` deleted afterwards.
 
+**Step 1 — schema.** First `load:schema` attempt failed at line 47939 with a **deadlock**
+between our `create trigger … on booking_handovers` and a Supabase-side process holding
+an `AccessShareLock` (PostgREST re-introspects the schema after every DDL event, and the
+consolidated file issues thousands). The apply is not single-transaction, so the project
+was left half-built; `drop schema public cascade` + recreate with Supabase's standard
+grants, then a second `load:schema`: **applied cleanly — fresh install of all 208
+migrations validated.** Tooling finding **T5** (→ GV-494): `schema-apply` should retry
+once on SQLSTATE 40P01 after wiping `public`; the deadlock is transient.
+
+**Step 2 — seed** (`--seed 42 --workspaces 20`): 103 auth users created; **10 of 20
+workspaces built** before every further sign-in got HTTP 429 (T1/T3, ~30 per 5 min per IP,
+T4 unchanged) — 51 memberships, 106 trips, 53 fuel payments, 17 expenses, 14 recurring, 24
+bookings, 39 messages, 11 settlement requests, **3 periods closed** through the real
+close program. Not retried; 10 workspaces spanned the 28 VUs. → GV-494.
+
+**Step 3 — full run** `--vus 28 --duration 60 --mix mixed --seed 42 --realtime --sharers 0.2`
+(28/28 VUs signed in; the login window had been rested for 4 min after seeding):
+
+```
+requests:    24493 total  (404.3 req/s)     errors: none (all responses < 400)
+
+endpoint                          count      p50      p95      p99      max   (ms)
+read:bookings                      1604      159      489     1221     4470
+read:events                        1604      175      505      975     4026
+read:expenses                      1604      161      487     1090     4506
+read:fuel                          1604      163      493     1157     4572
+read:ledger                        1604      157      456     1186     5620
+read:members                       1604      158      463      996     4199
+read:messages                      1604      162      499     1004     4137
+read:participants                  1603      157      413      670     2541
+read:periods                       1604      158      499     1107     4198
+read:recurring                     1604      160      465     1057     4457
+read:repairs                       1604      157      522      962     4600
+read:settlements                   1604      155      469      946     4570
+read:trips                         1604      166      498     1123     3801
+rpc:add_vehicle_document_photo       82      156      361      439      439
+rpc:calculate_period_settlement    1604      152      445     2299     5702
+rpc:clear_on_my_way                   6      103      121      121      121
+rpc:create_vehicle_document          82      141      436     1137     1137
+rpc:list_my_ledgers                1604      140      393      791     5599
+rpc:post_message                     84      145      412     2513     2513
+rpc:set_on_my_way                     6       48       53       53       53
+rpc:upsert_car_booking                6       52      124      124      124
+rpc:upsert_fuel_payment              84      201      408      494      494
+rpc:upsert_trip_with_participants     84      275      519      714      714
+
+Realtime: sockets 28 opened, 0 failed · sharers 6
+channel (private join)            count      p50      p95      p99      max
+ledger-changes                       28       53       72       73       73
+presence                             20       45       60       72       72
+presence syncs 88 · postgres_changes 1460 · omw-position sent 16 / received 56
+join failures: presence × 8 — "MissingPartition: Realtime was unable to find the
+               expected messages partition"   → run exited 1
+```
+
+**Versus exercise 1** (same VU count, same mix, migration 166): 326 → **404 req/s**,
+read p95 550–670 → **410–520 ms**, `calculate_period_settlement` p95 521 → 445 ms, still
+zero HTTP errors — with a websocket, two private channels, presence heartbeats and
+postgres_changes fan-out per VU that exercise 1 did not carry. The two new write
+families sit at the cheap end of the table (`set_on_my_way` p95 53 ms,
+`create_vehicle_document` 436 ms).
+
+**The 8 refused presence joins are a fresh-tenant artefact, not an authorization
+finding — and it was proven, not assumed.** The reason string is neither `Unauthorized`
+nor `PrivateOnly`; it is Realtime reporting that the day-partition of `realtime.messages`
+its authorization test-insert needs did not exist yet. Realtime's tenant janitor creates
+those partitions when the tenant first spins up, and this tenant had never had a client
+before this run; the driver joins presence first, the first 8 raced the janitor, and
+every join after them (20 presence, all 28 ledger-changes) succeeded. Two checks:
+
+- inspected afterwards, `realtime.messages` carried exactly the janitor's three
+  partitions (`messages_2026_08_18/19/20`) and nothing else;
+- **re-run on the now-warm tenant** (`--vus 28 --duration 20 --realtime --sharers 0.2`,
+  27/28 VUs — one lost to the sign-in limit, as in exercise 1): **27/27 presence and 27/27
+  ledger-changes joins reached SUBSCRIBED, 0 refused** (presence p50 49 / p95 187 ms,
+  ledger-changes p50 57 / p95 93 ms; 107 presence syncs, 198 postgres_changes, 5 sharers,
+  24 broadcasts received; 5,227 requests, 255 req/s over 20 s, zero errors); run exited 0.
+
+Production has had live clients since GVM-575 shipped, so its partitions exist; the residual
+worth knowing is that **this exact string is what a partition gap would surface as** on a
+day roll-over, and the mobile hook already treats a refused presence subscribe as
+cosmetic (grey dots, live sync on its own channel unaffected). Tooling finding **T6** (→ GV-494):
+the harness should bucket `MissingPartition` separately from `other` and say this.
+
+**Step 4 — probes.**
+
+- RLS tenant isolation (`--vus 30 --rls-probe`, 29/30 signed in, 6 ledgers): **203
+  cross-workspace checks, 0 leaked rows — PASSED.**
+- Realtime public access (`npm run probe:realtime-public-access`, topic
+  `presence-<first ledger>`): **phase 1 public join REFUSED — `PrivateOnly: This project
+  only allows private channels`, exit 0.** Phase 2 (member private join) is evidenced by
+  the load run itself: 27/27 private presence joins SUBSCRIBED on the same project.
+
+**Verdict for the reviewer's question (GV-493).** At migration 208, with private
+Realtime, ETA sharing/broadcast, the document archive and the trigger-guarded
+`on_my_way` column all in the path, the platform holds 28 concurrent VUs — bracketing
+~100 real users spread over small groups — at 404 req/s with zero HTTP errors, every
+private channel join for a member succeeding on a warm tenant, and no cross-workspace
+leak over HTTP or over a public channel. No schema work falls out of this run.
+Follow-ups: GV-494 (seeder T1/T3 + harness T5/T6).
+
+**Step 5 — teardown:** the owner deletes the throwaway project and `rm`s the env file once
+this record is merged; nothing synthetic outlives the run.
