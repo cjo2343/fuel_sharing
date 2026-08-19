@@ -84,6 +84,21 @@ a migration "live".**
 - [ ] Sanity: `select * from fuel_ledger_schema_migrations order by applied_at
       desc limit 3;` shows the new id.
 
+> **Manual apply is the ONLY apply path — the Supabase GitHub integration must stay
+> disabled (GV-495, 2026-08-19).** It was found connected to the production project
+> with "Deploy to production" ON for `main`, working directory `.`. Supabase's CLI
+> history table in prod (`supabase_migrations.schema_migrations`) stops at **102**, so
+> from migration 103 onward every push to `main` made the integration attempt
+> `db push` of 103→latest against PRODUCTION; it failed on 103's first statement (an
+> unconditional `drop function` of something 103 had already dropped by hand) and
+> therefore applied nothing — but it was one `IF EXISTS` away from replaying a hundred
+> migrations over live data. The integration was disabled on 2026-08-19. That history
+> table is deliberately NOT maintained (it is the CLI's, not ours —
+> `public.fuel_ledger_schema_migrations` is the tracker); do not "repair" it unless the
+> whole train in this checklist is consciously redesigned around auto-apply. If a
+> "Supabase Preview" check ever reappears on a commit, the integration has been
+> re-enabled: turn it off before merging anything under `supabase/`.
+
 ## 4. Contract sync (both client repos, after apply)
 
 The umbrella "Cross-repo consistency" job goes **red at the moment the platform
