@@ -104,6 +104,24 @@ Applies `supabase-schema.sql` with `ON_ERROR_STOP`. Not idempotent — run it on
 on a fresh project. On error it prints psql's stderr; the project may be partially
 applied, so delete + recreate it before retrying.
 
+**If the apply deadlocks (SQLSTATE 40P01) — exercise-3 finding T5.** The first apply
+against a brand-new project can die on `deadlock detected` (observed on `create trigger
+… on booking_handovers`, against a Supabase-side `AccessShareLock`: PostgREST
+re-introspects the schema after every DDL, so its introspection query and our DDL take
+each other's locks in opposite orders). **This is a race, not a schema error** — the same
+file applies cleanly on a settled project, and the tool now says so instead of reporting a
+generic failure. Because the apply is not one transaction, `public` is left half-built, so
+recover before re-running, either by:
+
+- deleting and recreating the throwaway project (slow but certain), or
+- resetting `public` to its stock Supabase state from the dashboard's SQL editor — drop
+  and recreate the `public` schema, then restore Supabase's standard grants and default
+  privileges on it for `postgres`, `anon`, `authenticated` and `service_role` (Supabase
+  documents this snippet as the project-reset SQL) — and then re-running `load:schema`.
+
+Give the project a minute to settle before the retry; the race is much less likely once
+the tenant is warm.
+
 ---
 
 ## Step 3 — seed the fixture
@@ -278,6 +296,7 @@ so the two tools' evidence reads together:
 |---|---|
 | `Unauthorized` | migrations 202/205/206's policies refused a **member's** private join. Presence and live sync are down for real users. |
 | `PrivateOnly` | a join frame lost `private: true`. Every join here sets it, so this means the harness drifted, not the project. |
+| `MissingPartition` | *"Realtime was unable to find the expected messages partition"* (finding T6). Realtime's day-partition of `realtime.messages` did not exist yet — on a **fresh** project the first joins race the tenant janitor that creates them; re-run once the tenant is warm. On **production** the same string would mean a partition gap on a day roll-over; presence is cosmetic in the app, but report it. |
 | `timeout` | no reply at all — project asleep, wrong URL/key, or network. |
 | `other` | an unrecognised refusal, reported **with** its raw text. Never silent. |
 

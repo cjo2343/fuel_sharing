@@ -13,6 +13,19 @@
 // Run this ONCE per fresh throwaway project — it is NOT idempotent (a second run
 // hits "already exists"). To re-run, delete + recreate the project.
 //
+// GV-494 (exercise-3 finding T5) — the deadlock: the first apply against a
+// brand-new project died on SQLSTATE 40P01 (`create trigger … on
+// booking_handovers` deadlocking against a Supabase-side AccessShareLock —
+// PostgREST re-introspects the schema after every DDL, so its introspection query
+// and our DDL take each other's locks in opposite orders). It is a RACE, not a
+// schema error: the same file applies cleanly on a settled project. The apply is
+// not one transaction, so it leaves the project half-built.
+//
+// This script now NAMES that failure instead of reporting it as a schema error —
+// see the deadlock branch below. Automatic recovery (resetting `public` and
+// retrying once) is described in the README as an operator step rather than
+// performed here; the toolkit does not issue destructive DDL on its own.
+//
 // psql 17 matches production (prod runs Postgres 17.x); the schema targets a real
 // Supabase project, which already provides the auth/extensions schemas, the
 // anon/authenticated/service_role roles and the supabase_realtime publication, so
@@ -77,7 +90,24 @@ if (res.status !== 0) {
   console.error("── psql stderr ─────────────────────────────────────────────");
   console.error((res.stderr || "").trim());
   console.error("────────────────────────────────────────────────────────────");
+  // GV-494 / T5: a deadlock is a RACE with PostgREST's schema re-introspection, not
+  // a broken schema. Saying so is the whole point — reported as a generic failure it
+  // reads as "supabase-schema.sql does not apply to a fresh project", which is wrong
+  // and is what cost exercise 3 a project recreation.
+  if (isDeadlock(res.stderr)) {
+    console.error("ℹ️  SQLSTATE 40P01 — this is the PostgREST re-introspection race (finding T5),");
+    console.error("   not a schema error: the same file applies cleanly on a settled project.");
+    console.error("   The apply is not one transaction, so `public` is now half-built. Recover by");
+    console.error("   resetting `public` to stock Supabase (see README step 2, 'If the apply");
+    console.error("   deadlocks') or by recreating the project, then run this again.");
+  }
   fail(`Schema apply FAILED (psql exit ${res.status}). Fix the error above; the project may be partially applied — recreate it before retrying.`);
+}
+
+// Postgres reports a deadlock as SQLSTATE 40P01 / "deadlock detected"; psql prints it
+// on stderr. Anything else is a real schema error and means what it says.
+function isDeadlock(stderr) {
+  return /deadlock detected|40P01/i.test(String(stderr || ""));
 }
 
 if (res.stderr && res.stderr.trim()) {

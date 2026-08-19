@@ -757,7 +757,29 @@ test("classifyJoinFailure recognises the platform's own words, and buckets the r
   assert.equal(classifyJoinFailure("timeout: no reply within 15000 ms"), "timeout");
   assert.equal(classifyJoinFailure("something nobody has seen"), "other");
   assert.equal(classifyJoinFailure(undefined), "other", "a missing reason is still a failure, never a pass");
-  assert.deepEqual(JOIN_FAILURE_REASONS, ["Unauthorized", "PrivateOnly", "timeout", "other"]);
+  assert.deepEqual(JOIN_FAILURE_REASONS, ["Unauthorized", "PrivateOnly", "MissingPartition", "timeout", "other"]);
+});
+
+// GV-494 / exercise-3 finding T6.
+test("a missing realtime.messages partition is its OWN bucket, not `other` and not a policy refusal", () => {
+  assert.equal(
+    classifyJoinFailure("Realtime was unable to find the expected messages partition"),
+    "MissingPartition",
+    "the fresh-project janitor race must be nameable, or it hides in the unrecognised bucket",
+  );
+  assert.equal(
+    classifyJoinFailure('phx_reply status=error: {"reason":"Realtime was unable to find the expected messages partition"}'),
+    "MissingPartition",
+  );
+  // It is NOT an RLS problem: filing it as Unauthorized would send the operator to
+  // migrations 202/205/206 for a partition that simply did not exist yet.
+  assert.notEqual(classifyJoinFailure("Realtime was unable to find the expected messages partition"), "Unauthorized");
+  assert.ok(JOIN_FAILURE_REASONS.includes("MissingPartition"), "the bucket must be in the reported vocabulary");
+  // The legend the operator reads must carry it too — a bucket with no explanation is
+  // a string, not a finding.
+  const src = readFileSync(path.join(HERE, "load.mjs"), "utf8");
+  assert.ok(src.includes("MissingPartition"), "load.mjs's failure legend must explain the bucket");
+  assert.match(src, /day-partition of realtime\.messages/);
 });
 
 // ── Sharer selection ─────────────────────────────────────────────────────────

@@ -55,9 +55,9 @@ export const LIVE_POSITION_DECIMALS = 5;
  */
 export const HEARTBEAT_INTERVAL_MS = 25_000;
 
-/** The four buckets a failed join is reported in. `other` is never silent — the raw
+/** The buckets a failed join is reported in. `other` is never silent — the raw
  *  reason is printed with it, because an unrecognised refusal is a finding, not noise. */
-export const JOIN_FAILURE_REASONS = ["Unauthorized", "PrivateOnly", "timeout", "other"];
+export const JOIN_FAILURE_REASONS = ["Unauthorized", "PrivateOnly", "MissingPartition", "timeout", "other"];
 
 export function presenceTopic(ledgerId) {
   return `realtime:${PRESENCE_TOPIC_PREFIX}${ledgerId}`;
@@ -188,6 +188,12 @@ export function replyReason(payload) {
  *     this harness every join IS private, so seeing it means a join frame lost its flag.
  *   • "Unauthorized" — the join was private and migrations 202/205/206's policies said
  *     no. That is the interesting failure: it means a real member could not subscribe.
+ *   • "MissingPartition" — *"Realtime was unable to find the expected messages
+ *     partition"* (exercise 3, finding T6). Realtime day-partitions `realtime.messages`;
+ *     on a FRESH project the first joins race the tenant janitor that creates them. It is
+ *     not a policy refusal and must not be filed as one — nor as `other`, or every
+ *     fresh-project run buries the same string in the unrecognised bucket. On production
+ *     the same string would mean a partition gap at a day roll-over.
  *
  * Anything else is bucketed `other` and reported WITH its raw text. A refusal nobody
  * recognised must not read as a clean run.
@@ -195,6 +201,10 @@ export function replyReason(payload) {
 export function classifyJoinFailure(reason) {
   const text = String(reason ?? "");
   if (/privateonly/i.test(text)) return "PrivateOnly";
+  // Checked before Unauthorized on purpose: the platform's partition message is its own
+  // failure mode, and a future wording that carried both words must not read as a policy
+  // refusal — the operator would go looking at RLS for a janitor race.
+  if (/partition/i.test(text)) return "MissingPartition";
   if (/unauthoriz/i.test(text)) return "Unauthorized";
   if (/timeout|timed out|no reply within/i.test(text)) return "timeout";
   return "other";
