@@ -475,6 +475,15 @@ const SEED_OMW_BOOKINGS = `insert into public.car_bookings
 // and therefore writes the FEED row; the refresh below deliberately carries one too, to
 // prove that a title does NOT buy a second feed row once a share is running.
 const SHARE_B = `perform public.set_on_my_way('${WS1}', 'omw-b', 12, 'Bo er på vej', 'Ca. 12 min');`;
+// GVM-593 (migration 209): two per-share PUBLIC keys, 32 bytes in standard base64 — 43
+// alphabet characters and the single '=' pad, which is what the shape constraint and the
+// RPC both demand. Fixed literals rather than generated ones, so a failing run names the
+// same string every time. They are not real ed25519 keys and do not need to be: nothing
+// server-side ever verifies a signature — the whole point of the design is that only the
+// clients do, which is what keeps positions out of this database entirely.
+const OMW_PUBKEY = "b0FQPBOa8ObHRcVpMH3ChNbdaVYPQyKfLxSrLKQhLBM=";
+const OMW_PUBKEY_2 = "Q0tYU2p2b3JZbmNyeXB0aW9uS2V5RXhhbXBsZTEyMzQ=";
+const SHARE_B_SIGNED = `perform public.set_on_my_way('${WS1}', 'omw-b', 12, 'Bo er på vej', 'Ca. 12 min', '${OMW_PUBKEY}');`;
 const OMW_STATE_B = `(select on_my_way from public.car_bookings where id = '${OMW_BOOKING_B}')`;
 const OMW_TOUCHED_B = `(select updated_at from public.car_bookings where id = '${OMW_BOOKING_B}')`;
 const OMW_EVENTS = (type) =>
@@ -4859,6 +4868,140 @@ end`,
     expect: "42501",
     post: `if ${OMW_STATE_B} is null
       then raise exception 'CASEFAIL onmyway-clear-foreign-workspace-denied: the share was cleared anyway'; end if;`,
+  }),
+
+  // ── The per-share signing key (migration 209, GVM-593) ────────────────────
+  // GVM-587's live map broadcasts positions on the private presence topic, and migrations
+  // 202/205/206 authorise the ROOM rather than the SENTENCE: the policies say "a member of
+  // this workspace may write here" and cannot say anything at all about who a payload
+  // claims to be from, because a broadcast payload is opaque jsonb that never passes a
+  // policy. So the sharer registers a per-share PUBLIC key through the one RPC that is
+  // already gated to the booking's member or creator, and the viewers drop everything that
+  // does not verify against it.
+  //
+  // NOTHING SERVER-SIDE VERIFIES A SIGNATURE, and it must stay that way — verifying would
+  // mean receiving the position. What the database is responsible for is therefore exactly
+  // the four state transitions below plus the two refusals, and none of them can be seen
+  // by a static scan: register, preserve across a refresh, replace on a re-key, refuse a
+  // malformed key, keep an ETA-only share at three keys, and keep 207's two refusals
+  // (unmarked write, marked coordinate) working now that the key set is wider by one name.
+  queryCase({
+    name: "onmyway-share-registers-pubkey",
+    desc: "a first share carrying a key stores exactly the three derived keys plus pubkey, and still writes ONE feed row",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    assert: `begin
+  ${SHARE_B_SIGNED}
+  if (${OMW_STATE_B} ->> 'pubkey') is distinct from '${OMW_PUBKEY}' then
+    raise exception 'CASEFAIL onmyway-share-registers-pubkey: the key was not stored';
+  end if;
+  if (select count(*) from jsonb_object_keys(${OMW_STATE_B})) <> 4 then
+    raise exception 'CASEFAIL onmyway-share-registers-pubkey: the stored object is not exactly {eta_minutes, started_at, updated_at, pubkey}';
+  end if;
+  if (${OMW_STATE_B} ->> 'eta_minutes')::int <> 12 then
+    raise exception 'CASEFAIL onmyway-share-registers-pubkey: registering a key must not disturb the minutes';
+  end if;
+  if ${OMW_EVENTS("on_my_way_started")} <> 1 then
+    raise exception 'CASEFAIL onmyway-share-registers-pubkey: a signed share must still write exactly one feed event';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "onmyway-eta-only-share-stores-three-keys",
+    desc: "a share with no key is an ETA-only share — the object must stay exactly three keys, not gain a null pubkey",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    assert: `begin
+  ${SHARE_B}
+  if (select count(*) from jsonb_object_keys(${OMW_STATE_B})) <> 3 then
+    raise exception 'CASEFAIL onmyway-eta-only-share-stores-three-keys: an unsigned share gained a key it never registered';
+  end if;
+  if ${OMW_STATE_B} ? 'pubkey' then
+    raise exception 'CASEFAIL onmyway-eta-only-share-stores-three-keys: a null key was written into the object, which the shape constraint would refuse';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "onmyway-refresh-without-key-keeps-pubkey",
+    desc: "a refresh does not re-key: passing no key KEEPS the one already on the row, or every share becomes unverifiable a minute after it starts",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    assert: `declare
+  v_started text := ${OMW_STATE_B} ->> 'started_at';
+begin
+  perform public.set_on_my_way('${WS1}', 'omw-b', 4, 'Bo er på vej', 'Ca. 4 min');
+  if (${OMW_STATE_B} ->> 'pubkey') is distinct from '${OMW_PUBKEY}' then
+    raise exception 'CASEFAIL onmyway-refresh-without-key-keeps-pubkey: the refresh dropped the share key';
+  end if;
+  if (${OMW_STATE_B} ->> 'started_at') is distinct from v_started then
+    raise exception 'CASEFAIL onmyway-refresh-without-key-keeps-pubkey: started_at is the session key the payloads name — it must survive a refresh';
+  end if;
+  if ${OMW_EVENTS("on_my_way_started")} <> 1 then
+    raise exception 'CASEFAIL onmyway-refresh-without-key-keeps-pubkey: a refresh wrote a SECOND feed row';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "onmyway-rekey-replaces-pubkey",
+    desc: "a refresh carrying a NEW key replaces the old one — the sharer re-keying after an app restart lost the private half",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    assert: `declare
+  v_started text := ${OMW_STATE_B} ->> 'started_at';
+begin
+  perform public.set_on_my_way('${WS1}', 'omw-b', 9, 'Bo er på vej', 'Ca. 9 min', '${OMW_PUBKEY_2}');
+  if (${OMW_STATE_B} ->> 'pubkey') is distinct from '${OMW_PUBKEY_2}' then
+    raise exception 'CASEFAIL onmyway-rekey-replaces-pubkey: the new key did not take, so the re-keyed client can never be seen again';
+  end if;
+  if (select count(*) from jsonb_object_keys(${OMW_STATE_B})) <> 4 then
+    raise exception 'CASEFAIL onmyway-rekey-replaces-pubkey: re-keying must REPLACE, not accumulate';
+  end if;
+  if (${OMW_STATE_B} ->> 'started_at') is distinct from v_started then
+    raise exception 'CASEFAIL onmyway-rekey-replaces-pubkey: a re-key is still the same share, so started_at must not move';
+  end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-share-invalid-pubkey-denied",
+    desc: "a malformed key is refused by the RPC in Danish under 22023 — pubkey is a 32-byte base64 value, not an open text field on the row",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform public.set_on_my_way('${WS1}', 'omw-b', 12, 'På vej', '', 'ikke-en-nøgle');`,
+    expect: "22023",
+    post: `if ${OMW_STATE_B} is not null then
+        raise exception 'CASEFAIL onmyway-share-invalid-pubkey-denied: a share was stored despite the refusal';
+      end if;
+      if ${OMW_EVENTS("on_my_way_started")} + ${OMW_EVENTS("on_my_way_updated")} <> 0 then
+        raise exception 'CASEFAIL onmyway-share-invalid-pubkey-denied: a refused call still produced an event';
+      end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-marked-invalid-pubkey-patch-denied",
+    desc: "the shape constraint carries the same pattern: even with the RPC mark raised by hand, a junk key is refused with 23514",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `perform set_config('govehlo.on_my_way_command', '1', true);
+         update public.car_bookings
+         set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
+                                            'updated_at', now(), 'pubkey', 'nope')
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "23514",
+    post: `if ${OMW_STATE_B} is not null
+      then raise exception 'CASEFAIL onmyway-marked-invalid-pubkey-patch-denied: an unconstrained string reached the key'; end if;`,
+  }),
+  rpcCase({
+    name: "onmyway-direct-signed-set-still-denied",
+    desc: "migration 207 still holds with the wider key set: a perfectly shaped SIGNED share written directly is refused with 42501",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS)],
+    actor: B,
+    op: `update public.car_bookings
+         set on_my_way = jsonb_build_object('eta_minutes', 12, 'started_at', now(),
+                                            'updated_at', now(), 'pubkey', '${OMW_PUBKEY}')
+         where id = '${OMW_BOOKING_B}';`,
+    expect: "42501",
+    post: `if ${OMW_STATE_B} is not null then
+        raise exception 'CASEFAIL onmyway-direct-signed-set-still-denied: a key was registered without the actor gate behind it, which is the whole thing it certifies';
+      end if;`,
   }),
 
   // ── Push-target RPCs (migration 150, GV-398) ──────────────────────────────
