@@ -100,6 +100,18 @@ Data-minimering frem for pseudonymisering, når intet formål består.
    sweep'et springe bucketen over i stedet for at fejle højlydt. Vinduet er det samme
    ene døgn.
 
+7. **Live-position under "Jeg er på vej"** (GVM-587, jf. ropa.md A2 og retention.md):
+   her er begrænsningen den omvendte af de øvrige — **der er intet at slette**.
+   Positionen sendes flygtigt over gruppens private Realtime-kanal, gemmes hverken i
+   `realtime.messages`, en domænetabel eller en log, og modtagernes klienter fjerner
+   prikken tre minutter efter sidste opdatering og straks ved stop. En sletteanmodning
+   rammer derfor ingen række. Det, der IKKE kan tilbagekaldes, er det, en modtager
+   allerede har set på sin skærm, mens delingen kørte — samme forbehold som for
+   push-indhold i punkt 3, blot uden nogen kopi bagefter. Bemærk samtidig, at
+   **positionsdelingen er samtykkebaseret og pr. enhed** ("Del også min position på
+   kortet"): tilbagekaldelse sker øjeblikkeligt ved at slå valget fra eller stoppe
+   delingen, og ankomsttids-delingen fungerer uændret uden den.
+
 ## End-to-end-verifikation (udestående evidens)
 
 | Test | Status | Evidens |

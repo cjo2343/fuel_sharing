@@ -79,35 +79,96 @@ Cloudflare Access + Supabase-login).
   bevægelseshistorik).
   Koordinaterne optræder aldrig i aktivitetsfeedet (hændelsens metadata bærer kun
   boolean-feltet `parking_pin_set`), aldrig i URL'er, query-strenge eller logs. Vises
-  nålen på et minikort, hentes korttiles hos MapTiler (CH/EU) — se
-  subprocessors.md,
-  **"Jeg er på vej" — delt forventet ankomst** (GVM-238 P0, migration 202): et
-  **afledt minuttal** knyttet til en aktiv booking, sammen med tidspunktet delingen
-  begyndte og tidspunktet tallet sidst blev opdateret (`car_bookings.on_my_way`,
-  præcis de tre nøgler `eta_minutes` / `started_at` / `updated_at`). **Der behandles
-  ingen position på serveren — hverken gemt, modtaget eller videresendt.** Telefonen
-  beregner ankomsttiden lokalt ud fra sin egen placering og sender **kun det færdige
-  minuttal**; der findes ingen breddegrad, længdegrad, adresse eller rute nogen
-  steder i denne kategori. Det er håndhævet, ikke lovet: RPC'en `set_on_my_way` tager
-  et **heltal** og bygger selv JSON-objektet på serveren (der findes ingen parameter,
-  et koordinat kan smugles ind gennem), og en **CHECK-constraint** på tabellen lukker
-  nøglesættet, så heller ikke et direkte PostgREST-kald kan tilføje et felt.
-  Kategorien er **flygtig**: tilstanden nulstilles, når medlemmet er fremme, når
-  bookingen slutter, eller når delingen stoppes manuelt, og den forsvinder helt med
-  bookingen. Feed- og synk-hændelserne (`on_my_way_started`, `on_my_way_updated`,
-  `on_my_way_stopped`) bærer kun et booking-id og et minuttal.
-  **Forholdet til løftet om "ingen løbende sporing" på privatlivssiden:** funktionen
-  modsiger det ikke. Løftet handler om behandling af **position**, og der er ingen
-  position at behandle — vi modtager en **varighed**, ikke et sted, og en varighed
-  kan ikke sammenstilles til en bevægelseshistorik. Delingen er desuden
-  **brugerudløst** (medlemmet trykker selv), **afgrænset til én aktiv booking** og
-  **synlig for den, der deler** (modtagerne får tilmed at vide, hvor gammelt tallet
-  er — "opdateret for 8 min siden" — så ingen tror, der ligger en live-sporing bag).
-  Det er den samme linje som parkeringsnålen ovenfor: brugerudløst, ét formål, ingen
-  historik — blot uden overhovedet at røre et koordinat,
-  afregningsperioder/-anmodninger, bilens stamdata **inkl. nummerplade**
+  nålen på et minikort, hentes korttiles hos MapTiler (CH/EU) — samme leverandør
+  tegner live-kortet i kategorien nedenfor; se subprocessors.md,
+  **"Jeg er på vej" — delt ankomsttid og live-kort** (GVM-238 P0, migration 202;
+  live-kortet GVM-587; positionsvalget, signaturen og delingsnøglen GVM-593/594,
+  migration 209). Kategorien har **to halvdele med hver sin karakter**, og de skal
+  læses hver for sig: den ene gemmes, den anden gør ikke.
+
+  **(1) Den varige halvdel — et minuttal, ingen position.** Et **afledt minuttal**
+  knyttet til en aktiv booking, sammen med tidspunktet delingen begyndte og tidspunktet
+  tallet sidst blev opdateret (`car_bookings.on_my_way`, nøglerne `eta_minutes` /
+  `started_at` / `updated_at`) — og fra migration 209 en **valgfri fjerde nøgle,
+  `pubkey`**: en tilfældig ed25519-offentlig nøgle (44 tegn base64), som telefonen
+  danner **pr. deling** og registrerer gennem `set_on_my_way`. Nøglen er hverken en
+  position eller en varig identifikator for et menneske eller en enhed: den fødes med
+  delingen, dør med den, og dens eneste formål er at lade modtagerne verificere, at en
+  position på kortet faktisk kommer fra den, der deler. **Der gemmes ingen position på
+  serveren** — hverken breddegrad, længdegrad, adresse eller rute findes i nogen tabel,
+  noget event eller nogen log. Det er håndhævet, ikke lovet: RPC'en `set_on_my_way`
+  tager et **heltal** (plus den valgfrie nøglestreng) og bygger selv JSON-objektet på
+  serveren, så der findes ingen parameter, et koordinat kan smugles ind gennem, og en
+  **CHECK-constraint** på tabellen holder nøglesættet lukket — også efter 209 — så
+  heller ikke et direkte PostgREST-kald kan tilføje et felt. Feed- og synk-hændelserne
+  (`on_my_way_started`, `on_my_way_updated`, `on_my_way_stopped`) bærer kun et
+  booking-id og et minuttal.
+
+  **(2) Den flygtige halvdel — positionen på live-kortet, valgfri pr. enhed.** Er
+  medlemmets enhedsindstilling **"Del også min position på kortet"** slået til
+  (standard til, med en bekræftelse første gang og et **kun-ankomsttid**-alternativ når
+  som helst), sender telefonen **mens delingen kører** sin position — breddegrad og
+  længdegrad afrundet til **fem decimaler**, afsendertidspunkt, sessions-id (delingens
+  `started_at`) og en **signatur** dannet med delingens private nøgle — som en
+  **broadcast-besked** på workspacets private Realtime-kanal `presence-<workspace-id>`,
+  ca. hvert 15. sekund i forgrunden og én gang pr. baggrundsvækning fra styresystemet.
+  **Positionen TRANSITERER platformen; den gemmes ikke.** Supabase Realtime (EU)
+  videresender beskeden til de af gruppens medlemmer, der er tilsluttet kanalen i netop
+  det øjeblik, og beholder intet: ingen tabel, ingen log, ingen historik og ingen
+  genafspilning til en klient, der slutter sig til bagefter. Modtagerne tegner først
+  prikken, når signaturen er verificeret mod bookingens `pubkey`, fjerner den **3
+  minutter** efter sidste opdatering og straks når delingen stoppes. Der er derfor
+  **ingen opbevaringsfrist for positionen** — der er intet at opbevare (retention.md).
+
+  **En server-relay blev fravalgt — bevidst.** Den nærliggende implementering,
+  `realtime.send()` kaldt fra en RPC, ville have skrevet hver eneste position i
+  tabellen `realtime.messages` og dermed skabt præcis den bevægelseshistorik, hele
+  kategorien er bygget for at undgå. Broadcast klient-til-klient blev valgt af den
+  grund; det er designbeslutningen, der gør, at ordet "videresendt" kan stå her uden
+  også at betyde "gemt".
+
+  **Registrerede og modtagere:** den registrerede er **den, der deler** — positionen er
+  hans eller hendes. Modtagerne er **workspacets øvrige medlemmer**, nærmere bestemt de
+  af dem, der har appen åben på kanalen, mens delingen kører. Databehandlere:
+  **Supabase (EU)** som ren transit for broadcast-beskeden, og **MapTiler (CH,
+  omfattet af EU-Kommissionens tilstrækkelighedsafgørelse)** for de korttiles, hver
+  **modtagers** telefon selv henter omkring prikken, så længe kortet er åbent (se
+  subprocessors.md). MapTiler ser altså det omtrentlige kortudsnit — ikke selve
+  punktet, ingen konto-id'er og ingen identitet.
+
+  **Retsgrundlag for de to halvdele er ikke det samme.** Ankomsttiden deles ved
+  medlemmets egen handling som led i delebilsaftalen (art. 6(1)(b)/(f) som resten af
+  kategorien), mens **positionshalvdelen hviler på samtykke (art. 6(1)(a))**: den er et
+  selvstændigt, informeret enhedsvalg, den kan trækkes tilbage når som helst ved at slå
+  den fra eller stoppe delingen, og delingen virker fuldt ud uden den. Det er samme
+  linje som privatlivspolitikken, der siden GV-488 udtrykkeligt nævner live-deling
+  under samtykke.
+
+  Kategorien er **flygtig i begge halvdele**: tilstanden nulstilles, når medlemmet er
+  fremme, når bookingen slutter, eller når delingen stoppes manuelt, og den forsvinder
+  helt med bookingen; delingsnøglen dør i samme øjeblik, og positionsstrømmen stopper
+  med den, uden at nogen sidste position bliver liggende.
+
+  **Forholdet til løftet om "ingen løbende sporing" på privatlivssiden:** løftet står
+  ved magt, men det skal læses præcist — og præcist er ikke det, denne fortegnelse
+  skrev indtil GV-496. Telefonens position **deles reelt live**, mens et medlem selv
+  har en deling i gang og positionsvalget er slået til; sætningen om, at ingen position
+  hverken gemmes, modtages eller videresendes, var derfor forkert, fra live-kortet gik
+  i luften (GVM-587, 2026-08-12). Det, der ikke findes, er **sporingen**: der indsamles
+  intet uden for en deling, medlemmet selv har startet; der deles intet uden et synligt
+  banner og en "Stop deling"-knap på delerens egen skærm; modtagerkredsen er
+  workspacets medlemmer og ingen andre; og — afgørende — **intet opbevares**, så der
+  aldrig opstår et spor, hverken vi eller gruppen kan gå tilbage i. Modtagerne får
+  tilmed at vide, hvor frisk det viste er ("opdateret for 8 min siden"). Det er den
+  samme linje som parkeringsnålen ovenfor — brugerudløst, ét formål, ingen historik —
+  blot med et koordinat, der passerer igennem i stedet for at blive liggende.
+
+  Endelig **afregningsperioder/-anmodninger** og bilens stamdata **inkl. nummerplade**
   (nummerplader er personoplysninger — sendes aldrig i URL'er, kun POST-bodies).
-- **Retsgrundlag:** Kontrakt (art. 6(1)(b)).
+- **Retsgrundlag:** Kontrakt (art. 6(1)(b)) for kategorien som helhed. **Undtagelse:**
+  live-kortets positionsdeling under "Jeg er på vej" hviler på **samtykke
+  (art. 6(1)(a))** — et selvstændigt enhedsvalg, der kan trækkes tilbage når som helst,
+  jf. datakategorien ovenfor og privatlivspolitikken (GV-488).
 - **Modtagere:** Supabase (EU), inklusive privat objektlager til hændelsesfotos,
   kvitteringsfotos og dokumentsider (tre adskilte private buckets, alle kun læsbare
   for workspacets medlemmer).
@@ -121,10 +182,16 @@ Cloudflare Access + Supabase-login).
   normaliserede rute (geometri, alternativer, krydsninger) gemmes i 10 minutter
   under en hashet koordinat-nøgle uden bruger-id eller adressetekst, så gentagne
   opslag ikke koster et nyt GraphHopper-kald. Se retention.md-rækken "Rute-cache".
-  Ved kortvisning (ruteoversigten siden GVM-407 og parkeringsnålens minikort siden
-  GVM-536): **MapTiler** (CH/EU) — klienten henter selv style og korttiles, så
-  MapTiler ser de omtrentlige koordinater i det viste udsnit plus API-nøglen, aldrig
-  konto-id'er. Se subprocessors.md.
+  Ved kortvisning (ruteoversigten siden GVM-407, parkeringsnålens minikort siden
+  GVM-536 og live-kortet under "Jeg er på vej" siden GVM-587): **MapTiler** (CH/EU) —
+  klienten henter selv style og korttiles, så MapTiler ser de omtrentlige koordinater i
+  det viste udsnit plus API-nøglen, aldrig konto-id'er. Live-kortet er den tungeste af
+  de tre: tiles hentes gentagne gange omkring en prik i bevægelse, på hver enkelt
+  modtagers telefon, så længe delingen kører. Se subprocessors.md.
+  Ved live-kortets positionsdeling desuden **Supabase Realtime (EU) som ren transit**:
+  broadcast-beskederne relayes til de tilsluttede medlemmer og gemmes ingen steder —
+  hverken i `realtime.messages` (en server-relay blev udtrykkeligt fravalgt), i en
+  domænetabel eller i en log.
 - **Sletning:** Regnskabs- og hændelsesdata består som fælles, pseudonymiseret
   køretøjshistorik efter kontosletning (øvrige medlemmers regnskab og dokumentation,
   art. 17(3)); fotoets forfatterkobling fjernes. Dokumentarkivet kan derimod ryddes
@@ -151,6 +218,10 @@ Cloudflare Access + Supabase-login).
   `npm run probe:realtime-public-access` (et offentligt join skal afvises med
   "PrivateOnly") og attesteres før udgivelse som `realtime_public_access_closed` i
   `docs/release-attestations.json` (GV-490); se DEPLOY-CHECKLIST.md afsnit 6a.
+  **Samme private kanal bærer live-kortets positions-broadcasts** (GVM-587, se A2):
+  de er flygtige beskeder i transit, som Realtime relayer til de tilsluttede medlemmer
+  og ikke gemmer — de hører formålsmæssigt til A2 og nævnes her, fordi de deler kanal
+  og adgangskontrol med tilstedeværelsen.
 - **Retsgrundlag:** Kontrakt; feedet er en kernefunktion (transparens om penge).
 - **Sletning:** Feedet er workspace-historik uden aldersgrænse (produktbeslutning);
   aktørfelter anonymiseres ved kontosletning.
