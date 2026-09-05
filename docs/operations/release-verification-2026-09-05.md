@@ -16,17 +16,37 @@ external attestations, not a missing migration.
 
 | Check | Observed result | What remains |
 | --- | --- | --- |
-| Production public Realtime join | Hardened `probe:realtime-public-access` returned `PrivateOnly: This project only allows private channels`, exit 0 | Authenticated member join on a selected real workspace, dashboard observation, field-build confirmation |
+| Production public Realtime join | Hardened `probe:realtime-public-access` returned `PrivateOnly: This project only allows private channels`, exit 0; owner-supplied dashboard screenshot shows public access off | Authenticated member join on a selected real workspace and field-build confirmation; screenshot crop does not include project identity |
 | Apple association URL | `https://vehloshare.app/.well-known/apple-app-site-association` returned HTTP 404, text/plain, at 17:17 UTC | Verify `APPLE_TEAM_ID` against the signed app, configure the Pages deployment and verify HTTP 200 JSON and on-device invite opening |
 | Android association URL | `https://vehloshare.app/.well-known/assetlinks.json` returned HTTP 404, text/plain, at 17:17 UTC | Production signing fingerprints, Pages configuration, HTTP 200 JSON and Android device verification |
 | New native build | Owner reports the latest changes are not yet installed; using Xcode, not TestFlight | Build/install, then run the device checklist below |
-| Supabase dashboard | Sign-in completed, but computer-use stopped returning readable dashboard content | Confirm current plan, backup window, latest successful backup and PITR status directly; the July Free-plan record is not a new account observation |
+| Supabase dashboard | Computer-use could not read the signed-in dashboard; owner subsequently supplied the Realtime settings screenshot described below | Confirm current plan, backup window, latest successful backup and PITR status directly; the July Free-plan record is not a new account observation |
 | Controller identity | Not supplied during this verification | Exact public controller name, business identifier if applicable, and contact address; never infer these from a GitHub profile |
 
 The Realtime run used a generated topic and the application's public anonymous
 key. It sent only a join request, no presence payload or broadcast, and did not
 query workspace rows. Member phase was explicitly skipped. The full
 `realtime_public_access_closed` attestation therefore remains unverified.
+
+### Owner-supplied Realtime screenshot
+
+Received the screenshot labelled 2026-09-05 19:28:45 (local time) in response to the
+request for production Realtime settings. Visible values:
+
+- Realtime service: enabled.
+- Allow public access to channels: disabled.
+- Authorization database connection pool: 2.
+- Postgres Changes connection pool: 2.
+- Maximum concurrent clients: 200.
+- Maximum events per second: 100.
+- Maximum presence events per second: 20.
+
+This supports the live probe result. The crop does not show the project header,
+so the project-targeted live probe remains the independent production evidence.
+These are configured limits, not proof of tested load capacity. The "Upgrade to
+Pro" prompts suggest a non-Pro configuration, but do not verify backup status,
+retention, or the billing plan. No setting was changed and the full Realtime
+attestation remains open pending the member and build checks.
 
 The two 404s match the association functions' intentionally unconfigured response,
 but do not alone prove which production environment variables are absent. Do not
