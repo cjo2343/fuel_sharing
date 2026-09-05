@@ -42,7 +42,7 @@
 //         need a real one — a public join is refused by the platform before any
 //         policy is consulted, and would SUCCEED against a nonexistent id while the
 //         switch is on — so a random uuid is generated when none is given.
-//     --timeout <ms>                default 10000.
+//     --timeout <ms>                default 10000; integer 1..120000.
 //
 // DELIBERATELY NOT in `npm run validate`: it needs the network and a live project.
 // It is also the one tool here that is MEANT to point at production — unlike the
@@ -68,12 +68,20 @@ const ACCESS_TOKEN = (process.env.SUPABASE_ACCESS_TOKEN || "").trim();
 const LEDGER_ID = (argValue("ledger") || process.env.LEDGER_ID || "").trim();
 const TIMEOUT_MS = Number(argValue("timeout") || process.env.PROBE_TIMEOUT_MS || 10_000);
 
-const EXIT_CLOSED = 0; // public join refused — the good outcome
+const EXIT_CLOSED = 0; // public join refused with PrivateOnly
 const EXIT_OPEN = 1; // public join accepted — launch blocker
 const EXIT_INCONCLUSIVE = 2; // learned nothing; never treat as a pass
 
+function redact(value) {
+  let text = String(value);
+  for (const secret of [SUPABASE_ANON_KEY, ACCESS_TOKEN].filter(Boolean)) {
+    text = text.replaceAll(secret, '[redacted]').replaceAll(encodeURIComponent(secret), '[redacted]');
+  }
+  return text;
+}
+
 function fail(code, ...lines) {
-  for (const line of lines) console.error(line);
+  for (const line of lines) console.error(redact(line));
   process.exit(code);
 }
 
@@ -89,11 +97,29 @@ if (typeof WebSocket !== "function") {
   fail(EXIT_INCONCLUSIVE, "probe-realtime-public-access: no global WebSocket — needs Node >= 22.");
 }
 
+let projectUrl;
+try {
+  projectUrl = new URL(SUPABASE_URL);
+  if (!['https:', 'http:'].includes(projectUrl.protocol) || projectUrl.username ||
+      projectUrl.password || projectUrl.search || projectUrl.hash || projectUrl.pathname !== '/') {
+    throw new Error('invalid project origin');
+  }
+} catch {
+  fail(EXIT_INCONCLUSIVE, 'SUPABASE_URL must be an HTTP(S) origin without credentials, path, query or fragment.');
+}
+if (!Number.isSafeInteger(TIMEOUT_MS) || TIMEOUT_MS < 1 || TIMEOUT_MS > 120_000) {
+  fail(EXIT_INCONCLUSIVE, '--timeout / PROBE_TIMEOUT_MS must be an integer from 1 to 120000 ms.');
+}
+if (ACCESS_TOKEN && !LEDGER_ID) {
+  fail(EXIT_INCONCLUSIVE, 'SUPABASE_ACCESS_TOKEN requires LEDGER_ID / --ledger for the member phase.');
+}
+
 const ledgerId = LEDGER_ID || crypto.randomUUID();
 const topic = `realtime:presence-${ledgerId}`;
-const socketUrl = `${SUPABASE_URL.replace(/^http/, "ws")}/realtime/v1/websocket?apikey=${encodeURIComponent(
-  SUPABASE_ANON_KEY,
-)}&vsn=1.0.0`;
+const socketUrl = new URL('/realtime/v1/websocket', projectUrl);
+socketUrl.protocol = projectUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+socketUrl.searchParams.set('apikey', SUPABASE_ANON_KEY);
+socketUrl.searchParams.set('vsn', '1.0.0');
 
 /**
  * One join attempt against the Realtime socket, spoken in Phoenix's own protocol
@@ -114,7 +140,7 @@ function attemptJoin({ isPrivate, accessToken }) {
       } catch {
         /* already closing */
       }
-      resolve({ outcome, reason });
+      resolve({ outcome, reason: redact(reason) });
     };
 
     const timer = setTimeout(
@@ -127,7 +153,7 @@ function attemptJoin({ isPrivate, accessToken }) {
       ws = new WebSocket(socketUrl);
     } catch (err) {
       clearTimeout(timer);
-      resolve({ outcome: "inconclusive", reason: `could not open socket: ${err.message}` });
+      resolve({ outcome: "inconclusive", reason: redact(`could not open socket: ${err.message}`) });
       return;
     }
 
@@ -163,8 +189,10 @@ function attemptJoin({ isPrivate, accessToken }) {
       // socket-level phx_error / phx_close on this topic. Presence state is never
       // read or printed — only the join verdict is.
       if (msg.event === "phx_reply") {
+        if (msg.ref !== '1') return;
         const status = msg.payload?.status;
         if (status === "ok") return done("joined", "phx_reply status=ok");
+        if (status !== 'error') return;
         const reason =
           msg.payload?.response?.reason ??
           msg.payload?.response?.error ??
@@ -177,8 +205,9 @@ function attemptJoin({ isPrivate, accessToken }) {
       }
       if (msg.event === "system") {
         const status = msg.payload?.status;
-        if (status === "error") return done("refused", `system: ${msg.payload?.message ?? "error"}`);
-        if (status === "ok") return done("joined", `system: ${msg.payload?.message ?? "ok"}`);
+        if (status === "error") {
+          return done("refused", `system: ${msg.payload?.code ?? ''} ${msg.payload?.message ?? "error"}`);
+        }
       }
     });
 
@@ -192,7 +221,7 @@ function attemptJoin({ isPrivate, accessToken }) {
   });
 }
 
-const projectRef = SUPABASE_URL.replace(/^https?:\/\//, "").split(".")[0];
+const projectRef = projectUrl.hostname.split('.')[0];
 console.log(`Realtime public-access probe (GV-490) — project ${projectRef}`);
 console.log(`  topic: presence-${ledgerId}${LEDGER_ID ? "" : "  (generated; phase 1 does not need a real workspace)"}`);
 
@@ -217,11 +246,12 @@ if (publicJoin.outcome === "joined") {
   );
 }
 console.log(`  phase 1 (public join): REFUSED — ${publicJoin.reason}`);
-if (!/privateonly/i.test(publicJoin.reason)) {
-  console.log(
-    '  note: the refusal did not name "PrivateOnly". It is still a refusal, but check the reason',
+if (!/\bPrivateOnly\b/i.test(publicJoin.reason)) {
+  fail(
+    EXIT_INCONCLUSIVE,
+    'The refusal did not name "PrivateOnly". Authentication errors and rate limits',
+    'do not prove private-only access. Do not attest this result; resolve the cause and re-run.',
   );
-  console.log("        above — a rate limit or a bad key refuses joins too, and proves nothing here.");
 }
 
 if (!ACCESS_TOKEN) {
@@ -240,7 +270,7 @@ if (privateJoin.outcome === "joined") {
 fail(
   EXIT_INCONCLUSIVE,
   `  phase 2 (member private join): ${privateJoin.outcome.toUpperCase()} — ${privateJoin.reason}`,
-  "The public hole is closed, but a member could not join either — presence and live sync are",
-  "down for real users. Check that the token belongs to a member of LEDGER_ID and that",
+  "The public probe passed, but member access was not verified. Check that the token",
+  "is current, belongs to a member of LEDGER_ID, and that",
   "migrations 202/205/206 are applied, then re-run.",
 );
