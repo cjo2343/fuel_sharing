@@ -320,6 +320,8 @@ const scripts = [
   // greenness is never observed in practice, and a logic bug that made it pass
   // everything would look exactly like progress.
   "node tools/test-release-gates.mjs",
+  // Probe verdicts are tested with a fake socket; validation never contacts production.
+  "node tools/test-realtime-public-access-probe.mjs",
   // Heuristic lint for the concurrency/idempotency class that slipped past every
   // structural guard three times and reached prod (GV-454): 169→171 (unlocked
   // read-decide-write), 172→174 (stale-read mirror), 179→181 (check-then-insert with no
