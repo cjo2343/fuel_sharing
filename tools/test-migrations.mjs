@@ -220,6 +220,7 @@ const expected = [
   "207_on_my_way_rpc_only_writes.sql",
   "208_newsletter_lease_owner_token.sql",
   "209_on_my_way_share_pubkey.sql",
+  "210_on_my_way_refresh_fence.sql",
 ];
 
 assert.deepEqual(files, expected, "migration files must be present and ordered");

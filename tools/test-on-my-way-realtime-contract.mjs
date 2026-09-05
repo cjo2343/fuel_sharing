@@ -258,8 +258,8 @@ for (const [label, sql] of [['migration 202', migration], ['supabase-schema.sql'
   // ── clear_on_my_way ─────────────────────────────────────────────────────────
   const clearFn = sliceFrom(
     sql,
-    'create or replace function public.clear_on_my_way',
-    'revoke all on function public.clear_on_my_way',
+    'create or replace function public.clear_on_my_way(',
+    'revoke all on function public.clear_on_my_way(',
   );
   // The deliberate asymmetry with set_on_my_way: clearing IS administrable.
   assert.match(

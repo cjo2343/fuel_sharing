@@ -4886,6 +4886,96 @@ end`,
   // malformed key, keep an ETA-only share at three keys, and keep 207's two refusals
   // (unmarked write, marked coordinate) working now that the key set is wider by one name.
   queryCase({
+    name: "onmyway-refresh-fenced-success",
+    desc: "a fenced refresh updates minutes without starting another share or feed event",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    assert: `begin
+  perform public.refresh_on_my_way('${WS1}', 'omw-b', 8,
+    (${OMW_STATE_B} ->> 'started_at')::timestamptz, '${OMW_PUBKEY}');
+  if (${OMW_STATE_B} ->> 'eta_minutes')::int <> 8
+     or ${OMW_EVENTS("on_my_way_started")} <> 1 then
+    raise exception 'CASEFAIL fenced refresh changed the share lifecycle';
+  end if;
+end`,
+  }),
+  queryCase({
+    name: "onmyway-refresh-after-stop-denied",
+    desc: "a delayed refresh cannot recreate a stopped share",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    assert: `declare
+  v_started timestamptz := (${OMW_STATE_B} ->> 'started_at')::timestamptz;
+begin
+  perform public.clear_on_my_way('${WS1}', 'omw-b');
+  begin
+    perform public.refresh_on_my_way('${WS1}', 'omw-b', 8, v_started, '${OMW_PUBKEY}');
+    raise exception 'CASEFAIL stopped share was recreated';
+  exception when serialization_failure then null;
+  end;
+  if ${OMW_STATE_B} is not null then raise exception 'CASEFAIL share was not left stopped'; end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-refresh-old-session-denied",
+    desc: "a refresh bound to another session cannot alter this share",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    op: `perform public.refresh_on_my_way('${WS1}', 'omw-b', 8,
+      '2000-01-01T00:00:00Z'::timestamptz, '${OMW_PUBKEY}');`,
+    expect: "40001",
+  }),
+  rpcCase({
+    name: "onmyway-refresh-old-key-denied",
+    desc: "a delayed re-key cannot replace another device's current key",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    op: `perform public.refresh_on_my_way('${WS1}', 'omw-b', 8,
+      (${OMW_STATE_B} ->> 'started_at')::timestamptz, '${OMW_PUBKEY_2}', '${OMW_PUBKEY_2}');`,
+    expect: "40001",
+  }),
+  rpcCase({
+    name: "onmyway-refresh-admin-denied",
+    desc: "the refresh wrapper does not grant admins a new way to share for somebody else",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: A,
+    op: `perform public.refresh_on_my_way('${WS1}', 'omw-b', 8,
+      (${OMW_STATE_B} ->> 'started_at')::timestamptz, '${OMW_PUBKEY}');`,
+    expect: "42501",
+  }),
+  queryCase({
+    name: "onmyway-fenced-stop-stale-session-noop",
+    desc: "a delayed stop cannot clear a newer share",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: B,
+    assert: `begin
+  if (public.clear_on_my_way_if_current('${WS1}', 'omw-b', '2000-01-01'::timestamptz) ->> 'cleared')::boolean then
+    raise exception 'CASEFAIL stale stop cleared current share';
+  end if;
+  if ${OMW_STATE_B} is null then raise exception 'CASEFAIL share disappeared'; end if;
+end`,
+  }),
+  queryCase({
+    name: "onmyway-fenced-stop-admin-allowed",
+    desc: "admins retain the escape hatch for a currently observed stuck share",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: A,
+    assert: `begin
+  perform public.clear_on_my_way_if_current('${WS1}', 'omw-b',
+    (${OMW_STATE_B} ->> 'started_at')::timestamptz);
+  if ${OMW_STATE_B} is not null then raise exception 'CASEFAIL current share not cleared'; end if;
+end`,
+  }),
+  rpcCase({
+    name: "onmyway-fenced-stop-bystander-denied",
+    desc: "an ordinary bystander cannot clear somebody else's share",
+    setup: [step(SUPER, SEED_OMW_BOOKINGS), step(B, SHARE_B_SIGNED)],
+    actor: C,
+    op: `perform public.clear_on_my_way_if_current('${WS1}', 'omw-b',
+      (${OMW_STATE_B} ->> 'started_at')::timestamptz);`,
+    expect: "42501",
+  }),
+  queryCase({
     name: "onmyway-share-registers-pubkey",
     desc: "a first share carrying a key stores exactly the three derived keys plus pubkey, and still writes ONE feed row",
     setup: [step(SUPER, SEED_OMW_BOOKINGS)],
