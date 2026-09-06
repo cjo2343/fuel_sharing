@@ -17,6 +17,7 @@
     "test:release-gates": "node tools/test-release-gates.mjs",
     "test:functional-smoke": "bash tools/test-functional-smoke.sh",
     "test:booking-trip": "bash tools/test-booking-trip-functional.sh",
+    "test:booking-edit-events": "node tools/test-booking-edit-events-contract.mjs --strict",
     "test:booking-fuel-completion": "bash tools/test-booking-fuel-completion-functional.sh",
     "test:booking-reminder": "bash tools/test-booking-reminder-functional.sh",
     "test:fuel-stop-verdict": "node tools/test-fuel-stop-verdict-contract.mjs --strict",

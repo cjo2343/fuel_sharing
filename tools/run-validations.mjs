@@ -29,6 +29,7 @@ const scripts = [
   "node tools/test-migrations.mjs",
   "node tools/test-sql-ambiguity-guard.mjs",
   "node tools/test-booking-trip-contract.mjs",
+  "node tools/test-booking-edit-events-contract.mjs",
   "node tools/test-booking-fuel-completion-contract.mjs",
   "node tools/test-booking-reminder-contract.mjs",
   "node tools/test-settlement-event-history-contract.mjs",
