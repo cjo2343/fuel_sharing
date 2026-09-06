@@ -40,6 +40,9 @@ export const FEED_VISIBLE_EVENT_TYPES = [
 
   // Bookings (migrations 051, 063) and the handover that ends one (164).
   "booking_created",
+  // Material edits must reach the group and invalidate other clients (GVM-597).
+  "booking_updated",
+  "booking_deleted",
   // handover_created is written on CREATE only (never on an edit) and is feed-visible
   // on purpose: the whole point of a handover is that the NEXT driver learns where the
   // car and its keys were left, and the feed is where the group looks. The title comes
