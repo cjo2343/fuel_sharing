@@ -27,6 +27,7 @@ import { execSync } from 'child_process';
 
 const scripts = [
   "node tools/test-staging-target.mjs",
+  "node tools/test-staging-fixture.mjs",
   "node tools/test-migrations.mjs",
   "node tools/test-sql-ambiguity-guard.mjs",
   "node tools/test-booking-trip-contract.mjs",

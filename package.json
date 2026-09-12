@@ -5,6 +5,7 @@
   "scripts": {
     "validate": "node tools/run-validations.mjs",
     "staging:schema": "node tools/native-e2e/install-schema.mjs",
+    "staging:seed": "node tools/native-e2e/seed-fixture.mjs",
     "test:staging-install": "node tools/test-staging-install-functional.mjs",
     "check:schema-equivalence": "node tools/check-schema-equivalence.mjs",
     "gen:db-types": "node tools/generate-db-types.mjs",
