@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "../load-rehearsal/lib/common.mjs";
 import { loadStagingConfig } from "./local-config.mjs";
 import {
@@ -25,9 +26,11 @@ function main() {
     // Fixed host/user/database: no DBURL or libpq option from the credentials file
     // can redirect this installer. Password is not a command-line argument.
     const result = spawnSync("docker", [
-      "run", "--rm", "-i", "--env", "PGPASSWORD", "postgres:17-alpine",
+      "run", "--rm", "-i", "--env", "PGPASSWORD",
+      "--mount", `type=bind,source=${fileURLToPath(new URL("./supabase-root-2021.crt", import.meta.url))},target=/staging-ca.crt,readonly`,
+      "postgres:17-alpine",
       "psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate",
-      `host=${STAGING_POOLER_HOST} port=5432 dbname=postgres user=postgres.${STAGING_PROJECT_REF} sslmode=verify-full sslrootcert=system connect_timeout=15`,
+      `host=${STAGING_POOLER_HOST} port=5432 dbname=postgres user=postgres.${STAGING_PROJECT_REF} sslmode=verify-full sslrootcert=/staging-ca.crt connect_timeout=15`,
       "-f", "-",
     ], {
       input: sql, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 600_000,

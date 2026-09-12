@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { X509Certificate } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadStagingConfig } from "./native-e2e/local-config.mjs";
 import { assertStagingUrl, buildStagingInstall, STAGING_URL } from "./native-e2e/staging-target.mjs";
+
+const ca = new X509Certificate(readFileSync(new URL("./native-e2e/supabase-root-2021.crt", import.meta.url)));
+assert.equal(ca.fingerprint256, "80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA");
+assert.equal(ca.ca, true);
 
 assert.equal(assertStagingUrl(STAGING_URL), STAGING_URL);
 assert.equal(assertStagingUrl(`${STAGING_URL}/`), STAGING_URL);
