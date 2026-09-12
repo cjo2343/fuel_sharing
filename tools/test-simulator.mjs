@@ -25,8 +25,8 @@
 //
 // GV-471 Phase A adds three more, all about the client-parity oracle:
 //
-//   3. it ran at all — and when govehlo-mobile is absent (which is every CI job here,
-//      including the nightly fuzz) that the SKIP path works: muted cells, a stated
+//   3. it ran at all — and when govehlo-mobile is absent from a backend-only checkout,
+//      that the ordinary SKIP path works: muted cells, a stated
 //      reason, and a run that still passes. Both directions are asserted, because a
 //      parity check that silently reports green when it did nothing is worse than none;
 //   4. enabling it does not move the action stream. Parity is oracle-side and draws no
@@ -51,6 +51,7 @@ import { digestOf, readJournal } from "./simulator/lib/journal.mjs";
 // WHERE the sibling repo is — including under the SIMULATOR_MOBILE_ROOT override, which
 // is how the skip path is proved without moving anything on disk.
 import { MOBILE_ROOT } from "./simulator/lib/client-parity.mjs";
+import { assertParityCoverage } from "./simulator/lib/parity-coverage.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VIOLATIONS = path.join(REPO, "tools", "simulator", "out", "violations.json");
@@ -192,13 +193,39 @@ if (siblingPresent) {
     fail(`clean run found ${newParity.length} NEW client-parity violation(s):\n${JSON.stringify(newParity, null, 2)}`);
   }
   console.log(`✅ client parity: ran govehlo-mobile's own modules (${loadedModules.map((m) => m.file).join(", ")}) over ${compared} period-sweep(s), zero new divergences.`);
+
+  const required = runSimulator(["--require-parity"], "required-parity run");
+  if (required.status !== 0 || required.report.newViolationCount !== 0) {
+    fail(`required-parity run failed:\n${tail(required.stdout)}\n${tail(required.stderr)}`);
+  }
+  const requiredJournal = readJournal(JOURNAL);
+  if (digestOf(requiredJournal) !== cleanDigest) fail("requiring parity changed the action stream");
+  if (!required.report.repro.includes("--require-parity")) fail("repro dropped the required-parity flag");
+  const requiredLoad = requiredJournal.find(line => line.kind === "parity" && line.phase === "load");
+  if (requiredLoad.modules.filter(item => item.loaded).length !== 4) fail("required run did not load all four modules");
+  for (const sweep of requiredJournal.filter(line => line.kind === "oracle")) {
+    assertParityCoverage(sweep.results);
+  }
+  console.log("✅ required parity: all four modules, non-empty coverage on every sweep, unchanged action digest.");
 } else {
   if (parityLoad.available) fail(`govehlo-mobile is absent from ${MOBILE_ROOT} but the parity oracle reported available.`);
   const notSkipped = parityCells.filter((cell) => !cell.skipped);
   if (notSkipped.length > 0) fail(`${notSkipped.length} client_parity cell(s) were not marked skipped with the sibling repo absent — a skipped check must never read as green.`);
   if (parityCells.some((cell) => !cell.ok)) fail("a skipped client_parity cell reported a failure — the skip path must not fail a run.");
   console.log(`✅ client parity: correctly skipped (${parityLoad.reason}) — ${parityCells.length} muted cell(s), run still green.`);
+
+  const required = spawnSync(process.execPath, [...BASE, "--require-parity"], { cwd: REPO, encoding: "utf8" });
+  if (required.status !== 1 || !required.stderr.includes("Required client parity unavailable")) {
+    fail("required parity did not fail on a missing mobile checkout");
+  }
+  if (required.stdout.includes("Booting disposable Postgres")) fail("missing parity booted a database");
 }
+
+const contradictory = spawnSync(process.execPath, [...BASE, "--require-parity", "--no-parity"], { cwd: REPO, encoding: "utf8" });
+if (contradictory.status !== 1 || !contradictory.stderr.includes("Required client parity unavailable: --no-parity")) {
+  fail("--no-parity silently overrode --require-parity");
+}
+if (contradictory.stdout.includes("Booting disposable Postgres")) fail("contradictory flags booted a database");
 
 // ── 1c. Determinism: parity must not move the action stream ──────────────────
 //
@@ -415,7 +442,7 @@ console.log(`✅ chaos run: exactly 1 new violation (${chaosViolations[0].invari
 // Only meaningful with the sibling repo present. Absent, there is no parity oracle to
 // self-test, and asserting anything would be asserting the skip path twice.
 if (siblingPresent) {
-  const chaosParity = runSimulator(["--chaos-parity"], "chaos-parity run");
+  const chaosParity = runSimulator(["--chaos-parity", "--require-parity"], "chaos-parity run");
   const found = (chaosParity.report.violations ?? []).filter((v) => !v.known);
   if (found.length !== 1) {
     fail(`chaos-parity run reported ${found.length} NEW violation(s), expected exactly 1:\n${JSON.stringify(found, null, 2)}`);

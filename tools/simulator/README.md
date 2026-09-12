@@ -324,13 +324,31 @@ Both narrow the check to arithmetic, and both are in `readParityRows`:
 
 ### Skipping is a first-class outcome
 
-The nightly workflow checks out this repo alone, so parity must skip cleanly there. When
-`../govehlo-mobile` is missing, or a module fails to import, or the Node is too old, the
-run prints a loud warning, writes a `parity` journal line saying why, and the dashboard
+In an ordinary local run, when `../govehlo-mobile` is missing, a required module fails
+to import, or Node is too old, the run prints a loud warning, writes a `parity` journal
+line saying why, and the dashboard
 paints the **Klient-paritet** row as *ikke tilgængelig* — muted with a dashed border and an
 em dash, never green. `npm run test:simulator` asserts both directions: with the sibling
 present, that parity really compared periods; without it, that every cell is marked
 skipped and the run still passes.
+
+The nightly workflow deliberately has a stronger contract. It checks out
+`cjo2343/vehloshare-mobile` at `main` using the existing read-only `CROSS_REPO_TOKEN`,
+then runs **`--require-parity`**. All four calculation modules must load, and every
+workspace must actually compare at least one period at every oracle sweep. Missing
+credentials, a broken import, skipped cells, or zero comparisons fail the run. The
+flag also rejects `--no-parity`; ordinary backend-only local runs remain supported.
+
+The `simulator-fuzz-evidence` artifact keeps each seed's journal and violations,
+plus `revisions.json` recording the exact backend and mobile commits, for 30 days.
+It is uploaded on both success and failure, and contains no mobile source files.
+Reproduce a run using those two revisions, the logged epoch/seed, and
+`--require-parity`. The token needs Contents read access to the private mobile repo;
+the workflow neither persists checkout credentials nor runs on pull requests.
+
+This proves database/client calculation parity, not native screen interactions,
+Auth token refresh, remote pushes, or physical-device behaviour. See
+[`../native-e2e/README.md`](../native-e2e/README.md) for the separate native-test setup.
 
 ### `--chaos-parity`: the parity oracle's self-test
 

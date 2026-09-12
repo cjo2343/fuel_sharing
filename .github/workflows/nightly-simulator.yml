@@ -10,7 +10,7 @@ name: Nightly simulator fuzz
 # reproducible after the fact: a red night names its seed, and
 #
 #   node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 \
-#     --seed <seed> --oracle-every 25 --epoch <date> --headless
+#     --seed <seed> --oracle-every 25 --epoch <date> --headless --require-parity
 #
 # replays it exactly on any machine with Docker. The epoch is pinned to a date
 # DERIVED from the run date for the same reason — the simulator's clock is
@@ -22,8 +22,9 @@ name: Nightly simulator fuzz
 # which silently shifted the guard profile — "Bookingen er ikke startet" fired,
 # migration 195's odometer-plausibility guard never did.
 #
-# On failure the journal + violations.json upload as an artifact and the repro
-# command is printed in the job log. The admin console's Health page reads this
+# Every seed's journal + violations.json and both tested revisions upload as an
+# artifact, including on success. On failure the repro command is printed in the
+# job log. The admin console's Health page reads this
 # workflow's latest conclusion via the GitHub API (the govehlo-web half of
 # GV-473), so a red night is visible without opening GitHub.
 #
@@ -36,23 +37,52 @@ on:
     - cron: "20 2 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     name: Rotating-seed fuzz (3 seeds x 600 ticks)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SIMULATOR_MOBILE_ROOT: ${{ github.workspace }}/govehlo-mobile
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Require CROSS_REPO_TOKEN for mobile parity
+        env:
+          CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+        run: test -n "$CROSS_REPO_TOKEN"
+
+      - name: Check out mobile calculations
+        uses: actions/checkout@v5
+        with:
+          repository: cjo2343/vehloshare-mobile
+          ref: main
+          path: govehlo-mobile
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
           node-version: "22"
 
+      - name: Record tested revisions
+        run: |
+          mkdir -p fuzz-evidence
+          BACKEND_SHA="$(git rev-parse HEAD)" MOBILE_SHA="$(git -C govehlo-mobile rev-parse HEAD)" \
+            node -e 'require("node:fs").writeFileSync("fuzz-evidence/revisions.json", JSON.stringify({backend: process.env.BACKEND_SHA, mobile: process.env.MOBILE_SHA}, null, 2))'
+          echo '### Tested revisions' >> "$GITHUB_STEP_SUMMARY"
+          cat fuzz-evidence/revisions.json >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run three date-derived seeds
         run: |
-          set -u
+          set -euo pipefail
           DATE_TAG="$(date -u +%Y%m%d)"
           EPOCH="$(date -u -d '100 days ago' +%Y-%m-%d)"
           FAILED=0
@@ -60,25 +90,26 @@ jobs:
             SEED="${DATE_TAG}${n}"
             echo "::group::seed ${SEED}"
             if node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 \
-                --seed "${SEED}" --oracle-every 25 --epoch "${EPOCH}" --headless; then
+                --seed "${SEED}" --oracle-every 25 --epoch "${EPOCH}" --headless --require-parity; then
               echo "seed ${SEED}: clean"
             else
               FAILED=1
               echo "::error::seed ${SEED} found something. Repro locally:"
-              echo "::error::node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 --seed ${SEED} --oracle-every 25 --epoch ${EPOCH} --headless"
-              # Keep this seed's evidence out of the next seed's way.
-              mkdir -p fuzz-failures
-              cp -R tools/simulator/out "fuzz-failures/seed-${SEED}"
+              echo "::error::node tools/simulator/run.mjs --workspaces 4 --members 4 --ticks 600 --seed ${SEED} --oracle-every 25 --epoch ${EPOCH} --headless --require-parity"
+            fi
+            # Keep successes too, and never reuse a previous seed's evidence.
+            if [ -d tools/simulator/out ]; then
+              mv tools/simulator/out "fuzz-evidence/seed-${SEED}"
             fi
             echo "::endgroup::"
           done
           exit "${FAILED}"
 
-      - name: Upload failure evidence
-        if: failure()
+      - name: Upload test evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: simulator-fuzz-failures
-          path: fuzz-failures/
+          name: simulator-fuzz-evidence
+          path: fuzz-evidence/
           retention-days: 30
           if-no-files-found: warn

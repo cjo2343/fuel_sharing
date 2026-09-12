@@ -48,6 +48,7 @@ import { Journal, digestOf } from "./lib/journal.mjs";
 import { startServer } from "./lib/server.mjs";
 import { SessionPool, SIM_SCRATCH_DDL, actionSql, claimsFor, lit, uuidLit } from "./lib/db.mjs";
 import { loadClientModules, MOBILE_ROOT } from "./lib/client-parity.mjs";
+import { assertParityCoverage } from "./lib/parity-coverage.mjs";
 import {
   RhythmClock, rhythmEpoch, rhythmBudgetMinutes, modulateWeights, firedRules, clockLabel,
 } from "./lib/rhythm.mjs";
@@ -95,6 +96,7 @@ const config = {
   // Phase A. On by default — a parity check nobody runs is a comment. `--no-parity`
   // turns it off, which is how the determinism proof compares the two action streams.
   parity: !has("no-parity"),
+  requireParity: has("require-parity"),
   chaosParity: has("chaos-parity"),
   // ── GV-478 Phase B, all four ON by default ───────────────────────────────────
   // Each has an off switch, and the four of them together restore Phase A's shape for
@@ -159,6 +161,7 @@ const REPRO = [
   config.chaos ? "--chaos" : "",
   config.chaosParity ? "--chaos-parity" : "",
   config.parity ? "" : "--no-parity",
+  config.requireParity ? "--require-parity" : "",
   config.rhythm ? "" : "--flat-clock",
   config.dup ? "" : "--no-dup",
   config.interleave ? "" : "--no-interleave",
@@ -195,6 +198,7 @@ Self-tests and output
   --chaos              inject one known corruption; the oracle must flag exactly it
   --chaos-parity       drop one row from the CLIENT's copy; parity must flag exactly it
   --no-parity          skip the client-parity oracle entirely
+  --require-parity     fail if any mobile module or comparison coverage is missing
   --serve [port]       live mission control on 127.0.0.1 (default 8471)
   --headless           no dashboard, and exit non-zero on a NEW violation
   --keep               leave the Postgres container running for inspection
@@ -330,6 +334,7 @@ async function main() {
       chaos: config.chaos,
       chaosParity: config.chaosParity,
       parity: config.parity,
+      requireParity: config.requireParity,
       rhythm: config.rhythm,
       dup: config.dup,
       interleave: config.interleave,
@@ -418,7 +423,7 @@ async function prepareParity() {
   if (!config.parity) {
     parity = { available: false, reason: "--no-parity", report: [] };
   } else {
-    const loaded = await loadClientModules();
+    const loaded = await loadClientModules({ requireAll: config.requireParity });
     parity = { ...loaded, perturb: config.chaosParity ? { applied: null } : null };
   }
   journal.write({
@@ -442,6 +447,9 @@ async function prepareParity() {
   }
   if (config.chaosParity && !parity.available) {
     throw new Error("--chaos-parity was requested but the parity oracle is unavailable — the self-test would prove nothing.");
+  }
+  if (config.requireParity && !parity.available) {
+    throw new Error(`Required client parity unavailable: ${parity.reason}`);
   }
 }
 
@@ -1268,6 +1276,8 @@ async function sweep(tick, { final = false } = {}) {
     final,
     results,
   });
+  // Preserve the observed cells in the journal even when required coverage fails.
+  if (config.requireParity) assertParityCoverage(results);
   // GV-480 Phase C: the display-only snapshot the dashboard's phone panels and its
   // scrubber replay from. Written HERE, straight after the oracle line, because
   // `ws.balances` is refreshed by the zero_sum invariant a few lines above — the

@@ -17,12 +17,11 @@
 //
 // ── How TypeScript gets loaded without a build step, a dependency, or a flag ──
 //
-// The three modules we want are plain, dependency-free, erasable-syntax-only TypeScript.
+// The four modules we want are plain, dependency-free, erasable-syntax-only TypeScript.
 // Node can run that, but two things are in the way:
 //
 //   1. Type stripping is on by default only from Node 22.18 / 23.6. Rather than depend
-//      on the runtime's default (and rather than make `npm run sim:run` carry a flag
-//      that a nightly workflow we must not edit would not carry), a `load` hook does the
+//      on the runtime's default or requiring a CLI flag, a `load` hook does the
 //      stripping explicitly with `module.stripTypeScriptTypes`, which is present from
 //      Node 22.13 / 23.2 whether or not the default is on.
 //   2. The mobile repo resolves `@/…` through a tsconfig path alias and writes relative
@@ -36,9 +35,9 @@
 // nothing in this repo is either, so it cannot affect the simulator's own imports.
 //
 // If the Node running us is older than that, or the sibling repo is absent, or a module
-// fails to import, the parity oracle SKIPS with a loud warning — the same
-// tolerate-missing convention check-hotpath-mirror.mjs uses, and a hard requirement for
-// .github/workflows/nightly-simulator.yml, which checks out this repo alone.
+// fails to import, ordinary local runs SKIP with a loud warning. The nightly job
+// checks out both repos and uses --require-parity, which fails instead of skipping
+// and requires all four modules, not only the settlement calculator.
 //
 // SAFETY. Read-only in both directions: the sibling repo is imported, never written, and
 // every query here is a `select`. Nothing in this module consumes a PRNG draw, so the
@@ -64,7 +63,7 @@ export const MOBILE_ROOT = process.env.SIMULATOR_MOBILE_ROOT || path.join(REPO, 
 const MOBILE_SRC = path.join(MOBILE_ROOT, "src");
 
 // Every module we ask for, in load order. `required` marks the one the oracle cannot do
-// its job without; the rest each add a check and degrade to "not loaded" on their own.
+// its job without; requireAll makes every module mandatory for nightly coverage.
 const WANTED = [
   {
     key: "settlementCalc",
@@ -149,7 +148,7 @@ function installHooks() {
  * every module tried and why it did or did not load — the module-loadability finding is
  * part of the output, not a comment somebody has to keep true by hand.
  */
-export async function loadClientModules() {
+export async function loadClientModules({ requireAll = false } = {}) {
   const report = [];
   if (!existsSync(MOBILE_SRC)) {
     return {
@@ -170,7 +169,7 @@ export async function loadClientModules() {
     const file = path.join(MOBILE_SRC, want.file);
     if (!existsSync(file)) {
       report.push({ file: want.file, loaded: false, error: "file does not exist in the sibling repo" });
-      if (want.required) requiredProblem = `${want.file} does not exist in ${MOBILE_ROOT}`;
+      if (want.required || requireAll) requiredProblem = `${want.file} does not exist in ${MOBILE_ROOT}`;
       continue;
     }
     try {
@@ -179,14 +178,14 @@ export async function loadClientModules() {
       const missing = want.exports.filter((name) => typeof loaded[name] !== "function");
       if (missing.length > 0) {
         report.push({ file: want.file, loaded: false, error: `imported, but does not export ${missing.join(", ")}` });
-        if (want.required) requiredProblem = `${want.file} is missing ${missing.join(", ")}`;
+        if (want.required || requireAll) requiredProblem = `${want.file} is missing ${missing.join(", ")}`;
         continue;
       }
       modules[want.key] = loaded;
       report.push({ file: want.file, loaded: true, gives: want.gives });
     } catch (err) {
       report.push({ file: want.file, loaded: false, error: String(err.message ?? err).split("\n")[0].slice(0, 300) });
-      if (want.required) requiredProblem = `${want.file} could not be imported: ${String(err.message ?? err).split("\n")[0]}`;
+      if (want.required || requireAll) requiredProblem = `${want.file} could not be imported: ${String(err.message ?? err).split("\n")[0]}`;
     }
   }
 

@@ -26,6 +26,7 @@ import { execSync } from 'child_process';
 // smoke) run as their own npm scripts / CI jobs, not here.
 
 const scripts = [
+  "node tools/test-required-parity.mjs",
   "node tools/test-migrations.mjs",
   "node tools/test-sql-ambiguity-guard.mjs",
   "node tools/test-booking-trip-contract.mjs",
