@@ -323,6 +323,9 @@ jobs:
       - name: Run functional smoke test
         run: bash tools/test-functional-smoke.sh
 
+      - name: Verify staging install guards and transactional schema replay
+        run: node tools/test-staging-install-functional.mjs
+
       - name: Run booking-to-trip lifecycle smoke
         run: bash tools/test-booking-trip-functional.sh
 
